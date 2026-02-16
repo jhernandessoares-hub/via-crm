@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  nome      String
+  slug      String   @unique
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  users     User[]
+  leads     Lead[]
+  events    LeadEvent[]
+  reviews   ManagerReview[]
+  branches  Branch[]
+  reasons   ManagerDecisionReason[]
+
+  @@map("tenants")
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  tenantId  String
+  nome      String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users     User[]
+  leads     Lead[]
+
+  @@index([tenantId, nome])
+  @@map("branches")
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  AGENT
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String?
+  role      UserRole @default(AGENT)
+  nome      String
+  email     String
+  senhaHash String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+enum LeadStatus {
+  NOVO
+  EM_CONTATO
+  QUALIFICADO
+  PROPOSTA
+  FECHADO
+  PERDIDO
+}
+
+enum ManagerDecisionType {
+  KEEP_AGENT_REENTRY
+  AI_ROUTE_OTHER_IF_AVAILABLE_AFTER_QUALIFICATION
+  KEEP_CLOSED
+  AI_ROUTE_ANY_AFTER_QUALIFICATION
+}
+
+enum PendingRoutingScope {
+  OTHER_IF_AVAILABLE
+  ANY
+}
+
+model Lead {
+  id           String     @id @default(uuid())
+  tenantId     String
+  branchId     String?
+  nome         String
+  telefone     String?
+  telefoneKey  String?
+  email        String?
+  origem       String?
+  status       LeadStatus @default(NOVO)
+  observacao   String?
+  lastInboundAt    DateTime?
+  lastReferralHash String?
+
+  needsManagerReview Boolean @default(false)
+  queuePriority      Int     @default(9999)
+
+  assignedUserId String?
+  aiBlocked      Boolean @default(false)
+
+  pendingRouting      Boolean              @default(false)
+  pendingRoutingScope PendingRoutingScope?
+
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  events       LeadEvent[]
+  reviews      ManagerReview[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, telefoneKey])
+  @@index([tenantId, branchId])
+  @@map("leads")
+}
+
+model LeadEvent {
+  id        String   @id @default(uuid())
+  tenantId  String
+  leadId    String
+
+  channel   String
+  isReentry Boolean  @default(false)
+  sourceRef String?
+
+  payloadRaw Json?
+  criadoEm   DateTime @default(now())
+
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId])
+  @@index([tenantId, channel])
+  @@map("lead_events")
+}
+
+model ManagerDecisionReason {
+  id        String   @id @default(uuid())
+  tenantId  String
+  label     String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  criadoEm  DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviews   ManagerReview[]
+
+  @@index([tenantId, active, sortOrder])
+  @@map("manager_decision_reasons")
+}
+
+model ManagerReview {
+  id            String              @id @default(uuid())
+  tenantId      String
+  leadId        String
+
+  decision      ManagerDecisionType
+  reasonId      String?
+  justification String?
+
+  managerUserId String?
+  criadoEm      DateTime @default(now())
+
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reason        ManagerDecisionReason? @relation(fields: [reasonId], references: [id])
+
+  @@index([tenantId, leadId])
+  @@map("manager_reviews")
+}
