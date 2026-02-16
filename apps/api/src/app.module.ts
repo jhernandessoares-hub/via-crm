@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { LeadsModule } from './leads/leads.module';
 import { UsersModule } from './users/users.module';
 import { IngestModule } from './ingest/ingest.module';
+import { PrivacyModule } from './privacy/privacy.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { IngestModule } from './ingest/ingest.module';
     LeadsModule,
     UsersModule,
     IngestModule,
+    PrivacyModule,
   ],
   controllers: [AppController, WhatsAppController],
   providers: [AppService],
