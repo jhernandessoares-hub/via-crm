@@ -11,15 +11,46 @@ export class LeadsService {
   constructor(private readonly prisma: PrismaService) {}
 
   // =============================
+  // HELPERS (telefone / key)
+  // =============================
+
+  private digitsOnly(v: string): string {
+    return (v || '').replace(/\D/g, '');
+  }
+
+  // Deve bater com a lógica do webhook (WhatsAppController)
+  private telefoneKeyFrom(input: string): string {
+    let d = this.digitsOnly(input);
+
+    // remove DDI BR se vier 55 + resto
+    if (d.startsWith('55') && d.length > 11) d = d.slice(2);
+
+    // garante no máximo 11 dígitos (DDD + número)
+    if (d.length > 11) d = d.slice(-11);
+
+    // chave: últimos 9
+    if (d.length >= 9) return d.slice(-9);
+
+    return d;
+  }
+
+  // =============================
   // CRUD BÁSICO
   // =============================
 
   async create(tenantId: string, body: any) {
+    const telefoneRaw = body?.telefone ? String(body.telefone) : '';
+    const telefoneDigits = this.digitsOnly(telefoneRaw);
+    const telefoneKey = telefoneDigits
+      ? this.telefoneKeyFrom(telefoneDigits)
+      : null;
+
     return this.prisma.lead.create({
       data: {
         tenantId,
         nome: body.nome,
-        telefone: body.telefone || null,
+        telefone: telefoneDigits || null,
+        telefoneKey: telefoneKey || null,
         email: body.email || null,
         origem: body.origem || null,
         observacao: body.observacao || null,
@@ -163,19 +194,14 @@ export class LeadsService {
   // =============================
 
   private normalizeToE164(raw: string): string {
-    // Mantém apenas números
     let digits = (raw || '').replace(/\D/g, '');
 
-    // Se já estiver com DDI 55, ok
     if (digits.startsWith('55')) return digits;
 
-    // Heurística BR:
-    // - Se vier 10 ou 11 dígitos (DDD+numero), prefixa 55
     if (digits.length === 10 || digits.length === 11) {
       return `55${digits}`;
     }
 
-    // Caso genérico: retorna como veio (pode ser que já tenha DDI diferente)
     return digits;
   }
 
@@ -205,7 +231,6 @@ export class LeadsService {
       text: { body: text },
     };
 
-    // Timeout simples (15s)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -231,7 +256,6 @@ export class LeadsService {
       }
 
       if (!response.ok) {
-        // Log detalhado para debug
         console.log('Erro Meta (status):', response.status);
         console.log('Erro Meta (body):', data);
 
@@ -268,10 +292,8 @@ export class LeadsService {
       throw new Error('Lead não possui telefone cadastrado');
     }
 
-    // Envia para a Meta
     const result = await this.sendMetaMessage(lead.telefone, text);
 
-    // Salva evento de saída
     await this.prisma.leadEvent.create({
       data: {
         tenantId: user.tenantId,
