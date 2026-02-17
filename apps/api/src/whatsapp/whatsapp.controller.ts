@@ -175,21 +175,13 @@ export class WhatsAppController {
           },
         });
 
-        // 🔥 RESPOSTA AUTOMÁTICA (TESTE)
-        const replyText = `Recebi sua mensagem: "${text}"`;
+        // ✅ AUTO-REPLY DESATIVADO (produção)
+        // Se quiser responder, será via CRM usando /leads/:id/send-whatsapp
 
-        await this.sendMessage(from, replyText);
+        // (mantemos a função sendMessage no arquivo porque o CRM usa outro endpoint
+        // para envio, mas aqui não chamamos mais automaticamente)
 
-        await this.prisma.leadEvent.create({
-          data: {
-            tenantId: tenant.id,
-            leadId,
-            channel: 'whatsapp.out',
-            isReentry: false,
-            payloadRaw: { to: from, text: replyText },
-          },
-        });
-      } catch (e) {
+      } catch (e: any) {
         console.log('⚠️ Erro ao processar mensagem:', e?.message || e);
       }
     }

@@ -18,17 +18,14 @@ export class LeadsService {
     return (v || '').replace(/\D/g, '');
   }
 
-  // Deve bater com a lógica do webhook (WhatsAppController)
+  // Mesma lógica do webhook
   private telefoneKeyFrom(input: string): string {
     let d = this.digitsOnly(input);
 
-    // remove DDI BR se vier 55 + resto
     if (d.startsWith('55') && d.length > 11) d = d.slice(2);
 
-    // garante no máximo 11 dígitos (DDD + número)
     if (d.length > 11) d = d.slice(-11);
 
-    // chave: últimos 9
     if (d.length >= 9) return d.slice(-9);
 
     return d;
@@ -41,16 +38,19 @@ export class LeadsService {
   async create(tenantId: string, body: any) {
     const telefoneRaw = body?.telefone ? String(body.telefone) : '';
     const telefoneDigits = this.digitsOnly(telefoneRaw);
-    const telefoneKey = telefoneDigits
-      ? this.telefoneKeyFrom(telefoneDigits)
-      : null;
+
+    let telefoneKey: string | null = null;
+
+    if (telefoneDigits) {
+      telefoneKey = this.telefoneKeyFrom(telefoneDigits);
+    }
 
     return this.prisma.lead.create({
       data: {
         tenantId,
         nome: body.nome,
         telefone: telefoneDigits || null,
-        telefoneKey: telefoneKey || null,
+        telefoneKey,
         email: body.email || null,
         origem: body.origem || null,
         observacao: body.observacao || null,
@@ -256,9 +256,6 @@ export class LeadsService {
       }
 
       if (!response.ok) {
-        console.log('Erro Meta (status):', response.status);
-        console.log('Erro Meta (body):', data);
-
         const metaMsg =
           data?.error?.message ||
           data?.message ||
