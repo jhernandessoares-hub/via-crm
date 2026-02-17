@@ -72,22 +72,14 @@ export class LeadsService {
     });
   }
 
-  async updateStatus(
-    tenantId: string,
-    id: string,
-    status: LeadStatus,
-  ) {
+  async updateStatus(tenantId: string, id: string, status: LeadStatus) {
     return this.prisma.lead.update({
       where: { id },
       data: { status },
     });
   }
 
-  async assignLead(
-    id: string,
-    assignedUserId: string,
-    user: any,
-  ) {
+  async assignLead(id: string, assignedUserId: string, user: any) {
     if (user.role === 'AGENT') {
       throw new ForbiddenException('Sem permissão');
     }
@@ -127,11 +119,7 @@ export class LeadsService {
     });
   }
 
-  async getBranchLeads(
-    user: any,
-    branchId?: string,
-    status?: LeadStatus,
-  ) {
+  async getBranchLeads(user: any, branchId?: string, status?: LeadStatus) {
     if (user.role === 'AGENT') {
       throw new ForbiddenException('Sem permissão');
     }
@@ -174,15 +162,38 @@ export class LeadsService {
   // 🚀 ENVIO REAL WHATSAPP
   // =============================
 
-  private async sendMetaMessage(to: string, text: string) {
+  private normalizeToE164(raw: string): string {
+    // Mantém apenas números
+    let digits = (raw || '').replace(/\D/g, '');
+
+    // Se já estiver com DDI 55, ok
+    if (digits.startsWith('55')) return digits;
+
+    // Heurística BR:
+    // - Se vier 10 ou 11 dígitos (DDD+numero), prefixa 55
+    if (digits.length === 10 || digits.length === 11) {
+      return `55${digits}`;
+    }
+
+    // Caso genérico: retorna como veio (pode ser que já tenha DDI diferente)
+    return digits;
+  }
+
+  private async sendMetaMessage(toRaw: string, text: string) {
     const token = process.env.WHATSAPP_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
 
     if (!token || !phoneNumberId) {
       throw new Error(
-        'WHATSAPP_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado',
+        'Config faltando: defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID no Railway/ambiente.',
       );
+    }
+
+    const to = this.normalizeToE164(toRaw);
+
+    if (!to || to.length < 8) {
+      throw new Error(`Telefone inválido para envio: "${toRaw}"`);
     }
 
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
@@ -194,30 +205,56 @@ export class LeadsService {
       text: { body: text },
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    // Timeout simples (15s)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
-    const data = await response.json();
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      console.log('Erro Meta:', data);
-      throw new Error('Erro ao enviar mensagem WhatsApp');
+      const rawText = await response.text();
+      let data: any = null;
+
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        data = { raw: rawText };
+      }
+
+      if (!response.ok) {
+        // Log detalhado para debug
+        console.log('Erro Meta (status):', response.status);
+        console.log('Erro Meta (body):', data);
+
+        const metaMsg =
+          data?.error?.message ||
+          data?.message ||
+          'Erro desconhecido retornado pela Meta';
+
+        throw new Error(`Erro ao enviar WhatsApp (Meta): ${metaMsg}`);
+      }
+
+      return { to, metaResponse: data };
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw new Error('Timeout ao enviar WhatsApp (Meta). Tente novamente.');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return data;
   }
 
-  async sendWhatsappMessage(
-    user: any,
-    leadId: string,
-    text: string,
-  ) {
+  async sendWhatsappMessage(user: any, leadId: string, text: string) {
     const lead = await this.prisma.lead.findFirst({
       where: {
         id: leadId,
@@ -227,22 +264,23 @@ export class LeadsService {
 
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
-    if (!lead.telefone)
+    if (!lead.telefone) {
       throw new Error('Lead não possui telefone cadastrado');
+    }
 
-    const telefone = lead.telefone.replace(/\D/g, '');
+    // Envia para a Meta
+    const result = await this.sendMetaMessage(lead.telefone, text);
 
-    const result = await this.sendMetaMessage(telefone, text);
-
+    // Salva evento de saída
     await this.prisma.leadEvent.create({
       data: {
         tenantId: user.tenantId,
         leadId,
         channel: 'whatsapp.out',
         payloadRaw: {
-          to: telefone,
+          to: result.to,
           text,
-          metaResponse: result,
+          metaResponse: result.metaResponse,
         },
       },
     });
