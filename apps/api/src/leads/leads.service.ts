@@ -205,10 +205,37 @@ export class LeadsService {
     return digits;
   }
 
+  private pickMessage(input: any): string {
+    // Aceita string direto
+    if (typeof input === 'string') return input;
+
+    // Aceita vários formatos de payload
+    const candidates = [
+      input?.message,
+      input?.mensagem,
+      input?.text,
+      input?.body,
+      input?.content,
+      input?.data?.message,
+      input?.data?.text,
+    ];
+
+    const found = candidates.find(
+      (v) => typeof v === 'string' && v.trim().length > 0,
+    );
+
+    return (found || '').trim();
+  }
+
   private async sendMetaMessage(toRaw: string, text: string) {
     const token = process.env.WHATSAPP_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
+
+    const safeText = (text || '').trim();
+    if (!safeText) {
+      throw new Error('Mensagem vazia: informe "message" no body.');
+    }
 
     if (!token || !phoneNumberId) {
       throw new Error(
@@ -228,7 +255,7 @@ export class LeadsService {
       messaging_product: 'whatsapp',
       to,
       type: 'text',
-      text: { body: text },
+      text: { body: safeText },
     };
 
     const controller = new AbortController();
@@ -275,7 +302,8 @@ export class LeadsService {
     }
   }
 
-  async sendWhatsappMessage(user: any, leadId: string, text: string) {
+  // Agora aceita: string OU body inteiro
+  async sendWhatsappMessage(user: any, leadId: string, input: any) {
     const lead = await this.prisma.lead.findFirst({
       where: {
         id: leadId,
@@ -288,6 +316,8 @@ export class LeadsService {
     if (!lead.telefone) {
       throw new Error('Lead não possui telefone cadastrado');
     }
+
+    const text = this.pickMessage(input);
 
     const result = await this.sendMetaMessage(lead.telefone, text);
 

@@ -100,11 +100,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Body() body: { status: LeadStatus },
   ) {
-    return this.leadsService.updateStatus(
-      req.user.tenantId,
-      id,
-      body.status,
-    );
+    return this.leadsService.updateStatus(req.user.tenantId, id, body.status);
   }
 
   @Post(':id/assign')
@@ -113,11 +109,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Body() body: { assignedUserId: string },
   ) {
-    return this.leadsService.assignLead(
-      id,
-      body.assignedUserId,
-      req.user,
-    );
+    return this.leadsService.assignLead(id, body.assignedUserId, req.user);
   }
 
   @Post(':id/manager-decision')
@@ -130,16 +122,9 @@ export class LeadsController {
   }
 
   // 🚀 ENVIO REAL WHATSAPP
+  // Aceita: message | mensagem | text | body (service resolve)
   @Post(':id/send-whatsapp')
-  async sendWhatsapp(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() body: { text: string },
-  ) {
-    return this.leadsService.sendWhatsappMessage(
-      req.user,
-      id,
-      body.text,
-    );
+  async sendWhatsapp(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.leadsService.sendWhatsappMessage(req.user, id, body);
   }
 }

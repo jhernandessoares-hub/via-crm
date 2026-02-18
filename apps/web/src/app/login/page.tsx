@@ -17,7 +17,7 @@ type LoginResp = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [tenantSlug, setTenantSlug] = useState("via-crm-dev");
+  const [tenant, setTenant] = useState("via-crm-dev");
   const [email, setEmail] = useState("jhernandes_soares@hotmail.com");
   const [senha, setSenha] = useState("123456");
   const [loading, setLoading] = useState(false);
@@ -32,15 +32,17 @@ export default function LoginPage() {
       const resp = await fetch("http://localhost:3000/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantSlug, email, senha }),
+        // ✅ backend aceita tenantId (slug ou uuid) e senha/password
+        body: JSON.stringify({ tenantId: tenant, email, senha }),
       });
 
+      const j = await resp.json().catch(() => null);
+
       if (!resp.ok) {
-        const j = await resp.json().catch(() => null);
         throw new Error(j?.message || "Login inválido");
       }
 
-      const data = (await resp.json()) as LoginResp;
+      const data = j as LoginResp;
 
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("user", JSON.stringify(data.user));
@@ -57,17 +59,15 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
       <div className="w-full max-w-md rounded-xl bg-white border p-6">
         <div className="text-xl font-semibold">Entrar</div>
-        <div className="text-sm text-gray-600 mt-1">
-          VIA CRM (DEV)
-        </div>
+        <div className="text-sm text-gray-600 mt-1">VIA CRM (DEV)</div>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-3">
           <div>
             <label className="text-xs text-gray-600">Tenant</label>
             <input
               className="mt-1 w-full border rounded-md px-3 py-2 text-sm"
-              value={tenantSlug}
-              onChange={(e) => setTenantSlug(e.target.value)}
+              value={tenant}
+              onChange={(e) => setTenant(e.target.value)}
               placeholder="via-crm-dev"
             />
           </div>
@@ -93,9 +93,7 @@ export default function LoginPage() {
             />
           </div>
 
-          {err ? (
-            <div className="text-sm text-red-600">{err}</div>
-          ) : null}
+          {err ? <div className="text-sm text-red-600">{err}</div> : null}
 
           <button
             type="submit"

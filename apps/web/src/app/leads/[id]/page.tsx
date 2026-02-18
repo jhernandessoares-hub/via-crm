@@ -80,8 +80,7 @@ function Bubble({ ev }: { ev: LeadEvent }) {
           <div className="mt-1 whitespace-pre-wrap">{text}</div>
         ) : (
           <div className="mt-1 text-xs text-gray-600">
-            (sem texto){" "}
-            <span className="font-mono text-[11px]">id:{ev.id}</span>
+            (sem texto) <span className="font-mono text-[11px]">id:{ev.id}</span>
           </div>
         )}
       </div>
@@ -104,6 +103,19 @@ export default function LeadDetailChatPage() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  // evita chamadas concorrentes do polling
+  const inFlightRef = useRef(false);
+
+  async function loadLead() {
+    const l = await apiFetch(`/leads/${id}`, { method: "GET" });
+    setLead(l);
+  }
+
+  async function loadEvents() {
+    const ev = await apiFetch(`/leads/${id}/events`, { method: "GET" });
+    setEvents(Array.isArray(ev) ? ev : ev?.items ?? []);
+  }
+
   async function loadAll() {
     setErr(null);
 
@@ -111,13 +123,7 @@ export default function LeadDetailChatPage() {
     setLoadingEvents(true);
 
     try {
-      const [l, ev] = await Promise.all([
-        apiFetch(`/leads/${id}`, { method: "GET" }),
-        apiFetch(`/leads/${id}/events`, { method: "GET" }),
-      ]);
-
-      setLead(l);
-      setEvents(Array.isArray(ev) ? ev : ev?.items ?? []);
+      await Promise.all([loadLead(), loadEvents()]);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -128,8 +134,38 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  // primeira carga
   useEffect(() => {
     if (id) loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // polling só de events (não mexe no lead, pra não piscar)
+  useEffect(() => {
+    if (!id) return;
+
+    const intervalMs = 2500;
+
+    const tick = async () => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
+
+      try {
+        await loadEvents();
+      } catch {
+        // sem spam de erro no polling
+      } finally {
+        inFlightRef.current = false;
+      }
+    };
+
+    const t = setInterval(tick, intervalMs);
+
+    // faz 1 atualização rápida logo após abrir a página
+    tick();
+
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const orderedEvents = useMemo(() => {
@@ -154,13 +190,18 @@ export default function LeadDetailChatPage() {
     try {
       await apiFetch(`/leads/${id}/send-whatsapp`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           text: msg,
         }),
       });
 
       setText("");
-      await loadAll();
+
+      // puxa events imediatamente após enviar (sem esperar polling)
+      await loadEvents();
     } catch (e: any) {
       setErr(e?.message || "Erro ao enviar");
     } finally {

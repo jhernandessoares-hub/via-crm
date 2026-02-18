@@ -10,12 +10,43 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  async login(data: { tenantId: string; email: string; senha: string }) {
-    const email = data.email.trim().toLowerCase();
+  private async resolveTenantId(input: string): Promise<string> {
+    const v = (input || '').toString().trim();
+    if (!v) throw new UnauthorizedException('Tenant inválido');
+
+    // Se já parece UUID, usa direto
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) {
+      return v;
+    }
+
+    // Se não é UUID, trata como slug
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { slug: v, ativo: true },
+    });
+
+    if (!tenant) throw new UnauthorizedException('Tenant inválido');
+
+    return tenant.id;
+  }
+
+  async login(data: {
+    tenantId: string; // pode ser UUID ou slug
+    email: string;
+    senha?: string;
+    password?: string;
+  }) {
+    const email = (data.email || '').trim().toLowerCase();
+    const senha = (data.senha ?? data.password ?? '').toString();
+
+    if (!email || !senha) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    const tenantId = await this.resolveTenantId(data.tenantId);
 
     const user = await this.prisma.user.findFirst({
       where: {
-        tenantId: data.tenantId,
+        tenantId,
         email,
         ativo: true,
       },
@@ -25,12 +56,16 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const ok = await bcrypt.compare(data.senha, user.senhaHash);
+    const hash = (user as any).senhaHash || '';
+    if (!hash) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    const ok = await bcrypt.compare(senha, hash);
     if (!ok) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    // ✅ Agora o token carrega role e branchId
     const payload = {
       sub: user.id,
       tenantId: user.tenantId,
@@ -52,25 +87,28 @@ export class AuthService {
     };
   }
 
-  async registerMaster(data: { tenantId: string; nome: string; email: string; senha: string }) {
+  async registerMaster(data: {
+    tenantId: string; // pode ser UUID ou slug
+    nome: string;
+    email: string;
+    senha: string;
+  }) {
     const email = data.email.trim().toLowerCase();
-
     const senhaHash = await bcrypt.hash(data.senha, 10);
 
-    // Regra simples do V1: o primeiro usuário do tenant é o "master"
-    // (Depois a gente cria RBAC e permissões.)
+    const tenantId = await this.resolveTenantId(data.tenantId);
+
     const existingCount = await this.prisma.user.count({
-      where: { tenantId: data.tenantId },
+      where: { tenantId },
     });
 
     if (existingCount > 0) {
-      // Por enquanto bloqueia criar outro master pelo endpoint
       throw new UnauthorizedException('Já existe usuário criado para este tenant.');
     }
 
     const user = await this.prisma.user.create({
       data: {
-        tenantId: data.tenantId,
+        tenantId,
         nome: data.nome.trim(),
         email,
         senhaHash,

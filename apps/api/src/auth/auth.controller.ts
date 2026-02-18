@@ -7,13 +7,45 @@ export class AuthController {
 
   @Post('register-master')
   async registerMaster(
-    @Body() body: { tenantId: string; nome: string; email: string; senha: string },
+    @Body()
+    body: {
+      tenantId?: string;
+      tenant?: string;
+      nome: string;
+      email: string;
+      senha?: string;
+      password?: string;
+    },
   ) {
-    return this.authService.registerMaster(body);
+    const tenantId = (body.tenantId || body.tenant || '').toString().trim();
+    const senha = (body.senha ?? body.password ?? '').toString();
+
+    return this.authService.registerMaster({
+      tenantId,
+      nome: body.nome,
+      email: body.email,
+      senha,
+    });
   }
 
   @Post('login')
-  async login(@Body() body: { tenantId: string; email: string; senha: string }) {
-    return this.authService.login(body);
+  async login(
+    @Body()
+    body: {
+      tenantId?: string;
+      tenant?: string;
+      email: string;
+      senha?: string;
+      password?: string;
+    },
+  ) {
+    const tenantId = (body.tenantId || body.tenant || '').toString().trim();
+
+    return this.authService.login({
+      tenantId,
+      email: body.email,
+      senha: body.senha,
+      password: body.password,
+    });
   }
 }

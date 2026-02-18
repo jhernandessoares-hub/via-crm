@@ -6,6 +6,12 @@ import { PrismaService } from './prisma/prisma.service';
 export class AppController {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ✅ HEALTH CHECK
+  @Get('health')
+  health() {
+    return { status: 'ok' };
+  }
+
   @Get('privacy-policy')
   getPrivacy(@Res() res: Response) {
     return res.send(`
