@@ -33,8 +33,8 @@ async function bootstrap() {
   // 🚀 INICIAR WORKER SLA (reutiliza instâncias do container NestJS)
   startSlaWorker(app.get(PrismaService), app.get(AiService));
 
-  // 🚀 INICIAR WORKER WHATSAPP MEDIA
-  startWhatsappMediaWorker();
+  // 🚀 INICIAR WORKER WHATSAPP MEDIA (reutiliza instâncias do container NestJS)
+  startWhatsappMediaWorker(app.get(PrismaService));
 
   // 🚀 INICIAR WORKER INBOUND AI (reutiliza instâncias do container NestJS)
   startInboundAiWorker(app.get(PrismaService), app.get(AiService));
