@@ -94,11 +94,43 @@ export class IngestService {
       },
     });
 
-    // 4) Gancho de notificação (ainda não envia nada, só deixa pronto)
-    // TODO: notifyManagerOnReentry(lead.id, event.id);
+    // 4) Notifica gerentes quando é re-entrada
+    if (isReentry) {
+      await this.notifyManagerOnReentry(tenantId, lead.id, event.id);
+    }
 
     console.log('Lead:', lead.id, 'Event:', event.id, 'Reentry:', isReentry);
 
     return { lead, event };
+  }
+
+  private async notifyManagerOnReentry(
+    tenantId: string,
+    leadId: string,
+    eventId: string,
+  ) {
+    const managers = await this.prisma.user.findMany({
+      where: { tenantId, role: { in: ['MANAGER', 'OWNER'] }, ativo: true },
+      select: { id: true, nome: true, email: true },
+    });
+
+    if (managers.length === 0) return;
+
+    await this.prisma.leadEvent.create({
+      data: {
+        tenantId,
+        leadId,
+        channel: 'system.reentry_alert',
+        payloadRaw: {
+          eventId,
+          notifiedManagers: managers.map((m) => ({ id: m.id, nome: m.nome, email: m.email })),
+        },
+      },
+    });
+
+    console.log(
+      `[ingest] Re-entrada lead=${leadId} — alertando ${managers.length} gerente(s):`,
+      managers.map((m) => m.email).join(', '),
+    );
   }
 }
