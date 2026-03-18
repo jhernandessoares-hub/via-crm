@@ -1,10 +1,8 @@
 import { Controller, Get, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { PrismaService } from './prisma/prisma.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly prisma: PrismaService) {}
 
   // ✅ HEALTH CHECK
   @Get('health')
