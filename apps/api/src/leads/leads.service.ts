@@ -912,6 +912,53 @@ export class LeadsService {
     }
   }
 
+  // =============================
+  // META API: fetch com retry/backoff
+  // =============================
+  private async fetchMetaWithRetry(
+    url: string,
+    options: RequestInit,
+    timeoutMs = 15000,
+    maxAttempts = 3,
+  ): Promise<{ ok: boolean; status: number; data: any }> {
+    const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        const rawText = await response.text();
+        let data: any;
+        try {
+          data = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          data = { raw: rawText };
+        }
+
+        if (response.ok || !RETRYABLE_STATUSES.has(response.status)) {
+          return { ok: response.ok, status: response.status, data };
+        }
+
+        lastError = new Error(`Meta API status ${response.status}: ${JSON.stringify(data)}`);
+      } catch (err: any) {
+        lastError = err?.name === 'AbortError'
+          ? new Error('Timeout na chamada à Meta API')
+          : err;
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+      }
+    }
+
+    throw lastError;
+  }
+
   private async sendMetaAudioMessage(toRaw: string, mediaId: string) {
     const token = process.env.WHATSAPP_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -934,7 +981,6 @@ export class LeadsService {
     }
 
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
-
     const body = {
       messaging_product: 'whatsapp',
       to,
@@ -942,47 +988,18 @@ export class LeadsService {
       audio: { id: mediaId },
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const { ok, data } = await this.fetchMetaWithRetry(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      const rawText = await response.text();
-      let data: any = null;
-
-      try {
-        data = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        data = { raw: rawText };
-      }
-
-      if (!response.ok) {
-        const metaMsg =
-          data?.error?.message ||
-          data?.message ||
-          'Erro desconhecido retornado pela Meta (send audio)';
-        throw new Error(`Erro ao enviar áudio (Meta): ${metaMsg}`);
-      }
-
-      return { to, metaResponse: data };
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        throw new Error('Timeout ao enviar áudio (Meta). Tente novamente.');
-      }
-      throw err;
-    } finally {
-      clearTimeout(timeout);
+    if (!ok) {
+      const msg = data?.error?.message || data?.message || 'Erro desconhecido retornado pela Meta (send audio)';
+      throw new Error(`Erro ao enviar áudio (Meta): ${msg}`);
     }
+
+    return { to, metaResponse: data };
   }
 
   private async sendMetaImageMessage(toRaw: string, mediaId: string) {
@@ -995,34 +1012,16 @@ export class LeadsService {
     }
 
     const to = this.normalizeToE164(toRaw);
-
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
-    const body = {
-      messaging_product: 'whatsapp',
-      to,
-      type: 'image',
-      image: { id: mediaId },
-    };
+    const body = { messaging_product: 'whatsapp', to, type: 'image', image: { id: mediaId } };
 
-    const response = await fetch(url, {
+    const { ok, data } = await this.fetchMetaWithRetry(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(body),
     });
 
-    const rawText = await response.text();
-    let data: any = null;
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-    } catch {
-      data = { raw: rawText };
-    }
-
-    if (!response.ok) {
+    if (!ok) {
       const msg = data?.error?.message || data?.message || 'Erro Meta (send image)';
       throw new Error(`Erro ao enviar imagem (Meta): ${msg}`);
     }
@@ -1040,34 +1039,16 @@ export class LeadsService {
     }
 
     const to = this.normalizeToE164(toRaw);
-
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
-    const body = {
-      messaging_product: 'whatsapp',
-      to,
-      type: 'video',
-      video: { id: mediaId },
-    };
+    const body = { messaging_product: 'whatsapp', to, type: 'video', video: { id: mediaId } };
 
-    const response = await fetch(url, {
+    const { ok, data } = await this.fetchMetaWithRetry(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(body),
     });
 
-    const rawText = await response.text();
-    let data: any = null;
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-    } catch {
-      data = { raw: rawText };
-    }
-
-    if (!response.ok) {
+    if (!ok) {
       const msg = data?.error?.message || data?.message || 'Erro Meta (send video)';
       throw new Error(`Erro ao enviar vídeo (Meta): ${msg}`);
     }
@@ -1075,11 +1056,7 @@ export class LeadsService {
     return { to, metaResponse: data };
   }
 
-  private async sendMetaDocumentMessage(
-    toRaw: string,
-    mediaId: string,
-    filename?: string,
-  ) {
+  private async sendMetaDocumentMessage(toRaw: string, mediaId: string, filename?: string) {
     const token = process.env.WHATSAPP_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
@@ -1089,7 +1066,6 @@ export class LeadsService {
     }
 
     const to = this.normalizeToE164(toRaw);
-
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
     const body = {
       messaging_product: 'whatsapp',
@@ -1098,25 +1074,13 @@ export class LeadsService {
       document: { id: mediaId, filename: filename || `arquivo-${Date.now()}` },
     };
 
-    const response = await fetch(url, {
+    const { ok, data } = await this.fetchMetaWithRetry(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(body),
     });
 
-    const rawText = await response.text();
-    let data: any = null;
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-    } catch {
-      data = { raw: rawText };
-    }
-
-    if (!response.ok) {
+    if (!ok) {
       const msg = data?.error?.message || data?.message || 'Erro Meta (send document)';
       throw new Error(`Erro ao enviar documento (Meta): ${msg}`);
     }
@@ -2258,7 +2222,6 @@ async updateStage(user: any, leadId: string, stageId: string) {
     }
 
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
-
     const body = {
       messaging_product: 'whatsapp',
       to,
@@ -2266,45 +2229,18 @@ async updateStage(user: any, leadId: string, stageId: string) {
       text: { body: safeText },
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const { ok, data } = await this.fetchMetaWithRetry(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      const rawText = await response.text();
-      let data: any = null;
-
-      try {
-        data = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        data = { raw: rawText };
-      }
-
-      if (!response.ok) {
-        const metaMsg =
-          data?.error?.message || data?.message || 'Erro desconhecido retornado pela Meta';
-        throw new Error(`Erro ao enviar WhatsApp (Meta): ${metaMsg}`);
-      }
-
-      return { to, metaResponse: data };
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        throw new Error('Timeout ao enviar WhatsApp (Meta). Tente novamente.');
-      }
-      throw err;
-    } finally {
-      clearTimeout(timeout);
+    if (!ok) {
+      const metaMsg = data?.error?.message || data?.message || 'Erro desconhecido retornado pela Meta';
+      throw new Error(`Erro ao enviar WhatsApp (Meta): ${metaMsg}`);
     }
+
+    return { to, metaResponse: data };
   }
 
   async sendWhatsappMessage(user: any, leadId: string, input: any) {
