@@ -34,9 +34,11 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LeadStatus } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import * as fs from 'fs';
 
 // ✅ NOVO: conversão webm -> ogg(opus)
@@ -1385,20 +1387,28 @@ export class LeadsService {
       select: { id: true, name: true },
     });
 
-    const lead = await this.prisma.lead.create({
-      data: {
-        tenantId,
-        nome: body.nome,
-        telefone: telefoneDigits || null,
-        telefoneKey,
-        email: body.email || null,
-        origem: body.origem || null,
-        observacao: body.observacao || null,
-        status: 'NOVO',
-        // ✅ novo campo no Lead (prisma): stageId
-        stageId: firstStage?.id ?? null,
-      },
-    });
+    let lead: Awaited<ReturnType<typeof this.prisma.lead.create>>;
+    try {
+      lead = await this.prisma.lead.create({
+        data: {
+          tenantId,
+          nome: body.nome,
+          telefone: telefoneDigits || null,
+          telefoneKey,
+          email: body.email || null,
+          origem: body.origem || null,
+          observacao: body.observacao || null,
+          status: 'NOVO',
+          // ✅ novo campo no Lead (prisma): stageId
+          stageId: firstStage?.id ?? null,
+        },
+      });
+    } catch (err) {
+      if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Lead já existe com esses dados.');
+      }
+      throw err;
+    }
 
     await this.prisma.leadSla.upsert({
       where: { leadId: lead.id },
