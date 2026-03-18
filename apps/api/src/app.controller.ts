@@ -1,4 +1,4 @@
-import { Controller, Get, Delete, Res } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -28,12 +28,4 @@ export class AppController {
     `);
   }
 
-  // 🔥 ENDPOINT TEMPORÁRIO PARA LIMPAR TUDO
-  @Delete('dev/clear-all')
-  async clearAll() {
-    await this.prisma.leadEvent.deleteMany({});
-    await this.prisma.lead.deleteMany({});
-
-    return { ok: true };
-  }
 }
