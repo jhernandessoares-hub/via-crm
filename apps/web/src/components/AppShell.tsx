@@ -68,6 +68,14 @@ export default function AppShell({
             Leads
           </Link>
 
+          <Link className={linkClass("/products")} href="/products">
+            Produtos
+          </Link>
+
+          <Link className={linkClass("/knowledge-base")} href="/knowledge-base">
+           Base de Conhecimento
+          </Link>
+
           {canSeeManagerQueue ? (
             <Link className={linkClass("/manager-queue")} href="/manager-queue">
               Fila do Gerente

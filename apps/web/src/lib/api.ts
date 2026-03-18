@@ -8,6 +8,10 @@ function safeJsonParse(text: string) {
   }
 }
 
+function isFormDataBody(body: any): body is FormData {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
 export async function apiFetch(path: string, options: RequestInit = {}) {
   if (!API_URL) {
     throw new Error("NEXT_PUBLIC_API_URL não configurado no .env.local");
@@ -20,9 +24,21 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
     ...(options.headers || {}),
   };
 
-  // Só seta Content-Type se tiver body (evita conflito em GET)
-  if (options.body && !("Content-Type" in (headers as any))) {
+  // ✅ Só seta Content-Type automaticamente se:
+  // - tem body
+  // - e NÃO é FormData (upload)
+  // - e o caller não setou Content-Type manualmente
+  const hasBody = typeof options.body !== "undefined" && options.body !== null;
+  const isFD = hasBody && isFormDataBody(options.body);
+
+  if (hasBody && !isFD && !("Content-Type" in (headers as any))) {
     (headers as any)["Content-Type"] = "application/json";
+  }
+
+  // ✅ Se for FormData e alguém setou Content-Type na mão, removemos
+  // (senão quebra o boundary)
+  if (isFD && "Content-Type" in (headers as any)) {
+    delete (headers as any)["Content-Type"];
   }
 
   if (token) {
@@ -50,5 +66,11 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
     throw new Error(msg);
   }
 
-  return data ?? {};
+  // ✅ Se veio JSON, retorna JSON. Se não veio, retorna texto (ou objeto vazio).
+  // Isso evita "Unexpected token -" quando o body/response não é JSON.
+  if (data !== null) return data;
+
+  // Para respostas OK que não são JSON (raras), retorna um objeto simples
+  // (mantém compatibilidade com chamadas existentes)
+  return text ? { ok: true, text } : {};
 }

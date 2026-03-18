@@ -13,6 +13,13 @@ type LeadStatus =
   | "FECHADO"
   | "PERDIDO";
 
+type PipelineStage = {
+  id: string;
+  key: string;
+  name: string;
+  sortOrder?: number;
+};
+
 type Lead = {
   id: string;
   nome?: string;
@@ -20,9 +27,19 @@ type Lead = {
   whatsapp?: string;
   observacao?: string;
   status?: LeadStatus;
+  stageId?: string | null;
+  stageKey?: string | null;
+  stageName?: string | null;
   criadoEm?: string;
   needsManagerReview?: boolean;
   queuePriority?: number;
+};
+
+type AllowedStageTransitionsResponse = {
+  leadId: string;
+  currentStageId: string | null;
+  currentStageKey: string | null;
+  allowedStages: PipelineStage[];
 };
 
 const STATUS_ORDER: LeadStatus[] = [
@@ -67,19 +84,80 @@ function Badge({ status }: { status: LeadStatus }) {
 export default function LeadsPage() {
   const [view, setView] = useState<"LISTA" | "KANBAN">("LISTA");
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [allowedStagesByLeadId, setAllowedStagesByLeadId] = useState<Record<string, PipelineStage[]>>({});
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  // filtros
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<LeadStatus | "TODOS">("TODOS");
 
-  // form novo lead
   const [openForm, setOpenForm] = useState(false);
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [observacao, setObservacao] = useState("");
   const [saving, setSaving] = useState(false);
+
+  async function loadStages() {
+    try {
+      const data = await apiFetch("/pipeline/active/stages", { method: "GET" });
+      const list = Array.isArray(data) ? data : data?.value ?? [];
+      const normalized = Array.isArray(list)
+        ? list
+            .slice()
+            .sort((a, b) => (a?.sortOrder ?? 0) - (b?.sortOrder ?? 0))
+            .map((s) => ({
+              id: String(s.id),
+              key: String(s.key),
+              name: String(s.name),
+              sortOrder: typeof s.sortOrder === "number" ? s.sortOrder : undefined,
+            }))
+        : [];
+
+      setPipelineStages(normalized);
+    } catch (e: any) {
+      setPipelineStages([]);
+      setErro((prev) => prev || e?.message || "Erro ao carregar etapas do pipeline");
+    }
+  }
+
+  async function loadAllowedStagesForLeads(list: Lead[]) {
+    const uniqueLeads = Array.isArray(list) ? list.filter((l) => !!l?.id) : [];
+
+    if (uniqueLeads.length === 0) {
+      setAllowedStagesByLeadId({});
+      return;
+    }
+
+    const results = await Promise.all(
+      uniqueLeads.map(async (lead) => {
+        try {
+          const data = (await apiFetch(
+            "/leads/" + lead.id + "/allowed-stage-transitions",
+            { method: "GET" }
+          )) as AllowedStageTransitionsResponse;
+
+          return {
+            leadId: lead.id,
+            allowedStages: Array.isArray(data?.allowedStages) ? data.allowedStages : [],
+          };
+        } catch {
+          return {
+            leadId: lead.id,
+            allowedStages: [],
+          };
+        }
+      })
+    );
+
+    const nextMap: Record<string, PipelineStage[]> = {};
+
+    for (const item of results) {
+      nextMap[item.leadId] = item.allowedStages;
+    }
+
+    setAllowedStagesByLeadId(nextMap);
+  }
 
   async function loadLeads() {
     setErro(null);
@@ -87,14 +165,19 @@ export default function LeadsPage() {
 
     try {
       const data = await apiFetch("/leads/branch", { method: "GET" });
-      setLeads(Array.isArray(data) ? data : data?.items ?? []);
+      const list = Array.isArray(data) ? data : data?.items ?? [];
+      setLeads(list);
+      await loadAllowedStagesForLeads(list);
     } catch {
       try {
         const data = await apiFetch("/leads/my", { method: "GET" });
-        setLeads(Array.isArray(data) ? data : data?.items ?? []);
+        const list = Array.isArray(data) ? data : data?.items ?? [];
+        setLeads(list);
+        await loadAllowedStagesForLeads(list);
       } catch (e: any) {
         setErro(e?.message || "Erro ao carregar leads");
         setLeads([]);
+        setAllowedStagesByLeadId({});
       }
     } finally {
       setLoading(false);
@@ -102,6 +185,7 @@ export default function LeadsPage() {
   }
 
   useEffect(() => {
+    loadStages();
     loadLeads();
   }, []);
 
@@ -126,6 +210,19 @@ export default function LeadsPage() {
     }
   }
 
+  async function moveLeadToStage(leadId: string, stageId: string) {
+    try {
+      setErro(null);
+      await apiFetch("/leads/" + leadId + "/stage", {
+        method: "PATCH",
+        body: JSON.stringify({ stageId }),
+      });
+      await loadLeads();
+    } catch (e: any) {
+      setErro(e?.message || "Erro ao mover lead de etapa");
+    }
+  }
+
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
@@ -144,21 +241,25 @@ export default function LeadsPage() {
       });
   }, [leads, q, statusFilter]);
 
-  const grouped = useMemo(() => {
-    const map: Record<LeadStatus, Lead[]> = {
-      NOVO: [],
-      EM_CONTATO: [],
-      QUALIFICADO: [],
-      PROPOSTA: [],
-      FECHADO: [],
-      PERDIDO: [],
-    };
-    for (const l of filtered) {
-      const st = normalizeStatus(l.status);
-      map[st].push({ ...l, status: st });
+  const groupedKanban = useMemo(() => {
+    const map: Record<string, Lead[]> = {};
+
+    for (const stage of pipelineStages) {
+      map[stage.id] = [];
     }
+
+    const firstStageId = pipelineStages[0]?.id;
+
+    for (const l of filtered) {
+      const targetStageId = l.stageId && map[l.stageId] ? l.stageId : firstStageId;
+
+      if (targetStageId) {
+        map[targetStageId].push(l);
+      }
+    }
+
     return map;
-  }, [filtered]);
+  }, [filtered, pipelineStages]);
 
   return (
     <AppShell title="Leads">
@@ -212,7 +313,7 @@ export default function LeadsPage() {
           Total: <span className="text-gray-900 font-medium">{filtered.length}</span>
         </div>
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <input
             className="w-64 rounded-md border bg-white p-2 text-sm"
             placeholder="Buscar por nome/telefone..."
@@ -235,7 +336,6 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* Modal simples: Novo Lead */}
       {openForm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow">
@@ -302,7 +402,7 @@ export default function LeadsPage() {
       ) : null}
 
       {view === "LISTA" ? (
-        <div className="mt-4 rounded-xl border bg-white overflow-hidden">
+        <div className="mt-4 overflow-hidden rounded-xl border bg-white">
           <div className="grid grid-cols-12 gap-2 border-b bg-gray-50 px-4 py-3 text-xs font-medium text-gray-600">
             <div className="col-span-4">Lead</div>
             <div className="col-span-3">Contato</div>
@@ -316,7 +416,7 @@ export default function LeadsPage() {
             filtered.map((l) => (
               <div
                 key={l.id}
-                className="grid grid-cols-12 gap-2 px-4 py-3 border-b last:border-b-0 items-center"
+                className="grid grid-cols-12 items-center gap-2 border-b px-4 py-3 last:border-b-0"
               >
                 <div className="col-span-4">
                   <Link className="font-medium text-gray-900 hover:underline" href={`/leads/${l.id}`}>
@@ -347,45 +447,77 @@ export default function LeadsPage() {
           )}
         </div>
       ) : (
-        <div className="mt-4 grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-          {STATUS_ORDER.map((st) => (
-            <div key={st} className="rounded-xl border bg-white overflow-hidden">
-              <div className="border-b bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-900">
-                {STATUS_LABEL[st]}
-                <span className="ml-2 text-xs font-normal text-gray-500">
-                  ({grouped[st].length})
-                </span>
-              </div>
+        <div className="mt-4 overflow-x-auto">
+          <div className="flex min-w-max items-start gap-4 pb-2">
+            {pipelineStages.map((stage) => {
+              const items = groupedKanban[stage.id] ?? [];
 
-              <div className="p-2 space-y-2">
-                {grouped[st].length === 0 ? (
-                  <div className="text-xs text-gray-500 p-2">Vazio</div>
-                ) : (
-                  grouped[st].map((l) => (
-                    <div key={l.id} className="rounded-lg border p-2 bg-white">
-                      <div className="text-sm font-medium text-gray-900">
-                        <Link className="hover:underline" href={`/leads/${l.id}`}>
-                          {l.nome || "Sem nome"}
-                        </Link>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        {l.telefone || l.whatsapp || "-"}
-                      </div>
+              return (
+                <div
+                  key={stage.id}
+                  className="w-[280px] shrink-0 rounded-xl border bg-white overflow-hidden"
+                >
+                  <div className="border-b bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-900">
+                    {stage.name}
+                    <span className="ml-2 text-xs font-normal text-gray-500">({items.length})</span>
+                  </div>
 
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <Badge status={normalizeStatus(l.status)} />
-                        {l.needsManagerReview ? (
-                          <span className="text-[11px] rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
-                            Review
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          ))}
+                  <div className="max-h-[70vh] space-y-2 overflow-y-auto p-2">
+                    {items.length === 0 ? (
+                      <div className="p-2 text-xs text-gray-500">Vazio</div>
+                    ) : (
+                      items.map((l) => (
+                        <div key={l.id} className="rounded-lg border bg-white p-2">
+                          <div className="text-sm font-medium text-gray-900">
+                            <Link className="hover:underline" href={`/leads/${l.id}`}>
+                              {l.nome || "Sem nome"}
+                            </Link>
+                          </div>
+
+                          <div className="mt-1 text-xs text-gray-600">
+                            {l.telefone || l.whatsapp || "-"}
+                          </div>
+
+                          <div className="mt-1 text-[11px] text-gray-500">
+                            {l.stageName || stage.name}
+                          </div>
+
+                                             <div className="mt-2">
+                            <select
+                              className="w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700"
+                              defaultValue=""
+                              onChange={(e) => {
+                                const nextStageId = e.target.value;
+                                if (!nextStageId) return;
+                                moveLeadToStage(l.id, nextStageId);
+                                e.target.value = "";
+                              }}
+                            >
+                              <option value="">Mover lead...</option>
+                              {(allowedStagesByLeadId[l.id] ?? []).map((targetStage) => (
+                                <option key={targetStage.id} value={targetStage.id}>
+                                  {targetStage.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <Badge status={normalizeStatus(l.status)} />
+                            {l.needsManagerReview ? (
+                              <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                                Review
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </AppShell>

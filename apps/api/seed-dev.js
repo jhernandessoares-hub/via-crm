@@ -1,93 +1,96 @@
+const bcrypt = require('bcrypt');
 const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
 
-async function main() {
-  const tenantSlug = 'via-crm-dev';
-  const tenantName = 'VIA CRM DEV';
-  const senha = '123456';
-  const senhaHash = await bcrypt.hash(senha, 10);
+async function run() {
+  // Tenants
+  const devTenant = {
+    id: '8510fa2e-c4b4-4cc1-aff1-b161ee9f1e66', // fixo como você pediu
+    nome: 'VIA CRM DEV',
+    slug: 'via-crm-dev',
+    ativo: true,
+  };
 
-  // tenant
-  const tenant = await prisma.tenant.upsert({
-    where: { slug: tenantSlug },
-    update: { nome: tenantName, ativo: true },
-    create: { slug: tenantSlug, nome: tenantName, ativo: true },
+  const testTenant = {
+    nome: 'VIA-CRM TESTE',
+    slug: 'via-crm-teste',
+    ativo: true,
+  };
+
+  // cria/garante tenants
+  const tDev = await prisma.tenant.upsert({
+    where: { id: devTenant.id },
+    update: { nome: devTenant.nome, slug: devTenant.slug, ativo: true },
+    create: devTenant,
   });
 
-  // users
+  const tTest = await prisma.tenant.upsert({
+    where: { slug: testTenant.slug },
+    update: { nome: testTenant.nome, ativo: true },
+    create: testTenant,
+  });
+
+  const senhaHash = await bcrypt.hash('123456', 10);
+
   const users = [
     {
       nome: 'José Hernandes',
       email: 'jhernandes_soares@hotmail.com',
+      tenantId: tDev.id,
       role: 'OWNER',
     },
     {
       nome: 'Joana Elisa',
       email: 'jo-ana_soares@hotmail.com',
+      tenantId: tTest.id,
       role: 'OWNER',
     },
     {
       nome: 'Ana Carolina Santos',
       email: 'ana.santos@valureservicos.com.br',
+      tenantId: tDev.id,
       role: 'AGENT',
     },
     {
       nome: 'Hernandes Soares',
       email: 'hernandes@valureservicos.com.br',
+      tenantId: tDev.id,
       role: 'MANAGER',
     },
   ];
 
   for (const u of users) {
+    const email = u.email.trim().toLowerCase();
+
     await prisma.user.upsert({
-      where: { tenantId_email: { tenantId: tenant.id, email: u.email } },
+      where: { tenantId_email: { tenantId: u.tenantId, email } },
       update: {
-        nome: u.nome,
+        nome: u.nome.trim(),
         role: u.role,
         ativo: true,
         senhaHash,
       },
       create: {
-        tenantId: tenant.id,
-        nome: u.nome,
-        email: u.email,
+        tenantId: u.tenantId,
+        nome: u.nome.trim(),
+        email,
         role: u.role,
-        senhaHash,
         ativo: true,
+        senhaHash,
       },
     });
   }
 
-  // manager reasons (seed)
-  const reasons = [
-    'Atendimento com o primeiro atendente precário, necessário outro agent.',
-    'Lead vindo de outro criativo/mídia/anúncio/produto, continuar atendimento com o mesmo agent anterior.',
-    'Lead sem perfil para nenhum produto disponível, atendimento pela IA para encerramento cordial.',
-  ];
-
-  let order = 1;
-  for (const label of reasons) {
-    await prisma.managerDecisionReason.create({
-      data: {
-        tenantId: tenant.id,
-        label,
-        active: true,
-        sortOrder: order++,
-      },
-    }).catch(() => {});
-  }
-
-  console.log('SEED OK');
-  console.log('tenantSlug:', tenantSlug);
-  console.log('senha padrão:', senha);
+  console.log('✅ Seed concluído!');
+  console.log('DEV tenantId:', tDev.id, 'slug:', tDev.slug);
+  console.log('TEST tenantId:', tTest.id, 'slug:', tTest.slug);
 }
 
-main()
+run()
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    console.error('❌ Seed falhou:', e);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

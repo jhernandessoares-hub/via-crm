@@ -1,13 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-
-type Reason = {
-  id: string;
-  label: string;
-  active: boolean;
-  sortOrder: number;
-};
+import AppShell from "@/components/AppShell";
+import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 type Lead = {
   id: string;
@@ -23,258 +19,248 @@ type Lead = {
 };
 
 const DECISIONS = [
-  { value: 'KEEP_AGENT_REENTRY', label: 'Manter corretor e reentrada (sobe na fila)' },
-  { value: 'AI_ROUTE_OTHER_IF_AVAILABLE_AFTER_QUALIFICATION', label: 'Ativar IA e rotear outro se houver (após qualificação)' },
-  { value: 'KEEP_CLOSED', label: 'Manter fechado sem novo atendimento' },
-  { value: 'AI_ROUTE_ANY_AFTER_QUALIFICATION', label: 'Ativar IA e rotear qualquer corretor (após qualificação)' },
+  { value: "KEEP_AGENT_REENTRY", label: "Manter corretor e reentrada (sobe na fila)" },
+  {
+    value: "AI_ROUTE_OTHER_IF_AVAILABLE_AFTER_QUALIFICATION",
+    label: "Ativar IA e rotear outro se houver (após qualificação)",
+  },
+  { value: "KEEP_CLOSED", label: "Manter fechado sem novo atendimento" },
+  {
+    value: "AI_ROUTE_ANY_AFTER_QUALIFICATION",
+    label: "Ativar IA e rotear qualquer corretor (após qualificação)",
+  },
 ] as const;
 
-export default function ManagerQueuePage() {
-  const API_BASE =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:3000';
+type DecisionValue = (typeof DECISIONS)[number]["value"];
 
-  const [token, setToken] = useState('');
-  const [tokenOk, setTokenOk] = useState(false);
+type TreatedItem = {
+  leadId: string;
+  leadName: string;
+  telefoneKey?: string | null;
+  decision: DecisionValue;
+  decisionLabel: string;
+  reasonId: string;
+  reasonLabel: string;
+  justification?: string | null;
+  createdAt: string; // ISO
+};
+
+const TREATED_KEY = "managerQueue.treated.v1";
+const TREATED_MAX = 30;
+
+function safeJsonParse<T>(s: string | null): T | null {
+  if (!s) return null;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return null;
+  }
+}
+
+export default function ManagerQueuePage() {
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [reasons, setReasons] = useState<Reason[]>([]);
   const [queue, setQueue] = useState<Lead[]>([]);
 
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [decision, setDecision] = useState<(typeof DECISIONS)[number]['value']>('KEEP_AGENT_REENTRY');
-  const [reasonId, setReasonId] = useState<string>('');
-  const [justification, setJustification] = useState<string>('');
-  const selectedLead = useMemo(
-    () => queue.find((l) => l.id === selectedLeadId) || null,
-    [queue, selectedLeadId],
-  );
 
-  // tenta pegar token do localStorage
-  useEffect(() => {
+  // ✅ Histórico local (tratados)
+  const [treated, setTreated] = useState<TreatedItem[]>([]);
+
+  function goLead(leadId: string) {
+    router.push(`/leads/${leadId}`);
+  }
+
+  function loadTreatedFromStorage() {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(TREATED_KEY) : null;
+    const parsed = safeJsonParse<TreatedItem[]>(raw);
+    setTreated(Array.isArray(parsed) ? parsed : []);
+  }
+
+  function saveTreatedToStorage(next: TreatedItem[]) {
+    setTreated(next);
     try {
-      const t = localStorage.getItem('accessToken') || localStorage.getItem('token') || '';
-      if (t) {
-        setToken(t);
-        setTokenOk(true);
-      }
-    } catch {}
-  }, []);
-
-  async function api(path: string, init?: RequestInit) {
-    const headers: Record<string, string> = {
-      ...(init?.headers as any),
-      'Content-Type': 'application/json',
-    };
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error(`${res.status} ${res.statusText} - ${txt}`);
+      localStorage.setItem(TREATED_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
     }
-    // pode ser [] ou {}
-    const ct = res.headers.get('content-type') || '';
-    if (ct.includes('application/json')) return res.json();
-    return null;
+  }
+
+  function clearTreated() {
+    saveTreatedToStorage([]);
   }
 
   async function loadAll() {
     setErr(null);
     setLoading(true);
     try {
-      const [r, q] = await Promise.all([
-        api('/config/manager-reasons'),
-        api('/leads/manager-queue'),
-      ]);
-      const rr: Reason[] = Array.isArray(r) ? r : [];
-      rr.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-      setReasons(rr);
-      setQueue(Array.isArray(q) ? q : []);
-      if (rr.length && !reasonId) setReasonId(rr[0].id);
+      const q = await apiFetch("/leads/manager-queue", { method: "GET" });
+      const qq: Lead[] = Array.isArray(q) ? q : [];
+      setQueue(qq);
     } catch (e: any) {
-      setErr(e?.message || 'Erro');
+      setErr(e?.message || "Erro");
     } finally {
       setLoading(false);
     }
   }
 
-  async function submitDecision() {
-    if (!selectedLeadId) return;
-    if (!reasonId) {
-      alert('Selecione um motivo');
-      return;
-    }
-
-    setErr(null);
-    setLoading(true);
-    try {
-      await api(`/leads/${selectedLeadId}/manager-decision`, {
-        method: 'POST',
-        body: JSON.stringify({
-          decision,
-          reasonId,
-          justification: justification?.trim() || null,
-        }),
-      });
-
-      // limpa e recarrega fila
-      setSelectedLeadId(null);
-      setJustification('');
-      await loadAll();
-      alert('Decisão registrada ✅');
-    } catch (e: any) {
-      setErr(e?.message || 'Erro ao enviar decisão');
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    loadTreatedFromStorage();
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div style={{ padding: 16, fontFamily: 'Arial, sans-serif' }}>
-      <h2>Fila do Manager (simples)</h2>
-
-      <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8, marginBottom: 12 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontWeight: 600 }}>Token:</label>
-          <input
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="Cole o Bearer token aqui (sem 'Bearer ')"
-            style={{ width: 520, padding: 8 }}
-          />
-          <button
-            onClick={() => {
-              setTokenOk(!!token.trim());
-              try {
-                localStorage.setItem('accessToken', token.trim());
-              } catch {}
-              loadAll();
-            }}
-            style={{ padding: '8px 12px' }}
-          >
-            Usar token e carregar
-          </button>
-          <button onClick={loadAll} style={{ padding: '8px 12px' }} disabled={!tokenOk && !token.trim()}>
-            Recarregar
-          </button>
+    <AppShell title="Fila do Gerente">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Fila do Gerente</h1>
+          <div className="text-sm text-gray-600">Leads aguardando aprovação</div>
         </div>
 
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-          Dica: se você já logou no navegador e salvou token no localStorage, ele pode preencher sozinho.
-        </div>
+        <button
+          onClick={loadAll}
+          className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+          disabled={loading}
+        >
+          {loading ? "Atualizando..." : "Atualizar"}
+        </button>
       </div>
 
       {err ? (
-        <div style={{ background: '#ffe8e8', border: '1px solid #ffb3b3', padding: 10, borderRadius: 8, marginBottom: 12 }}>
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <b>Erro:</b> <span>{err}</span>
         </div>
       ) : null}
 
-      {loading ? <div>Carregando...</div> : null}
+      {/* ✅ Agora: Esquerda = Fila | Direita = Tratados */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* COLUNA ESQUERDA: FILA */}
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-gray-900">
+              Leads na fila ({queue.length})
+            </h3>
+            {loading ? <span className="text-xs text-gray-500">Carregando…</span> : null}
+          </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {/* LISTA */}
-        <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
-          <h3>Leads na fila ({queue.length})</h3>
+          {queue.length === 0 ? (
+            <div className="mt-3 text-sm text-gray-600">
+              Nenhum lead em{" "}
+              <code className="rounded bg-gray-100 px-1">needsManagerReview=true</code>
+            </div>
+          ) : null}
 
-          {queue.length === 0 ? <div>Nenhum lead em needsManagerReview=true</div> : null}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="mt-3 flex flex-col gap-2">
             {queue.map((l) => (
-              <button
+              <div
                 key={l.id}
-                onClick={() => setSelectedLeadId(l.id)}
-                style={{
-                  textAlign: 'left',
-                  padding: 10,
-                  borderRadius: 8,
-                  border: selectedLeadId === l.id ? '2px solid #333' : '1px solid #ccc',
-                  background: selectedLeadId === l.id ? '#f3f3f3' : 'white',
-                  cursor: 'pointer',
-                }}
+                className={[
+                  "rounded-lg border px-3 py-2",
+                  selectedLeadId === l.id ? "border-gray-900 bg-gray-50" : "border-gray-200 bg-white",
+                ].join(" ")}
               >
-                <div><b>{l.nome}</b> — {l.origem || '(sem origem)'}</div>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>
-                  telefoneKey: {l.telefoneKey || '-'} | status: {l.status} | priority: {l.queuePriority}
+                <button
+                  onClick={() => setSelectedLeadId(l.id)}
+                  className="w-full text-left"
+                  type="button"
+                >
+                  <div className="text-sm text-gray-900">
+                    <b>{l.nome}</b> — {l.origem || "(sem origem)"}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600">
+                    telefoneKey: {l.telefoneKey || "-"} | status: {l.status} | priority:{" "}
+                    {l.queuePriority}
+                  </div>
+                </button>
+
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goLead(l.id)}
+                    className="rounded-md border bg-white px-3 py-1.5 text-xs hover:bg-gray-50"
+                    title="Abrir o histórico do lead"
+                  >
+                    Abrir lead
+                  </button>
+
+                  {selectedLeadId === l.id ? (
+                    <span className="text-[11px] text-gray-500 self-center">Selecionado</span>
+                  ) : null}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>
 
-        {/* DECISÃO */}
-        <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
-          <h3>Decisão</h3>
+        {/* COLUNA DIREITA: TRATADOS (HISTÓRICO LOCAL) */}
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-base font-semibold text-gray-900">
+              Tratados (histórico) ({treated.length})
+            </h3>
 
-          {!selectedLead ? (
-            <div>Selecione um lead na lista.</div>
+            <button
+              type="button"
+              onClick={clearTreated}
+              className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+              disabled={treated.length === 0}
+              title="Limpar histórico local desta máquina"
+            >
+              Limpar
+            </button>
+          </div>
+
+          {treated.length === 0 ? (
+            <div className="mt-3 text-sm text-gray-600">
+              Ainda não há tratados nesta máquina (localStorage).
+            </div>
           ) : (
-            <>
-              <div style={{ marginBottom: 10 }}>
-                <div><b>Lead:</b> {selectedLead.nome}</div>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>
-                  id: {selectedLead.id}<br />
-                  origem: {selectedLead.origem || '-'}<br />
-                  telefoneKey: {selectedLead.telefoneKey || '-'}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Motivo</div>
-                  <select
-                    value={reasonId}
-                    onChange={(e) => setReasonId(e.target.value)}
-                    style={{ padding: 8, width: '100%' }}
-                  >
-                    {reasons.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.sortOrder}. {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Decisão</div>
-                  <select
-                    value={decision}
-                    onChange={(e) => setDecision(e.target.value as any)}
-                    style={{ padding: 8, width: '100%' }}
-                  >
-                    {DECISIONS.map((d) => (
-                      <option key={d.value} value={d.value}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Justificativa (opcional)</div>
-                  <textarea
-                    value={justification}
-                    onChange={(e) => setJustification(e.target.value)}
-                    rows={4}
-                    style={{ width: '100%', padding: 8 }}
-                    placeholder="Opcional..."
-                  />
-                </div>
-
-                <button
-                  onClick={submitDecision}
-                  style={{ padding: '10px 12px', fontWeight: 700 }}
-                  disabled={loading}
+            <div className="mt-3 flex flex-col gap-2">
+              {treated.map((t) => (
+                <div
+                  key={`${t.leadId}-${t.createdAt}`}
+                  className="rounded-lg border border-gray-200 bg-white p-3"
                 >
-                  Confirmar decisão
-                </button>
-              </div>
-            </>
+                  <div className="text-sm text-gray-900">
+                    <b>{t.leadName}</b>
+                    {t.telefoneKey ? (
+                      <span className="text-gray-500"> — {t.telefoneKey}</span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-1 text-xs text-gray-600">
+                    <div>
+                      <span className="font-medium text-gray-700">Motivo:</span>{" "}
+                      {t.reasonLabel}
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Decisão:</span>{" "}
+                      {t.decisionLabel}
+                    </div>
+                    <div className="text-[11px] text-gray-500 font-mono mt-1">
+                      {new Date(t.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => goLead(t.leadId)}
+                      className="rounded-md border bg-white px-3 py-1.5 text-xs hover:bg-gray-50"
+                    >
+                      Abrir lead
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

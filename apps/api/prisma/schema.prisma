@@ -7,60 +7,484 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Tenant {
-  id        String   @id @default(uuid())
-  nome      String
-  slug      String   @unique
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now())
-
-  users     User[]
+model Pipeline {
+  id        String          @id @default(uuid())
+  tenantId  String
+  key       String
+  name      String
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   leads     Lead[]
-  events    LeadEvent[]
-  reviews   ManagerReview[]
-  branches  Branch[]
-  reasons   ManagerDecisionReason[]
+  stages    PipelineStage[]
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key], name: "tenantId_key")
+  @@index([tenantId, isActive])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id         String    @id @default(uuid())
+  tenantId   String
+  pipelineId String
+  key        String
+  name       String
+  sortOrder  Int
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  leads      Lead[]
+  pipeline   Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slaRules   SlaRule[]
+
+  @@unique([tenantId, pipelineId, key], name: "tenantId_pipelineId_key")
+  @@index([tenantId, pipelineId, isActive, sortOrder])
+  @@map("pipeline_stages")
+}
+
+model Tenant {
+  id                  String                  @id @default(uuid())
+  nome                String
+  slug                String                  @unique
+  ativo               Boolean                 @default(true)
+  criadoEm            DateTime                @default(now())
+  agentKnowledgeBases AgentKnowledgeBase[]
+  aiAgents            AiAgent[]
+  aiExecutionLogs     AiExecutionLog[]
+  baseFrias           BaseFria[]
+  branches            Branch[]
+  knowledgeBases      KnowledgeBase[]
+  events              LeadEvent[]
+  leadSlas            LeadSla[]
+  leadTransitionLogs  LeadTransitionLog[]
+  leads               Lead[]
+  learnings           Learning[]
+  reasons             ManagerDecisionReason[]
+  reviews             ManagerReview[]
+  pipelineStages      PipelineStage[]
+  pipelines           Pipeline[]
+  productDocuments    ProductDocument[]
+  productImages       ProductImage[]
+  productVideos       ProductVideo[]
+  products            Product[]
+  slaRules            SlaRule[]
+  users               User[]
 
   @@map("tenants")
 }
 
 model Branch {
-  id        String   @id @default(uuid())
-  tenantId  String
-  nome      String
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now())
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users     User[]
-  leads     Lead[]
+  id       String    @id @default(uuid())
+  tenantId String
+  nome     String
+  ativo    Boolean   @default(true)
+  criadoEm DateTime  @default(now())
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads    Lead[]
+  products Product[]
+  users    User[]
 
   @@index([tenantId, nome])
   @@map("branches")
+}
+
+model User {
+  id                       String            @id @default(uuid())
+  tenantId                 String
+  nome                     String
+  email                    String
+  senhaHash                String
+  ativo                    Boolean           @default(true)
+  criadoEm                 DateTime          @default(now())
+  branchId                 String?
+  role                     UserRole          @default(AGENT)
+  uploadedProductDocuments ProductDocument[] @relation("ProductDocumentUploadedBy")
+  capturedProducts         Product[]         @relation("ProductCapturedBy")
+  branch                   Branch?           @relation(fields: [branchId], references: [id])
+  tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model Lead {
+  id                  String               @id @default(uuid())
+  tenantId            String
+  nome                String
+  telefone            String?
+  email               String?
+  origem              String?
+  status              LeadStatus           @default(NOVO)
+  observacao          String?
+  criadoEm            DateTime             @default(now())
+  atualizadoEm        DateTime             @updatedAt
+  needsManagerReview  Boolean              @default(false)
+  queuePriority       Int                  @default(9999)
+  telefoneKey         String?
+  aiBlocked           Boolean              @default(false)
+  assignedUserId      String?
+  branchId            String?
+  lastInboundAt       DateTime?
+  lastReferralHash    String?
+  pendingRouting      Boolean              @default(false)
+  pendingRoutingScope PendingRoutingScope?
+  pipelineId          String?
+  stageId             String?
+  aiExecutionLogs     AiExecutionLog[]
+  baseFria            BaseFria?
+  events              LeadEvent[]
+  leadSla             LeadSla?
+  leadTransitionLogs  LeadTransitionLog[]
+  branch              Branch?              @relation(fields: [branchId], references: [id])
+  pipeline            Pipeline?            @relation(fields: [pipelineId], references: [id])
+  stage               PipelineStage?       @relation(fields: [stageId], references: [id])
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviews             ManagerReview[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, telefoneKey])
+  @@index([tenantId, branchId])
+  @@index([tenantId, pipelineId])
+  @@index([tenantId, stageId])
+  @@map("leads")
+}
+
+model LeadEvent {
+  id         String   @id @default(uuid())
+  tenantId   String
+  leadId     String
+  channel    String
+  isReentry  Boolean  @default(false)
+  sourceRef  String?
+  payloadRaw Json?
+  criadoEm   DateTime @default(now())
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId])
+  @@index([tenantId, channel])
+  @@map("lead_events")
+}
+
+model ManagerDecisionReason {
+  id           String          @id @default(uuid())
+  tenantId     String
+  label        String
+  active       Boolean         @default(true)
+  sortOrder    Int             @default(0)
+  criadoEm     DateTime        @default(now())
+  atualizadoEm DateTime        @updatedAt
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviews      ManagerReview[]
+
+  @@index([tenantId, active, sortOrder])
+  @@map("manager_decision_reasons")
+}
+
+model ManagerReview {
+  id            String                 @id @default(uuid())
+  tenantId      String
+  leadId        String
+  justification String?
+  managerUserId String?
+  criadoEm      DateTime               @default(now())
+  reasonId      String?
+  decision      ManagerDecisionType
+  lead          Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reason        ManagerDecisionReason? @relation(fields: [reasonId], references: [id])
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId])
+  @@map("manager_reviews")
+}
+
+model Product {
+  id                 String                    @id @default(uuid())
+  tenantId           String
+  branchId           String?
+  title              String
+  type               ProductType               @default(OUTRO)
+  status             ProductStatus             @default(ACTIVE)
+  registrationStatus ProductRegistrationStatus @default(CADASTRAR)
+  kind               ProductKind               @default(PROPERTY)
+  dealType           DealType                  @default(SALE)
+  price              Decimal?                  @db.Decimal(18, 2)
+  city               String?
+  neighborhood       String?
+  bedrooms           Int?
+  bathrooms          Int?
+  areaM2             Int?
+  description        String?
+  tags               String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  origin             ProductOrigin             @default(OWN)
+  capturedByUserId   String?
+  publicationStatus  ProductPublicationStatus  @default(DRAFT)
+  documents          ProductDocument[]
+  images             ProductImage[]
+  videos             ProductVideo[]
+  branch             Branch?                   @relation(fields: [branchId], references: [id])
+  capturedBy         User?                     @relation("ProductCapturedBy", fields: [capturedByUserId], references: [id])
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([tenantId, origin])
+  @@index([tenantId, origin, status])
+  @@index([tenantId, city, neighborhood])
+  @@index([tenantId, branchId])
+  @@index([tenantId, kind])
+  @@index([tenantId, dealType])
+  @@index([tenantId, registrationStatus])
+  @@index([tenantId, capturedByUserId])
+  @@map("products")
+}
+
+model ProductImage {
+  id            String            @id @default(uuid())
+  tenantId      String
+  productId     String
+  url           String
+  isPrimary     Boolean           @default(false)
+  sortOrder     Int               @default(0)
+  createdAt     DateTime          @default(now())
+  customLabel   String?
+  label         ProductImageLabel @default(OUTROS)
+  publishSite   Boolean           @default(true)
+  publishSocial Boolean           @default(false)
+  title         String?
+  product       Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, productId])
+  @@map("product_images")
+}
+
+model ProductVideo {
+  id            String   @id @default(uuid())
+  tenantId      String
+  productId     String
+  url           String
+  title         String?
+  publishSite   Boolean  @default(true)
+  publishSocial Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, productId])
+  @@map("product_videos")
+}
+
+model ProductDocument {
+  id               String                  @id @default(uuid())
+  tenantId         String
+  productId        String
+  url              String
+  publicId         String
+  title            String?
+  type             ProductDocumentType     @default(OUTROS)
+  visibility       ProductDocVisibility    @default(INTERNAL)
+  aiExtractable    Boolean                 @default(true)
+  versionLabel     String?
+  uploadedByUserId String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  category         ProductDocumentCategory @default(OTHER)
+  notes            String?
+  product          Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tenant           Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy       User?                   @relation("ProductDocumentUploadedBy", fields: [uploadedByUserId], references: [id])
+
+  @@index([tenantId, productId])
+  @@index([tenantId, category])
+  @@index([tenantId, type])
+  @@index([tenantId, visibility])
+  @@index([tenantId, productId, category])
+  @@index([tenantId, productId, type])
+  @@map("product_documents")
+}
+
+model LeadSla {
+  id            String    @id @default(uuid())
+  tenantId      String
+  leadId        String    @unique
+  lastInboundAt DateTime?
+  frozenUntil   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("lead_slas")
+}
+
+model BaseFria {
+  id        String   @id @default(uuid())
+  tenantId  String
+  leadId    String   @unique
+  reason    String?
+  movedAt   DateTime @default(now())
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, movedAt])
+  @@map("base_fria")
+}
+
+model LeadTransitionLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  leadId    String
+  fromStage String?
+  toStage   String
+  changedBy String?
+  createdAt DateTime @default(now())
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId])
+  @@index([tenantId, createdAt])
+  @@map("lead_transition_logs")
+}
+
+model SlaRule {
+  id              String        @id @default(uuid())
+  tenantId        String
+  stageId         String
+  name            String
+  active          Boolean       @default(true)
+  dueAfterMinutes Int
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  stage           PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, stageId])
+  @@index([tenantId, active])
+  @@index([tenantId, dueAfterMinutes])
+  @@map("sla_rules")
+}
+
+model AiAgent {
+  id             String               @id @default(uuid())
+  tenantId       String
+  title          String
+  slug           String
+  description    String?
+  objective      String?
+  prompt         String
+  exampleOutput  String?
+  mode           AiAgentMode          @default(COPILOT)
+  audience       String?
+  active         Boolean              @default(true)
+  priority       Int                  @default(0)
+  version        Int                  @default(1)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  knowledgeBases AgentKnowledgeBase[]
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  executionLogs  AiExecutionLog[]
+  learnings      Learning[]
+
+  @@unique([tenantId, slug], name: "tenantId_slug")
+  @@index([tenantId, active, priority])
+  @@index([tenantId, mode])
+  @@map("ai_agents")
+}
+
+model KnowledgeBase {
+  id               String                @id @default(uuid())
+  tenantId         String
+  title            String
+  type             KnowledgeBaseType
+  prompt           String
+  links            String[]
+  whatAiUnderstood String?
+  exampleOutput    String?
+  tags             String[]
+  active           Boolean               @default(true)
+  priority         Int                   @default(0)
+  version          Int                   @default(1)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  audience         KnowledgeBaseAudience @default(AMBOS)
+  agents           AgentKnowledgeBase[]
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, type])
+  @@index([tenantId, active, priority])
+  @@map("knowledge_bases")
+}
+
+model AgentKnowledgeBase {
+  id              String        @id @default(uuid())
+  tenantId        String
+  agentId         String
+  knowledgeBaseId String
+  createdAt       DateTime      @default(now())
+  agent           AiAgent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, knowledgeBaseId], name: "agentId_knowledgeBaseId")
+  @@index([tenantId, agentId])
+  @@index([tenantId, knowledgeBaseId])
+  @@map("agent_knowledge_bases")
+}
+
+model Learning {
+  id            String             @id @default(uuid())
+  tenantId      String
+  title         String
+  content       String
+  aiSuggestion  String?
+  sourceType    LearningSourceType
+  status        LearningStatus     @default(PENDING)
+  targetAgentId String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  targetAgent   AiAgent?           @relation(fields: [targetAgentId], references: [id])
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, sourceType])
+  @@index([tenantId, targetAgentId])
+  @@map("learnings")
+}
+
+model AiExecutionLog {
+  id             String      @id @default(uuid())
+  tenantId       String
+  agentId        String
+  leadId         String?
+  inputText      String
+  outputText     String?
+  suggestedStage String?
+  confidence     Decimal?    @db.Decimal(5, 2)
+  mode           AiAgentMode
+  createdAt      DateTime    @default(now())
+  agent          AiAgent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  lead           Lead?       @relation(fields: [leadId], references: [id])
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, agentId])
+  @@index([tenantId, leadId])
+  @@index([tenantId, createdAt])
+  @@map("ai_execution_logs")
 }
 
 enum UserRole {
   OWNER
   MANAGER
   AGENT
-}
-
-model User {
-  id        String   @id @default(uuid())
-  tenantId  String
-  branchId  String?
-  role      UserRole @default(AGENT)
-  nome      String
-  email     String
-  senhaHash String
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now())
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
-
-  @@unique([tenantId, email])
-  @@map("users")
 }
 
 enum LeadStatus {
@@ -70,6 +494,20 @@ enum LeadStatus {
   PROPOSTA
   FECHADO
   PERDIDO
+}
+
+enum KnowledgeBaseType {
+  PERSONALIDADE
+  FINANCIAMENTO
+  PRODUTO
+  REGRAS
+  MERCADO
+}
+
+enum KnowledgeBaseAudience {
+  ATENDIMENTO
+  INTERNO
+  AMBOS
 }
 
 enum ManagerDecisionType {
@@ -84,95 +522,134 @@ enum PendingRoutingScope {
   ANY
 }
 
-model Lead {
-  id           String     @id @default(uuid())
-  tenantId     String
-  branchId     String?
-  nome         String
-  telefone     String?
-  telefoneKey  String?
-  email        String?
-  origem       String?
-  status       LeadStatus @default(NOVO)
-  observacao   String?
-  lastInboundAt    DateTime?
-  lastReferralHash String?
-
-  needsManagerReview Boolean @default(false)
-  queuePriority      Int     @default(9999)
-
-  assignedUserId String?
-  aiBlocked      Boolean @default(false)
-
-  pendingRouting      Boolean              @default(false)
-  pendingRoutingScope PendingRoutingScope?
-
-  criadoEm     DateTime   @default(now())
-  atualizadoEm DateTime   @updatedAt
-
-  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  events       LeadEvent[]
-  reviews      ManagerReview[]
-
-  @@index([tenantId, status])
-  @@index([tenantId, telefoneKey])
-  @@index([tenantId, branchId])
-  @@map("leads")
+enum ProductType {
+  EMPREENDIMENTO
+  LOTEAMENTO
+  APARTAMENTO
+  CASA
+  KITNET
+  SOBRADO
+  TERRENO
+  SALA_COMERCIAL
+  LOJA
+  SALAO_COMERCIAL
+  BARRACAO
+  OUTRO
 }
 
-model LeadEvent {
-  id        String   @id @default(uuid())
-  tenantId  String
-  leadId    String
-
-  channel   String
-  isReentry Boolean  @default(false)
-  sourceRef String?
-
-  payloadRaw Json?
-  criadoEm   DateTime @default(now())
-
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, leadId])
-  @@index([tenantId, channel])
-  @@map("lead_events")
+enum ProductStatus {
+  ACTIVE
+  RESERVED
+  INACTIVE
+  SOLD
+  SOLD_OUT
+  ARCHIVED
 }
 
-model ManagerDecisionReason {
-  id        String   @id @default(uuid())
-  tenantId  String
-  label     String
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
-  criadoEm  DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
-
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  reviews   ManagerReview[]
-
-  @@index([tenantId, active, sortOrder])
-  @@map("manager_decision_reasons")
+enum ProductPublicationStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
 }
 
-model ManagerReview {
-  id            String              @id @default(uuid())
-  tenantId      String
-  leadId        String
+enum ProductOrigin {
+  OWN
+  THIRD_PARTY
+  DEVELOPMENT
+}
 
-  decision      ManagerDecisionType
-  reasonId      String?
-  justification String?
+enum ProductImageLabel {
+  SALA
+  QUARTO
+  COZINHA
+  LAVANDERIA
+  LAVABO
+  VARANDA
+  AREA_GOURMET
+  ACADEMIA
+  BRINQUEDOTECA
+  PISCINA
+  OUTROS
+}
 
-  managerUserId String?
-  criadoEm      DateTime @default(now())
+enum ProductKind {
+  ENTERPRISE
+  PROPERTY
+}
 
-  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  reason        ManagerDecisionReason? @relation(fields: [reasonId], references: [id])
+enum DealType {
+  SALE
+  RENT
+  BOTH
+}
 
-  @@index([tenantId, leadId])
-  @@map("manager_reviews")
+enum ProductRegistrationStatus {
+  CADASTRAR
+  PRONTO
+}
+
+enum ProductDocumentCategory {
+  ENTERPRISE
+  PROPERTY
+  SELLER
+  OTHER
+}
+
+enum ProductDocumentType {
+  PLANTA
+  MEMORIAL
+  BOOK
+  TABELA
+  REGULAMENTO
+  OUTROS
+  FOTOS
+  APRESENTACAO
+  CONTRATO_MINUTA
+  LAUDO_VISTORIA
+  CERTIDAO
+  ESCRITURA
+  REGISTRO_IMOVEL
+  MATRICULA_IMOVEL
+  IPTU
+  CONDOMINIO
+  HABITE_SE
+  AVCB
+  ART_RRT
+  PROCURACAO
+  DECLARACAO
+  COMPROVANTE_ENDERECO
+  COMPROVANTE_RENDA
+  SELLER_RG
+  SELLER_CPF
+  SELLER_CNH
+  SELLER_CNPJ
+  SELLER_CONTRATO_SOCIAL
+  BOLETO
+  COMPROVANTE_PAGAMENTO
+}
+
+enum ProductDocVisibility {
+  INTERNAL
+  SHAREABLE
+}
+
+enum AiAgentMode {
+  COPILOT
+  AUTOPILOT
+}
+
+enum LearningSourceType {
+  HUMAN
+  LEAD
+  CHAT
+  CRM
+  IMPORT
+  OTHER
+}
+
+enum LearningStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  APPLIED
 }
