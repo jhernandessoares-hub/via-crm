@@ -531,11 +531,19 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
 }
 
 export function startSlaWorker(prisma: PrismaService, ai: AiService) {
+  const templateConfig = getWhatsappTemplateConfig();
+  if (!templateConfig.templateName) {
+    console.warn(
+      '⚠️ SLA Worker: WHATSAPP_TEMPLATE_NAME (ou META_TEMPLATE_NAME) não definido — ' +
+      'jobs sla-23h-template vão falhar ao tentar enviar o template.',
+    );
+  }
+
   console.log('🧪 SLA Worker boot', {
     inboundChannels: getInboundChannels(),
     activeConversationMinutes: getActiveConversationMinutes(),
     whatsappWindowHours: getWhatsappSafetyWindowHours(),
-    template: getWhatsappTemplateConfig(),
+    template: templateConfig,
     redis: getRedisConnection(),
     mode: 'COPILOT_SUGGESTION_ONLY',
   });
