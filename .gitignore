@@ -1,0 +1,22 @@
+node_modules/
+.env
+.env.local
+.env*.local
+dist/
+.next/
+*.log
+
+# Backups e arquivos temporários
+*.bak
+*.bak_*
+*.pre-*.bak
+*.before-*.bak
+*.patch.bak
+
+# Scripts de debug ad hoc
+*-test.js
+*-check.js
+check-*.js
+test-*.js
+run-*.js
+debug/
