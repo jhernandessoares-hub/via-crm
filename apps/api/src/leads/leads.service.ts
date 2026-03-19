@@ -574,7 +574,24 @@ export class LeadsService {
       mimeType: mimeFinal,
     });
 
-    const send = await this.sendMetaAudioMessage(lead.telefone, upload.mediaId);
+    let send: Awaited<ReturnType<typeof this.sendMetaAudioMessage>>;
+    try {
+      send = await this.sendMetaAudioMessage(lead.telefone, upload.mediaId);
+    } catch (err: any) {
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.out.failed',
+          payloadRaw: {
+            type: 'audio',
+            mediaId: upload.mediaId,
+            error: err?.message || String(err),
+          },
+        },
+      });
+      throw err;
+    }
 
     await this.prisma.leadEvent.create({
       data: {
@@ -669,15 +686,32 @@ export class LeadsService {
       mimeType: mimetype || 'application/octet-stream',
     });
 
-    const send = isImage
-      ? await this.sendMetaImageMessage(lead.telefone, upload.mediaId)
-      : isVideo
-        ? await this.sendMetaVideoMessage(lead.telefone, upload.mediaId)
-        : await this.sendMetaDocumentMessage(
-            lead.telefone,
-            upload.mediaId,
-            originalname,
-          );
+    let send: Awaited<ReturnType<typeof this.sendMetaImageMessage>>;
+    try {
+      send = isImage
+        ? await this.sendMetaImageMessage(lead.telefone, upload.mediaId)
+        : isVideo
+          ? await this.sendMetaVideoMessage(lead.telefone, upload.mediaId)
+          : await this.sendMetaDocumentMessage(
+              lead.telefone,
+              upload.mediaId,
+              originalname,
+            );
+    } catch (err: any) {
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.out.failed',
+          payloadRaw: {
+            type: isImage ? 'image' : isVideo ? 'video' : 'document',
+            mediaId: upload.mediaId,
+            error: err?.message || String(err),
+          },
+        },
+      });
+      throw err;
+    }
 
     // 3) salva evento
     await this.prisma.leadEvent.create({
@@ -1170,78 +1204,6 @@ export class LeadsService {
         lastInboundChannel: ev?.channel ?? null,
       };
     });
-  }
-
-  /**
-   * ⚠️ DEPRECATED (mantido apenas para não apagar nada):
-   * Versão antiga que baixava direto na Meta pelo mediaId.
-   * NÃO é a função usada pelo Controller (pra evitar duplicidade de nome).
-   */
-  async downloadEventMediaFromMeta_DEPRECATED(
-    user: any,
-    leadId: string,
-    eventId: string,
-  ): Promise<{
-    stream: NodeJS.ReadableStream;
-    filename: string;
-    mimeType: string | null;
-    contentLength?: number | null;
-  }> {
-    // 1) valida lead do tenant
-    const lead = await this.prisma.lead.findFirst({
-      where: { id: leadId, tenantId: user.tenantId },
-      select: { id: true, tenantId: true },
-    });
-    if (!lead) throw new NotFoundException('Lead não encontrado');
-
-    // 2) pega evento do lead (do tenant)
-    const ev = await this.prisma.leadEvent.findFirst({
-      where: { id: eventId, leadId: leadId, tenantId: user.tenantId },
-    });
-    if (!ev) throw new NotFoundException('Evento não encontrado');
-
-    const payload: any = (ev as any).payloadRaw || {};
-
-    // 3) extrai mediaId (o que permite baixar na Meta)
-    const mediaId =
-      payload?.media?.id ||
-      payload?.rawMsg?.image?.id ||
-      payload?.rawMsg?.video?.id ||
-      payload?.rawMsg?.audio?.id ||
-      payload?.rawMsg?.document?.id ||
-      payload?.rawMsg?.sticker?.id ||
-      null;
-
-    if (!mediaId) {
-      throw new BadRequestException('Evento não possui mediaId para download.');
-    }
-
-    // 4) pega URL de download na Meta
-    const info = await this.metaGetDownloadUrl(String(mediaId));
-
-    // 5) baixa como stream (com Bearer da Meta) e devolve para o Controller
-    const { stream, contentLength } = await this.metaDownloadStream(info.downloadUrl);
-
-    const mimeType = info.mimeType || payload?.media?.mimeType || null;
-
-    // filename: tenta pegar do payload, senão cria um
-    const filenameFromPayload =
-      typeof payload?.media?.filename === 'string' && payload.media.filename.trim()
-        ? payload.media.filename.trim()
-        : typeof payload?.rawMsg?.document?.filename === 'string' &&
-            payload.rawMsg.document.filename.trim()
-          ? payload.rawMsg.document.filename.trim()
-          : null;
-
-    const ext = this.extFromMime(mimeType) || 'bin';
-    const filename = filenameFromPayload || `lead-${leadId}-event-${eventId}.${ext}`;
-
-    return {
-      stream,
-      filename,
-      mimeType,
-      contentLength,
-    };
   }
 
   // =========================

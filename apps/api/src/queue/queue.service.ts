@@ -87,6 +87,8 @@ export class QueueService implements OnModuleDestroy {
       { eventId },
       {
         jobId: `wa-media-${eventId}`,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
         removeOnComplete: true,
         removeOnFail: false,
       },
@@ -126,6 +128,8 @@ export class QueueService implements OnModuleDestroy {
       {
         delay,
         jobId: `inbound-ai-${leadId}`,
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 5000 },
         removeOnComplete: true,
         removeOnFail: false,
       },
