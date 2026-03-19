@@ -143,8 +143,8 @@ model Lead {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews             ManagerReview[]
 
+  @@unique([tenantId, telefoneKey], name: "leads_tenantId_telefoneKey_key")
   @@index([tenantId, status])
-  @@index([tenantId, telefoneKey])
   @@index([tenantId, branchId])
   @@index([tenantId, pipelineId])
   @@index([tenantId, stageId])

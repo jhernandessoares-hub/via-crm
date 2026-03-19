@@ -10,6 +10,7 @@ import {
   Res,
   HttpCode,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import type { Response } from 'express';
@@ -278,15 +279,11 @@ export class WhatsAppController {
                   ? this.describeUnsupported(msg)
                   : this.summarizeNonText(type);
 
-            const existing = await this.prisma.lead.findFirst({
-              where: { tenantId: tenant.id, telefoneKey },
-              select: { id: true },
-            });
-
             let leadId: string;
-            const isReentry = !!existing;
+            let isReentry: boolean;
 
-            if (!existing) {
+            try {
+              // Fast path: new lead
               const created = await this.prisma.lead.create({
                 data: {
                   tenantId: tenant.id,
@@ -302,6 +299,7 @@ export class WhatsAppController {
               });
 
               leadId = created.id;
+              isReentry = false;
 
               await this.prisma.leadTransitionLog.create({
                 data: {
@@ -312,9 +310,22 @@ export class WhatsAppController {
                   changedBy: 'SYSTEM',
                 },
               });
-            } else {
-              leadId = existing.id;
+            } catch (err: any) {
+              // P2002 = unique constraint violation: lead already exists (race condition)
+              if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+                const existing = await this.prisma.lead.findFirst({
+                  where: { tenantId: tenant.id, telefoneKey },
+                  select: { id: true },
+                });
+                if (!existing) throw err;
+                leadId = existing.id;
+              } else {
+                throw err;
+              }
+              isReentry = true;
+            }
 
+            if (isReentry) {
               await this.prisma.lead.update({
                 where: { id: leadId },
                 data: {
