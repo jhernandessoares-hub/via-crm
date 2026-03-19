@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { QueueService } from './queue.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('queue')
 export class QueueController {
   constructor(
