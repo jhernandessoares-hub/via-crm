@@ -1354,19 +1354,43 @@ export class LeadsService {
 
     let lead: Awaited<ReturnType<typeof this.prisma.lead.create>>;
     try {
-      lead = await this.prisma.lead.create({
-        data: {
-          tenantId,
-          nome: body.nome,
-          telefone: telefoneDigits || null,
-          telefoneKey,
-          email: body.email || null,
-          origem: body.origem || null,
-          observacao: body.observacao || null,
-          status: 'NOVO',
-          // ✅ novo campo no Lead (prisma): stageId
-          stageId: firstStage?.id ?? null,
-        },
+      lead = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.lead.create({
+          data: {
+            tenantId,
+            nome: body.nome,
+            telefone: telefoneDigits || null,
+            telefoneKey,
+            email: body.email || null,
+            origem: body.origem || null,
+            observacao: body.observacao || null,
+            status: 'NOVO',
+            stageId: firstStage?.id ?? null,
+          },
+        });
+
+        await tx.leadSla.upsert({
+          where: { leadId: created.id },
+          create: {
+            tenantId,
+            leadId: created.id,
+            lastInboundAt: new Date(),
+            isActive: true,
+          },
+          update: { isActive: true },
+        });
+
+        await tx.leadTransitionLog.create({
+          data: {
+            tenantId,
+            leadId: created.id,
+            fromStage: null,
+            toStage: firstStage?.name ?? 'Novo Lead',
+            changedBy: 'SYSTEM',
+          },
+        });
+
+        return created;
       });
     } catch (err) {
       if (err instanceof PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -1374,29 +1398,6 @@ export class LeadsService {
       }
       throw err;
     }
-
-    await this.prisma.leadSla.upsert({
-      where: { leadId: lead.id },
-      create: {
-        tenantId,
-        leadId: lead.id,
-        lastInboundAt: new Date(),
-        isActive: true,
-      },
-      update: {
-        isActive: true,
-      },
-    });
-
-    await this.prisma.leadTransitionLog.create({
-      data: {
-        tenantId,
-        leadId: lead.id,
-        fromStage: null,
-        toStage: firstStage?.name ?? 'Novo Lead',
-        changedBy: 'SYSTEM',
-      },
-    });
 
     return lead;
   }
@@ -2095,20 +2096,21 @@ async updateStage(user: any, leadId: string, stageId: string) {
     );
   }
 
-  const updated = await this.prisma.lead.update({
-    where: { id: leadId },
-    data: { stageId: toStage.id },
-  });
-
-  await this.prisma.leadTransitionLog.create({
-    data: {
-      tenantId: user.tenantId,
-      leadId,
-      fromStage: fromStageName,
-      toStage: toStage.name,
-      changedBy: user?.id || 'USER',
-    },
-  });
+  const [updated] = await this.prisma.$transaction([
+    this.prisma.lead.update({
+      where: { id: leadId },
+      data: { stageId: toStage.id },
+    }),
+    this.prisma.leadTransitionLog.create({
+      data: {
+        tenantId: user.tenantId,
+        leadId,
+        fromStage: fromStageName,
+        toStage: toStage.name,
+        changedBy: user?.id || 'USER',
+      },
+    }),
+  ]);
 
   return updated;
 }

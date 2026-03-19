@@ -208,33 +208,35 @@ async function processPayload(
           let isReentry: boolean;
 
           try {
-            // Fast path: new lead
-            const created = await prisma.lead.create({
-              data: {
-                tenantId: tenant.id,
-                nome: contactName || 'Lead WhatsApp',
-                telefone: digitsOnly(from) || null,
-                telefoneKey: telefoneKey || null,
-                status: 'NOVO',
-                lastInboundAt: now,
-                needsManagerReview: false,
-                queuePriority: 9999,
-              },
-              select: { id: true },
+            // Fast path: new lead (lead + transitionLog em transação)
+            const created = await prisma.$transaction(async (tx) => {
+              const c = await tx.lead.create({
+                data: {
+                  tenantId: tenant.id,
+                  nome: contactName || 'Lead WhatsApp',
+                  telefone: digitsOnly(from) || null,
+                  telefoneKey: telefoneKey || null,
+                  status: 'NOVO',
+                  lastInboundAt: now,
+                  needsManagerReview: false,
+                  queuePriority: 9999,
+                },
+                select: { id: true },
+              });
+              await tx.leadTransitionLog.create({
+                data: {
+                  tenantId: tenant.id,
+                  leadId: c.id,
+                  fromStage: null,
+                  toStage: 'NOVO',
+                  changedBy: 'SYSTEM',
+                },
+              });
+              return c;
             });
 
             leadId = created.id;
             isReentry = false;
-
-            await prisma.leadTransitionLog.create({
-              data: {
-                tenantId: tenant.id,
-                leadId,
-                fromStage: null,
-                toStage: 'NOVO',
-                changedBy: 'SYSTEM',
-              },
-            });
           } catch (err: any) {
             // P2002: lead já existe (race condition entre requests concorrentes)
             if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -250,45 +252,50 @@ async function processPayload(
             isReentry = true;
           }
 
-          if (isReentry) {
-            await prisma.lead.update({
-              where: { id: leadId },
-              data: { lastInboundAt: now, needsManagerReview: true, queuePriority: 1 },
-            });
-          }
-
           const media = buildMedia(msg);
           const safeMedia = media && media.id ? JSON.parse(JSON.stringify(media)) : null;
 
-          const createdEvent = await prisma.leadEvent.create({
-            data: {
-              tenantId: tenant.id,
-              leadId,
-              channel: 'whatsapp.in',
-              isReentry,
-              payloadRaw: {
-                from,
-                type,
-                text: finalText,
-                messageId: msg?.id || null,
-                transcription: null,
-                media: safeMedia,
-                errors: msg?.errors ?? null,
-                rawMsg: msg,
+          // isReentry update + leadEvent + leadSla em transação
+          const createdEvent = await prisma.$transaction(async (tx) => {
+            if (isReentry) {
+              await tx.lead.update({
+                where: { id: leadId },
+                data: { lastInboundAt: now, needsManagerReview: true, queuePriority: 1 },
+              });
+            }
+
+            const ev = await tx.leadEvent.create({
+              data: {
+                tenantId: tenant.id,
+                leadId,
+                channel: 'whatsapp.in',
+                isReentry,
+                payloadRaw: {
+                  from,
+                  type,
+                  text: finalText,
+                  messageId: msg?.id || null,
+                  transcription: null,
+                  media: safeMedia,
+                  errors: msg?.errors ?? null,
+                  rawMsg: msg,
+                },
               },
-            },
-            select: { id: true },
+              select: { id: true },
+            });
+
+            await tx.leadSla.upsert({
+              where: { leadId },
+              create: { tenantId: tenant.id, leadId, lastInboundAt: now, frozenUntil: null, isActive: true },
+              update: { lastInboundAt: now, frozenUntil: null, isActive: true },
+            });
+
+            return ev;
           });
 
           if (safeMedia?.id) {
             await queueService.enqueueWhatsappMediaResolve(createdEvent.id);
           }
-
-          await prisma.leadSla.upsert({
-            where: { leadId },
-            create: { tenantId: tenant.id, leadId, lastInboundAt: now, frozenUntil: null, isActive: true },
-            update: { lastInboundAt: now, frozenUntil: null, isActive: true },
-          });
 
           await queueService.rescheduleSla(leadId);
           await queueService.scheduleInboundAi(leadId, { isFirstReply: !isReentry });
