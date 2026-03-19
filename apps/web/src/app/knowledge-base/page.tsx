@@ -10,10 +10,12 @@ import { apiFetch } from "@/lib/api";
 
 type KnowledgeBaseType =
   | "PERSONALIDADE"
-  | "FINANCIAMENTO"
-  | "PRODUTO"
   | "REGRAS"
-  | "MERCADO";
+  | "CREDITO"
+  | "INFORMACAO_GERAL"
+  | "PRODUTO"
+  | "MERCADO"
+  | "CUSTOM";
 
 type KnowledgeBaseAudience = "ATENDIMENTO" | "INTERNO" | "AMBOS";
 
@@ -46,6 +48,7 @@ type KnowledgeBaseItem = {
   tenantId: string;
   title: string;
   type: KnowledgeBaseType;
+  customCategory?: string | null;
   prompt: string;
   whatAiUnderstood?: string | null;
   exampleOutput?: string | null;
@@ -64,6 +67,7 @@ type KnowledgeBaseItem = {
 type MainForm = {
   title: string;
   type: KnowledgeBaseType;
+  customCategory: string;
   prompt: string;
   whatAiUnderstood: string;
   exampleOutput: string;
@@ -78,15 +82,43 @@ type MainForm = {
 // Helpers
 // ──────────────────────────────────────────────
 
-function typeLabel(type: KnowledgeBaseType) {
-  const map: Record<KnowledgeBaseType, string> = {
-    PERSONALIDADE: "Personalidade",
-    FINANCIAMENTO: "Financiamento",
-    PRODUTO: "Produto",
-    REGRAS: "Regras",
-    MERCADO: "Mercado",
-  };
-  return map[type] ?? type;
+// Fixed categories (shown in the type select)
+const FIXED_TYPES: KnowledgeBaseType[] = [
+  "PERSONALIDADE",
+  "REGRAS",
+  "CREDITO",
+  "INFORMACAO_GERAL",
+  "PRODUTO",
+  "MERCADO",
+];
+
+// Display order for section grouping
+const SECTION_ORDER: string[] = [
+  "PERSONALIDADE",
+  "REGRAS",
+  "CREDITO",
+  "INFORMACAO_GERAL",
+  "PRODUTO",
+  "MERCADO",
+];
+
+const TYPE_LABELS: Record<string, string> = {
+  PERSONALIDADE: "Personalidade",
+  REGRAS: "Regras",
+  CREDITO: "Crédito",
+  INFORMACAO_GERAL: "Informação Geral",
+  PRODUTO: "Produto",
+  MERCADO: "Mercado",
+  CUSTOM: "Categoria personalizada",
+};
+
+function sectionKey(item: KnowledgeBaseItem): string {
+  if (item.type === "CUSTOM") return item.customCategory?.trim() || "Sem categoria";
+  return item.type;
+}
+
+function sectionLabel(key: string): string {
+  return TYPE_LABELS[key] ?? key;
 }
 
 function audienceLabel(audience: KnowledgeBaseAudience) {
@@ -106,6 +138,7 @@ function formFromItem(item: KnowledgeBaseItem): MainForm {
   return {
     title: item.title ?? "",
     type: item.type,
+    customCategory: item.customCategory ?? "",
     prompt: item.prompt ?? "",
     whatAiUnderstood: item.whatAiUnderstood ?? "",
     exampleOutput: item.exampleOutput ?? "",
@@ -119,7 +152,8 @@ function formFromItem(item: KnowledgeBaseItem): MainForm {
 
 const INITIAL_FORM: MainForm = {
   title: "",
-  type: "PERSONALIDADE",
+  type: "INFORMACAO_GERAL",
+  customCategory: "",
   prompt: "",
   whatAiUnderstood: "",
   exampleOutput: "",
@@ -134,7 +168,7 @@ const INITIAL_FORM: MainForm = {
 // Page
 // ──────────────────────────────────────────────
 
-export default function KnowledgeBasePage() {
+export default function KnowledgeBaseSalesPage() {
   const [items, setItems] = useState<KnowledgeBaseItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -152,6 +186,10 @@ export default function KnowledgeBasePage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+
+  // Collapsible sections: set of expanded section keys (default: all expanded)
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const sectionsInitialized = useRef(false);
 
   // Media sections state (only in edit mode)
   const [docTitle, setDocTitle] = useState("");
@@ -183,9 +221,21 @@ export default function KnowledgeBasePage() {
         : "/knowledge-base";
 
       const data = await apiFetch(query);
-      setItems(Array.isArray(data) ? data : Array.isArray(data?.value) ? data.value : []);
+      const list: KnowledgeBaseItem[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.value)
+        ? data.value
+        : [];
+      setItems(list);
+
+      // Auto-expand all sections on first load
+      if (!sectionsInitialized.current && list.length > 0) {
+        sectionsInitialized.current = true;
+        const keys = new Set(list.map(sectionKey));
+        setExpandedSections(keys);
+      }
     } catch (err: any) {
-      setError(err?.message || "Erro ao carregar base de conhecimento.");
+      setError(err?.message || "Erro ao carregar base de conhecimento de vendas.");
       setItems([]);
     } finally {
       setLoading(false);
@@ -196,7 +246,6 @@ export default function KnowledgeBasePage() {
     try {
       const data = await apiFetch(`/knowledge-base/${id}`);
       setEditingItem(data);
-      // Sync in list too
       setItems((prev) => prev.map((i) => (i.id === id ? data : i)));
     } catch (_) {}
   }
@@ -205,7 +254,37 @@ export default function KnowledgeBasePage() {
     loadItems();
   }, []);
 
+  // ──────────────────────────────────────────────
+  // Grouping
+  // ──────────────────────────────────────────────
+
+  const { groupedItems, orderedSections } = useMemo(() => {
+    const groups: Record<string, KnowledgeBaseItem[]> = {};
+    for (const item of items) {
+      const key = sectionKey(item);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    }
+
+    const allKeys = Object.keys(groups);
+    const fixedKeys = SECTION_ORDER.filter((k) => allKeys.includes(k));
+    const customKeys = allKeys
+      .filter((k) => !SECTION_ORDER.includes(k))
+      .sort((a, b) => a.localeCompare(b));
+
+    return { groupedItems: groups, orderedSections: [...fixedKeys, ...customKeys] };
+  }, [items]);
+
   const totalAtivos = useMemo(() => items.filter((i) => i.active).length, [items]);
+
+  function toggleSection(key: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   // ──────────────────────────────────────────────
   // Main form
@@ -254,11 +333,14 @@ export default function KnowledgeBasePage() {
     setFormError("");
 
     if (!form.title.trim()) { setFormError("Informe o título."); return; }
-    if (!form.prompt.trim()) { setFormError("Informe o prompt."); return; }
+    if (!form.prompt.trim()) { setFormError("Informe o conteúdo principal."); return; }
+    if (form.type === "CUSTOM" && !form.customCategory.trim()) {
+      setFormError("Informe o nome da categoria personalizada."); return;
+    }
 
     setSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         title: form.title.trim(),
         type: form.type,
         prompt: form.prompt.trim(),
@@ -270,6 +352,7 @@ export default function KnowledgeBasePage() {
         priority: Number(form.priority || 0),
         version: Number(form.version || 1),
       };
+      if (form.type === "CUSTOM") payload.customCategory = form.customCategory.trim();
 
       let saved: KnowledgeBaseItem;
       if (editingItem) {
@@ -285,6 +368,8 @@ export default function KnowledgeBasePage() {
           body: JSON.stringify(payload),
         });
         setItems((prev) => [saved, ...prev]);
+        // Auto-expand the new section
+        setExpandedSections((prev) => new Set([...prev, sectionKey(saved)]));
         // Switch to edit mode so media sections are available
         setEditingItem(saved);
         setForm(formFromItem(saved));
@@ -380,7 +465,6 @@ export default function KnowledgeBasePage() {
   async function handleSaveVideo() {
     if (!editingItem) return;
     setVideoError("");
-
     if (!videoForm.url.trim()) { setVideoError("URL do vídeo é obrigatória."); return; }
 
     setVideoSaving(true);
@@ -437,7 +521,6 @@ export default function KnowledgeBasePage() {
   async function handleSaveLink() {
     if (!editingItem) return;
     setLinkError("");
-
     if (!linkForm.url.trim()) { setLinkError("URL do link é obrigatória."); return; }
 
     setLinkSaving(true);
@@ -492,12 +575,12 @@ export default function KnowledgeBasePage() {
   // ──────────────────────────────────────────────
 
   return (
-    <AppShell title="Base do Conhecimento">
+    <AppShell title="Base de Conhecimento de Vendas">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Base do Conhecimento</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">Base de Conhecimento de Vendas</h1>
             <p className="mt-1 text-sm text-gray-600">Gerencie as bases usadas pelos AI Agents.</p>
           </div>
           <button
@@ -512,10 +595,11 @@ export default function KnowledgeBasePage() {
         {/* Form panel */}
         {showForm && (
           <div className="rounded-xl border bg-white p-4 space-y-6">
-            {/* Main fields */}
             <div>
               <h2 className="text-base font-semibold text-gray-900 mb-4">
-                {editingItem ? "Editar Base de Conhecimento" : "Nova Base de Conhecimento"}
+                {editingItem
+                  ? "Editar item da Base de Conhecimento de Vendas"
+                  : "Novo item da Base de Conhecimento de Vendas"}
               </h2>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -525,33 +609,53 @@ export default function KnowledgeBasePage() {
                     value={form.title}
                     onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    placeholder="Ex: Tom de atendimento popular"
+                    placeholder="Ex: Tom de atendimento consultivo"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Tipo</label>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Categoria</label>
                   <select
                     value={form.type}
-                    onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as KnowledgeBaseType }))}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, type: e.target.value as KnowledgeBaseType, customCategory: "" }))
+                    }
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
                   >
                     <option value="PERSONALIDADE">Personalidade</option>
-                    <option value="FINANCIAMENTO">Financiamento</option>
-                    <option value="PRODUTO">Produto</option>
                     <option value="REGRAS">Regras</option>
+                    <option value="CREDITO">Crédito</option>
+                    <option value="INFORMACAO_GERAL">Informação Geral</option>
+                    <option value="PRODUTO">Produto</option>
                     <option value="MERCADO">Mercado</option>
+                    <option value="CUSTOM">Categoria personalizada...</option>
                   </select>
                 </div>
 
+                {form.type === "CUSTOM" && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Nome da categoria personalizada
+                    </label>
+                    <input
+                      value={form.customCategory}
+                      onChange={(e) => setForm((p) => ({ ...p, customCategory: e.target.value }))}
+                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      placeholder="Ex: Tabela de preços, Objeções comuns"
+                    />
+                  </div>
+                )}
+
                 <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Prompt</label>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Conteúdo principal
+                  </label>
                   <textarea
                     value={form.prompt}
                     onChange={(e) => setForm((p) => ({ ...p, prompt: e.target.value }))}
                     rows={5}
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    placeholder="Descreva o conhecimento principal que a IA deve usar."
+                    placeholder="Descreva o conhecimento que a IA deve usar ao responder leads."
                   />
                 </div>
 
@@ -573,7 +677,7 @@ export default function KnowledgeBasePage() {
                     onChange={(e) => setForm((p) => ({ ...p, exampleOutput: e.target.value }))}
                     rows={4}
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    placeholder="Exemplo de saída esperada."
+                    placeholder="Exemplo de saída esperada pela IA."
                   />
                 </div>
 
@@ -583,7 +687,7 @@ export default function KnowledgeBasePage() {
                     value={form.tagsText}
                     onChange={(e) => setForm((p) => ({ ...p, tagsText: e.target.value }))}
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    placeholder="atendimento, whatsapp, popular"
+                    placeholder="atendimento, whatsapp, objeção"
                   />
                 </div>
 
@@ -591,7 +695,9 @@ export default function KnowledgeBasePage() {
                   <label className="mb-1 block text-sm font-medium text-gray-700">Audiência</label>
                   <select
                     value={form.audience}
-                    onChange={(e) => setForm((p) => ({ ...p, audience: e.target.value as KnowledgeBaseAudience }))}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, audience: e.target.value as KnowledgeBaseAudience }))
+                    }
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
                   >
                     <option value="ATENDIMENTO">Atendimento</option>
@@ -647,7 +753,7 @@ export default function KnowledgeBasePage() {
                   disabled={saving}
                   className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
                 >
-                  {saving ? "Salvando..." : editingItem ? "Salvar alterações" : "Salvar base"}
+                  {saving ? "Salvando..." : editingItem ? "Salvar alterações" : "Salvar"}
                 </button>
                 <button
                   type="button"
@@ -675,9 +781,7 @@ export default function KnowledgeBasePage() {
                       {editingItem.documents.map((doc) => (
                         <div key={doc.id} className="flex items-center justify-between px-3 py-2 text-sm">
                           <div className="min-w-0">
-                            <span className="font-medium text-gray-800">
-                              {doc.title || "Sem título"}
-                            </span>
+                            <span className="font-medium text-gray-800">{doc.title || "Sem título"}</span>
                             {doc.extractedText && (
                               <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">
                                 texto extraído
@@ -728,9 +832,7 @@ export default function KnowledgeBasePage() {
                     {docUploading && <span className="text-xs text-gray-500">Enviando...</span>}
                   </div>
 
-                  {docError && (
-                    <p className="mt-2 text-xs text-red-600">{docError}</p>
-                  )}
+                  {docError && <p className="mt-2 text-xs text-red-600">{docError}</p>}
                 </div>
 
                 <hr />
@@ -826,7 +928,10 @@ export default function KnowledgeBasePage() {
                     {editingVideoId && (
                       <button
                         type="button"
-                        onClick={() => { setEditingVideoId(null); setVideoForm({ url: "", title: "", description: "" }); }}
+                        onClick={() => {
+                          setEditingVideoId(null);
+                          setVideoForm({ url: "", title: "", description: "" });
+                        }}
                         className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
                       >
                         Cancelar edição
@@ -928,7 +1033,10 @@ export default function KnowledgeBasePage() {
                     {editingLinkId && (
                       <button
                         type="button"
-                        onClick={() => { setEditingLinkId(null); setLinkForm({ url: "", title: "", description: "" }); }}
+                        onClick={() => {
+                          setEditingLinkId(null);
+                          setLinkForm({ url: "", title: "", description: "" });
+                        }}
                         className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
                       >
                         Cancelar edição
@@ -952,10 +1060,8 @@ export default function KnowledgeBasePage() {
             <div className="mt-2 text-2xl font-semibold text-gray-900">{totalAtivos}</div>
           </div>
           <div className="rounded-xl border bg-white p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Busca atual</div>
-            <div className="mt-2 text-sm font-medium text-gray-900">
-              {search.trim() ? search.trim() : "Sem filtro"}
-            </div>
+            <div className="text-xs uppercase tracking-wide text-gray-500">Categorias</div>
+            <div className="mt-2 text-2xl font-semibold text-gray-900">{orderedSections.length}</div>
           </div>
         </div>
 
@@ -966,7 +1072,7 @@ export default function KnowledgeBasePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") loadItems(search); }}
-              placeholder="Buscar por título, prompt, entendimento, exemplo ou tag"
+              placeholder="Buscar por título, conteúdo, categoria ou tag"
               className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
             />
             <button
@@ -986,112 +1092,145 @@ export default function KnowledgeBasePage() {
           </div>
         </div>
 
-        {/* List */}
-        <div className="rounded-xl border bg-white">
-          <div className="border-b px-4 py-3">
-            <div className="text-sm font-medium text-gray-900">Itens cadastrados</div>
+        {/* Grouped list */}
+        {loading ? (
+          <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">Carregando...</div>
+        ) : error ? (
+          <div className="rounded-xl border bg-white p-4 text-sm text-red-600">{error}</div>
+        ) : items.length === 0 ? (
+          <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">
+            Nenhum item encontrado na Base de Conhecimento de Vendas.
           </div>
+        ) : (
+          <div className="space-y-3">
+            {orderedSections.map((skey) => {
+              const sectionItems = groupedItems[skey] ?? [];
+              const isExpanded = expandedSections.has(skey);
+              const label = sectionLabel(skey);
+              const isFixed = SECTION_ORDER.includes(skey);
 
-          {loading ? (
-            <div className="p-4 text-sm text-gray-600">Carregando...</div>
-          ) : error ? (
-            <div className="p-4 text-sm text-red-600">{error}</div>
-          ) : items.length === 0 ? (
-            <div className="p-4 text-sm text-gray-600">Nenhuma base de conhecimento encontrada.</div>
-          ) : (
-            <div className="divide-y">
-              {items.map((item) => (
-                <div key={item.id} className="p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-base font-semibold text-gray-900">{item.title}</h2>
-                        <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
-                          {typeLabel(item.type)}
+              return (
+                <div key={skey} className="rounded-xl border bg-white overflow-hidden">
+                  {/* Section header */}
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+                    onClick={() => toggleSection(skey)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold text-gray-900">{label}</span>
+                      {!isFixed && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                          personalizada
                         </span>
-                        <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
-                          {audienceLabel(item.audience)}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs ${
-                            item.active
-                              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border border-gray-200 bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {item.active ? "Ativa" : "Inativa"}
-                        </span>
-                      </div>
-
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 line-clamp-3">
-                        {item.prompt}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
-                          Prioridade: {item.priority}
-                        </span>
-                        <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
-                          Versão: {item.version}
-                        </span>
-                        {item.documents?.length > 0 && (
-                          <span className="rounded-md bg-blue-50 px-2 py-1 text-xs text-blue-700">
-                            {item.documents.length} PDF{item.documents.length > 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {item.videos?.length > 0 && (
-                          <span className="rounded-md bg-purple-50 px-2 py-1 text-xs text-purple-700">
-                            {item.videos.length} vídeo{item.videos.length > 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {item.kbLinks?.length > 0 && (
-                          <span className="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
-                            {item.kbLinks.length} link{item.kbLinks.length > 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {item.tags?.length > 0 && (
-                          <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
-                            {item.tags.length} tag{item.tags.length > 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
-
-                      {item.tags?.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {item.tags.map((tag) => (
-                            <span
-                              key={`${item.id}-${tag}`}
-                              className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
                       )}
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                        {sectionItems.length} {sectionItems.length === 1 ? "base" : "bases"}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {sectionItems.filter((i) => i.active).length} ativa
+                        {sectionItems.filter((i) => i.active).length !== 1 ? "s" : ""}
+                      </span>
                     </div>
+                    <span className="text-gray-400 text-sm">{isExpanded ? "▲" : "▼"}</span>
+                  </button>
 
-                    <div className="flex shrink-0 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(item)}
-                        className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDeleteModal(item)}
-                        className="rounded-md border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                      >
-                        Excluir
-                      </button>
+                  {/* Section items */}
+                  {isExpanded && (
+                    <div className="divide-y border-t">
+                      {sectionItems.map((item) => (
+                        <div key={item.id} className="p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="text-base font-semibold text-gray-900">{item.title}</h2>
+                                <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
+                                  {audienceLabel(item.audience)}
+                                </span>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-xs ${
+                                    item.active
+                                      ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : "border border-gray-200 bg-gray-100 text-gray-600"
+                                  }`}
+                                >
+                                  {item.active ? "Ativa" : "Inativa"}
+                                </span>
+                              </div>
+
+                              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 line-clamp-3">
+                                {item.prompt}
+                              </p>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                                  Prioridade: {item.priority}
+                                </span>
+                                <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                                  Versão: {item.version}
+                                </span>
+                                {item.documents?.length > 0 && (
+                                  <span className="rounded-md bg-blue-50 px-2 py-1 text-xs text-blue-700">
+                                    {item.documents.length} PDF{item.documents.length > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                                {item.videos?.length > 0 && (
+                                  <span className="rounded-md bg-purple-50 px-2 py-1 text-xs text-purple-700">
+                                    {item.videos.length} vídeo{item.videos.length > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                                {item.kbLinks?.length > 0 && (
+                                  <span className="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                                    {item.kbLinks.length} link{item.kbLinks.length > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                                {item.tags?.length > 0 && (
+                                  <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                                    {item.tags.length} tag{item.tags.length > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                              </div>
+
+                              {item.tags?.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {item.tags.map((tag) => (
+                                    <span
+                                      key={`${item.id}-${tag}`}
+                                      className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                                    >
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex shrink-0 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(item)}
+                                className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openDeleteModal(item)}
+                                className="rounded-md border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Delete modal */}
         {deleteTarget && (
@@ -1099,14 +1238,14 @@ export default function KnowledgeBasePage() {
             <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
               <h2 className="text-lg font-semibold text-gray-900">Confirmar exclusão</h2>
               <p className="mt-2 text-sm text-gray-700">
-                Você está prestes a excluir esta base de conhecimento:
+                Você está prestes a excluir este item da Base de Conhecimento de Vendas:
               </p>
               <div className="mt-3 rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-900">
                 <b>{deleteTarget.title}</b>
               </div>
               <p className="mt-3 text-sm text-red-600">Esta ação não pode ser desfeita.</p>
               <p className="mt-3 text-sm text-gray-700">
-                Para confirmar, digite o título exato da base:
+                Para confirmar, digite o título exato:
               </p>
               <input
                 value={deleteConfirmText}

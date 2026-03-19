@@ -18,10 +18,12 @@ export enum KnowledgeBaseAudienceDto {
 
 export enum KnowledgeBaseTypeDto {
   PERSONALIDADE = 'PERSONALIDADE',
-  FINANCIAMENTO = 'FINANCIAMENTO',
-  PRODUTO = 'PRODUTO',
   REGRAS = 'REGRAS',
+  CREDITO = 'CREDITO',
+  INFORMACAO_GERAL = 'INFORMACAO_GERAL',
+  PRODUTO = 'PRODUTO',
   MERCADO = 'MERCADO',
+  CUSTOM = 'CUSTOM',
 }
 
 export class CreateKnowledgeBaseDto {
@@ -31,6 +33,11 @@ export class CreateKnowledgeBaseDto {
 
   @IsEnum(KnowledgeBaseTypeDto)
   type!: KnowledgeBaseTypeDto;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  customCategory?: string;
 
   @IsString()
   prompt!: string;

@@ -27,6 +27,11 @@ export class UpdateKnowledgeBaseDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
+  customCategory?: string;
+
+  @IsOptional()
+  @IsString()
   prompt?: string;
 
   @IsOptional()

@@ -73,7 +73,7 @@ export default function AppShell({
           </Link>
 
           <Link className={linkClass("/knowledge-base")} href="/knowledge-base">
-           Base de Conhecimento
+            Base de Conhecimento de Vendas
           </Link>
 
           {canSeeManagerQueue ? (

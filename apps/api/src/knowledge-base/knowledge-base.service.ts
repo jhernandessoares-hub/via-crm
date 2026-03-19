@@ -25,6 +25,7 @@ export class KnowledgeBaseService {
         tenantId,
         title: body.title,
         type: body.type as any,
+        customCategory: body.customCategory?.trim() || null,
         prompt: body.prompt,
         whatAiUnderstood: body.whatAiUnderstood ?? null,
         exampleOutput: body.exampleOutput ?? null,
@@ -49,6 +50,7 @@ export class KnowledgeBaseService {
                 { prompt: { contains: search.trim(), mode: 'insensitive' } },
                 { whatAiUnderstood: { contains: search.trim(), mode: 'insensitive' } },
                 { exampleOutput: { contains: search.trim(), mode: 'insensitive' } },
+                { customCategory: { contains: search.trim(), mode: 'insensitive' } },
                 { tags: { has: search.trim() } },
               ],
             }
@@ -82,6 +84,7 @@ export class KnowledgeBaseService {
 
     if (body.title !== undefined) data.title = body.title;
     if (body.type !== undefined) data.type = body.type as any;
+    if (body.customCategory !== undefined) data.customCategory = body.customCategory?.trim() || null;
     if (body.prompt !== undefined) data.prompt = body.prompt;
     if (body.whatAiUnderstood !== undefined) data.whatAiUnderstood = body.whatAiUnderstood;
     if (body.exampleOutput !== undefined) data.exampleOutput = body.exampleOutput;

@@ -406,6 +406,7 @@ model KnowledgeBase {
   tenantId         String
   title            String
   type             KnowledgeBaseType
+  customCategory   String?
   prompt           String
   whatAiUnderstood String?
   exampleOutput    String?
@@ -547,10 +548,12 @@ enum LeadStatus {
 
 enum KnowledgeBaseType {
   PERSONALIDADE
-  FINANCIAMENTO
-  PRODUTO
   REGRAS
+  CREDITO
+  INFORMACAO_GERAL
+  PRODUTO
   MERCADO
+  CUSTOM
 }
 
 enum KnowledgeBaseAudience {
