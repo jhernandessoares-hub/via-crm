@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Logger } from '../logger';
+
+const logger = new Logger('IngestService');
 
 function onlyDigits(s: string) {
   return (s || '').replace(/\D/g, '');
@@ -99,7 +102,7 @@ export class IngestService {
       await this.notifyManagerOnReentry(tenantId, lead.id, event.id);
     }
 
-    console.log('Lead:', lead.id, 'Event:', event.id, 'Reentry:', isReentry);
+    logger.log(`Lead: ${lead.id} Event: ${event.id} Reentry: ${isReentry}`);
 
     return { lead, event };
   }
@@ -128,9 +131,8 @@ export class IngestService {
       },
     });
 
-    console.log(
-      `[ingest] Re-entrada lead=${leadId} — alertando ${managers.length} gerente(s):`,
-      managers.map((m) => m.email).join(', '),
+    logger.log(
+      `[ingest] Re-entrada lead=${leadId} — alertando ${managers.length} gerente(s): ${managers.map((m) => m.email).join(', ')}`,
     );
   }
 }

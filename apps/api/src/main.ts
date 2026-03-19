@@ -8,9 +8,12 @@ import { startWhatsappInboundWorker } from "./queue/whatsapp-inbound.worker";
 import { PrismaService } from "./prisma/prisma.service";
 import { AiService } from "./ai/ai.service";
 import { QueueService } from "./queue/queue.service";
+import { NestLogger, Logger } from "./logger";
+
+const logger = new Logger('Bootstrap');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { logger: new NestLogger() });
 
   app.enableCors({
     origin: [
@@ -36,11 +39,9 @@ async function bootstrap() {
   const queueService = app.get(QueueService);
   const redisCheck = await queueService.redisHealthCheck();
   if (!redisCheck.ok) {
-    console.error(
-      `🔴 Redis indisponível no boot (${redisCheck.error}) — workers serão iniciados mas não processarão jobs até a conexão ser restabelecida.`,
-    );
+    logger.error('Redis indisponível no boot — workers iniciados mas aguardando reconexão', { error: redisCheck.error });
   } else {
-    console.log(`✅ Redis OK (latência: ${redisCheck.latencyMs}ms)`);
+    logger.log('Redis OK', { latencyMs: redisCheck.latencyMs });
   }
 
   // 🚀 INICIAR WORKER SLA (reutiliza instâncias do container NestJS)

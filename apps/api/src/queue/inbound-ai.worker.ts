@@ -1,4 +1,7 @@
 import { Worker, Job } from 'bullmq';
+import { Logger } from '../logger';
+
+const logger = new Logger('InboundAiWorker');
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -41,7 +44,7 @@ async function registerAiSuggestion(
     },
   });
 
-  console.log(
+  logger.log(
     `🤖 INBOUND AI SUGGESTION: leadId=${params.leadId} agentId=${params.agentId || 'none'}`,
   );
 }
@@ -149,7 +152,7 @@ async function handleInboundAiJob(job: Job, prisma: PrismaService, ai: AiService
   const leadId = job.data?.leadId as string | undefined;
   if (!leadId) return;
 
-  console.log('🧠 INBOUND AI JOB START', {
+  logger.log('🧠 INBOUND AI JOB START', {
     jobId: job.id,
     jobName: job.name,
     leadId,
@@ -172,14 +175,14 @@ async function handleInboundAiJob(job: Job, prisma: PrismaService, ai: AiService
 
   const lastInbound = await getLastInboundEvent(prisma, lead.id);
   if (!lastInbound) {
-    console.log(`⚠️ INBOUND AI: último inbound não encontrado para leadId=${lead.id}`);
+    logger.log(`⚠️ INBOUND AI: último inbound não encontrado para leadId=${lead.id}`);
     return;
   }
 
   const defaultAgent = await ai.findDefaultAgentForTenant(lead.tenantId);
 
   if (!defaultAgent?.id) {
-    console.log(
+    logger.log(
       `⚠️ INBOUND AI: nenhum agent ativo encontrado para tenant=${lead.tenantId}`,
     );
     return;
@@ -208,7 +211,7 @@ async function handleInboundAiJob(job: Job, prisma: PrismaService, ai: AiService
     });
 
     if (!suggestion || !suggestion.trim()) {
-      console.log(`⚠️ INBOUND AI: suggestion vazia para leadId=${lead.id}`);
+      logger.log(`⚠️ INBOUND AI: suggestion vazia para leadId=${lead.id}`);
       return;
     }
 
@@ -224,14 +227,14 @@ async function handleInboundAiJob(job: Job, prisma: PrismaService, ai: AiService
       suggestedAttachments: [],
     });
   } catch (err: any) {
-    console.log(
+    logger.log(
       `⚠️ Erro ao gerar suggestion no inbound-ai worker leadId=${lead.id}: ${err?.message || err}`,
     );
   }
 }
 
 export function startInboundAiWorker(prisma: PrismaService, ai: AiService) {
-  console.log('🧠 Inbound AI Worker boot', {
+  logger.log('🧠 Inbound AI Worker boot', {
     redis: getRedisConnection(),
     mode: 'COPILOT_ONLY',
   });
@@ -248,18 +251,18 @@ export function startInboundAiWorker(prisma: PrismaService, ai: AiService) {
   );
 
   worker.on('completed', (job) => {
-    console.log(`✅ inbound-ai job completed: ${job.id} (${job.name})`);
+    logger.log(`✅ inbound-ai job completed: ${job.id} (${job.name})`);
   });
 
   worker.on('failed', (job, err) => {
-    console.log(`❌ inbound-ai job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
+    logger.log(`❌ inbound-ai job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
   });
 
   worker.on('error', (err) => {
-    console.error(`🔴 Inbound AI Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+    logger.error(`🔴 Inbound AI Worker erro de conexão (Redis indisponível?): ${err?.message}`);
   });
 
-  console.log('🚀 Inbound AI Worker iniciado (fila: inbound-ai-queue)');
+  logger.log('🚀 Inbound AI Worker iniciado (fila: inbound-ai-queue)');
 
   return worker;
 }

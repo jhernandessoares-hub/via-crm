@@ -10,6 +10,9 @@ import {
   HttpCode,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Logger } from '../logger';
+
+const logger = new Logger('WhatsappController');
 import { QueueService } from '../queue/queue.service';
 import type { Response } from 'express';
 
@@ -47,7 +50,7 @@ export class WhatsAppController {
     try {
       await this.queueService.enqueueWebhookPayload(req.body);
     } catch (e: any) {
-      console.error('⚠️ Falha ao enfileirar webhook payload:', e?.message || e);
+      logger.error('Falha ao enfileirar webhook payload', { error: (e as any)?.message || String(e) });
     }
 
     return;

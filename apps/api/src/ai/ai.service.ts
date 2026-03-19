@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { Logger } from '../logger';
+
+const logger = new Logger('AiService');
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -8,7 +11,7 @@ export class AiService {
 
   constructor(private readonly prisma: PrismaService) {
     if (!process.env.OPENAI_API_KEY) {
-      console.warn('⚠️ AiService: OPENAI_API_KEY não definida — chamadas à IA vão falhar.');
+      logger.warn('⚠️ AiService: OPENAI_API_KEY não definida — chamadas à IA vão falhar.');
     }
   }
 
@@ -329,7 +332,7 @@ ${modeInstruction ? `Ajuste solicitado:\n${modeInstruction}\n` : ''}
           },
         });
       } catch (err) {
-        console.error('Erro ao salvar AiExecutionLog', err);
+        logger.error('Erro ao salvar AiExecutionLog', { error: (err as any)?.message || String(err) });
       }
     }
 

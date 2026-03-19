@@ -1,4 +1,7 @@
 import { Worker, Job } from 'bullmq';
+import { Logger } from '../logger';
+
+const logger = new Logger('WhatsappMediaWorker');
 import { PrismaService } from '../prisma/prisma.service';
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -223,7 +226,7 @@ async function handleJob(job: Job, prisma: PrismaService) {
 }
 
 export function startWhatsappMediaWorker(prisma: PrismaService) {
-  console.log('🧩 WhatsApp Media Worker boot', {
+  logger.log('🧩 WhatsApp Media Worker boot', {
     redis: getRedisConnection(),
     apiVersion: process.env.WHATSAPP_API_VERSION || 'v20.0',
     cloudinary: !!process.env.CLOUDINARY_CLOUD_NAME,
@@ -242,17 +245,17 @@ export function startWhatsappMediaWorker(prisma: PrismaService) {
   );
 
   worker.on('completed', (job) => {
-    console.log(`✅ media job completed: ${job.id} (${job.name})`);
+    logger.log(`✅ media job completed: ${job.id} (${job.name})`);
   });
 
   worker.on('failed', (job, err) => {
-    console.log(`❌ media job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
+    logger.log(`❌ media job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
   });
 
   worker.on('error', (err) => {
-    console.error(`🔴 WhatsApp Media Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+    logger.error(`🔴 WhatsApp Media Worker erro de conexão (Redis indisponível?): ${err?.message}`);
   });
 
-  console.log('🚀 WhatsApp Media Worker iniciado (fila: whatsapp-media-queue)');
+  logger.log('🚀 WhatsApp Media Worker iniciado (fila: whatsapp-media-queue)');
   return worker;
 }

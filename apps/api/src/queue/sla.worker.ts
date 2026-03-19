@@ -1,6 +1,9 @@
 import { Worker, Job } from 'bullmq';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { Logger } from '../logger';
+
+const logger = new Logger('SlaWorker');
 
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -143,7 +146,7 @@ async function registerSlaDue(prisma: PrismaService, params: {
     },
   });
 
-  console.log(
+  logger.log(
     `⏰ SLA DUE: ${params.jobName} leadId=${params.leadId} outcome=${params.outcome} reason=${params.reason}`,
   );
 }
@@ -190,7 +193,7 @@ async function registerAiSuggestion(prisma: PrismaService, params: {
     },
   });
 
-  console.log(
+  logger.log(
     `🤖 AI SUGGESTION: ${params.jobName} leadId=${params.leadId} agentId=${params.agentId || 'none'}`,
   );
 }
@@ -358,7 +361,7 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
       ? Number(job.timestamp)
       : Date.now();
 
-  console.log('🧪 SLA JOB START', {
+  logger.log('🧪 SLA JOB START', {
     jobId: job.id,
     jobName: job.name,
     leadId,
@@ -422,7 +425,7 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
   const lastOut = await getLastWhatsappOut(prisma, lead.id);
   let inboundAfterOutResult: any = null;
 
-  console.log('🧪 LAST OUT', lastOut);
+  logger.log('🧪 LAST OUT', { lastOut: lastOut ?? null });
 
   if (lastOut) {
     const minutes = getActiveConversationMinutes();
@@ -438,7 +441,7 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
         new Date(lastOut.criadoEm),
       );
 
-      console.log('🧪 INBOUND_AFTER_LAST_OUT?', inboundAfterOutResult);
+      logger.log('🧪 INBOUND_AFTER_LAST_OUT?', inboundAfterOutResult);
 
       if (inboundAfterOutResult.ok) {
         await registerBlocked(prisma, {
@@ -483,7 +486,7 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
     const defaultAgent = await ai.findDefaultAgentForTenant(lead.tenantId);
 
     if (!defaultAgent?.id) {
-      console.log(
+      logger.log(
         `⚠️ Nenhum agent ativo encontrado para tenant=${lead.tenantId}. Sugestão de IA não gerada.`,
       );
       return;
@@ -508,24 +511,24 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
       });
     }
   } catch (err: any) {
-    console.log(
+    logger.log(
       `⚠️ Erro ao gerar sugestão de IA no SLA worker leadId=${lead.id}: ${err?.message || err}`,
     );
   }
 
-  console.log(`⏰ SLA DUE registrado leadId=${lead.id}`);
+  logger.log(`⏰ SLA DUE registrado leadId=${lead.id}`);
 }
 
 export function startSlaWorker(prisma: PrismaService, ai: AiService) {
   const templateConfig = getWhatsappTemplateConfig();
   if (!templateConfig.templateName) {
-    console.warn(
+    logger.warn(
       '⚠️ SLA Worker: WHATSAPP_TEMPLATE_NAME (ou META_TEMPLATE_NAME) não definido — ' +
       'jobs sla-23h-template vão falhar ao tentar enviar o template.',
     );
   }
 
-  console.log('🧪 SLA Worker boot', {
+  logger.log('🧪 SLA Worker boot', {
     inboundChannels: getInboundChannels(),
     activeConversationMinutes: getActiveConversationMinutes(),
     whatsappWindowHours: getWhatsappSafetyWindowHours(),
@@ -546,18 +549,18 @@ export function startSlaWorker(prisma: PrismaService, ai: AiService) {
   );
 
   worker.on('completed', (job) => {
-    console.log(`✅ job completed: ${job.id} (${job.name})`);
+    logger.log(`✅ job completed: ${job.id} (${job.name})`);
   });
 
   worker.on('failed', (job, err) => {
-    console.log(`❌ job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
+    logger.log(`❌ job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
   });
 
   worker.on('error', (err) => {
-    console.error(`🔴 SLA Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+    logger.error(`🔴 SLA Worker erro de conexão (Redis indisponível?): ${err?.message}`);
   });
 
-  console.log('🚀 SLA Worker iniciado (fila: sla-queue)');
+  logger.log('🚀 SLA Worker iniciado (fila: sla-queue)');
 
   return worker;
 }

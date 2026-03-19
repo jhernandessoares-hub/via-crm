@@ -1,4 +1,7 @@
 import { Worker, Job } from 'bullmq';
+import { Logger } from '../logger';
+
+const logger = new Logger('WhatsappInboundWorker');
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
@@ -157,7 +160,7 @@ async function processPayload(
 ) {
   try {
     const entriesCount = Array.isArray(payload?.entry) ? payload.entry.length : 0;
-    console.log(`📩 WhatsApp Webhook processando (entries=${entriesCount})`);
+    logger.log(`📩 WhatsApp Webhook processando (entries=${entriesCount})`);
   } catch {}
 
   const tenantSlug = process.env.DEFAULT_TENANT_SLUG || 'via-crm-dev';
@@ -290,7 +293,7 @@ async function processPayload(
           await queueService.rescheduleSla(leadId);
           await queueService.scheduleInboundAi(leadId, { isFirstReply: !isReentry });
         } catch (e: any) {
-          console.error('⚠️ Erro ao processar mensagem do webhook:', e?.message || e);
+          logger.error('Erro ao processar mensagem do webhook', { error: (e as any)?.message || String(e) });
           throw e; // propaga para BullMQ acionar retry
         }
       }
@@ -318,20 +321,20 @@ export function startWhatsappInboundWorker(
   );
 
   worker.on('completed', (job) => {
-    console.log(`✅ whatsapp-inbound completed: ${job.id}`);
+    logger.log(`✅ whatsapp-inbound completed: ${job.id}`);
   });
 
   worker.on('failed', (job, err) => {
-    console.error(
+    logger.error(
       `❌ whatsapp-inbound failed: jobId=${job?.id} attempt=${job?.attemptsMade} -> ${err?.message}`,
     );
   });
 
   worker.on('error', (err) => {
-    console.error(`🔴 WhatsApp Inbound Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+    logger.error(`🔴 WhatsApp Inbound Worker erro de conexão (Redis indisponível?): ${err?.message}`);
   });
 
-  console.log('🚀 WhatsApp Inbound Worker iniciado (fila: whatsapp-inbound-queue)');
+  logger.log('🚀 WhatsApp Inbound Worker iniciado (fila: whatsapp-inbound-queue)');
 
   return worker;
 }
