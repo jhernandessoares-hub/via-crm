@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../products/cloudinary.service';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
@@ -157,10 +157,11 @@ export class KnowledgeBaseService {
     if (!url) throw new BadRequestException('Cloudinary não retornou URL');
     if (!publicId) throw new BadRequestException('Cloudinary não retornou publicId');
 
-    // Extrai texto do PDF
+    // Extrai texto do PDF (pdf-parse v2)
     let extractedText: string | null = null;
     try {
-      const parsed = await pdfParse(file.buffer);
+      const parser = new PDFParse({ data: file.buffer });
+      const parsed = await parser.getText();
       const text = (parsed.text || '').trim();
       if (text) extractedText = text.slice(0, 100_000); // limite de 100k chars
     } catch (_) {}
