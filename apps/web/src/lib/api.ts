@@ -56,6 +56,10 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   // Auto logout no 401
   if (res.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+    // Lança para interromper o fluxo, mas o redirect já foi disparado
+    throw new Error("Sessão expirada. Faça login novamente.");
   }
 
   if (!res.ok) {

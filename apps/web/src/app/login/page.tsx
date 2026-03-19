@@ -29,7 +29,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const resp = await fetch("http://localhost:3000/auth/login", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL não configurado");
+
+      const resp = await fetch(`${apiUrl}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // ✅ backend aceita tenantId (slug ou uuid) e senha/password
