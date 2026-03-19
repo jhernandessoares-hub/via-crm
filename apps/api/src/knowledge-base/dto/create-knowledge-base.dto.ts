@@ -36,12 +36,6 @@ export class CreateKnowledgeBaseDto {
   prompt!: string;
 
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @ArrayMaxSize(50)
-  links?: string[];
-
-  @IsOptional()
   @IsString()
   whatAiUnderstood?: string;
 

@@ -68,7 +68,13 @@ export class AiService {
         include: {
           knowledgeBases: {
             include: {
-              knowledgeBase: true,
+              knowledgeBase: {
+                include: {
+                  documents: { where: { extractedText: { not: null } }, orderBy: { createdAt: 'asc' } },
+                  videos: { orderBy: { createdAt: 'asc' } },
+                  kbLinks: { orderBy: { createdAt: 'asc' } },
+                },
+              },
             },
             orderBy: {
               createdAt: 'asc',
@@ -112,8 +118,33 @@ export class AiService {
                 parts.push(`Tags: ${kb.tags.join(', ')}`);
               }
 
-              if (kb.links && kb.links.length > 0) {
-                parts.push(`Links de apoio: ${kb.links.join(', ')}`);
+              if ((kb as any).documents?.length > 0) {
+                const docParts = (kb as any).documents
+                  .filter((d: any) => d.extractedText)
+                  .map((d: any) => (d.title ? `[${d.title}]\n${d.extractedText}` : d.extractedText));
+                if (docParts.length > 0) {
+                  parts.push(`Conteúdo de documentos:\n${docParts.join('\n\n')}`);
+                }
+              }
+
+              if ((kb as any).videos?.length > 0) {
+                const videoLines = (kb as any).videos.map((v: any) => {
+                  let line = v.url;
+                  if (v.title) line = `${v.title}: ${v.url}`;
+                  if (v.description) line += ` — ${v.description}`;
+                  return line;
+                });
+                parts.push(`Vídeos de apoio:\n${videoLines.join('\n')}`);
+              }
+
+              if ((kb as any).kbLinks?.length > 0) {
+                const linkLines = (kb as any).kbLinks.map((l: any) => {
+                  let line = l.url;
+                  if (l.title) line = `${l.title}: ${l.url}`;
+                  if (l.description) line += ` — ${l.description}`;
+                  return line;
+                });
+                parts.push(`Links de apoio:\n${linkLines.join('\n')}`);
               }
 
               return parts.join('\n');

@@ -50,27 +50,30 @@ model Tenant {
   slug                String                  @unique
   ativo               Boolean                 @default(true)
   criadoEm            DateTime                @default(now())
-  agentKnowledgeBases AgentKnowledgeBase[]
-  aiAgents            AiAgent[]
-  aiExecutionLogs     AiExecutionLog[]
-  baseFrias           BaseFria[]
-  branches            Branch[]
-  knowledgeBases      KnowledgeBase[]
-  events              LeadEvent[]
-  leadSlas            LeadSla[]
-  leadTransitionLogs  LeadTransitionLog[]
-  leads               Lead[]
-  learnings           Learning[]
-  reasons             ManagerDecisionReason[]
-  reviews             ManagerReview[]
-  pipelineStages      PipelineStage[]
-  pipelines           Pipeline[]
-  productDocuments    ProductDocument[]
-  productImages       ProductImage[]
-  productVideos       ProductVideo[]
-  products            Product[]
-  slaRules            SlaRule[]
-  users               User[]
+  agentKnowledgeBases    AgentKnowledgeBase[]
+  aiAgents               AiAgent[]
+  aiExecutionLogs        AiExecutionLog[]
+  baseFrias              BaseFria[]
+  branches               Branch[]
+  knowledgeBases         KnowledgeBase[]
+  knowledgeBaseDocuments KnowledgeBaseDocument[]
+  knowledgeBaseVideos    KnowledgeBaseVideo[]
+  knowledgeBaseLinks     KnowledgeBaseLink[]
+  events                 LeadEvent[]
+  leadSlas               LeadSla[]
+  leadTransitionLogs     LeadTransitionLog[]
+  leads                  Lead[]
+  learnings              Learning[]
+  reasons                ManagerDecisionReason[]
+  reviews                ManagerReview[]
+  pipelineStages         PipelineStage[]
+  pipelines              Pipeline[]
+  productDocuments       ProductDocument[]
+  productImages          ProductImage[]
+  productVideos          ProductVideo[]
+  products               Product[]
+  slaRules               SlaRule[]
+  users                  User[]
 
   @@map("tenants")
 }
@@ -404,7 +407,6 @@ model KnowledgeBase {
   title            String
   type             KnowledgeBaseType
   prompt           String
-  links            String[]
   whatAiUnderstood String?
   exampleOutput    String?
   tags             String[]
@@ -415,11 +417,60 @@ model KnowledgeBase {
   updatedAt        DateTime              @updatedAt
   audience         KnowledgeBaseAudience @default(AMBOS)
   agents           AgentKnowledgeBase[]
+  documents        KnowledgeBaseDocument[]
+  videos           KnowledgeBaseVideo[]
+  kbLinks          KnowledgeBaseLink[]
   tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, type])
   @@index([tenantId, active, priority])
   @@map("knowledge_bases")
+}
+
+model KnowledgeBaseDocument {
+  id              String        @id @default(uuid())
+  tenantId        String
+  knowledgeBaseId String
+  url             String
+  publicId        String
+  title           String?
+  extractedText   String?
+  createdAt       DateTime      @default(now())
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, knowledgeBaseId])
+  @@map("knowledge_base_documents")
+}
+
+model KnowledgeBaseVideo {
+  id              String        @id @default(uuid())
+  tenantId        String
+  knowledgeBaseId String
+  url             String
+  title           String?
+  description     String?
+  createdAt       DateTime      @default(now())
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, knowledgeBaseId])
+  @@map("knowledge_base_videos")
+}
+
+model KnowledgeBaseLink {
+  id              String        @id @default(uuid())
+  tenantId        String
+  knowledgeBaseId String
+  url             String
+  title           String?
+  description     String?
+  createdAt       DateTime      @default(now())
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, knowledgeBaseId])
+  @@map("knowledge_base_links")
 }
 
 model AgentKnowledgeBase {

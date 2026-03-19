@@ -9,6 +9,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+// ArrayMaxSize kept for tags
 import {
   KnowledgeBaseAudienceDto,
   KnowledgeBaseTypeDto,
@@ -27,12 +28,6 @@ export class UpdateKnowledgeBaseDto {
   @IsOptional()
   @IsString()
   prompt?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @ArrayMaxSize(50)
-  links?: string[];
 
   @IsOptional()
   @IsString()

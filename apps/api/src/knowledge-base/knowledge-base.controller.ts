@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,8 +9,11 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
@@ -19,6 +23,10 @@ import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
 @Controller('knowledge-base')
 export class KnowledgeBaseController {
   constructor(private readonly service: KnowledgeBaseService) {}
+
+  // =====================
+  // CRUD principal
+  // =====================
 
   @Post()
   create(@Req() req: any, @Body() body: CreateKnowledgeBaseDto) {
@@ -44,6 +52,108 @@ export class KnowledgeBaseController {
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req.user.tenantId, id);
   }
+
+  // =====================
+  // DOCUMENTOS (PDF)
+  // =====================
+
+  @Get(':id/documents')
+  listDocuments(@Req() req: any, @Param('id') id: string) {
+    return this.service.listDocuments(req.user.tenantId, id);
+  }
+
+  @Post(':id/documents')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file?: any,
+    @Body('title') title?: string,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Envie um arquivo PDF no campo "file".');
+    }
+
+    const doc = await this.service.addDocument(req.user.tenantId, id, file, title);
+    return { ok: true, document: doc };
+  }
+
+  @Delete(':id/documents/:documentId')
+  deleteDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.service.deleteDocument(req.user.tenantId, id, documentId);
+  }
+
+  // =====================
+  // VÍDEOS
+  // =====================
+
+  @Post(':id/videos')
+  addVideo(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { url: string; title?: string; description?: string },
+  ) {
+    return this.service.addVideo(req.user.tenantId, id, body);
+  }
+
+  @Patch(':id/videos/:videoId')
+  updateVideo(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('videoId') videoId: string,
+    @Body() body: { url?: string; title?: string | null; description?: string | null },
+  ) {
+    return this.service.updateVideo(req.user.tenantId, id, videoId, body);
+  }
+
+  @Delete(':id/videos/:videoId')
+  deleteVideo(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('videoId') videoId: string,
+  ) {
+    return this.service.deleteVideo(req.user.tenantId, id, videoId);
+  }
+
+  // =====================
+  // LINKS
+  // =====================
+
+  @Post(':id/links')
+  addLink(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { url: string; title?: string; description?: string },
+  ) {
+    return this.service.addLink(req.user.tenantId, id, body);
+  }
+
+  @Patch(':id/links/:linkId')
+  updateLink(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('linkId') linkId: string,
+    @Body() body: { url?: string; title?: string | null; description?: string | null },
+  ) {
+    return this.service.updateLink(req.user.tenantId, id, linkId, body);
+  }
+
+  @Delete(':id/links/:linkId')
+  deleteLink(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('linkId') linkId: string,
+  ) {
+    return this.service.deleteLink(req.user.tenantId, id, linkId);
+  }
+
+  // =====================
+  // AGENT
+  // =====================
 
   @Post(':knowledgeBaseId/agents/:agentId')
   attachToAgent(
