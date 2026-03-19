@@ -123,11 +123,9 @@ model Lead {
   needsManagerReview  Boolean              @default(false)
   queuePriority       Int                  @default(9999)
   telefoneKey         String?
-  aiBlocked           Boolean              @default(false)
   assignedUserId      String?
   branchId            String?
   lastInboundAt       DateTime?
-  lastReferralHash    String?
   pendingRouting      Boolean              @default(false)
   pendingRoutingScope PendingRoutingScope?
   pipelineId          String?

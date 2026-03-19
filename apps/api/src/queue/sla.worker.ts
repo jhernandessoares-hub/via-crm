@@ -105,7 +105,11 @@ function getWhatsappTemplateConfig() {
 
 function sanitizeTemplateParamText(input: string) {
   const s = (input || '').toString().replace(/\s+/g, ' ').trim();
-  return s.length > 60 ? s.slice(0, 60) : s;
+  if (s.length <= 60) return s;
+  // Truncate at last word boundary before the limit to avoid cutting mid-word
+  const cut = s.slice(0, 60);
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
 }
 
 /**

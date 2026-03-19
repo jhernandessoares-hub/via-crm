@@ -264,7 +264,9 @@ function getAccessToken(): string | null {
         if (isJwt(s)) return s;
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn("[getAccessToken] falha ao ler chaves diretas do localStorage", e);
+  }
 
   // 2) dentro do "user" (várias estruturas)
   try {
@@ -287,10 +289,12 @@ function getAccessToken(): string | null {
 
       // varre qualquer string dentro do objeto "user"
       const flat = JSON.stringify(u || {});
-      const m = flat.match(/[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+/);
+      const m = flat.match(/eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+/);
       if (m && m[0] && isJwt(m[0])) return m[0].trim();
     }
-  } catch {}
+  } catch (e) {
+    console.warn("[getAccessToken] falha ao ler user do localStorage", e);
+  }
 
   // 3) fallback: varrer TUDO no localStorage
   try {
@@ -303,10 +307,12 @@ function getAccessToken(): string | null {
       if (isJwt(s)) return s;
 
       // se for JSON com token dentro
-      const mm = s.match(/[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+/);
+      const mm = s.match(/eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+/);
       if (mm && mm[0] && isJwt(mm[0])) return mm[0].trim();
     }
-  } catch {}
+  } catch (e) {
+    console.warn("[getAccessToken] falha ao varrer localStorage", e);
+  }
 
   return null;
 }

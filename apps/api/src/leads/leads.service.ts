@@ -865,8 +865,9 @@ export class LeadsService {
     const blob = new Blob([new Uint8Array(input.buffer)], { type: cleanType });
     fd.append('file', blob, input.filename);
 
+    const uploadTimeoutMs = Number(process.env.WHATSAPP_MEDIA_UPLOAD_TIMEOUT_MS || 30000);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), uploadTimeoutMs);
 
     try {
       const response = await fetch(url, {
@@ -2281,10 +2282,28 @@ const aiAssistanceLabel =
           ? 'Parcial IA'
           : 'Humano';
 
-const result = await this.sendMetaMessage(lead.telefone, text);
+    let result: Awaited<ReturnType<typeof this.sendMetaMessage>>;
+    try {
+      result = await this.sendMetaMessage(lead.telefone, text);
+    } catch (sendErr: any) {
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.out.failed',
+          payloadRaw: {
+            to: lead.telefone,
+            type: 'text',
+            message: text,
+            error: sendErr?.message || String(sendErr),
+            aiAssistancePercent,
+            aiAssistanceLabel,
+          },
+        },
+      });
+      throw sendErr;
+    }
 
-    // ✅ FIX: salvar outbound em formato “compatível” com o inbound e com o front
-    // (sem depender de gambiarras no pickText)
     const messageId =
       result?.metaResponse?.messages?.[0]?.id ||
       result?.metaResponse?.messages?.[0]?.message_id ||
@@ -2296,17 +2315,17 @@ const result = await this.sendMetaMessage(lead.telefone, text);
         tenantId: user.tenantId,
         leadId,
         channel: 'whatsapp.out',
-payloadRaw: {
-  to: result.to,
-  type: 'text',
-  text: { body: text },
-  message: text,
-  body: text,
-  messageId,
-  metaResponse: result.metaResponse,
-  aiAssistancePercent,
-  aiAssistanceLabel,
-},
+        payloadRaw: {
+          to: result.to,
+          type: 'text',
+          text: { body: text },
+          message: text,
+          body: text,
+          messageId,
+          metaResponse: result.metaResponse,
+          aiAssistancePercent,
+          aiAssistanceLabel,
+        },
       },
     });
 
