@@ -1162,6 +1162,7 @@ export default function LeadDetailChatPage() {
   const [manualAiSuggestionText, setManualAiSuggestionText] = useState("");
   const [manualAiResponseFormat, setManualAiResponseFormat] = useState<string | null>(null);
   const [aiActionLoading, setAiActionLoading] = useState<string | null>(null);
+  const [aiPanelState, setAiPanelState] = useState<null | "discarded" | "sent">(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -1409,6 +1410,12 @@ const orderedEvents = useMemo(() => {
   const activeAiSuggestionText = manualAiSuggestionText || latestAiSuggestionText;
   const latestAiPayload = latestAiSuggestion?.payloadRaw || {};
 
+  // Quando uma nova sugestão chega do worker, reseta o estado do painel
+  const latestAiSuggestionId = latestAiSuggestion?.id ?? null;
+  useEffect(() => {
+    if (latestAiSuggestionId) setAiPanelState(null);
+  }, [latestAiSuggestionId]);
+
   const latestAiSuggestedAttachments = useMemo(() => {
     const arr = latestAiPayload?.suggestedAttachments;
     return Array.isArray(arr) ? (arr as AiSuggestedAttachment[]) : [];
@@ -1454,15 +1461,25 @@ function useAiSuggestionInField() {
 async function sendAiSuggestionNow() {
   if (!activeAiSuggestionText) return;
   await sendProvidedText(activeAiSuggestionText);
+  // Limpa o painel após envio bem-sucedido
+  setManualAiSuggestionText("");
+  setManualAiResponseFormat(null);
+  if (latestAiSuggestion?.id) {
+    setDismissedAiSuggestionIds((prev) =>
+      Array.from(new Set([...prev, latestAiSuggestion.id])),
+    );
+  }
+  setAiPanelState("sent");
 }
 function discardAiSuggestion() {
   setManualAiSuggestionText("");
   setManualAiResponseFormat(null);
-
-  if (!latestAiSuggestion?.id) return;
-  setDismissedAiSuggestionIds((prev) =>
-    Array.from(new Set([...prev, latestAiSuggestion.id])),
-  );
+  if (latestAiSuggestion?.id) {
+    setDismissedAiSuggestionIds((prev) =>
+      Array.from(new Set([...prev, latestAiSuggestion.id])),
+    );
+  }
+  setAiPanelState("discarded");
 }
 
   function saveAiSuggestionAsTeaching() {
@@ -1555,6 +1572,7 @@ async function requestAiPanelSuggestion(
 
     setManualAiSuggestionText(nextText);
     setManualAiResponseFormat("TEXT");
+    setAiPanelState(null);
     setDismissedAiSuggestionIds([]);
   } catch (e: any) {
     setErr(e?.message || "Erro ao gerar nova sugestão da IA");
@@ -2952,7 +2970,7 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
   type="button"
   className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("REGENERATE")}
-  disabled={!!aiActionLoading || (!latestAiSuggestionText && !manualAiSuggestionText)}
+  disabled={!!aiActionLoading}
 >
   {aiActionLoading === "REGENERATE" ? "Gerando..." : "Regenerar"}
 </button>
@@ -2961,7 +2979,7 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
   type="button"
   className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("SHORTEN")}
-  disabled={!!aiActionLoading || (!latestAiSuggestionText && !manualAiSuggestionText)}
+  disabled={!!aiActionLoading || !activeAiSuggestionText}
 >
   {aiActionLoading === "SHORTEN" ? "Encurtando..." : "Encurtar"}
 </button>
@@ -2970,7 +2988,7 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
   type="button"
   className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("IMPROVE")}
-  disabled={!!aiActionLoading || (!latestAiSuggestionText && !manualAiSuggestionText)}
+  disabled={!!aiActionLoading || !activeAiSuggestionText}
 >
   {aiActionLoading === "IMPROVE" ? "Melhorando..." : "Melhorar"}
 </button>
@@ -2979,7 +2997,7 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
   type="button"
   className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("VARIATE")}
-  disabled={!!aiActionLoading || (!latestAiSuggestionText && !manualAiSuggestionText)}
+  disabled={!!aiActionLoading || !activeAiSuggestionText}
 >
   {aiActionLoading === "VARIATE" ? "Variando..." : "Variar"}
 </button>
@@ -3023,6 +3041,30 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                         {aiTeachNotice}
                       </div>
                     ) : null}
+                  </div>
+                ) : aiPanelState === "sent" ? (
+                  <div className="rounded-lg border border-dashed border-emerald-300 bg-white p-3 space-y-2">
+                    <div className="text-xs text-gray-500">Aguardando próxima mensagem do lead...</div>
+                    <button
+                      type="button"
+                      className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+                      onClick={() => requestAiPanelSuggestion("REGENERATE")}
+                      disabled={!!aiActionLoading}
+                    >
+                      {aiActionLoading === "REGENERATE" ? "Gerando..." : "Regenerar"}
+                    </button>
+                  </div>
+                ) : aiPanelState === "discarded" ? (
+                  <div className="rounded-lg border border-dashed border-gray-300 bg-white p-3 space-y-2">
+                    <div className="text-xs text-gray-500">Sugestão descartada.</div>
+                    <button
+                      type="button"
+                      className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+                      onClick={() => requestAiPanelSuggestion("REGENERATE")}
+                      disabled={!!aiActionLoading}
+                    >
+                      {aiActionLoading === "REGENERATE" ? "Gerando..." : "Regenerar"}
+                    </button>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-amber-300 bg-white p-3 text-xs text-gray-600">
