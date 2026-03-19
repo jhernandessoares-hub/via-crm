@@ -69,6 +69,28 @@ function checkWhatsappWindow(lastInboundAt: Date | null) {
   return { allowed: true as const, reason: null, details: null };
 }
 
+function getMetaConfig() {
+  const version =
+    process.env.WHATSAPP_API_VERSION ||
+    process.env.WHATSAPP_VERSION ||
+    process.env.META_GRAPH_VERSION ||
+    'v20.0';
+
+  const phoneNumberId =
+    process.env.WHATSAPP_PHONE_NUMBER_ID ||
+    process.env.WHATSAPP_PHONE_ID ||
+    process.env.META_PHONE_NUMBER_ID ||
+    process.env.PHONE_NUMBER_ID;
+
+  const token =
+    process.env.WHATSAPP_TOKEN ||
+    process.env.WHATSAPP_ACCESS_TOKEN ||
+    process.env.META_ACCESS_TOKEN ||
+    process.env.ACCESS_TOKEN;
+
+  return { version, phoneNumberId, token };
+}
+
 function getWhatsappTemplateConfig() {
   const templateName =
     process.env.WHATSAPP_TEMPLATE_NAME || process.env.META_TEMPLATE_NAME;
@@ -218,33 +240,13 @@ async function getLastWhatsappOut(prisma: PrismaService, leadId: string) {
  * Mantido no arquivo, mas o SLA worker não envia texto automático.
  */
 async function sendWhatsappText(to: string, text: string) {
-  const version =
-    process.env.WHATSAPP_VERSION ||
-    process.env.WHATSAPP_API_VERSION ||
-    process.env.META_GRAPH_VERSION ||
-    'v20.0';
-
-  const phoneNumberId =
-    process.env.WHATSAPP_PHONE_NUMBER_ID ||
-    process.env.WHATSAPP_PHONE_ID ||
-    process.env.META_PHONE_NUMBER_ID ||
-    process.env.PHONE_NUMBER_ID;
-
-  const token =
-    process.env.WHATSAPP_ACCESS_TOKEN ||
-    process.env.WHATSAPP_TOKEN ||
-    process.env.META_ACCESS_TOKEN ||
-    process.env.ACCESS_TOKEN;
+  const { version, phoneNumberId, token } = getMetaConfig();
 
   if (!phoneNumberId) {
-    throw new Error(
-      'WHATSAPP_PHONE_NUMBER_ID não definido no .env (ou var equivalente)',
-    );
+    throw new Error('WHATSAPP_PHONE_NUMBER_ID não definido no .env');
   }
   if (!token) {
-    throw new Error(
-      'WHATSAPP_ACCESS_TOKEN não definido no .env (ou var equivalente)',
-    );
+    throw new Error('WHATSAPP_TOKEN não definido no .env');
   }
 
   const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
@@ -283,33 +285,13 @@ async function sendWhatsappText(to: string, text: string) {
  * Mantido no arquivo, mas o SLA worker não envia template automático nesta etapa.
  */
 async function sendWhatsappTemplate(to: string, params?: { name?: string | null }) {
-  const version =
-    process.env.WHATSAPP_VERSION ||
-    process.env.WHATSAPP_API_VERSION ||
-    process.env.META_GRAPH_VERSION ||
-    'v20.0';
-
-  const phoneNumberId =
-    process.env.WHATSAPP_PHONE_NUMBER_ID ||
-    process.env.WHATSAPP_PHONE_ID ||
-    process.env.META_PHONE_NUMBER_ID ||
-    process.env.PHONE_NUMBER_ID;
-
-  const token =
-    process.env.WHATSAPP_ACCESS_TOKEN ||
-    process.env.WHATSAPP_TOKEN ||
-    process.env.META_ACCESS_TOKEN ||
-    process.env.ACCESS_TOKEN;
+  const { version, phoneNumberId, token } = getMetaConfig();
 
   if (!phoneNumberId) {
-    throw new Error(
-      'WHATSAPP_PHONE_NUMBER_ID não definido no .env (ou var equivalente)',
-    );
+    throw new Error('WHATSAPP_PHONE_NUMBER_ID não definido no .env');
   }
   if (!token) {
-    throw new Error(
-      'WHATSAPP_ACCESS_TOKEN não definido no .env (ou var equivalente)',
-    );
+    throw new Error('WHATSAPP_TOKEN não definido no .env');
   }
 
   const { templateName, language } = getWhatsappTemplateConfig();
