@@ -1502,12 +1502,13 @@ async function requestAiPanelSuggestion(
   setAiActionLoading(mode);
   setErr(null);
 
-  // Monta contexto da conversa com as últimas 8 mensagens (whatsapp.in / whatsapp.out)
-  const conversationContext = orderedEvents
-    .filter((e) => {
-      const ch = String(e.channel || "").toLowerCase();
-      return ch === "whatsapp.in" || ch === "whatsapp.out";
-    })
+  // Filtra eventos de WhatsApp para contexto e última mensagem do lead
+  const whatsappEvents = orderedEvents.filter((e) => {
+    const ch = String(e.channel || "").toLowerCase();
+    return ch === "whatsapp.in" || ch === "whatsapp.out";
+  });
+
+  const conversationContext = whatsappEvents
     .slice(-8)
     .map((ev) => {
       const ch = String(ev.channel || "").toLowerCase();
@@ -1517,6 +1518,12 @@ async function requestAiPanelSuggestion(
     })
     .filter(Boolean)
     .join("\n");
+
+  // Última mensagem real enviada pelo lead
+  const lastLeadEvent = [...whatsappEvents]
+    .reverse()
+    .find((e) => String(e.channel || "").toLowerCase() === "whatsapp.in");
+  const lastLeadMessage = lastLeadEvent ? pickText(lastLeadEvent) ?? "" : "";
 
   try {
     const generated = await apiFetch("/ai/generate-follow-up", {
@@ -1528,7 +1535,8 @@ async function requestAiPanelSuggestion(
         tenantId: user.tenantId,
         leadId: id,
         agentId: (latestAiPayload as any)?.agentId ?? undefined,
-        lastLeadMessage: activeAiSuggestionText,
+        lastLeadMessage: lastLeadMessage || undefined,
+        previousSuggestion: activeAiSuggestionText || undefined,
         conversationContext: conversationContext || undefined,
         mode,
       }),

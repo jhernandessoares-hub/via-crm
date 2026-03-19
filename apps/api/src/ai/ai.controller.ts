@@ -7,6 +7,9 @@ type GenerateFollowUpBody = {
   tenantId: string;
   agentId?: string;
   leadId?: string;
+  lastLeadMessage?: string;
+  previousSuggestion?: string;
+  conversationContext?: string;
   mode?: 'REGENERATE' | 'SHORTEN' | 'IMPROVE' | 'VARIATE';
 };
 
@@ -22,6 +25,9 @@ export class AiController {
       tenantId: body.tenantId,
       agentId: body.agentId,
       leadId: body.leadId,
+      lastLeadMessage: body.lastLeadMessage,
+      previousSuggestion: body.previousSuggestion,
+      conversationContext: body.conversationContext,
       mode: body.mode,
     });
   }

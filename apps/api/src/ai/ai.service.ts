@@ -51,20 +51,19 @@ export class AiService {
     agentId?: string;
     leadId?: string;
     lastLeadMessage?: string;
+    previousSuggestion?: string;
     conversationContext?: string;
     mode?: 'REGENERATE' | 'SHORTEN' | 'IMPROVE' | 'VARIATE';
   }) {
-    let agentPrompt = '';
     let agentTitle = '';
-    let knowledgeBaseContext = '';
+    let agentDirectPrompt = ''; // campo prompt do próprio agente (prioridade máxima se preenchido)
+    let personaBlock = '';
+    let rulesBlock = '';
+    let knowledgeContext = '';
 
     if (params.agentId) {
       const agent = await this.prisma.aiAgent.findFirst({
-        where: {
-          id: params.agentId,
-          tenantId: params.tenantId,
-          active: true,
-        },
+        where: { id: params.agentId, tenantId: params.tenantId, active: true },
         include: {
           knowledgeBases: {
             include: {
@@ -76,75 +75,85 @@ export class AiService {
                 },
               },
             },
-            orderBy: {
-              createdAt: 'asc',
-            },
+            orderBy: { createdAt: 'asc' },
           },
         },
       });
 
       if (agent) {
         agentTitle = agent.title?.trim() || '';
-        if (agent.prompt && agent.prompt.trim()) {
-          agentPrompt = agent.prompt.trim();
-        }
+        if (agent.prompt?.trim()) agentDirectPrompt = agent.prompt.trim();
 
-        const activeKnowledgeBases = agent.knowledgeBases
+        const activeKBs = agent.knowledgeBases
           .map((item) => item.knowledgeBase)
           .filter((kb) => kb && kb.active)
-          .sort((a, b) => a.priority - b.priority);
+          .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
-        if (activeKnowledgeBases.length > 0) {
-          knowledgeBaseContext = activeKnowledgeBases
-            .map((kb, index) => {
+        const personalityKBs = activeKBs.filter((kb) => kb.type === 'PERSONALIDADE');
+        const rulesKBs = activeKBs.filter((kb) => kb.type === 'REGRAS');
+        const contentKBs = activeKBs.filter((kb) => kb.type !== 'PERSONALIDADE' && kb.type !== 'REGRAS');
+
+        // --- Persona: agent.prompt > PERSONALIDADE KB > fallback mínimo ---
+        if (agentDirectPrompt) {
+          personaBlock = agentDirectPrompt;
+        } else if (personalityKBs.length > 0) {
+          personaBlock = personalityKBs.map((kb) => kb.prompt?.trim()).filter(Boolean).join('\n\n');
+        } else {
+          personaBlock =
+            'Você é um atendente que conversa com leads pelo WhatsApp de forma simples, humana e direta.\n' +
+            'Escreva como uma pessoa real, nunca como assistente virtual.';
+        }
+
+        // --- Regras: apenas se houver KB do tipo REGRAS ---
+        if (rulesKBs.length > 0) {
+          rulesBlock = rulesKBs
+            .map((kb) => {
               const parts: string[] = [];
+              if (kb.prompt?.trim()) parts.push(kb.prompt.trim());
+              if (kb.whatAiUnderstood?.trim()) parts.push(kb.whatAiUnderstood.trim());
+              return parts.join('\n');
+            })
+            .filter(Boolean)
+            .join('\n\n');
+        }
 
-              parts.push(`Base ${index + 1}: ${kb.title}`);
-              parts.push(`Tipo: ${kb.type}`);
+        // --- Conteúdo de conhecimento (produto, mercado, atendimento, etc.) ---
+        if (contentKBs.length > 0) {
+          knowledgeContext = contentKBs
+            .map((kb) => {
+              const parts: string[] = [`[${kb.title}]`];
+              if (kb.prompt?.trim()) parts.push(kb.prompt.trim());
+              if (kb.whatAiUnderstood?.trim()) parts.push(`Resumo: ${kb.whatAiUnderstood.trim()}`);
+              if (kb.exampleOutput?.trim()) parts.push(`Exemplo: ${kb.exampleOutput.trim()}`);
 
-              if (kb.prompt && kb.prompt.trim()) {
-                parts.push(`Conteúdo principal:\n${kb.prompt.trim()}`);
+              const docs = (kb as any).documents as any[];
+              if (docs?.length > 0) {
+                const docParts = docs
+                  .filter((d) => d.extractedText)
+                  .map((d) => (d.title ? `[${d.title}]\n${d.extractedText}` : d.extractedText));
+                if (docParts.length > 0) parts.push(`Documentos:\n${docParts.join('\n\n')}`);
               }
 
-              if (kb.whatAiUnderstood && kb.whatAiUnderstood.trim()) {
-                parts.push(`O que a IA entendeu:\n${kb.whatAiUnderstood.trim()}`);
-              }
-
-              if (kb.exampleOutput && kb.exampleOutput.trim()) {
-                parts.push(`Exemplo de saída:\n${kb.exampleOutput.trim()}`);
-              }
-
-              if (kb.tags && kb.tags.length > 0) {
-                parts.push(`Tags: ${kb.tags.join(', ')}`);
-              }
-
-              if ((kb as any).documents?.length > 0) {
-                const docParts = (kb as any).documents
-                  .filter((d: any) => d.extractedText)
-                  .map((d: any) => (d.title ? `[${d.title}]\n${d.extractedText}` : d.extractedText));
-                if (docParts.length > 0) {
-                  parts.push(`Conteúdo de documentos:\n${docParts.join('\n\n')}`);
-                }
-              }
-
-              if ((kb as any).videos?.length > 0) {
-                const videoLines = (kb as any).videos.map((v: any) => {
-                  let line = v.url;
-                  if (v.title) line = `${v.title}: ${v.url}`;
-                  if (v.description) line += ` — ${v.description}`;
-                  return line;
+              const videos = (kb as any).videos as any[];
+              if (videos?.length > 0) {
+                const lines = videos.map((v) => {
+                  let l = v.url;
+                  if (v.title) l = `${v.title}: ${v.url}`;
+                  if (v.description) l += ` — ${v.description}`;
+                  return l;
                 });
-                parts.push(`Vídeos de apoio:\n${videoLines.join('\n')}`);
+                parts.push(`Vídeos:\n${lines.join('\n')}`);
               }
 
-              if ((kb as any).kbLinks?.length > 0) {
-                const linkLines = (kb as any).kbLinks.map((l: any) => {
-                  let line = l.url;
-                  if (l.title) line = `${l.title}: ${l.url}`;
-                  if (l.description) line += ` — ${l.description}`;
-                  return line;
+              const links = (kb as any).kbLinks as any[];
+              if (links?.length > 0) {
+                const lines = links.map((l) => {
+                  let s = l.url;
+                  if (l.title) s = `${l.title}: ${l.url}`;
+                  if (l.description) s += ` — ${l.description}`;
+                  return s;
                 });
-                parts.push(`Links de apoio:\n${linkLines.join('\n')}`);
+                parts.push(`Links:\n${lines.join('\n')}`);
               }
 
               return parts.join('\n');
@@ -154,196 +163,58 @@ export class AiService {
       }
     }
 
+    // Fallback quando não há agente configurado
+    if (!personaBlock) {
+      personaBlock =
+        'Você é um atendente que conversa com leads pelo WhatsApp de forma simples, humana e direta.\n' +
+        'Escreva como uma pessoa real, nunca como assistente virtual.';
+    }
+
     const lastLeadMessage = String(params.lastLeadMessage || '').trim();
+    const previousSuggestion = String(params.previousSuggestion || '').trim();
     const conversationContext = String(params.conversationContext || '').trim();
+    const isModifyMode =
+      params.mode === 'SHORTEN' || params.mode === 'IMPROVE' || params.mode === 'VARIATE';
 
     const modeInstruction =
       params.mode === 'SHORTEN'
-        ? 'Ajuste extra: gere uma versão mais curta da resposta, mas sem perder o contexto da pergunta original do lead. Nunca transforme resposta objetiva em saudação genérica.'
+        ? 'Encurte a sugestão anterior mantendo exatamente o mesmo assunto e respondendo a mesma pergunta do lead. Não mude o contexto. Não inicie com saudação.'
         : params.mode === 'IMPROVE'
-          ? 'Ajuste extra: gere uma versão melhorada da resposta, mais clara, mais natural e mais convincente, mas mantendo exatamente o mesmo contexto e respondendo a mesma pergunta do lead.'
+          ? 'Melhore a sugestão anterior deixando-a mais clara, natural e convincente. Mantenha exatamente o mesmo contexto e a mesma pergunta sendo respondida. Não mude o assunto.'
           : params.mode === 'VARIATE'
-            ? 'Ajuste extra: gere uma resposta diferente da anterior, com outra construção de frase, mas mantendo fielmente o contexto original e a intenção da pergunta do lead.'
+            ? 'Reescreva a sugestão anterior com construção de frase diferente, mantendo fielmente o contexto e a intenção da resposta. Não mude o assunto.'
             : params.mode === 'REGENERATE'
-              ? 'Ajuste extra: gere uma nova resposta para a mesma situação, ignorando a resposta anterior e mantendo fielmente o contexto da pergunta do lead. Nunca responder como se fosse início de conversa se o lead já fez pergunta clara.'
+              ? 'Gere uma nova resposta para a mensagem do lead. Mantenha o contexto da pergunta original.'
               : '';
 
-    const personaBlock = agentPrompt
-      ? agentPrompt
-      : `Você é um atendente que conversa com pessoas pelo WhatsApp de forma simples, humana e consultiva.
+    const prompt = `${personaBlock}
 
-Seu estilo de conversa é natural, educado e direto.
-Você não escreve como assistente virtual.
-Você escreve como uma pessoa real conversando no WhatsApp.
-
-Nem toda mensagem é uma solicitação direta ao seu serviço.
-Algumas pessoas mandam mensagem errada ou só querem confirmar algo.
-
-Se a mensagem não for sobre seu produto ou serviço, responda normalmente como pessoa.
-Não tente vender quando não fizer sentido.`;
-
-    const prompt = `
-${personaBlock}
-
-${knowledgeBaseContext ? `Base de conhecimento disponível:\n${knowledgeBaseContext}\n` : ''}
-
-Dados do lead:
-Nome: ${params.nome}
-Status: ${params.status}
+${knowledgeContext ? `Conhecimento disponível:\n${knowledgeContext}\n` : ''}
+Lead: ${params.nome} | Status: ${params.status}
 
 ${lastLeadMessage ? `Última mensagem do lead:\n${lastLeadMessage}\n` : ''}
-
 ${conversationContext ? `Contexto recente da conversa:\n${conversationContext}\n` : ''}
+${isModifyMode && previousSuggestion ? `Sugestão anterior da IA (para modificar):\n${previousSuggestion}\n` : ''}
+${modeInstruction ? `Tarefa: ${modeInstruction}` : ''}
+${rulesBlock ? `\nRegras adicionais:\n${rulesBlock}` : ''}`;
 
-Objetivo da resposta:
-
-- responder a última mensagem do lead
-- parecer humano
-- ser natural no WhatsApp
-- responder primeiro o que foi perguntado
-- quando fizer sentido, conduzir a conversa
-
-Estilo de escrita obrigatório:
-
-- frases curtas
-- linguagem simples
-- tom humano
-- evitar texto perfeito demais
-- pode usar: vc, pq, tbm
-- evitar marketing exagerado
-- evitar frases robóticas
-- não usar "me conta"
-
-Forma de escrever preferida:
-
-frase curta
-
-pergunta simples
-
-Exemplo:
-
-Olá tudo bem?
-
-Qual anúncio vc viu?
-
-Ou:
-
-Olá tudo bem?
-
-Trabalhamos sim com esse serviço.
-
-Qual opção vc viu?
-
-Regras importantes:
-
-- não parecer robô
-- não escrever como assistente virtual
-- não empurrar venda sem contexto
-- responder primeiro a pergunta do lead
-- se a mensagem for vaga, perguntar algo simples para entender melhor
-
-Regra de saudação (MUITO IMPORTANTE):
-
-Se a mensagem do lead for apenas uma saudação simples como:
-"oi", "oii", "oiii", "olá", "bom dia", "boa tarde", "boa noite"
-
-Responda apenas com uma saudação curta.
-
-Exemplos corretos:
-"Olá tudo bem?"
-"Oi tudo bem?"
-"Olá boa noite
-
-Tudo bem?"
-
-Não faça perguntas adicionais nesse momento.
-Não puxe assunto.
-Não tente vender.
-Espere o lead falar primeiro.
-
-Regra para "tudo bem" / "e com vc" (MUITO IMPORTANTE):
-
-Se o lead disser algo como:
-"tudo bem"
-"tudo e com vc?"
-"e com vc?"
-"tudo bem e vc?"
-"como vc tá?"
-
-Responda direto e de forma curta.
-
-Exemplos corretos:
-"Tudo bem também 🙏🏽"
-"Tudo certo 🙏🏽"
-"Tudo ótimo 🙏🏽"
-
-Nessa situação:
-- não cumprimente de novo
-- não escreva "olá" ou "oi" novamente
-- não reinicie a conversa
-- não faça nova pergunta nesse momento
-
-Regra de contexto original (MUITO IMPORTANTE):
-
-Se o lead fez uma pergunta objetiva, toda resposta gerada deve continuar respondendo exatamente essa pergunta.
-
-Mesmo ao encurtar, melhorar, variar ou regenerar:
-- nunca perder o contexto original
-- nunca transformar a resposta em saudação genérica
-- nunca responder como se fosse início de conversa
-- nunca trocar uma resposta objetiva por "oi", "bom dia", "olá tudo bem?" ou similares
-
-Exemplos do que NÃO pode acontecer:
-
-Lead: "é da padaria?"
-Errado: "Oi, tudo bem?"
-Errado: "Bom dia"
-Errado: "Olá, tudo bem?"
-
-Lead: "é do açougue?"
-Errado: "Tudo certo?"
-Errado: "Bom dia"
-
-Lead: "é da farmácia?"
-Errado: "Olá, tudo bem?"
-
-Exemplos corretos:
-
-Lead: "é da padaria?"
-Correto: "Não, acho que mandou msg errada 🙂"
-Correto: "Não, não somos da padaria."
-
-Lead: "é do açougue?"
-Correto: "Não, acho que é msg errada."
-Correto: "Não kkk, número errado 🙂"
-
-Lead: "é da farmácia?"
-Correto: "Não, acho que mandou msg errada 🙂"
-
-Frases proibidas (evitar comportamento de robô):
-
-- "vi que você entrou em contato"
-- "como posso ajudar"
-- "fico feliz em ajudar"
-- "em que posso ajudar hoje"
-
-Nunca usar essas frases.
-
-${modeInstruction ? `Ajuste solicitado:\n${modeInstruction}\n` : ''}
-`;
+    const systemContent = [
+      `Você é ${agentTitle || 'um atendente'} respondendo leads pelo WhatsApp.`,
+      'Escreva sempre como pessoa real. Nunca como assistente virtual.',
+      'Use linguagem simples, curta e natural.',
+      'Nunca use: "vi que você entrou em contato", "como posso ajudar", "fico feliz em ajudar".',
+      isModifyMode && previousSuggestion
+        ? 'Você está modificando uma sugestão anterior. NUNCA mude o assunto — responda exatamente a mesma pergunta do lead que a sugestão anterior respondia. Não reinicie a conversa. Não transforme em saudação.'
+        : 'Responda a pergunta do lead diretamente. Se for saudação simples, responda só com saudação curta.',
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     const completion = await this.getOpenAI().chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
-        {
-          role: 'system',
-          content:
-            `Você é ${agentTitle || 'um atendente'} que conversa com leads pelo WhatsApp. Escreva sempre como uma pessoa real, nunca como assistente virtual. Use linguagem simples, natural e curta. Prefira frases diretas e humanas. Primeiro entenda o que a pessoa quis dizer antes de tentar vender algo. Se a mensagem do lead for apenas uma saudação simples, responda apenas com uma saudação curta e espere a próxima mensagem. Se o lead perguntar "tudo bem" ou "e com vc", responda direto com algo como "Tudo bem também 🙏🏽", "Tudo certo 🙏🏽" ou "Tudo ótimo 🙏🏽", sem cumprimentar de novo, sem reiniciar a conversa e sem fazer nova pergunta. Se o lead fez uma pergunta objetiva, toda resposta deve continuar respondendo exatamente essa pergunta, inclusive em encurtar, regenerar, melhorar ou variar. Nunca troque pergunta objetiva por saudação genérica. Nunca use frases como "vi que você entrou em contato", "como posso ajudar", "fico feliz em ajudar" ou "em que posso ajudar hoje". Responda como alguém experiente, consultivo e tranquilo.`,
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
+        { role: 'system', content: systemContent },
+        { role: 'user', content: prompt },
       ],
       temperature: 0.7,
     });
