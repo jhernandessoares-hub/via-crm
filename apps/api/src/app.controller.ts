@@ -12,6 +12,7 @@ export class AppController {
 
   @Get('privacy-policy')
   getPrivacy(@Res() res: Response) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.send(`
       <html>
         <head>

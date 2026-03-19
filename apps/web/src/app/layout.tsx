@@ -28,6 +28,9 @@ export default function RootLayout({
 
   return (
     <html lang="pt-BR">
+      <head>
+        <meta charSet="utf-8" />
+      </head>
       <body className="antialiased bg-gray-50">
         {children}
       </body>
