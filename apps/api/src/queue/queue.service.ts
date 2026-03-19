@@ -6,6 +6,7 @@ export class QueueService implements OnModuleDestroy {
   private slaQueue: Queue;
   private whatsappMediaQueue: Queue;
   private inboundAiQueue: Queue;
+  private whatsappInboundQueue: Queue;
 
   constructor() {
     const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -22,6 +23,11 @@ export class QueueService implements OnModuleDestroy {
 
     // ✅ NOVA: fila para inbound da IA em tempo real
     this.inboundAiQueue = new Queue('inbound-ai-queue', {
+      connection: { host, port },
+    });
+
+    // ✅ fila durável para processar payloads de webhook recebidos
+    this.whatsappInboundQueue = new Queue('whatsapp-inbound-queue', {
       connection: { host, port },
     });
   }
@@ -51,6 +57,23 @@ export class QueueService implements OnModuleDestroy {
   private getInboundFollowupReplyDelayMs() {
     const seconds = Number(process.env.AI_INBOUND_REPLY_SECONDS || 10); // 10s
     return Math.max(3, seconds) * 1000;
+  }
+
+  // =============================
+  // WHATSAPP INBOUND: enqueue webhook payload
+  // =============================
+
+  async enqueueWebhookPayload(payload: any) {
+    await this.whatsappInboundQueue.add(
+      'whatsapp-inbound',
+      { payload },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: true,
+        removeOnFail: false, // manter jobs com falha para diagnóstico
+      },
+    );
   }
 
   // =============================
@@ -315,5 +338,6 @@ export class QueueService implements OnModuleDestroy {
     await this.slaQueue.close();
     await this.whatsappMediaQueue.close();
     await this.inboundAiQueue.close();
+    await this.whatsappInboundQueue.close();
   }
 }

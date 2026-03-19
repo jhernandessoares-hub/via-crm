@@ -4,8 +4,10 @@ import { ValidationPipe } from "@nestjs/common";
 import { startSlaWorker } from "./queue/sla.worker";
 import { startWhatsappMediaWorker } from "./queue/whatsapp-media.worker";
 import { startInboundAiWorker } from "./queue/inbound-ai.worker";
+import { startWhatsappInboundWorker } from "./queue/whatsapp-inbound.worker";
 import { PrismaService } from "./prisma/prisma.service";
 import { AiService } from "./ai/ai.service";
+import { QueueService } from "./queue/queue.service";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -38,6 +40,9 @@ async function bootstrap() {
 
   // 🚀 INICIAR WORKER INBOUND AI (reutiliza instâncias do container NestJS)
   startInboundAiWorker(app.get(PrismaService), app.get(AiService));
+
+  // 🚀 INICIAR WORKER WHATSAPP INBOUND (reutiliza instâncias do container NestJS)
+  startWhatsappInboundWorker(app.get(PrismaService), app.get(QueueService));
 }
 
 bootstrap();
