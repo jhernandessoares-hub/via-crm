@@ -1480,10 +1480,10 @@ function discardAiSuggestion() {
       });
 
       localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
-      setAiTeachNotice("SugestÃ£o salva como ensinamento.");
+      setAiTeachNotice("Sugestão salva como ensinamento.");
       setTimeout(() => setAiTeachNotice(null), 2000);
     } catch {
-      setAiTeachNotice("NÃ£o consegui salvar o ensinamento.");
+      setAiTeachNotice("Não consegui salvar o ensinamento.");
       setTimeout(() => setAiTeachNotice(null), 2000);
     }
   }
@@ -1537,7 +1537,7 @@ body: JSON.stringify({
   function toggleAutopilot(nextValue: boolean) {
     if (nextValue) {
       const ok = window.confirm(
-        "Ao ativar o Autopilot, a IA poderÃ¡ responder automaticamente este lead quando as regras permitirem. Deseja continuar?",
+        "Ao ativar o Autopilot, a IA poderá responder automaticamente este lead quando as regras permitirem. Deseja continuar?",
       );
       if (!ok) return;
     }
@@ -2811,7 +2811,7 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                   <div>
                     <div className="text-sm font-semibold text-amber-900">Painel da IA</div>
                     <div className="text-[11px] text-amber-800">
-                      Copilot para este lead. Quando o Autopilot estiver ON, a IA sÃ³ deve agir no disparo configurado.
+                      Copilot para este lead. Quando o Autopilot estiver ON, a IA só deve agir no disparo configurado.
                     </div>
                   </div>
 
@@ -2837,12 +2837,12 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-                          SugestÃ£o da IA
+                          Sugestão da IA
                         </div>
                         <div className="mt-2 text-[11px] text-gray-500">
                           {formatTime(latestAiSuggestion.criadoEm)}
-                          {latestAiPayload?.agentTitle ? " â€¢ " + String(latestAiPayload.agentTitle) : ""}
-                          {latestAiPayload?.jobName ? " â€¢ " + String(latestAiPayload.jobName) : ""}
+                          {latestAiPayload?.agentTitle ? " • " + String(latestAiPayload.agentTitle) : ""}
+                          {latestAiPayload?.jobName ? " • " + String(latestAiPayload.jobName) : ""}
                         </div>
                       </div>
 
@@ -2867,25 +2867,25 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
 
                     {latestAiSuggestedAudioScript ? (
                       <div className="rounded-lg border bg-white p-3">
-                        <div className="text-[11px] font-semibold text-gray-500">Roteiro de Ã¡udio sugerido</div>
+                        <div className="text-[11px] font-semibold text-gray-500">Roteiro de áudio sugerido</div>
                         <div className="mt-2 whitespace-pre-wrap text-sm text-gray-900">
                           {latestAiSuggestedAudioScript}
                         </div>
                         <div className="mt-2 text-[11px] text-gray-500">
-                          Estrutura pronta para Ã¡udio. O envio automÃ¡tico de Ã¡udio fica para a prÃ³xima etapa.
+                          Estrutura pronta para áudio. O envio automático de áudio fica para a próxima etapa.
                         </div>
                       </div>
                     ) : null}
 
                     {latestAiSuggestedAttachments.length > 0 ? (
                       <div className="rounded-lg border bg-white p-3">
-                        <div className="text-[11px] font-semibold text-gray-500">MÃ­dias / documentos sugeridos</div>
+                        <div className="text-[11px] font-semibold text-gray-500">Mídias / documentos sugeridos</div>
 
                         <div className="mt-2 space-y-2">
                           {latestAiSuggestedAttachments.map((att, idx) => {
                             const kind = String(att?.kind || "document").toLowerCase();
                             const title =
-                              String(att?.title || att?.filename || (kind === "image" ? "Imagem" : kind === "video" ? "VÃ­deo" : kind === "audio" ? "Ãudio" : "Documento"));
+                              String(att?.title || att?.filename || (kind === "image" ? "Imagem" : kind === "video" ? "Vídeo" : kind === "audio" ? "Áudio" : "Documento"));
 
                             return (
                               <div key={idx} className="rounded-md border bg-gray-50 p-2">
@@ -2897,7 +2897,7 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                                     className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
                                     onClick={() => useSuggestedAttachment(att)}
                                   >
-                                    Usar sugestÃ£o
+                                    Usar sugestão
                                   </button>
 
                                   {att?.url ? (
@@ -3006,7 +3006,7 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-amber-300 bg-white p-3 text-xs text-gray-600">
-                    Nenhuma sugestÃ£o de IA pendente para este lead no momento.
+                    Nenhuma sugestão de IA pendente para este lead no momento.
                   </div>
                 )}
               </div>
