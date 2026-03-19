@@ -255,6 +255,10 @@ export function startInboundAiWorker(prisma: PrismaService, ai: AiService) {
     console.log(`❌ inbound-ai job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
   });
 
+  worker.on('error', (err) => {
+    console.error(`🔴 Inbound AI Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+  });
+
   console.log('🚀 Inbound AI Worker iniciado (fila: inbound-ai-queue)');
 
   return worker;

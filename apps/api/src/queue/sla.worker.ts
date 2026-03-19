@@ -553,6 +553,10 @@ export function startSlaWorker(prisma: PrismaService, ai: AiService) {
     console.log(`❌ job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
   });
 
+  worker.on('error', (err) => {
+    console.error(`🔴 SLA Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+  });
+
   console.log('🚀 SLA Worker iniciado (fila: sla-queue)');
 
   return worker;

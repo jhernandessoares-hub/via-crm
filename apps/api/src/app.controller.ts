@@ -1,13 +1,21 @@
 import { Controller, Get, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import { QueueService } from './queue/queue.service';
 
 @Controller()
 export class AppController {
+  constructor(private readonly queueService: QueueService) {}
 
   // ✅ HEALTH CHECK
   @Get('health')
-  health() {
-    return { status: 'ok' };
+  async health() {
+    const redis = await this.queueService.redisHealthCheck();
+    const status = redis.ok ? 'ok' : 'degraded';
+    return {
+      status,
+      redis,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   @Get('privacy-policy')

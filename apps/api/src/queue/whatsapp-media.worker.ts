@@ -249,6 +249,10 @@ export function startWhatsappMediaWorker(prisma: PrismaService) {
     console.log(`❌ media job failed: ${job?.id} (${job?.name}) -> ${err?.message}`);
   });
 
+  worker.on('error', (err) => {
+    console.error(`🔴 WhatsApp Media Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+  });
+
   console.log('🚀 WhatsApp Media Worker iniciado (fila: whatsapp-media-queue)');
   return worker;
 }

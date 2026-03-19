@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 
 @Injectable()
 export class QueueService implements OnModuleDestroy {
@@ -332,6 +333,22 @@ export class QueueService implements OnModuleDestroy {
         removeOnFail: false,
       },
     );
+  }
+
+  async redisHealthCheck(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
+    const host = process.env.REDIS_HOST || '127.0.0.1';
+    const port = Number(process.env.REDIS_PORT || 6379);
+    const client = new Redis({ host, port, connectTimeout: 3000, lazyConnect: true, maxRetriesPerRequest: 0 });
+    try {
+      await client.connect();
+      const start = Date.now();
+      await client.ping();
+      return { ok: true, latencyMs: Date.now() - start };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || String(err) };
+    } finally {
+      client.disconnect();
+    }
   }
 
   async onModuleDestroy() {

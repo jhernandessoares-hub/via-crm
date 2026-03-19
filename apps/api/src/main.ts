@@ -32,6 +32,17 @@ async function bootstrap() {
 
   await app.listen(3000);
 
+  // 🔍 Verificar Redis antes de iniciar os workers
+  const queueService = app.get(QueueService);
+  const redisCheck = await queueService.redisHealthCheck();
+  if (!redisCheck.ok) {
+    console.error(
+      `🔴 Redis indisponível no boot (${redisCheck.error}) — workers serão iniciados mas não processarão jobs até a conexão ser restabelecida.`,
+    );
+  } else {
+    console.log(`✅ Redis OK (latência: ${redisCheck.latencyMs}ms)`);
+  }
+
   // 🚀 INICIAR WORKER SLA (reutiliza instâncias do container NestJS)
   startSlaWorker(app.get(PrismaService), app.get(AiService));
 
@@ -42,7 +53,7 @@ async function bootstrap() {
   startInboundAiWorker(app.get(PrismaService), app.get(AiService));
 
   // 🚀 INICIAR WORKER WHATSAPP INBOUND (reutiliza instâncias do container NestJS)
-  startWhatsappInboundWorker(app.get(PrismaService), app.get(QueueService));
+  startWhatsappInboundWorker(app.get(PrismaService), queueService);
 }
 
 bootstrap();

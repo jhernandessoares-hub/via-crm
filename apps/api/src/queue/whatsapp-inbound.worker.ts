@@ -327,6 +327,10 @@ export function startWhatsappInboundWorker(
     );
   });
 
+  worker.on('error', (err) => {
+    console.error(`🔴 WhatsApp Inbound Worker erro de conexão (Redis indisponível?): ${err?.message}`);
+  });
+
   console.log('🚀 WhatsApp Inbound Worker iniciado (fila: whatsapp-inbound-queue)');
 
   return worker;
