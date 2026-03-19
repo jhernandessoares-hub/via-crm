@@ -1665,6 +1665,17 @@ async getById(user: any, id: string) {
       throw new ForbiddenException('Sem permissão');
     }
 
+    const [lead, assignedUser] = await Promise.all([
+      this.prisma.lead.findUnique({ where: { id }, select: { id: true, tenantId: true } }),
+      this.prisma.user.findUnique({ where: { id: assignedUserId }, select: { id: true, tenantId: true } }),
+    ]);
+
+    if (!lead) throw new NotFoundException('Lead não encontrado');
+    if (!assignedUser) throw new NotFoundException('Usuário não encontrado');
+    if (lead.tenantId !== assignedUser.tenantId) {
+      throw new ForbiddenException('Usuário pertence a outro tenant');
+    }
+
     return this.prisma.lead.update({
       where: { id },
       data: { assignedUserId },
