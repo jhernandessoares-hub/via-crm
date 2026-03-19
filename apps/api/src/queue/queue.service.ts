@@ -87,7 +87,7 @@ export class QueueService implements OnModuleDestroy {
       {
         jobId: `wa-media-${eventId}`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -126,7 +126,7 @@ export class QueueService implements OnModuleDestroy {
         delay,
         jobId: `inbound-ai-${leadId}`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -166,7 +166,7 @@ export class QueueService implements OnModuleDestroy {
         delay,
         jobId: `inbound-ai-${leadId}-test`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -204,7 +204,7 @@ export class QueueService implements OnModuleDestroy {
         delay,
         jobId: `sla-${leadId}-test`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -225,7 +225,7 @@ export class QueueService implements OnModuleDestroy {
         delay,
         jobId: `sla-${leadId}-test-template`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -296,7 +296,7 @@ export class QueueService implements OnModuleDestroy {
         delay: this.SLA_2H,
         jobId: `sla-${leadId}-2h`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -307,7 +307,7 @@ export class QueueService implements OnModuleDestroy {
         delay: this.SLA_10H,
         jobId: `sla-${leadId}-10h`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -318,7 +318,7 @@ export class QueueService implements OnModuleDestroy {
         delay: this.SLA_22H45,
         jobId: `sla-${leadId}-22h45`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
@@ -329,7 +329,7 @@ export class QueueService implements OnModuleDestroy {
         delay: this.SLA_23H_TEMPLATE,
         jobId: `sla-${leadId}-23h-template`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
   }

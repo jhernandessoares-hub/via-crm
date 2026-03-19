@@ -95,7 +95,7 @@ export class QueueController {
         delay: Math.max(1, s) * 1000,
         jobId: `sla-${lead.id}-test-template`,
         removeOnComplete: true,
-        removeOnFail: true,
+        removeOnFail: false,
       },
     );
 
