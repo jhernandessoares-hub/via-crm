@@ -4,16 +4,23 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AiService {
-  private openai: OpenAI;
+  private openai: OpenAI | null = null;
 
   constructor(private readonly prisma: PrismaService) {
     if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY não definida no .env');
+      console.warn('⚠️ AiService: OPENAI_API_KEY não definida — chamadas à IA vão falhar.');
     }
+  }
 
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+  private getOpenAI(): OpenAI {
+    if (!this.openai) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error('OPENAI_API_KEY não definida no .env');
+      }
+      this.openai = new OpenAI({ apiKey });
+    }
+    return this.openai;
   }
 
   async findDefaultAgentForTenant(tenantId: string) {
@@ -291,7 +298,7 @@ Nunca usar essas frases.
 ${modeInstruction ? `Ajuste solicitado:\n${modeInstruction}\n` : ''}
 `;
 
-    const completion = await this.openai.chat.completions.create({
+    const completion = await this.getOpenAI().chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         {
