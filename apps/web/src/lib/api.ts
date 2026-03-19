@@ -53,12 +53,14 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   const text = await res.text();
   const data = text ? safeJsonParse(text) : null;
 
-  // Auto logout no 401
+  // Auto logout no 401 (guard contra múltiplos redirects simultâneos)
   if (res.status === 401 && typeof window !== "undefined") {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("user");
-    window.location.href = "/login";
-    // Lança para interromper o fluxo, mas o redirect já foi disparado
+    if (!window.__loggingOut) {
+      window.__loggingOut = true;
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user");
+      window.location.href = "/login";
+    }
     throw new Error("Sessão expirada. Faça login novamente.");
   }
 
