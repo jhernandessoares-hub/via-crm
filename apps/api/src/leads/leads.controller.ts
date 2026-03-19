@@ -100,8 +100,16 @@ export class LeadsController {
    * ✅ PADRÃO OFICIAL: SEMPRE retorna { value: [...], count: N }
    */
   @Get(':id/events')
-  async listEvents(@Req() req: any, @Param('id') id: string) {
-    const result: any = await this.leadsService.listEvents(req.user, id);
+  async listEvents(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('skip') skip?: string,
+  ) {
+    const result: any = await this.leadsService.listEvents(req.user, id, {
+      limit: limit !== undefined ? Number(limit) : undefined,
+      skip: skip !== undefined ? Number(skip) : undefined,
+    });
 
     if (Array.isArray(result)) {
       return { value: result, count: result.length };

@@ -1514,14 +1514,18 @@ async getById(user: any, id: string) {
   };
 }
 
-  async listEvents(user: any, id: string) {
+  async listEvents(user: any, id: string, opts?: { limit?: number; skip?: number }) {
+    const take = Math.min(Math.max(1, opts?.limit ?? 200), 400);
+    const skip = Math.max(0, opts?.skip ?? 0);
+
     const events = await this.prisma.leadEvent.findMany({
       where: {
         leadId: id,
         tenantId: user.tenantId,
       },
       orderBy: { criadoEm: 'desc' },
-      take: 400,
+      take,
+      skip,
     });
 
     return events.reverse();
