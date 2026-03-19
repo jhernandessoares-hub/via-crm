@@ -15,13 +15,23 @@ const logger = new Logger('Bootstrap');
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: new NestLogger() });
 
+  const allowedOrigins: (string | RegExp)[] = [
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:3010',
+    'http://127.0.0.1:3010',
+  ];
+
+  const extraOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  if (extraOrigins) {
+    for (const o of extraOrigins.split(',')) {
+      const s = o.trim();
+      if (s) allowedOrigins.push(s);
+    }
+  }
+
   app.enableCors({
-    origin: [
-      "http://localhost:3001",
-      "http://127.0.0.1:3001",
-      "http://localhost:3010",
-      "http://127.0.0.1:3010",
-    ],
+    origin: allowedOrigins,
     credentials: true,
   });
 
