@@ -8,26 +8,7 @@ import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
 export class KnowledgeBaseService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async resolveTenantId() {
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        slug: 'via-crm-dev',
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!tenant) {
-      throw new NotFoundException('Tenant via-crm-dev não encontrado.');
-    }
-
-    return tenant.id;
-  }
-
-  async create(body: CreateKnowledgeBaseDto) {
-    const tenantId = await this.resolveTenantId();
-
+  async create(tenantId: string, body: CreateKnowledgeBaseDto) {
     return this.prisma.knowledgeBase.create({
       data: {
         tenantId,
@@ -46,44 +27,18 @@ export class KnowledgeBaseService {
     });
   }
 
-  async findAll(search?: string) {
-    const tenantId = await this.resolveTenantId();
-
+  async findAll(tenantId: string, search?: string) {
     return this.prisma.knowledgeBase.findMany({
       where: {
         tenantId,
         ...(search && search.trim()
           ? {
               OR: [
-                {
-                  title: {
-                    contains: search.trim(),
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  prompt: {
-                    contains: search.trim(),
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  whatAiUnderstood: {
-                    contains: search.trim(),
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  exampleOutput: {
-                    contains: search.trim(),
-                    mode: 'insensitive',
-                  },
-                },
-                {
-                  tags: {
-                    has: search.trim(),
-                  },
-                },
+                { title: { contains: search.trim(), mode: 'insensitive' } },
+                { prompt: { contains: search.trim(), mode: 'insensitive' } },
+                { whatAiUnderstood: { contains: search.trim(), mode: 'insensitive' } },
+                { exampleOutput: { contains: search.trim(), mode: 'insensitive' } },
+                { tags: { has: search.trim() } },
               ],
             }
           : {}),
@@ -92,14 +47,9 @@ export class KnowledgeBaseService {
     });
   }
 
-  async findOne(id: string) {
-    const tenantId = await this.resolveTenantId();
-
+  async findOne(tenantId: string, id: string) {
     const item = await this.prisma.knowledgeBase.findFirst({
-      where: {
-        id,
-        tenantId,
-      },
+      where: { id, tenantId },
     });
 
     if (!item) {
@@ -109,17 +59,10 @@ export class KnowledgeBaseService {
     return item;
   }
 
-  async update(id: string, body: UpdateKnowledgeBaseDto) {
-    const tenantId = await this.resolveTenantId();
-
+  async update(tenantId: string, id: string, body: UpdateKnowledgeBaseDto) {
     const existing = await this.prisma.knowledgeBase.findFirst({
-      where: {
-        id,
-        tenantId,
-      },
-      select: {
-        id: true,
-      },
+      where: { id, tenantId },
+      select: { id: true },
     });
 
     if (!existing) {
@@ -141,53 +84,30 @@ export class KnowledgeBaseService {
     if (body.version !== undefined) data.version = body.version;
 
     return this.prisma.knowledgeBase.update({
-      where: {
-        id: existing.id,
-      },
+      where: { id: existing.id },
       data,
     });
   }
 
-  async remove(id: string) {
-    const tenantId = await this.resolveTenantId();
-
+  async remove(tenantId: string, id: string) {
     const existing = await this.prisma.knowledgeBase.findFirst({
-      where: {
-        id,
-        tenantId,
-      },
-      select: {
-        id: true,
-      },
+      where: { id, tenantId },
+      select: { id: true },
     });
 
     if (!existing) {
       throw new NotFoundException('Knowledge base não encontrada.');
     }
 
-    await this.prisma.knowledgeBase.delete({
-      where: {
-        id: existing.id,
-      },
-    });
+    await this.prisma.knowledgeBase.delete({ where: { id: existing.id } });
 
-    return {
-      success: true,
-      id: existing.id,
-    };
+    return { success: true, id: existing.id };
   }
 
-  async attachToAgent(agentId: string, knowledgeBaseId: string) {
-    const tenantId = await this.resolveTenantId();
-
+  async attachToAgent(tenantId: string, agentId: string, knowledgeBaseId: string) {
     const agent = await this.prisma.aiAgent.findFirst({
-      where: {
-        id: agentId,
-        tenantId,
-      },
-      select: {
-        id: true,
-      },
+      where: { id: agentId, tenantId },
+      select: { id: true },
     });
 
     if (!agent) {
@@ -195,13 +115,8 @@ export class KnowledgeBaseService {
     }
 
     const knowledgeBase = await this.prisma.knowledgeBase.findFirst({
-      where: {
-        id: knowledgeBaseId,
-        tenantId,
-      },
-      select: {
-        id: true,
-      },
+      where: { id: knowledgeBaseId, tenantId },
+      select: { id: true },
     });
 
     if (!knowledgeBase) {
@@ -209,50 +124,24 @@ export class KnowledgeBaseService {
     }
 
     return this.prisma.agentKnowledgeBase.upsert({
-      where: {
-        agentId_knowledgeBaseId: {
-          agentId,
-          knowledgeBaseId,
-        },
-      },
+      where: { agentId_knowledgeBaseId: { agentId, knowledgeBaseId } },
       update: {},
-      create: {
-        tenantId,
-        agentId,
-        knowledgeBaseId,
-      },
+      create: { tenantId, agentId, knowledgeBaseId },
     });
   }
 
-  async detachFromAgent(agentId: string, knowledgeBaseId: string) {
-    const tenantId = await this.resolveTenantId();
-
+  async detachFromAgent(tenantId: string, agentId: string, knowledgeBaseId: string) {
     const link = await this.prisma.agentKnowledgeBase.findFirst({
-      where: {
-        tenantId,
-        agentId,
-        knowledgeBaseId,
-      },
-      select: {
-        id: true,
-      },
+      where: { tenantId, agentId, knowledgeBaseId },
+      select: { id: true },
     });
 
     if (!link) {
       throw new NotFoundException('Vínculo entre agent e knowledge base não encontrado.');
     }
 
-    await this.prisma.agentKnowledgeBase.delete({
-      where: {
-        id: link.id,
-      },
-    });
+    await this.prisma.agentKnowledgeBase.delete({ where: { id: link.id } });
 
-    return {
-      success: true,
-      id: link.id,
-      agentId,
-      knowledgeBaseId,
-    };
+    return { success: true, id: link.id, agentId, knowledgeBaseId };
   }
 }
