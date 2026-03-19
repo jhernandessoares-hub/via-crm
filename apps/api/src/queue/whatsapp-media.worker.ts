@@ -33,15 +33,24 @@ function getCloudinaryConfig() {
   cloudinary.config({ cloud_name, api_key, api_secret, secure: true });
 }
 
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timer),
+  );
+}
+
 async function metaGetDownloadUrl(mediaId: string) {
   const { version, token } = getMetaConfig();
 
   const url = `https://graph.facebook.com/${version}/${encodeURIComponent(mediaId)}`;
 
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetchWithTimeout(
+    url,
+    { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+    15_000,
+  );
 
   const data: any = await res.json().catch(() => null);
 
@@ -64,10 +73,11 @@ async function metaGetDownloadUrl(mediaId: string) {
 async function metaDownloadBuffer(downloadUrl: string) {
   const { token } = getMetaConfig();
 
-  const res = await fetch(downloadUrl, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetchWithTimeout(
+    downloadUrl,
+    { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+    30_000,
+  );
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
