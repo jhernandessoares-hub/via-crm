@@ -1450,9 +1450,6 @@ function useAiSuggestionInField() {
   });
 }
 
-  function editAiSuggestion() {
-    useAiSuggestionInField();
-  }
 
 async function sendAiSuggestionNow() {
   if (!activeAiSuggestionText) return;
@@ -1469,7 +1466,7 @@ function discardAiSuggestion() {
 }
 
   function saveAiSuggestionAsTeaching() {
-    if (!latestAiSuggestion?.id) return;
+    if (!activeAiSuggestionText) return;
 
     try {
       const key = "lead.ai.teach.v1";
@@ -1480,8 +1477,8 @@ function discardAiSuggestion() {
       next.unshift({
         savedAt: new Date().toISOString(),
         leadId: id,
-        suggestionId: latestAiSuggestion.id,
-        text: latestAiSuggestionText,
+        suggestionId: latestAiSuggestion?.id || "manual-" + Date.now(),
+        text: activeAiSuggestionText,
         payloadRaw: latestAiPayload,
       });
 
@@ -1505,18 +1502,36 @@ async function requestAiPanelSuggestion(
   setAiActionLoading(mode);
   setErr(null);
 
+  // Monta contexto da conversa com as últimas 8 mensagens (whatsapp.in / whatsapp.out)
+  const conversationContext = orderedEvents
+    .filter((e) => {
+      const ch = String(e.channel || "").toLowerCase();
+      return ch === "whatsapp.in" || ch === "whatsapp.out";
+    })
+    .slice(-8)
+    .map((ev) => {
+      const ch = String(ev.channel || "").toLowerCase();
+      const txt = pickText(ev);
+      if (!txt) return null;
+      return ch === "whatsapp.in" ? `Lead: ${txt}` : `Corretor: ${txt}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
   try {
     const generated = await apiFetch("/ai/generate-follow-up", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-body: JSON.stringify({
-  nome: lead.nome,
-  status: lead.status,
-  tenantId: user.tenantId,
-  leadId: id,
-  lastLeadMessage: activeAiSuggestionText,
-  mode,
-}),
+      body: JSON.stringify({
+        nome: lead.nome,
+        status: lead.status,
+        tenantId: user.tenantId,
+        leadId: id,
+        agentId: (latestAiPayload as any)?.agentId ?? undefined,
+        lastLeadMessage: activeAiSuggestionText,
+        conversationContext: conversationContext || undefined,
+        mode,
+      }),
     });
 
     const nextText =
@@ -2967,15 +2982,6 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                         disabled={!activeAiSuggestionText}
                       >
                         Usar no campo
-                      </button>
-
-                      <button
-                        type="button"
-                        className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
-                        onClick={editAiSuggestion}
-                        disabled={!activeAiSuggestionText}
-                      >
-                        Editar
                       </button>
 
                       <button
