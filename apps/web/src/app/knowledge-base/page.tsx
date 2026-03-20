@@ -43,6 +43,19 @@ type KbLink = {
   createdAt: string;
 };
 
+type AiAgent = {
+  id: string;
+  title: string;
+  slug: string;
+  active: boolean;
+  mode: string;
+};
+
+type KbAgentLink = {
+  id: string;
+  agentId: string;
+};
+
 type KnowledgeBaseItem = {
   id: string;
   tenantId: string;
@@ -62,6 +75,7 @@ type KnowledgeBaseItem = {
   documents: KbDocument[];
   videos: KbVideo[];
   kbLinks: KbLink[];
+  agents: KbAgentLink[];
 };
 
 type MainForm = {
@@ -207,6 +221,11 @@ export default function KnowledgeBaseSalesPage() {
   const [linkError, setLinkError] = useState("");
   const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
 
+  // Agent linking
+  const [availableAgents, setAvailableAgents] = useState<AiAgent[]>([]);
+  const [agentLinkLoading, setAgentLinkLoading] = useState<string | null>(null);
+  const [agentLinkError, setAgentLinkError] = useState("");
+
   // ──────────────────────────────────────────────
   // Data loading
   // ──────────────────────────────────────────────
@@ -252,7 +271,18 @@ export default function KnowledgeBaseSalesPage() {
 
   useEffect(() => {
     loadItems();
+    loadAgents();
   }, []);
+
+  async function loadAgents() {
+    try {
+      const raw = localStorage.getItem("user");
+      const tenantId: string = raw ? (JSON.parse(raw).tenantId ?? "") : "";
+      if (!tenantId) return;
+      const data = await apiFetch(`/ai-agents/${tenantId}`);
+      setAvailableAgents(Array.isArray(data) ? data : []);
+    } catch (_) {}
+  }
 
   // ──────────────────────────────────────────────
   // Grouping
@@ -327,6 +357,7 @@ export default function KnowledgeBaseSalesPage() {
     setLinkForm({ url: "", title: "", description: "" });
     setLinkError("");
     setEditingLinkId(null);
+    setAgentLinkError("");
   }
 
   async function handleSave() {
@@ -551,6 +582,29 @@ export default function KnowledgeBaseSalesPage() {
       setLinkError(err?.message || "Erro ao salvar link.");
     } finally {
       setLinkSaving(false);
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // Agent linking
+  // ──────────────────────────────────────────────
+
+  async function toggleAgentLink(agentId: string) {
+    if (!editingItem) return;
+    setAgentLinkError("");
+    const isLinked = editingItem.agents.some((a) => a.agentId === agentId);
+    setAgentLinkLoading(agentId);
+    try {
+      if (isLinked) {
+        await apiFetch(`/knowledge-base/${editingItem.id}/agents/${agentId}`, { method: "DELETE" });
+      } else {
+        await apiFetch(`/knowledge-base/${editingItem.id}/agents/${agentId}`, { method: "POST" });
+      }
+      await reloadEditingItem(editingItem.id);
+    } catch (err: any) {
+      setAgentLinkError(err?.message || "Erro ao atualizar vínculo.");
+    } finally {
+      setAgentLinkLoading(null);
     }
   }
 
@@ -1043,6 +1097,74 @@ export default function KnowledgeBaseSalesPage() {
                       </button>
                     )}
                   </div>
+                </div>
+
+                <hr />
+
+                {/* ── Vincular ao Agente ── */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                    Vincular ao Agente
+                  </h3>
+                  <p className="mb-3 text-xs text-gray-500">
+                    Marque os agentes que devem usar este item da base de conhecimento.
+                  </p>
+
+                  {availableAgents.length === 0 ? (
+                    <p className="text-xs text-gray-500">Nenhum agente cadastrado.</p>
+                  ) : (
+                    <div className="divide-y rounded-lg border">
+                      {availableAgents.map((agent) => {
+                        const isLinked = editingItem.agents.some((a) => a.agentId === agent.id);
+                        const isLoading = agentLinkLoading === agent.id;
+                        return (
+                          <label
+                            key={agent.id}
+                            className="flex cursor-pointer items-center justify-between px-3 py-2.5 hover:bg-gray-50"
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 accent-slate-900"
+                                checked={isLinked}
+                                disabled={isLoading}
+                                onChange={() => toggleAgentLink(agent.id)}
+                              />
+                              <div>
+                                <span className="text-sm font-medium text-gray-900">
+                                  {agent.title}
+                                </span>
+                                <span className="ml-2 text-xs text-gray-400">/{agent.slug}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isLoading && (
+                                <span className="text-xs text-gray-400">Salvando...</span>
+                              )}
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs ${
+                                  agent.active
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-gray-100 text-gray-500"
+                                }`}
+                              >
+                                {agent.active ? "Ativo" : "Inativo"}
+                              </span>
+                              {isLinked && (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                                  vinculado
+                                </span>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {agentLinkError && (
+                    <p className="mt-2 text-xs text-red-600">{agentLinkError}</p>
+                  )}
                 </div>
               </>
             )}

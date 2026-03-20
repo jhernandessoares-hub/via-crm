@@ -10,6 +10,10 @@ const KB_INCLUDE = {
   documents: { orderBy: { createdAt: 'desc' as const } },
   videos: { orderBy: { createdAt: 'desc' as const } },
   kbLinks: { orderBy: { createdAt: 'desc' as const } },
+  agents: {
+    select: { id: true, agentId: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
 };
 
 @Injectable()
