@@ -16,6 +16,7 @@ import { PipelineModule } from './pipeline/pipeline.module';
 import { AiModule } from './ai/ai.module';
 import { AiAgentsModule } from './ai-agents/ai-agents.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { DevModule } from './dev/dev.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
     AiModule,
     AiAgentsModule,
     KnowledgeBaseModule,
+    DevModule,
   ],
   controllers: [AppController],
   providers: [AppService],
