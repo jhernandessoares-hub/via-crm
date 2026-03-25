@@ -1890,7 +1890,7 @@ export default function ProductEditPage() {
                         <div key={img.id ?? url} className="relative overflow-hidden rounded-lg border bg-gray-50">
                           <a href={url ?? undefined} target="_blank" rel="noreferrer">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={url} alt="" className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
+                            <img src={url ?? undefined} alt="" className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
                           </a>
                           <button
                             type="button"
