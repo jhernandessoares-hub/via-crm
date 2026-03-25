@@ -59,6 +59,7 @@ model Tenant {
   knowledgeBaseDocuments KnowledgeBaseDocument[]
   knowledgeBaseVideos    KnowledgeBaseVideo[]
   knowledgeBaseLinks     KnowledgeBaseLink[]
+  kbTeachings            KbTeaching[]
   events                 LeadEvent[]
   leadSlas               LeadSla[]
   leadTransitionLogs     LeadTransitionLog[]
@@ -136,6 +137,7 @@ model Lead {
   aiExecutionLogs     AiExecutionLog[]
   baseFria            BaseFria?
   events              LeadEvent[]
+  kbTeachings         KbTeaching[]
   leadSla             LeadSla?
   leadTransitionLogs  LeadTransitionLog[]
   branch              Branch?              @relation(fields: [branchId], references: [id])
@@ -224,9 +226,58 @@ model Product {
   origin             ProductOrigin             @default(OWN)
   capturedByUserId   String?
   publicationStatus  ProductPublicationStatus  @default(DRAFT)
+
+  // ── Identificação ──────────────────────────
+  referenceCode      String?
+  registrationNumber String?
+
+  // ── Endereço ───────────────────────────────
+  state              String?
+  zipCode            String?
+  street             String?
+  streetNumber       String?
+  complement         String?
+  condominiumName    String?
+  latitude           Float?
+  longitude          Float?
+  hideAddress        Boolean                   @default(false)
+
+  // ── Preços e taxas ─────────────────────────
+  rentPrice          Decimal?                  @db.Decimal(18, 2)
+  iptu               Decimal?                  @db.Decimal(18, 2)
+  condominiumFee     Decimal?                  @db.Decimal(18, 2)
+  acceptsFinancing   Boolean                   @default(false)
+  acceptsExchange    Boolean                   @default(false)
+
+  // ── Características físicas ────────────────
+  suites             Int?
+  parkingSpaces      Int?
+  builtAreaM2        Int?
+  privateAreaM2      Int?
+  landAreaM2         Int?
+  floor              Int?
+  totalFloors        Int?
+  yearBuilt          Int?
+  sunPosition        String?
+
+  // ── Comercialização ────────────────────────
+  propertySituation  String?
+  hasExclusivity     Boolean                   @default(false)
+  exclusivityUntil   DateTime?
+  virtualTourUrl     String?
+
+  // ── Diferenciais ───────────────────────────
+  internalFeatures   String[]                  @default([])
+  condoFeatures      String[]                  @default([])
+  standard           ProductStandard?
+  furnished          ProductFurnished?
+  condition          ProductCondition?
+
   documents          ProductDocument[]
   images             ProductImage[]
   videos             ProductVideo[]
+  rooms              ProductRoom[]
+  owners             ProductOwner[]
   branch             Branch?                   @relation(fields: [branchId], references: [id])
   capturedBy         User?                     @relation("ProductCapturedBy", fields: [capturedByUserId], references: [id])
   tenant             Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -385,6 +436,7 @@ model AiAgent {
   exampleOutput  String?
   mode           AiAgentMode          @default(COPILOT)
   audience       String?
+  permissions    String[]             @default([])
   active         Boolean              @default(true)
   priority       Int                  @default(0)
   version        Int                  @default(1)
@@ -421,11 +473,33 @@ model KnowledgeBase {
   documents        KnowledgeBaseDocument[]
   videos           KnowledgeBaseVideo[]
   kbLinks          KnowledgeBaseLink[]
+  teachings        KbTeaching[]
   tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, type])
   @@index([tenantId, active, priority])
   @@map("knowledge_bases")
+}
+
+model KbTeaching {
+  id               String        @id @default(uuid())
+  tenantId         String
+  knowledgeBaseId  String
+  leadId           String?
+  leadMessage      String?
+  approvedResponse String
+  title            String
+  createdBy        String
+  replacedBy       String?
+  replacedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  knowledgeBase    KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  lead             Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, knowledgeBaseId])
+  @@map("kb_teachings")
 }
 
 model KnowledgeBaseDocument {
@@ -685,9 +759,167 @@ enum ProductDocVisibility {
   SHAREABLE
 }
 
+enum ProductStandard {
+  ECONOMICO
+  MEDIO
+  ALTO
+  LUXO
+}
+
+enum ProductFurnished {
+  YES
+  SEMI
+  NO
+}
+
+enum ProductCondition {
+  NOVO
+  USADO
+  EM_CONSTRUCAO
+  NA_PLANTA
+}
+
+enum MaritalStatus {
+  SOLTEIRO
+  CASADO
+  DIVORCIADO
+  VIUVO
+  UNIAO_ESTAVEL
+}
+
+enum OwnerDocumentType {
+  RG_CPF
+  COMPROVANTE_ENDERECO
+  COMPROVANTE_ESTADO_CIVIL
+  OUTRO
+}
+
+model Owner {
+  id            String         @id @default(uuid())
+  tenantId      String
+  name          String
+  cpf           String?
+  rg            String?
+  email         String?
+  phone         String?
+  maritalStatus MaritalStatus?
+
+  spouseName    String?
+  spouseCpf     String?
+  spouseEmail   String?
+
+  zipCode       String?
+  street        String?
+  streetNumber  String?
+  complement    String?
+  neighborhood  String?
+  city          String?
+  state         String?
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  documents     OwnerDocument[]
+  products      ProductOwner[]
+
+  @@index([tenantId])
+  @@map("owners")
+}
+
+model OwnerDocument {
+  id        String            @id @default(uuid())
+  ownerId   String
+  type      OwnerDocumentType
+  label     String?
+  url       String
+  publicId  String?
+  createdAt DateTime          @default(now())
+
+  owner     Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@map("owner_documents")
+}
+
+model ProductOwner {
+  id        String  @id @default(uuid())
+  productId String
+  ownerId   String
+  order     Int     @default(0)
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  owner     Owner   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, ownerId])
+  @@index([productId])
+  @@index([ownerId])
+  @@map("product_owners")
+}
+
+model ProductRoom {
+  id        String             @id @default(uuid())
+  productId String
+  tenantId  String
+  type      String
+  label     String
+  sizeM2    String?
+  notes     String?
+  order     Int                @default(0)
+  createdAt DateTime           @default(now())
+
+  product   Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  images    ProductRoomImage[]
+
+  @@index([productId])
+  @@index([tenantId, productId])
+  @@map("product_rooms")
+}
+
+model ProductRoomImage {
+  id        String      @id @default(uuid())
+  roomId    String
+  url       String
+  publicId  String?
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+
+  room      ProductRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@map("product_room_images")
+}
+
 enum AiAgentMode {
   COPILOT
   AUTOPILOT
+}
+
+model SecretaryConversation {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  sessionId String
+  role      String
+  content   String
+  audioUrl  String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId, sessionId])
+}
+
+model CalendarEvent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  userId      String
+  title       String
+  description String?
+  startAt     DateTime
+  endAt       DateTime
+  allDay      Boolean  @default(false)
+  color       String   @default("blue")
+  leadId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 enum LearningSourceType {

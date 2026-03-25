@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git -C /c/Users/User/Documents/via-crm status --short)",
+      "Bash(grep -r \"meta.*charset\\\\|meta.*content.*utf\" /c/Users/User/Documents/via-crm/apps/web/src --include=*.tsx --include=*.ts --include=*.html)",
+      "Bash(grep -r \"@Controller\\\\|@Post\\\\|@Get\\\\|@UseInterceptors\" /c/Users/User/Documents/via-crm/apps/api/src --include=*.ts -l)",
+      "Bash(xargs grep:*)",
+      "Bash(find /c/Users/User/Documents/via-crm -name *.html -type f)",
+      "Bash(grep -n \"Ã\\\\|Â\\\\|â€\\\\|Ã©\\\\|Ã£\\\\|Ã§\\\\|Ã¢\\\\|Ã´\\\\|Ã³\\\\|Ã­\\\\|Ã\\\\xba\\\\|Ã\\\\xaa\" /c/Users/User/Documents/via-crm/apps/web/src/app/leads/[id]/page.tsx)",
+      "Bash(node:*)",
+      "Bash(git diff:*)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(find /c/Users/User/Documents/via-crm/apps/web/src -type d -iname *knowledge*)",
+      "Bash(grep -l knowledge /c/Users/User/Documents/via-crm/apps/api/prisma/migrations/*/*.sql)",
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(Get-Process node:*)",
+      "Bash(Stop-Process -Force)",
+      "Bash(Start-Sleep 2)",
+      "Bash(find /c/Users/User/Documents/via-crm -type f -name *copilot* -o -name *ai* -o -name *suggestion*)"
+    ]
+  }
+}

@@ -1,4 +1,6 @@
 import {
+  IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNumber,
@@ -7,7 +9,18 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ProductOrigin, ProductStatus, ProductType } from '@prisma/client';
+import {
+  DealType,
+  ProductCondition,
+  ProductFurnished,
+  ProductKind,
+  ProductOrigin,
+  ProductPublicationStatus,
+  ProductRegistrationStatus,
+  ProductStandard,
+  ProductStatus,
+  ProductType,
+} from '@prisma/client';
 
 export class UpdateProductDto {
   @IsOptional()
@@ -27,45 +40,224 @@ export class UpdateProductDto {
   origin?: ProductOrigin;
 
   @IsOptional()
+  @IsEnum(DealType)
+  dealType?: DealType;
+
+  @IsOptional()
+  @IsEnum(ProductKind)
+  kind?: ProductKind;
+
+  @IsOptional()
+  @IsEnum(ProductPublicationStatus)
+  publicationStatus?: ProductPublicationStatus;
+
+  @IsOptional()
+  @IsEnum(ProductRegistrationStatus)
+  registrationStatus?: ProductRegistrationStatus;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  price?: number;
+  price?: number | null;
 
   @IsOptional()
   @IsString()
-  city?: string;
+  city?: string | null;
 
   @IsOptional()
   @IsString()
-  neighborhood?: string;
+  neighborhood?: string | null;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  bedrooms?: number;
+  bedrooms?: number | null;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  bathrooms?: number;
+  bathrooms?: number | null;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  areaM2?: number;
+  areaM2?: number | null;
 
   @IsOptional()
   @IsString()
-  description?: string;
+  description?: string | null;
 
   @IsOptional()
   @IsString()
-  tags?: string;
+  tags?: string | null;
 
   @IsOptional()
   @IsString()
-  branchId?: string;
+  branchId?: string | null;
+
+  // ── Identificação ──────────────────────────
+  @IsOptional()
+  @IsString()
+  referenceCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  registrationNumber?: string | null;
+
+  // ── Endereço ───────────────────────────────
+  @IsOptional()
+  @IsString()
+  state?: string | null;
+
+  @IsOptional()
+  @IsString()
+  zipCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  street?: string | null;
+
+  @IsOptional()
+  @IsString()
+  streetNumber?: string | null;
+
+  @IsOptional()
+  @IsString()
+  complement?: string | null;
+
+  @IsOptional()
+  @IsString()
+  condominiumName?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  hideAddress?: boolean;
+
+  // ── Preços e taxas ─────────────────────────
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  rentPrice?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  iptu?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  condominiumFee?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  acceptsFinancing?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  acceptsExchange?: boolean;
+
+  // ── Características físicas ────────────────
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  suites?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  parkingSpaces?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  builtAreaM2?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  privateAreaM2?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  landAreaM2?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  floor?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  totalFloors?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  yearBuilt?: number | null;
+
+  @IsOptional()
+  @IsString()
+  sunPosition?: string | null;
+
+  // ── Comercialização ────────────────────────
+  @IsOptional()
+  @IsString()
+  propertySituation?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  hasExclusivity?: boolean;
+
+  @IsOptional()
+  @IsString()
+  exclusivityUntil?: string | null;
+
+  @IsOptional()
+  @IsString()
+  virtualTourUrl?: string | null;
+
+  // ── Diferenciais ───────────────────────────
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  internalFeatures?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  condoFeatures?: string[];
+
+  @IsOptional()
+  @IsEnum(ProductStandard)
+  standard?: ProductStandard | null;
+
+  @IsOptional()
+  @IsEnum(ProductFurnished)
+  furnished?: ProductFurnished | null;
+
+  @IsOptional()
+  @IsEnum(ProductCondition)
+  condition?: ProductCondition | null;
 }

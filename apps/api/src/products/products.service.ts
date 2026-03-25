@@ -110,6 +110,46 @@ export class ProductsService {
         areaM2: body.areaM2 ?? null,
         description: body.description || null,
         tags: body.tags || null,
+
+        referenceCode: body.referenceCode || null,
+        registrationNumber: body.registrationNumber || null,
+
+        state: body.state || null,
+        zipCode: body.zipCode || null,
+        street: body.street || null,
+        streetNumber: body.streetNumber || null,
+        complement: body.complement || null,
+        condominiumName: body.condominiumName || null,
+        latitude: body.latitude ?? null,
+        longitude: body.longitude ?? null,
+        hideAddress: body.hideAddress ?? false,
+
+        rentPrice: body.rentPrice ?? null,
+        iptu: body.iptu ?? null,
+        condominiumFee: body.condominiumFee ?? null,
+        acceptsFinancing: body.acceptsFinancing ?? false,
+        acceptsExchange: body.acceptsExchange ?? false,
+
+        suites: body.suites ?? null,
+        parkingSpaces: body.parkingSpaces ?? null,
+        builtAreaM2: body.builtAreaM2 ?? null,
+        privateAreaM2: body.privateAreaM2 ?? null,
+        landAreaM2: body.landAreaM2 ?? null,
+        floor: body.floor ?? null,
+        totalFloors: body.totalFloors ?? null,
+        yearBuilt: body.yearBuilt ?? null,
+        sunPosition: body.sunPosition || null,
+
+        propertySituation: body.propertySituation || null,
+        hasExclusivity: body.hasExclusivity ?? false,
+        exclusivityUntil: body.exclusivityUntil ? new Date(body.exclusivityUntil) : null,
+        virtualTourUrl: body.virtualTourUrl || null,
+
+        internalFeatures: body.internalFeatures ?? [],
+        condoFeatures: body.condoFeatures ?? [],
+        standard: body.standard ?? null,
+        furnished: body.furnished ?? null,
+        condition: body.condition ?? null,
       },
       include: {
         images: { orderBy: this.imagesOrderBy() },
@@ -119,12 +159,13 @@ export class ProductsService {
     });
   }
 
-  async list(user: any, status?: ProductStatus, origin?: ProductOrigin) {
+  async list(user: any, status?: ProductStatus, origin?: ProductOrigin, type?: ProductType) {
     return this.prisma.product.findMany({
       where: {
         tenantId: user.tenantId,
         ...(status ? { status } : {}),
         ...(origin ? { origin } : {}),
+        ...(type ? { type } : {}),
       },
       include: {
         images: { orderBy: this.imagesOrderBy() },
@@ -176,6 +217,51 @@ export class ProductsService {
 
     if (body.description !== undefined) data.description = body.description || null;
     if (body.tags !== undefined) data.tags = body.tags || null;
+
+    if (body.referenceCode !== undefined) data.referenceCode = body.referenceCode || null;
+    if (body.registrationNumber !== undefined) data.registrationNumber = body.registrationNumber || null;
+
+    if (body.state !== undefined) data.state = body.state || null;
+    if (body.zipCode !== undefined) data.zipCode = body.zipCode || null;
+    if (body.street !== undefined) data.street = body.street || null;
+    if (body.streetNumber !== undefined) data.streetNumber = body.streetNumber || null;
+    if (body.complement !== undefined) data.complement = body.complement || null;
+    if (body.condominiumName !== undefined) data.condominiumName = body.condominiumName || null;
+    if (body.latitude !== undefined) data.latitude = body.latitude ?? null;
+    if (body.longitude !== undefined) data.longitude = body.longitude ?? null;
+    if (body.hideAddress !== undefined) data.hideAddress = body.hideAddress;
+
+    if (body.rentPrice !== undefined) data.rentPrice = body.rentPrice ?? null;
+    if (body.iptu !== undefined) data.iptu = body.iptu ?? null;
+    if (body.condominiumFee !== undefined) data.condominiumFee = body.condominiumFee ?? null;
+    if (body.acceptsFinancing !== undefined) data.acceptsFinancing = body.acceptsFinancing;
+    if (body.acceptsExchange !== undefined) data.acceptsExchange = body.acceptsExchange;
+
+    if (body.suites !== undefined) data.suites = body.suites ?? null;
+    if (body.parkingSpaces !== undefined) data.parkingSpaces = body.parkingSpaces ?? null;
+    if (body.builtAreaM2 !== undefined) data.builtAreaM2 = body.builtAreaM2 ?? null;
+    if (body.privateAreaM2 !== undefined) data.privateAreaM2 = body.privateAreaM2 ?? null;
+    if (body.landAreaM2 !== undefined) data.landAreaM2 = body.landAreaM2 ?? null;
+    if (body.floor !== undefined) data.floor = body.floor ?? null;
+    if (body.totalFloors !== undefined) data.totalFloors = body.totalFloors ?? null;
+    if (body.yearBuilt !== undefined) data.yearBuilt = body.yearBuilt ?? null;
+    if (body.sunPosition !== undefined) data.sunPosition = body.sunPosition || null;
+
+    if (body.propertySituation !== undefined) data.propertySituation = body.propertySituation || null;
+    if (body.hasExclusivity !== undefined) data.hasExclusivity = body.hasExclusivity;
+    if (body.exclusivityUntil !== undefined) data.exclusivityUntil = body.exclusivityUntil ? new Date(body.exclusivityUntil) : null;
+    if (body.virtualTourUrl !== undefined) data.virtualTourUrl = body.virtualTourUrl || null;
+
+    if (body.internalFeatures !== undefined) data.internalFeatures = body.internalFeatures;
+    if (body.condoFeatures !== undefined) data.condoFeatures = body.condoFeatures;
+    if (body.standard !== undefined) data.standard = body.standard ?? null;
+    if (body.furnished !== undefined) data.furnished = body.furnished ?? null;
+    if (body.condition !== undefined) data.condition = body.condition ?? null;
+
+    if (body.dealType !== undefined) data.dealType = body.dealType;
+    if (body.kind !== undefined) data.kind = body.kind;
+    if (body.publicationStatus !== undefined) data.publicationStatus = body.publicationStatus;
+    if (body.registrationStatus !== undefined) data.registrationStatus = body.registrationStatus;
 
     return this.prisma.product.update({
       where: { id },
@@ -625,6 +711,138 @@ export class ProductsService {
     await this.prisma.productDocument.delete({
       where: { id: documentId },
     });
+
+    return { ok: true };
+  }
+
+  // =========================
+  // ROOMS
+  // =========================
+
+  async getRooms(user: any, productId: string) {
+    await this.getById(user, productId);
+
+    return this.prisma.productRoom.findMany({
+      where: { productId, tenantId: user.tenantId },
+      include: {
+        images: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+      },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async addRoom(
+    user: any,
+    productId: string,
+    body: { type: string; label: string; sizeM2?: string; notes?: string; order?: number },
+  ) {
+    await this.getById(user, productId);
+
+    if (!body.type) throw new BadRequestException('Envie o campo "type"');
+    if (!body.label) throw new BadRequestException('Envie o campo "label"');
+
+    return this.prisma.productRoom.create({
+      data: {
+        productId,
+        tenantId: user.tenantId,
+        type: String(body.type).trim(),
+        label: String(body.label).trim(),
+        sizeM2: body.sizeM2 ? String(body.sizeM2).trim() : null,
+        notes: body.notes ? String(body.notes).trim() : null,
+        order: body.order ?? 0,
+      },
+      include: {
+        images: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+      },
+    });
+  }
+
+  async updateRoom(
+    user: any,
+    roomId: string,
+    body: { label?: string; sizeM2?: string | null; notes?: string | null; order?: number },
+  ) {
+    const room = await this.prisma.productRoom.findFirst({
+      where: { id: roomId, tenantId: user.tenantId },
+    });
+
+    if (!room) throw new NotFoundException('Cômodo não encontrado');
+
+    const data: any = {};
+    if (body.label !== undefined) data.label = String(body.label).trim();
+    if (body.sizeM2 !== undefined) data.sizeM2 = body.sizeM2 ? String(body.sizeM2).trim() : null;
+    if (body.notes !== undefined) data.notes = body.notes ? String(body.notes).trim() : null;
+    if (body.order !== undefined) data.order = body.order;
+
+    return this.prisma.productRoom.update({
+      where: { id: roomId },
+      data,
+      include: {
+        images: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+      },
+    });
+  }
+
+  async deleteRoom(user: any, roomId: string) {
+    const room = await this.prisma.productRoom.findFirst({
+      where: { id: roomId, tenantId: user.tenantId },
+      include: { images: true },
+    });
+
+    if (!room) throw new NotFoundException('Cômodo não encontrado');
+
+    // delete Cloudinary images (best-effort)
+    for (const img of room.images) {
+      if (img.publicId) {
+        await this.cloudinary.deleteByPublicId(img.publicId).catch(() => null);
+      }
+    }
+
+    // cascade deletes ProductRoomImage via DB
+    await this.prisma.productRoom.delete({ where: { id: roomId } });
+
+    return { ok: true };
+  }
+
+  async addRoomImage(user: any, roomId: string, file: any) {
+    const room = await this.prisma.productRoom.findFirst({
+      where: { id: roomId, tenantId: user.tenantId },
+      include: { images: { select: { id: true } } },
+    });
+
+    if (!room) throw new NotFoundException('Cômodo não encontrado');
+
+    const folder = `via-crm/${user.tenantId}/products/${room.productId}/rooms/${roomId}`;
+    const result: any = await this.cloudinary.uploadImage(file.buffer, folder);
+
+    const url = result?.secure_url || result?.url;
+    if (!url) throw new BadRequestException('Cloudinary não retornou URL');
+
+    const publicId = result?.public_id || result?.publicId || null;
+    const nextOrder = room.images.length;
+
+    return this.prisma.productRoomImage.create({
+      data: {
+        roomId,
+        url,
+        publicId,
+        order: nextOrder,
+      },
+    });
+  }
+
+  async deleteRoomImage(user: any, imageId: string) {
+    const image = await this.prisma.productRoomImage.findFirst({
+      where: { id: imageId, room: { tenantId: user.tenantId } },
+    });
+
+    if (!image) throw new NotFoundException('Imagem não encontrada');
+
+    if (image.publicId) {
+      await this.cloudinary.deleteByPublicId(image.publicId).catch(() => null);
+    }
+
+    await this.prisma.productRoomImage.delete({ where: { id: imageId } });
 
     return { ok: true };
   }

@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ProductOrigin, ProductStatus } from '@prisma/client';
+import { ProductOrigin, ProductStatus, ProductType } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from './cloudinary.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -46,8 +46,9 @@ export class ProductsController {
     @Req() req: any,
     @Query('status') status?: ProductStatus,
     @Query('origin') origin?: ProductOrigin,
+    @Query('type') type?: ProductType,
   ) {
-    return this.productsService.list(req.user, status, origin);
+    return this.productsService.list(req.user, status, origin, type);
   }
 
   @Get(':id')
@@ -169,6 +170,67 @@ export class ProductsController {
     @Param('videoId') videoId: string,
   ) {
     return this.productsService.deleteVideo(req.user, id, videoId);
+  }
+
+  // =========================
+  // 🛏️ CÔMODOS
+  // =========================
+
+  @Get(':id/rooms')
+  async getRooms(@Req() req: any, @Param('id') id: string) {
+    const rooms = await this.productsService.getRooms(req.user, id);
+    return { ok: true, rooms };
+  }
+
+  @Post(':id/rooms')
+  async addRoom(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    const room = await this.productsService.addRoom(req.user, id, body);
+    return { ok: true, room };
+  }
+
+  @Patch(':id/rooms/:roomId')
+  async updateRoom(
+    @Req() req: any,
+    @Param('id') _id: string,
+    @Param('roomId') roomId: string,
+    @Body() body: any,
+  ) {
+    const room = await this.productsService.updateRoom(req.user, roomId, body);
+    return { ok: true, room };
+  }
+
+  @Delete(':id/rooms/:roomId')
+  async deleteRoom(
+    @Req() req: any,
+    @Param('id') _id: string,
+    @Param('roomId') roomId: string,
+  ) {
+    return this.productsService.deleteRoom(req.user, roomId);
+  }
+
+  @Post(':id/rooms/:roomId/images')
+  @UseInterceptors(FileInterceptor('file'))
+  async addRoomImage(
+    @Req() req: any,
+    @Param('id') _id: string,
+    @Param('roomId') roomId: string,
+    @UploadedFile() file?: any,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Envie um arquivo no campo "file"');
+    }
+    const image = await this.productsService.addRoomImage(req.user, roomId, file);
+    return { ok: true, image };
+  }
+
+  @Delete(':id/rooms/:roomId/images/:imageId')
+  async deleteRoomImage(
+    @Req() req: any,
+    @Param('id') _id: string,
+    @Param('roomId') _roomId: string,
+    @Param('imageId') imageId: string,
+  ) {
+    return this.productsService.deleteRoomImage(req.user, imageId);
   }
 
   // =========================

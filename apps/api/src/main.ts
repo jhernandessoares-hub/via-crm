@@ -1,6 +1,8 @@
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { ValidationPipe } from "@nestjs/common";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import * as path from "path";
 import { startSlaWorker } from "./queue/sla.worker";
 import { startWhatsappMediaWorker } from "./queue/whatsapp-media.worker";
 import { startInboundAiWorker } from "./queue/inbound-ai.worker";
@@ -13,7 +15,10 @@ import { NestLogger, Logger } from "./logger";
 const logger = new Logger('Bootstrap');
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { logger: new NestLogger() });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: new NestLogger() });
+
+  // Serve arquivos estáticos de uploads (ex: /uploads/secretary/...)
+  app.useStaticAssets(path.join(process.cwd(), 'public'), { prefix: '/' });
 
   const allowedOrigins: (string | RegExp)[] = [
     'http://localhost:3001',

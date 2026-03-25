@@ -20,6 +20,7 @@ type CreateAiAgentBody = {
   exampleOutput?: string;
   mode?: AiAgentMode;
   audience?: string;
+  permissions?: string[];
   active?: boolean;
   priority?: number;
   version?: number;
@@ -34,6 +35,7 @@ type UpdateAiAgentBody = {
   exampleOutput?: string | null;
   mode?: AiAgentMode;
   audience?: string | null;
+  permissions?: string[];
   active?: boolean;
   priority?: number;
   version?: number;

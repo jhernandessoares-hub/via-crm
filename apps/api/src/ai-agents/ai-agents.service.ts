@@ -12,6 +12,7 @@ type CreateAiAgentInput = {
   exampleOutput?: string;
   mode?: AiAgentMode;
   audience?: string;
+  permissions?: string[];
   active?: boolean;
   priority?: number;
   version?: number;
@@ -26,6 +27,7 @@ type UpdateAiAgentInput = {
   exampleOutput?: string | null;
   mode?: AiAgentMode;
   audience?: string | null;
+  permissions?: string[];
   active?: boolean;
   priority?: number;
   version?: number;
@@ -47,6 +49,7 @@ export class AiAgentsService {
         exampleOutput: data.exampleOutput,
         mode: data.mode ?? 'COPILOT',
         audience: data.audience,
+        permissions: data.permissions ?? [],
         active: data.active ?? true,
         priority: data.priority ?? 0,
         version: data.version ?? 1,
@@ -92,6 +95,7 @@ export class AiAgentsService {
           : {}),
         ...(data.mode !== undefined ? { mode: data.mode } : {}),
         ...(data.audience !== undefined ? { audience: data.audience } : {}),
+        ...(data.permissions !== undefined ? { permissions: data.permissions } : {}),
         ...(data.active !== undefined ? { active: data.active } : {}),
         ...(data.priority !== undefined ? { priority: data.priority } : {}),
         ...(data.version !== undefined ? { version: data.version } : {}),

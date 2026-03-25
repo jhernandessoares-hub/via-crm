@@ -76,6 +76,18 @@ export default function AppShell({
             Base de Conhecimento de Vendas
           </Link>
 
+          <Link className={linkClass("/ai-agents")} href="/ai-agents">
+            AI Agents
+          </Link>
+
+          <Link className={linkClass("/secretary")} href="/secretary">
+            Secretaria
+          </Link>
+
+          <Link className={linkClass("/calendar")} href="/calendar">
+            Agenda
+          </Link>
+
           {canSeeManagerQueue ? (
             <Link className={linkClass("/manager-queue")} href="/manager-queue">
               Fila do Gerente

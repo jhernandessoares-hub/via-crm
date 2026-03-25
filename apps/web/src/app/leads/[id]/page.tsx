@@ -1161,8 +1161,28 @@ export default function LeadDetailChatPage() {
   const [aiTeachNotice, setAiTeachNotice] = useState<string | null>(null);
   const [manualAiSuggestionText, setManualAiSuggestionText] = useState("");
   const [manualAiResponseFormat, setManualAiResponseFormat] = useState<string | null>(null);
+  const [suggestionModifiedBy, setSuggestionModifiedBy] = useState<string | null>(null);
   const [aiActionLoading, setAiActionLoading] = useState<string | null>(null);
   const [aiPanelState, setAiPanelState] = useState<null | "discarded" | "sent">(null);
+
+  // Teaching modal
+  const [teachModalOpen, setTeachModalOpen] = useState(false);
+  const [teachKbs, setTeachKbs] = useState<Array<{ id: string; title: string; type: string; active: boolean; agents: Array<{ agentId: string }> }>>([]);
+  const [teachSelectedKbId, setTeachSelectedKbId] = useState("");
+  const [teachLeadMessage, setTeachLeadMessage] = useState("");
+  const teachLeadMessageRef = useRef<HTMLTextAreaElement>(null);
+  const [teachResponse, setTeachResponse] = useState("");
+  const teachResponseRef = useRef<HTMLTextAreaElement>(null);
+  const [teachReplacedName, setTeachReplacedName] = useState("");
+  const [teachTitle, setTeachTitle] = useState("");
+  const [teachGeneratingTitle, setTeachGeneratingTitle] = useState(false);
+  const [teachSaving, setTeachSaving] = useState(false);
+  const [teachError, setTeachError] = useState("");
+  const [teachReplaceMode, setTeachReplaceMode] = useState(false);
+  const [teachExistingList, setTeachExistingList] = useState<Array<{
+    id: string; title: string; createdAt: string; createdBy: string;
+    leadMessage?: string | null; lead?: { nome?: string | null; telefone?: string | null } | null;
+  }>>([]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -1464,6 +1484,7 @@ async function sendAiSuggestionNow() {
   // Limpa o painel após envio bem-sucedido
   setManualAiSuggestionText("");
   setManualAiResponseFormat(null);
+  setSuggestionModifiedBy(null);
   if (latestAiSuggestion?.id) {
     setDismissedAiSuggestionIds((prev) =>
       Array.from(new Set([...prev, latestAiSuggestion.id])),
@@ -1474,6 +1495,7 @@ async function sendAiSuggestionNow() {
 function discardAiSuggestion() {
   setManualAiSuggestionText("");
   setManualAiResponseFormat(null);
+  setSuggestionModifiedBy(null);
   if (latestAiSuggestion?.id) {
     setDismissedAiSuggestionIds((prev) =>
       Array.from(new Set([...prev, latestAiSuggestion.id])),
@@ -1482,29 +1504,162 @@ function discardAiSuggestion() {
   setAiPanelState("discarded");
 }
 
-  function saveAiSuggestionAsTeaching() {
+  async function openTeachingModal() {
     if (!activeAiSuggestionText) return;
 
+    // Captura as últimas 4 mensagens WhatsApp (in + out) formatadas como conversa
+    const whatsappEvts = orderedEvents.filter((e) => {
+      const ch = String(e.channel || "").toLowerCase();
+      return ch === "whatsapp.in" || ch === "whatsapp.out";
+    });
+    const agentLabel = (latestAiPayload as any)?.agentTitle?.trim() || "Atendente";
+    const last4 = whatsappEvts.slice(-4);
+    const conversationLines = last4.map((e) => {
+      const ch = String(e.channel || "").toLowerCase();
+      const isInbound = ch === "whatsapp.in";
+      const text = isInbound
+        ? String(e.payloadRaw?.text || e.payloadRaw?.body || e.payloadRaw?.message || "").trim()
+        : pickOutboundTextFromPayload(e.payloadRaw);
+      const speaker = isInbound ? "Lead" : agentLabel;
+      return `${speaker}: "${text}"`;
+    });
+    const lastLeadMsg = conversationLines.join("\n");
+
+    setTeachLeadMessage(lastLeadMsg);
+    setTeachResponse(activeAiSuggestionText);
+    setTeachTitle("");
+    setTeachSelectedKbId("");
+    setTeachError("");
+    setTeachReplaceMode(false);
+    setTeachExistingList([]);
+    setTeachReplacedName("");
+    setTeachModalOpen(true);
+
+    // Load KBs
     try {
-      const key = "lead.ai.teach.v1";
-      const raw = localStorage.getItem(key);
-      const parsed = raw ? JSON.parse(raw) : [];
-      const next = Array.isArray(parsed) ? parsed : [];
+      const data = await apiFetch("/knowledge-base");
+      const allKbs = Array.isArray(data) ? data : [];
+      const agentId = (latestAiPayload as any)?.agentId;
+      const byAgent = agentId
+        ? allKbs.filter((kb: any) => kb.agents?.some((a: any) => a.agentId === agentId))
+        : allKbs;
+      const active = (byAgent.length > 0 ? byAgent : allKbs).filter((kb: any) => kb.active);
+      setTeachKbs(active);
 
-      next.unshift({
-        savedAt: new Date().toISOString(),
-        leadId: id,
-        suggestionId: latestAiSuggestion?.id || "manual-" + Date.now(),
-        text: activeAiSuggestionText,
-        payloadRaw: latestAiPayload,
-      });
-
-      localStorage.setItem(key, JSON.stringify(next.slice(0, 100)));
-      setAiTeachNotice("Sugestão salva como ensinamento.");
-      setTimeout(() => setAiTeachNotice(null), 2000);
+      if (active.length > 0) {
+        setTeachSelectedKbId(active[0].id);
+        generateTeachTitle(active[0].id, lastLeadMsg, activeAiSuggestionText);
+      }
     } catch {
-      setAiTeachNotice("Não consegui salvar o ensinamento.");
-      setTimeout(() => setAiTeachNotice(null), 2000);
+      setTeachKbs([]);
+    }
+  }
+
+  async function generateTeachTitle(kbId: string, leadMessage: string, approvedResponse: string) {
+    if (!kbId) return;
+    setTeachGeneratingTitle(true);
+    try {
+      const data = await apiFetch(`/knowledge-base/${kbId}/teachings/generate-title`, {
+        method: "POST",
+        body: JSON.stringify({ leadMessage, approvedResponse }),
+      });
+      setTeachTitle(data?.title || "");
+    } catch {
+      setTeachTitle("");
+    } finally {
+      setTeachGeneratingTitle(false);
+    }
+  }
+
+  async function submitTeaching() {
+    if (!teachSelectedKbId || !teachResponse.trim()) {
+      setTeachError("Selecione uma base de conhecimento e informe a resposta aprovada.");
+      return;
+    }
+    setTeachSaving(true);
+    setTeachError("");
+
+    // Check count first
+    try {
+      const listData = await apiFetch(`/knowledge-base/${teachSelectedKbId}/teachings`);
+      if ((listData?.count ?? 0) >= 30) {
+        setTeachExistingList(listData?.teachings || []);
+        setTeachReplaceMode(true);
+        setTeachSaving(false);
+        return;
+      }
+    } catch {
+      setTeachError("Erro ao verificar ensinamentos existentes.");
+      setTeachSaving(false);
+      return;
+    }
+
+    try {
+      await apiFetch(`/knowledge-base/${teachSelectedKbId}/teachings`, {
+        method: "POST",
+        body: JSON.stringify({
+          leadId: id,
+          leadMessage: teachLeadMessage || undefined,
+          approvedResponse: teachResponse.trim(),
+          title: teachTitle.trim() || undefined,
+        }),
+      });
+      // Se a resposta foi editada, atualiza o texto sugerido no painel
+      const edited = teachResponse.trim();
+      if (edited && edited !== activeAiSuggestionText) {
+        const userName = (() => {
+          try { return JSON.parse(localStorage.getItem("user") || "{}").nome || null; } catch { return null; }
+        })();
+        // Restaura o nome real no painel (o banco guarda [nome do lead], o painel mostra o nome real)
+        const panelText = teachReplacedName
+          ? edited.split("[nome do lead]").join(teachReplacedName)
+          : edited;
+        setManualAiSuggestionText(panelText);
+        setSuggestionModifiedBy(userName);
+      }
+      setTeachModalOpen(false);
+      setAiTeachNotice("Ensinamento salvo com sucesso!");
+      setTimeout(() => setAiTeachNotice(null), 3000);
+    } catch (err: any) {
+      setTeachError(err?.message || "Erro ao salvar ensinamento.");
+    } finally {
+      setTeachSaving(false);
+    }
+  }
+
+  async function confirmReplaceTeaching(teachingId: string) {
+    setTeachSaving(true);
+    setTeachError("");
+    try {
+      await apiFetch(`/knowledge-base/${teachSelectedKbId}/teachings/${teachingId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          leadId: id,
+          leadMessage: teachLeadMessage || undefined,
+          approvedResponse: teachResponse.trim(),
+          title: teachTitle.trim() || undefined,
+        }),
+      });
+      // Se a resposta foi editada, atualiza o texto sugerido no painel
+      const edited = teachResponse.trim();
+      if (edited && edited !== activeAiSuggestionText) {
+        const userName = (() => {
+          try { return JSON.parse(localStorage.getItem("user") || "{}").nome || null; } catch { return null; }
+        })();
+        // Restaura o nome real no painel (o banco guarda [nome do lead], o painel mostra o nome real)
+        const panelText = teachReplacedName
+          ? edited.split("[nome do lead]").join(teachReplacedName)
+          : edited;
+        setManualAiSuggestionText(panelText);
+        setSuggestionModifiedBy(userName);
+      }
+      setTeachModalOpen(false);
+      setAiTeachNotice("Ensinamento substituído com sucesso!");
+      setTimeout(() => setAiTeachNotice(null), 3000);
+    } catch (err: any) {
+      setTeachError(err?.message || "Erro ao substituir ensinamento.");
+    } finally {
+      setTeachSaving(false);
     }
   }
 
@@ -1860,16 +2015,29 @@ async function requestAiPanelSuggestion(
     setSending(true);
     setErr(null);
 
+    // Quando editado via modal, compara o texto enviado com a sugestão original da IA.
+    // Quando editado direto no painel, aiUsagePercent já faz essa comparação.
+    const finalPercent = suggestionModifiedBy
+      ? calcAiUsagePercent(msg, latestAiSuggestionText)
+      : (aiUsagePercent ?? 0);
+    const finalLabel = (() => {
+      if (finalPercent >= 100) return "100% IA";
+      const percentLabel = aiParticipationLabelFromPercent(finalPercent);
+      if (!suggestionModifiedBy) return percentLabel;
+      if (finalPercent <= 0) return `Editado por ${suggestionModifiedBy}`;
+      return `${percentLabel} • Editado por ${suggestionModifiedBy}`;
+    })();
+
     try {
-await apiFetch("/leads/" + id + "/send-whatsapp", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    text: msg,
-    aiAssistancePercent: aiUsagePercent ?? 0,
-    aiAssistanceLabel: aiParticipationLabelFromPercent(aiUsagePercent ?? 0),
-  }),
-});
+      await apiFetch("/leads/" + id + "/send-whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: msg,
+          aiAssistancePercent: finalPercent,
+          aiAssistanceLabel: finalLabel,
+        }),
+      });
       setText("");
       setHasNewInbound(false);
       await loadEvents();
@@ -2904,8 +3072,16 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                     </div>
 
 {activeAiSuggestionText ? (
-  <div className="rounded-lg border bg-gray-50 p-3">
-    <div className="text-[11px] font-semibold text-gray-500">Texto sugerido</div>
+  <div className={`rounded-lg border p-3 ${suggestionModifiedBy ? "bg-amber-50 border-amber-200" : "bg-gray-50"}`}>
+    <div className="flex items-center gap-2">
+      {suggestionModifiedBy ? (
+        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+          Modificado por {suggestionModifiedBy}
+        </span>
+      ) : (
+        <span className="text-[11px] font-semibold text-gray-500">Texto sugerido</span>
+      )}
+    </div>
     <div className="mt-2 whitespace-pre-wrap text-sm text-gray-900">
       {activeAiSuggestionText}
     </div>
@@ -3030,7 +3206,8 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
                       <button
                         type="button"
                         className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
-                        onClick={saveAiSuggestionAsTeaching}
+                        onClick={openTeachingModal}
+                        disabled={!activeAiSuggestionText}
                       >
                         Salvar como ensinamento
                       </button>
@@ -3339,6 +3516,232 @@ await apiFetch("/leads/" + id + "/send-whatsapp", {
           </div>
         </div>
       </div>
+
+      {/* ── Teaching Modal ── */}
+      {teachModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl flex flex-col max-h-[90vh]">
+            {!teachReplaceMode ? (
+              <>
+                <div className="px-5 pt-5 pb-4 border-b">
+                  <h2 className="text-base font-semibold text-gray-900">Salvar como ensinamento</h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Este exemplo será injetado no prompt da IA como resposta aprovada.
+                  </p>
+                </div>
+
+                <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+                  {/* KB selector */}
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Base de Conhecimento
+                    </label>
+                    {teachKbs.length === 0 ? (
+                      <p className="text-xs text-gray-500">Carregando bases...</p>
+                    ) : (
+                      <select
+                        value={teachSelectedKbId}
+                        onChange={(e) => {
+                          setTeachSelectedKbId(e.target.value);
+                          if (e.target.value) {
+                            generateTeachTitle(e.target.value, teachLeadMessage, teachResponse);
+                          }
+                        }}
+                        className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      >
+                        <option value="">Selecione...</option>
+                        {teachKbs.map((kb) => (
+                          <option key={kb.id} value={kb.id}>
+                            {kb.title}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Title */}
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Título{" "}
+                      <span className="font-normal text-gray-400">(gerado pela IA)</span>
+                    </label>
+                    <input
+                      value={teachGeneratingTitle ? "" : teachTitle}
+                      onChange={(e) => setTeachTitle(e.target.value)}
+                      disabled={teachGeneratingTitle}
+                      placeholder={teachGeneratingTitle ? "Gerando título..." : "Ex: Resposta sobre prazo de entrega"}
+                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                  </div>
+
+                  {/* Lead message — somente leitura */}
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Mensagem do lead{" "}
+                      <span className="font-normal text-gray-400">(contexto/gatilho)</span>
+                    </label>
+                    <textarea
+                      ref={teachLeadMessageRef}
+                      value={teachLeadMessage}
+                      readOnly
+                      rows={4}
+                      placeholder="O que o lead perguntou ou disse..."
+                      className="w-full rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none"
+                    />
+                  </div>
+
+                  {/* Approved response */}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <label className="text-sm font-medium text-gray-700">
+                        Resposta aprovada{" "}
+                        <span className="font-normal text-gray-400">(editável)</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 hover:underline"
+                        onClick={() => {
+                          const ta = teachResponseRef.current;
+                          if (!ta) return;
+                          const { selectionStart, selectionEnd, value } = ta;
+                          if (selectionStart === selectionEnd) return;
+                          const word = value.slice(selectionStart, selectionEnd);
+                          setTeachReplacedName(word);
+                          // Substitui na resposta aprovada
+                          const nextResponse =
+                            value.slice(0, selectionStart) +
+                            "[nome do lead]" +
+                            value.slice(selectionEnd);
+                          setTeachResponse(nextResponse);
+                          // Substitui todas as ocorrências da palavra no campo de contexto
+                          setTeachLeadMessage((prev) =>
+                            prev.split(word).join("[nome do lead]")
+                          );
+                          // Reposiciona cursor na resposta
+                          requestAnimationFrame(() => {
+                            ta.focus();
+                            const pos = selectionStart + "[nome do lead]".length;
+                            ta.setSelectionRange(pos, pos);
+                          });
+                        }}
+                      >
+                        Substituir por [nome do lead]
+                      </button>
+                    </div>
+                    <textarea
+                      ref={teachResponseRef}
+                      value={teachResponse}
+                      onChange={(e) => setTeachResponse(e.target.value)}
+                      rows={4}
+                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">
+                      Dica: selecione um nome próprio na resposta e clique em{" "}
+                      <span className="font-medium text-gray-500">Substituir por [nome do lead]</span>{" "}
+                      — o nome será substituído nos dois campos automaticamente.
+                    </p>
+                  </div>
+
+                  {teachError && (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {teachError}
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-5 py-4 border-t flex gap-2">
+                  <button
+                    type="button"
+                    onClick={submitTeaching}
+                    disabled={teachSaving || !teachSelectedKbId || !teachResponse.trim()}
+                    className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {teachSaving ? "Salvando..." : "Salvar ensinamento"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTeachModalOpen(false)}
+                    disabled={teachSaving}
+                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-5 pt-5 pb-4 border-b">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      Limite atingido
+                    </span>
+                    <h2 className="text-base font-semibold text-gray-900">
+                      Esta base já tem 30 ensinamentos
+                    </h2>
+                  </div>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Selecione qual ensinamento deseja substituir pelo novo:
+                  </p>
+                </div>
+
+                <div className="overflow-y-auto flex-1 divide-y">
+                  {teachExistingList.map((t) => (
+                    <div key={t.id} className="px-5 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900">{t.title}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {new Date(t.createdAt).toLocaleString("pt-BR")} · {t.createdBy}
+                            {t.lead?.nome && ` · Lead: ${t.lead.nome}`}
+                          </p>
+                          {t.leadMessage && (
+                            <p className="mt-1 text-xs text-gray-600 line-clamp-2 italic">
+                              "{t.leadMessage}"
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => confirmReplaceTeaching(t.id)}
+                          disabled={teachSaving}
+                          className="shrink-0 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                        >
+                          {teachSaving ? "..." : "Substituir"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {teachError && (
+                  <div className="mx-5 mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {teachError}
+                  </div>
+                )}
+
+                <div className="px-5 py-4 border-t flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTeachReplaceMode(false)}
+                    disabled={teachSaving}
+                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTeachModalOpen(false)}
+                    disabled={teachSaving}
+                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

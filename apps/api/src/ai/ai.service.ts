@@ -5,6 +5,13 @@ const logger = new Logger('AiService');
 import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** Extrai os campos textuais de uma KB de forma uniforme para todos os tipos. */
+function buildKbFields(kb: { prompt?: string | null }): string {
+  const parts: string[] = [];
+  if (kb.prompt?.trim()) parts.push(kb.prompt.trim());
+  return parts.join('\n');
+}
+
 @Injectable()
 export class AiService {
   private openai: OpenAI | null = null;
@@ -72,6 +79,7 @@ export class AiService {
                   documents: { where: { extractedText: { not: null } }, orderBy: { createdAt: 'asc' } },
                   videos: { orderBy: { createdAt: 'asc' } },
                   kbLinks: { orderBy: { createdAt: 'asc' } },
+                  teachings: { orderBy: { createdAt: 'desc' as const }, take: 30 },
                 },
               },
             },
@@ -97,7 +105,7 @@ export class AiService {
         if (agentDirectPrompt) {
           personaBlock = agentDirectPrompt;
         } else if (personalityKBs.length > 0) {
-          personaBlock = personalityKBs.map((kb) => kb.prompt?.trim()).filter(Boolean).join('\n\n');
+          personaBlock = personalityKBs.map((kb) => buildKbFields(kb)).filter(Boolean).join('\n\n');
         } else {
           personaBlock =
             'Você é um atendente que conversa com leads pelo WhatsApp de forma simples, humana e direta.\n' +
@@ -107,12 +115,7 @@ export class AiService {
         // --- Regras: apenas se houver KB do tipo REGRAS ---
         if (rulesKBs.length > 0) {
           rulesBlock = rulesKBs
-            .map((kb) => {
-              const parts: string[] = [];
-              if (kb.prompt?.trim()) parts.push(kb.prompt.trim());
-              if (kb.whatAiUnderstood?.trim()) parts.push(kb.whatAiUnderstood.trim());
-              return parts.join('\n');
-            })
+            .map((kb) => buildKbFields(kb))
             .filter(Boolean)
             .join('\n\n');
         }
@@ -121,10 +124,9 @@ export class AiService {
         if (contentKBs.length > 0) {
           knowledgeContext = contentKBs
             .map((kb) => {
+              const fields = buildKbFields(kb);
               const parts: string[] = [`[${kb.title}]`];
-              if (kb.prompt?.trim()) parts.push(kb.prompt.trim());
-              if (kb.whatAiUnderstood?.trim()) parts.push(`Resumo: ${kb.whatAiUnderstood.trim()}`);
-              if (kb.exampleOutput?.trim()) parts.push(`Exemplo: ${kb.exampleOutput.trim()}`);
+              if (fields) parts.push(fields);
 
               const docs = (kb as any).documents as any[];
               if (docs?.length > 0) {
@@ -156,9 +158,41 @@ export class AiService {
                 parts.push(`Links:\n${lines.join('\n')}`);
               }
 
+              const teachings = (kb as any).teachings as any[];
+              if (teachings?.length > 0) {
+                const lines = teachings.map((t: any) => {
+                  const tParts = [`[${t.title}]`];
+                  if (t.leadMessage) tParts.push(`Lead: "${t.leadMessage}"`);
+                  tParts.push(`Resposta aprovada: "${t.approvedResponse}"`);
+                  return tParts.join('\n');
+                });
+                parts.push(`Exemplos reais aprovados (${teachings.length}):\n${lines.join('\n\n')}`);
+              }
+
               return parts.join('\n');
             })
             .join('\n\n--------------------\n\n');
+        }
+
+        // --- Teachings de KBs de Personalidade e Regras ---
+        const nonContentTeachingLines: string[] = [];
+        for (const kb of [...personalityKBs, ...rulesKBs]) {
+          const teachings = (kb as any).teachings as any[];
+          if (teachings?.length > 0) {
+            const lines = teachings.map((t: any) => {
+              const tParts = [`[${t.title}]`];
+              if (t.leadMessage) tParts.push(`Lead: "${t.leadMessage}"`);
+              tParts.push(`Resposta aprovada: "${t.approvedResponse}"`);
+              return tParts.join('\n');
+            });
+            nonContentTeachingLines.push(`Exemplos reais aprovados (${teachings.length}):\n${lines.join('\n\n')}`);
+          }
+        }
+        if (nonContentTeachingLines.length > 0) {
+          const section = nonContentTeachingLines.join('\n\n--------------------\n\n');
+          knowledgeContext = knowledgeContext
+            ? `${knowledgeContext}\n\n--------------------\n\n${section}`
+            : section;
         }
       }
     }
@@ -169,6 +203,12 @@ export class AiService {
         'Você é um atendente que conversa com leads pelo WhatsApp de forma simples, humana e direta.\n' +
         'Escreva como uma pessoa real, nunca como assistente virtual.';
     }
+
+    // Produtos disponíveis do tenant
+    const productsBlock = await this.buildProductsBlock(params.tenantId);
+
+    // [DEBUG] Log do personaBlock resolvido
+    logger.log('[DEBUG] personaBlock =>\n' + personaBlock);
 
     const lastLeadMessage = String(params.lastLeadMessage || '').trim();
     const previousSuggestion = String(params.previousSuggestion || '').trim();
@@ -187,28 +227,52 @@ export class AiService {
               ? 'Gere uma nova resposta para a mensagem do lead. Mantenha o contexto da pergunta original.'
               : '';
 
-    const prompt = `${personaBlock}
+    // ── role: system ────────────────────────────────────────────────────────
+    const systemParts: string[] = [];
 
-${knowledgeContext ? `Conhecimento disponível:\n${knowledgeContext}\n` : ''}
-Lead: ${params.nome} | Status: ${params.status}
+    // 1. Persona (identidade e voz do agente)
+    systemParts.push(personaBlock);
 
-${lastLeadMessage ? `Última mensagem do lead:\n${lastLeadMessage}\n` : ''}
-${conversationContext ? `Contexto recente da conversa:\n${conversationContext}\n` : ''}
-${isModifyMode && previousSuggestion ? `Sugestão anterior da IA (para modificar):\n${previousSuggestion}\n` : ''}
-${modeInstruction ? `Tarefa: ${modeInstruction}` : ''}
-${rulesBlock ? `\nRegras adicionais:\n${rulesBlock}` : ''}`;
-
-    const systemContent = [
-      `Você é ${agentTitle || 'um atendente'} respondendo leads pelo WhatsApp.`,
+    // 2. Instruções comportamentais fixas
+    const behaviorLines = [
       'Escreva sempre como pessoa real. Nunca como assistente virtual.',
       'Use linguagem simples, curta e natural.',
       'Nunca use: "vi que você entrou em contato", "como posso ajudar", "fico feliz em ajudar".',
       isModifyMode && previousSuggestion
         ? 'Você está modificando uma sugestão anterior. NUNCA mude o assunto — responda exatamente a mesma pergunta do lead que a sugestão anterior respondia. Não reinicie a conversa. Não transforme em saudação.'
         : 'Responda a pergunta do lead diretamente. Se for saudação simples, responda só com saudação curta.',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    ].filter(Boolean);
+    systemParts.push(behaviorLines.join(' '));
+
+    // 3. Regras obrigatórias (KBs do tipo REGRAS)
+    if (rulesBlock) systemParts.push(`Regras adicionais:\n${rulesBlock}`);
+
+    // 4. Instrução sobre uso dos imóveis disponíveis
+    if (productsBlock) {
+      systemParts.push(
+        'Quando o lead demonstrar interesse em imóvel, consulte a lista de IMÓVEIS DISPONÍVEIS no contexto ' +
+        'e sugira os mais compatíveis com o perfil dele. Sempre mencione título, localização e preço. ' +
+        'Nunca invente imóveis que não estão na lista.',
+      );
+    }
+
+    const systemContent = systemParts.join('\n\n');
+
+    // [DEBUG] Log do systemContent completo enviado para a OpenAI
+    logger.log('[DEBUG] systemContent =>\n' + systemContent);
+
+    // ── role: user ──────────────────────────────────────────────────────────
+    const userParts: string[] = [];
+
+    if (knowledgeContext) userParts.push(`Conhecimento disponível:\n${knowledgeContext}`);
+    if (productsBlock) userParts.push(productsBlock);
+    userParts.push(`Lead: ${params.nome} | Status: ${params.status}`);
+    if (lastLeadMessage) userParts.push(`Última mensagem do lead:\n${lastLeadMessage}`);
+    if (conversationContext) userParts.push(`Contexto recente da conversa:\n${conversationContext}`);
+    if (isModifyMode && previousSuggestion) userParts.push(`Sugestão anterior da IA (para modificar):\n${previousSuggestion}`);
+    if (modeInstruction) userParts.push(`Tarefa: ${modeInstruction}`);
+
+    const prompt = userParts.join('\n\n');
 
     const completion = await this.getOpenAI().chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -239,5 +303,140 @@ ${rulesBlock ? `\nRegras adicionais:\n${rulesBlock}` : ''}`;
     }
 
     return output;
+  }
+
+  private async buildProductsBlock(tenantId: string): Promise<string> {
+    const products = await this.prisma.product.findMany({
+      where: { tenantId, status: 'ACTIVE' },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        dealType: true,
+        neighborhood: true,
+        city: true,
+        price: true,
+        rentPrice: true,
+        bedrooms: true,
+        suites: true,
+        bathrooms: true,
+        parkingSpaces: true,
+        areaM2: true,
+        builtAreaM2: true,
+        standard: true,
+        condominiumName: true,
+        description: true,
+      },
+      take: 30,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (products.length === 0) return '';
+
+    const fmtBRL = (n: any): string | null => {
+      if (n == null) return null;
+      const num = Number(n);
+      if (!Number.isFinite(num)) return null;
+      return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+    };
+
+    const TYPE_LABEL: Record<string, string> = {
+      EMPREENDIMENTO: 'Empreendimento', LOTEAMENTO: 'Loteamento', APARTAMENTO: 'Apartamento',
+      CASA: 'Casa', KITNET: 'Kitnet', SOBRADO: 'Sobrado', TERRENO: 'Terreno',
+      SALA_COMERCIAL: 'Sala Comercial', LOJA: 'Loja', SALAO_COMERCIAL: 'Salão Comercial',
+      BARRACAO: 'Barracão/Galpão', OUTRO: 'Outro',
+    };
+
+    const STANDARD_LABEL: Record<string, string> = {
+      ECONOMICO: 'Econômico', MEDIO: 'Médio', ALTO: 'Alto', LUXO: 'Luxo',
+    };
+
+    const lines = products.map((p, i) => {
+      const parts: string[] = [];
+
+      // Linha 1: índice, título, tipo, localização
+      const location = [p.neighborhood, p.city].filter(Boolean).join(', ');
+      const typeLabel = TYPE_LABEL[String(p.type)] ?? String(p.type);
+      parts.push(`${i + 1}. ${p.title} — ${typeLabel}${location ? ` | ${location}` : ''}`);
+
+      // Linha 2: preços
+      const priceBRL = fmtBRL(p.price);
+      const rentBRL = fmtBRL(p.rentPrice);
+      const priceStr = [
+        priceBRL ? `Venda: R$ ${priceBRL}` : null,
+        rentBRL ? `Locação: R$ ${rentBRL}/mês` : null,
+      ].filter(Boolean).join(' | ');
+      if (priceStr) parts.push(`   ${priceStr}`);
+
+      // Linha 3: características físicas
+      const physParts: string[] = [];
+      if (p.bedrooms != null) physParts.push(`${p.bedrooms} quarto${p.bedrooms !== 1 ? 's' : ''}`);
+      if (p.suites != null) physParts.push(`${p.suites} suíte${p.suites !== 1 ? 's' : ''}`);
+      if (p.bathrooms != null) physParts.push(`${p.bathrooms} banheiro${p.bathrooms !== 1 ? 's' : ''}`);
+      if (p.parkingSpaces != null) physParts.push(`${p.parkingSpaces} vaga${p.parkingSpaces !== 1 ? 's' : ''}`);
+      const area = p.builtAreaM2 ?? p.areaM2;
+      if (area != null) physParts.push(`${area}m²`);
+      if (physParts.length > 0) parts.push(`   ${physParts.join(' | ')}`);
+
+      // Linha 4: padrão e condomínio
+      const extraParts: string[] = [];
+      if (p.standard) extraParts.push(`Padrão: ${STANDARD_LABEL[String(p.standard)] ?? p.standard}`);
+      if (p.condominiumName) extraParts.push(`Condomínio: ${p.condominiumName}`);
+      if (extraParts.length > 0) parts.push(`   ${extraParts.join(' | ')}`);
+
+      // Linha 5: descrição resumida
+      if (p.description?.trim()) {
+        const desc = p.description.trim().slice(0, 100);
+        parts.push(`   ${desc}${p.description.trim().length > 100 ? '...' : ''}`);
+      }
+
+      return parts.join('\n');
+    });
+
+    return `IMÓVEIS DISPONÍVEIS PARA VENDA/LOCAÇÃO:\n\n${lines.join('\n\n')}`;
+  }
+
+  async generateTeachingTitle(leadMessage: string | null | undefined, approvedResponse: string): Promise<string> {
+    const parts: string[] = [];
+    if (leadMessage?.trim()) parts.push(`Pergunta/contexto do lead: "${leadMessage.trim()}"`);
+    if (approvedResponse?.trim()) parts.push(`Resposta aprovada: "${approvedResponse.trim().slice(0, 300)}"`);
+    const content = parts.join('\n');
+    if (!content) return 'Ensinamento';
+
+    try {
+      const completion = await this.getOpenAI().chat.completions.create({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: `Crie um título curto (máximo 8 palavras) e descritivo para este ensinamento de vendas. Responda APENAS com o título, sem aspas, sem pontuação final.\n\n${content}`,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: 30,
+      });
+      return completion.choices[0]?.message?.content?.trim() || 'Ensinamento';
+    } catch {
+      return 'Ensinamento';
+    }
+  }
+
+  async summarizeKbPrompt(prompt: string): Promise<string> {
+    const content = prompt.slice(0, 4000).trim();
+    if (!content) return '';
+
+    const completion = await this.getOpenAI().chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: `Você é um assistente técnico. Resuma em 2 a 3 frases curtas o que este conteúdo ensina a um atendente de vendas. Seja objetivo e direto, sem introduções.\n\nConteúdo:\n${content}`,
+        },
+      ],
+      temperature: 0.2,
+      max_tokens: 200,
+    });
+
+    return completion.choices[0]?.message?.content?.trim() || '';
   }
 }

@@ -16,7 +16,10 @@ import { PipelineModule } from './pipeline/pipeline.module';
 import { AiModule } from './ai/ai.module';
 import { AiAgentsModule } from './ai-agents/ai-agents.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { SecretaryModule } from './secretary/secretary.module';
+import { CalendarModule } from './calendar/calendar.module';
 import { DevModule } from './dev/dev.module';
+import { OwnersModule } from './owners/owners.module';
 
 @Module({
   imports: [
@@ -35,7 +38,10 @@ import { DevModule } from './dev/dev.module';
     AiModule,
     AiAgentsModule,
     KnowledgeBaseModule,
+    SecretaryModule,
+    CalendarModule,
     DevModule,
+    OwnersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -18,6 +19,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto';
 import { UpdateKnowledgeBaseDto } from './dto/update-knowledge-base.dto';
+import { CreateTeachingDto } from './dto/create-teaching.dto';
+import { ReplaceTeachingDto } from './dto/replace-teaching.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('knowledge-base')
@@ -46,6 +49,11 @@ export class KnowledgeBaseController {
   @Patch(':id')
   update(@Req() req: any, @Param('id') id: string, @Body() body: UpdateKnowledgeBaseDto) {
     return this.service.update(req.user.tenantId, id, body);
+  }
+
+  @Post(':id/summarize')
+  summarize(@Req() req: any, @Param('id') id: string) {
+    return this.service.summarize(req.user.tenantId, id);
   }
 
   @Delete(':id')
@@ -171,5 +179,47 @@ export class KnowledgeBaseController {
     @Param('agentId') agentId: string,
   ) {
     return this.service.detachFromAgent(req.user.tenantId, agentId, knowledgeBaseId);
+  }
+
+  // =====================
+  // TEACHINGS
+  // =====================
+
+  @Post(':id/teachings/generate-title')
+  generateTeachingTitle(
+    @Body() body: { leadMessage?: string; approvedResponse?: string },
+  ) {
+    return this.service.generateTeachingTitleEndpoint(body.leadMessage, body.approvedResponse);
+  }
+
+  @Get(':id/teachings')
+  listTeachings(@Req() req: any, @Param('id') id: string) {
+    return this.service.listTeachings(req.user.tenantId, id);
+  }
+
+  @Post(':id/teachings')
+  addTeaching(@Req() req: any, @Param('id') id: string, @Body() body: CreateTeachingDto) {
+    const createdBy = req.user.nome || req.user.email || req.user.sub || 'sistema';
+    return this.service.addTeaching(req.user.tenantId, id, body, createdBy);
+  }
+
+  @Put(':id/teachings/:teachingId')
+  replaceTeaching(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('teachingId') teachingId: string,
+    @Body() body: ReplaceTeachingDto,
+  ) {
+    const replacedBy = req.user.nome || req.user.email || req.user.sub || 'sistema';
+    return this.service.replaceTeaching(req.user.tenantId, id, teachingId, body, replacedBy);
+  }
+
+  @Delete(':id/teachings/:teachingId')
+  deleteTeaching(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('teachingId') teachingId: string,
+  ) {
+    return this.service.deleteTeaching(req.user.tenantId, id, teachingId);
   }
 }

@@ -56,6 +56,18 @@ type KbAgentLink = {
   agentId: string;
 };
 
+type KbTeaching = {
+  id: string;
+  title: string;
+  leadMessage?: string | null;
+  approvedResponse: string;
+  createdBy: string;
+  replacedBy?: string | null;
+  replacedAt?: string | null;
+  createdAt: string;
+  lead?: { id: string; nome?: string | null; telefone?: string | null } | null;
+};
+
 type KnowledgeBaseItem = {
   id: string;
   tenantId: string;
@@ -76,6 +88,7 @@ type KnowledgeBaseItem = {
   videos: KbVideo[];
   kbLinks: KbLink[];
   agents: KbAgentLink[];
+  _count?: { teachings: number };
 };
 
 type MainForm = {
@@ -83,8 +96,6 @@ type MainForm = {
   type: KnowledgeBaseType;
   customCategory: string;
   prompt: string;
-  whatAiUnderstood: string;
-  exampleOutput: string;
   tagsText: string;
   audience: KnowledgeBaseAudience;
   active: boolean;
@@ -154,8 +165,6 @@ function formFromItem(item: KnowledgeBaseItem): MainForm {
     type: item.type,
     customCategory: item.customCategory ?? "",
     prompt: item.prompt ?? "",
-    whatAiUnderstood: item.whatAiUnderstood ?? "",
-    exampleOutput: item.exampleOutput ?? "",
     tagsText: Array.isArray(item.tags) ? item.tags.join(", ") : "",
     audience: item.audience,
     active: item.active,
@@ -169,8 +178,6 @@ const INITIAL_FORM: MainForm = {
   type: "INFORMACAO_GERAL",
   customCategory: "",
   prompt: "",
-  whatAiUnderstood: "",
-  exampleOutput: "",
   tagsText: "",
   audience: "AMBOS",
   active: true,
@@ -225,6 +232,17 @@ export default function KnowledgeBaseSalesPage() {
   const [availableAgents, setAvailableAgents] = useState<AiAgent[]>([]);
   const [agentLinkLoading, setAgentLinkLoading] = useState<string | null>(null);
   const [agentLinkError, setAgentLinkError] = useState("");
+
+  // Summarize
+  const [summarizing, setSummarizing] = useState(false);
+  const [summarizeError, setSummarizeError] = useState("");
+
+  // Teachings
+  const [teachings, setTeachings] = useState<KbTeaching[]>([]);
+  const [teachingsCount, setTeachingsCount] = useState(0);
+  const [teachingsLoading, setTeachingsLoading] = useState(false);
+  const [showTeachings, setShowTeachings] = useState(false);
+  const [teachingsError, setTeachingsError] = useState("");
 
   // ──────────────────────────────────────────────
   // Data loading
@@ -358,6 +376,60 @@ export default function KnowledgeBaseSalesPage() {
     setLinkError("");
     setEditingLinkId(null);
     setAgentLinkError("");
+    setSummarizeError("");
+    setTeachings([]);
+    setTeachingsCount(0);
+    setShowTeachings(false);
+    setTeachingsError("");
+  }
+
+  async function handleSummarize() {
+    if (!editingItem) return;
+    setSummarizeError("");
+    setSummarizing(true);
+    try {
+      const updated = await apiFetch(`/knowledge-base/${editingItem.id}/summarize`, { method: "POST" });
+      setEditingItem(updated);
+      setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+    } catch (err: any) {
+      setSummarizeError(err?.message || "Erro ao gerar resumo.");
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
+  async function loadTeachings() {
+    if (!editingItem) return;
+    setTeachingsLoading(true);
+    setTeachingsError("");
+    try {
+      const data = await apiFetch(`/knowledge-base/${editingItem.id}/teachings`);
+      setTeachings(data?.teachings || []);
+      setTeachingsCount(data?.count ?? 0);
+    } catch (err: any) {
+      setTeachingsError(err?.message || "Erro ao carregar ensinamentos.");
+    } finally {
+      setTeachingsLoading(false);
+    }
+  }
+
+  function toggleTeachings() {
+    const next = !showTeachings;
+    setShowTeachings(next);
+    if (next && editingItem && teachings.length === 0 && !teachingsLoading) {
+      loadTeachings();
+    }
+  }
+
+  async function handleDeleteTeaching(teachingId: string) {
+    if (!editingItem) return;
+    try {
+      await apiFetch(`/knowledge-base/${editingItem.id}/teachings/${teachingId}`, { method: "DELETE" });
+      setTeachings((prev) => prev.filter((t) => t.id !== teachingId));
+      setTeachingsCount((prev) => Math.max(0, prev - 1));
+    } catch (err: any) {
+      setTeachingsError(err?.message || "Erro ao excluir ensinamento.");
+    }
   }
 
   async function handleSave() {
@@ -375,8 +447,6 @@ export default function KnowledgeBaseSalesPage() {
         title: form.title.trim(),
         type: form.type,
         prompt: form.prompt.trim(),
-        whatAiUnderstood: form.whatAiUnderstood.trim() || undefined,
-        exampleOutput: form.exampleOutput.trim() || undefined,
         tags: buildTags(form.tagsText),
         audience: form.audience,
         active: form.active,
@@ -714,25 +784,36 @@ export default function KnowledgeBaseSalesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">O que a IA entendeu</label>
-                  <textarea
-                    value={form.whatAiUnderstood}
-                    onChange={(e) => setForm((p) => ({ ...p, whatAiUnderstood: e.target.value }))}
-                    rows={4}
-                    className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    placeholder="Resumo interno do entendimento esperado."
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Exemplo de resposta</label>
-                  <textarea
-                    value={form.exampleOutput}
-                    onChange={(e) => setForm((p) => ({ ...p, exampleOutput: e.target.value }))}
-                    rows={4}
-                    className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    placeholder="Exemplo de saída esperada pela IA."
-                  />
+                  <div className="mb-1 flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700">O que a IA entendeu</label>
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">
+                      gerado pela IA
+                    </span>
+                  </div>
+                  {editingItem ? (
+                    <>
+                      <div className="min-h-[88px] w-full rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
+                        {editingItem.whatAiUnderstood || (
+                          <span className="text-gray-400 italic">Nenhum resumo gerado ainda.</span>
+                        )}
+                      </div>
+                      {summarizeError && (
+                        <p className="mt-1 text-xs text-red-600">{summarizeError}</p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleSummarize}
+                        disabled={summarizing}
+                        className="mt-2 rounded-md border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                      >
+                        {summarizing ? "Gerando resumo..." : "Regenerar resumo"}
+                      </button>
+                    </>
+                  ) : (
+                    <div className="min-h-[88px] w-full rounded-md border border-dashed bg-gray-50 px-3 py-2 text-sm text-gray-400 italic">
+                      Será gerado automaticamente após salvar.
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1166,6 +1247,88 @@ export default function KnowledgeBaseSalesPage() {
                     <p className="mt-2 text-xs text-red-600">{agentLinkError}</p>
                   )}
                 </div>
+
+                <hr />
+
+                {/* ── Ensinamentos ── */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={toggleTeachings}
+                    className="flex w-full items-center justify-between text-left"
+                  >
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">
+                        Ensinamentos Salvos ({editingItem._count?.teachings ?? teachingsCount}/30)
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        Exemplos reais aprovados por vendedores — injetados no prompt da IA.
+                      </p>
+                    </div>
+                    <span className="text-gray-400 text-sm ml-4">{showTeachings ? "▲" : "▼"}</span>
+                  </button>
+
+                  {showTeachings && (
+                    <div className="mt-3">
+                      {teachingsLoading ? (
+                        <p className="text-xs text-gray-500">Carregando...</p>
+                      ) : teachings.length === 0 ? (
+                        <p className="text-xs text-gray-500">Nenhum ensinamento salvo ainda.</p>
+                      ) : (
+                        <div className="divide-y rounded-lg border">
+                          {teachings.map((t) => (
+                            <div key={t.id} className="px-3 py-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-gray-900">{t.title}</p>
+                                  <p className="mt-0.5 text-xs text-gray-500">
+                                    {new Date(t.createdAt).toLocaleString("pt-BR")} · por {t.createdBy}
+                                    {t.lead?.nome && ` · Lead: ${t.lead.nome}`}
+                                    {t.lead?.telefone && ` (${t.lead.telefone})`}
+                                    {t.replacedAt && (
+                                      <span className="ml-1 text-amber-600">
+                                        · substituído em {new Date(t.replacedAt).toLocaleString("pt-BR")}
+                                        {t.replacedBy && ` por ${t.replacedBy}`}
+                                      </span>
+                                    )}
+                                  </p>
+                                  {t.leadMessage && (
+                                    <div className="mt-2 rounded-md bg-gray-50 px-2 py-1.5">
+                                      <p className="mb-0.5 text-xs font-medium text-gray-600">
+                                        Mensagem do lead:
+                                      </p>
+                                      <p className="whitespace-pre-wrap text-xs text-gray-700">
+                                        {t.leadMessage}
+                                      </p>
+                                    </div>
+                                  )}
+                                  <div className="mt-2 rounded-md bg-emerald-50 px-2 py-1.5">
+                                    <p className="mb-0.5 text-xs font-medium text-emerald-700">
+                                      Resposta aprovada:
+                                    </p>
+                                    <p className="whitespace-pre-wrap text-xs text-gray-700">
+                                      {t.approvedResponse}
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTeaching(t.id)}
+                                  className="shrink-0 text-xs text-red-500 hover:text-red-700"
+                                >
+                                  Excluir
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {teachingsError && (
+                        <p className="mt-2 text-xs text-red-600">{teachingsError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -1309,6 +1472,11 @@ export default function KnowledgeBaseSalesPage() {
                                 {item.tags?.length > 0 && (
                                   <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
                                     {item.tags.length} tag{item.tags.length > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                                {(item._count?.teachings ?? 0) > 0 && (
+                                  <span className="rounded-md bg-violet-50 px-2 py-1 text-xs text-violet-700">
+                                    {item._count!.teachings} ensinamento{item._count!.teachings > 1 ? "s" : ""}
                                   </span>
                                 )}
                               </div>
