@@ -1888,7 +1888,7 @@ export default function ProductEditPage() {
                       const isPublic = img.publishSite !== false;
                       return (
                         <div key={img.id ?? url} className="relative overflow-hidden rounded-lg border bg-gray-50">
-                          <a href={url} target="_blank" rel="noreferrer">
+                          <a href={url ?? undefined} target="_blank" rel="noreferrer">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={url} alt="" className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
                           </a>
