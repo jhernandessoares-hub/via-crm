@@ -37,7 +37,6 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { LeadStatus } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import * as fs from 'fs';
 
@@ -1326,7 +1325,6 @@ export class LeadsService {
             email: body.email || null,
             origem: body.origem || null,
             observacao: body.observacao || null,
-            status: 'NOVO',
             stageId: firstStage?.id ?? null,
           },
         });
@@ -1364,12 +1362,9 @@ export class LeadsService {
     return lead;
   }
 
-  async list(tenantId: string, status?: LeadStatus) {
+  async list(tenantId: string) {
     const leads = await this.prisma.lead.findMany({
-      where: {
-        tenantId,
-        ...(status ? { status } : {}),
-      },
+      where: { tenantId },
       orderBy: { criadoEm: 'desc' },
     });
 
@@ -1602,30 +1597,6 @@ async getById(user: any, id: string) {
     return { ok: true, leadId: lead.id, frozenUntil: until.toISOString() };
   }
 
-  async updateStatus(tenantId: string, id: string, status: LeadStatus) {
-    const lead = await this.prisma.lead.findFirst({
-      where: { id, tenantId },
-    });
-
-    if (!lead) throw new NotFoundException('Lead não encontrado');
-
-    const updated = await this.prisma.lead.update({
-      where: { id },
-      data: { status },
-    });
-
-    await this.prisma.leadTransitionLog.create({
-      data: {
-        tenantId,
-        leadId: id,
-        fromStage: lead.status as any,
-        toStage: status as any,
-        changedBy: 'USER',
-      },
-    });
-
-    return updated;
-  }
 
   async assignLead(id: string, assignedUserId: string, user: any) {
     if (user.role === 'AGENT') {
@@ -2099,12 +2070,11 @@ async updateStage(user: any, leadId: string, stageId: string) {
     return this.attachLastInboundPreview(user.tenantId, leads);
   }
 
-  async getMyLeads(user: any, status?: LeadStatus) {
+  async getMyLeads(user: any) {
     const leads = await this.prisma.lead.findMany({
       where: {
         tenantId: user.tenantId,
         assignedUserId: user.id,
-        ...(status ? { status } : {}),
       },
       orderBy: { criadoEm: 'desc' },
     });
@@ -2112,7 +2082,7 @@ async updateStage(user: any, leadId: string, stageId: string) {
     return this.attachLastInboundPreview(user.tenantId, leads);
   }
 
-  async getBranchLeads(user: any, branchId?: string, status?: LeadStatus) {
+  async getBranchLeads(user: any, branchId?: string) {
     if (user.role === 'AGENT') {
       throw new ForbiddenException('Sem permissão');
     }
@@ -2121,7 +2091,6 @@ async updateStage(user: any, leadId: string, stageId: string) {
       where: {
         tenantId: user.tenantId,
         ...(branchId ? { branchId } : {}),
-        ...(status ? { status } : {}),
       },
       orderBy: { criadoEm: 'desc' },
     });

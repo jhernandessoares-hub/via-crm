@@ -16,7 +16,6 @@ import {
 } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { LeadStatus } from '@prisma/client';
 import { ManagerDecisionDto } from './dto/manager-decision.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -51,26 +50,25 @@ export class LeadsController {
   }
 
   @Get('my')
-  async getMyLeads(@Req() req: any, @Query('status') status?: LeadStatus) {
-    return this.leadsService.getMyLeads(req.user, status);
+  async getMyLeads(@Req() req: any) {
+    return this.leadsService.getMyLeads(req.user);
   }
 
   @Get('branch')
   async getBranchLeads(
     @Req() req: any,
     @Query('branchId') branchId?: string,
-    @Query('status') status?: LeadStatus,
   ) {
     if (req.user.role === 'AGENT') {
       throw new ForbiddenException('Sem permissão');
     }
 
-    return this.leadsService.getBranchLeads(req.user, branchId, status);
+    return this.leadsService.getBranchLeads(req.user, branchId);
   }
 
   @Get()
-  async list(@Req() req: any, @Query('status') status?: LeadStatus) {
-    return this.leadsService.list(req.user.tenantId, status);
+  async list(@Req() req: any) {
+    return this.leadsService.list(req.user.tenantId);
   }
 
   // =========================
@@ -215,15 +213,6 @@ export class LeadsController {
     @Query('minutes') minutes?: string,
   ) {
     return this.leadsService.freezeSla(req.user, id, minutes);
-  }
-
-  @Patch(':id/status')
-  async updateStatus(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() body: { status: LeadStatus },
-  ) {
-    return this.leadsService.updateStatus(req.user.tenantId, id, body.status);
   }
 
   @Post(':id/assign')

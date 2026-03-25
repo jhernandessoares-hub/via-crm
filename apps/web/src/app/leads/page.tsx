@@ -5,14 +5,6 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
-type LeadStatus =
-  | "NOVO"
-  | "EM_CONTATO"
-  | "QUALIFICADO"
-  | "PROPOSTA"
-  | "FECHADO"
-  | "PERDIDO";
-
 type PipelineStage = {
   id: string;
   key: string;
@@ -26,7 +18,6 @@ type Lead = {
   telefone?: string;
   whatsapp?: string;
   observacao?: string;
-  status?: LeadStatus;
   stageId?: string | null;
   stageKey?: string | null;
   stageName?: string | null;
@@ -42,45 +33,6 @@ type AllowedStageTransitionsResponse = {
   allowedStages: PipelineStage[];
 };
 
-const STATUS_ORDER: LeadStatus[] = [
-  "NOVO",
-  "EM_CONTATO",
-  "QUALIFICADO",
-  "PROPOSTA",
-  "FECHADO",
-  "PERDIDO",
-];
-
-const STATUS_LABEL: Record<LeadStatus, string> = {
-  NOVO: "Novo",
-  EM_CONTATO: "Em contato",
-  QUALIFICADO: "Qualificado",
-  PROPOSTA: "Proposta",
-  FECHADO: "Fechado",
-  PERDIDO: "Perdido",
-};
-
-function normalizeStatus(s?: string): LeadStatus {
-  const up = (s || "NOVO").toUpperCase();
-  if (STATUS_ORDER.includes(up as LeadStatus)) return up as LeadStatus;
-  return "NOVO";
-}
-
-function Badge({ status }: { status: LeadStatus }) {
-  const cls =
-    status === "FECHADO"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : status === "PERDIDO"
-      ? "bg-red-50 text-red-700 border-red-200"
-      : "bg-gray-50 text-gray-700 border-gray-200";
-
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${cls}`}>
-      {STATUS_LABEL[status]}
-    </span>
-  );
-}
-
 export default function LeadsPage() {
   const [view, setView] = useState<"LISTA" | "KANBAN">("LISTA");
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -90,7 +42,6 @@ export default function LeadsPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState<LeadStatus | "TODOS">("TODOS");
 
   const [openForm, setOpenForm] = useState(false);
   const [nome, setNome] = useState("");
@@ -226,20 +177,16 @@ export default function LeadsPage() {
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
-    return leads
-      .map((l) => ({ ...l, status: normalizeStatus(l.status) }))
-      .filter((l) => {
-        if (statusFilter !== "TODOS" && l.status !== statusFilter) return false;
+    return leads.filter((l) => {
+      if (!qq) return true;
 
-        if (!qq) return true;
+      const blob = [l.nome || "", l.telefone || "", l.whatsapp || "", l.observacao || "", l.id || ""]
+        .join(" ")
+        .toLowerCase();
 
-        const blob = [l.nome || "", l.telefone || "", l.whatsapp || "", l.observacao || "", l.id || ""]
-          .join(" ")
-          .toLowerCase();
-
-        return blob.includes(qq);
-      });
-  }, [leads, q, statusFilter]);
+      return blob.includes(qq);
+    });
+  }, [leads, q]);
 
   const groupedKanban = useMemo(() => {
     const map: Record<string, Lead[]> = {};
@@ -321,18 +268,6 @@ export default function LeadsPage() {
             onChange={(e) => setQ(e.target.value)}
           />
 
-          <select
-            className="rounded-md border bg-white p-2 text-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-          >
-            <option value="TODOS">Todos</option>
-            {STATUS_ORDER.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -406,7 +341,7 @@ export default function LeadsPage() {
           <div className="grid grid-cols-12 gap-2 border-b bg-gray-50 px-4 py-3 text-xs font-medium text-gray-600">
             <div className="col-span-4">Lead</div>
             <div className="col-span-3">Contato</div>
-            <div className="col-span-2">Status</div>
+            <div className="col-span-2">Etapa</div>
             <div className="col-span-3 text-right">Info</div>
           </div>
 
@@ -429,8 +364,8 @@ export default function LeadsPage() {
                   {l.telefone || l.whatsapp || "-"}
                 </div>
 
-                <div className="col-span-2">
-                  <Badge status={normalizeStatus(l.status)} />
+                <div className="col-span-2 text-sm text-gray-700">
+                  {l.stageName || pipelineStages.find((s) => s.id === l.stageId)?.name || "-"}
                 </div>
 
                 <div className="col-span-3 text-right text-xs text-gray-500">
@@ -502,14 +437,13 @@ export default function LeadsPage() {
                             </select>
                           </div>
 
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <Badge status={normalizeStatus(l.status)} />
-                            {l.needsManagerReview ? (
+                          {l.needsManagerReview ? (
+                            <div className="mt-2">
                               <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
                                 Review
                               </span>
-                            ) : null}
-                          </div>
+                            </div>
+                          ) : null}
                         </div>
                       ))
                     )}
