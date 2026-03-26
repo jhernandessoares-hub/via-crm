@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
@@ -24,6 +24,8 @@ export default function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentGroup = searchParams.get("group");
   const [user, setUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
@@ -45,10 +47,28 @@ export default function AppShell({
     router.push("/login");
   }
 
+  // Link normal — ativo quando pathname bate e não há group param
   const linkClass = (href: string) =>
-    `block rounded-md px-3 py-2 hover:bg-slate-900 ${
-      pathname === href ? "bg-slate-900" : ""
+    `block rounded-md px-3 py-2 text-sm hover:bg-slate-900 ${
+      pathname === href && !currentGroup ? "bg-slate-900" : ""
     }`;
+
+  // Subitem do funil — ativo quando pathname=/leads e group bate
+  const groupLinkClass = (group: string) =>
+    `block rounded-md px-3 py-1.5 text-[13px] text-slate-300 hover:bg-slate-900 hover:text-slate-100 ${
+      pathname === "/leads" && currentGroup === group
+        ? "bg-slate-900 text-slate-100"
+        : ""
+    }`;
+
+  const FUNNEL_GROUPS = [
+    { label: "Pré-atendimento",     group: "PRE_ATENDIMENTO" },
+    { label: "Agendamento",         group: "AGENDAMENTO" },
+    { label: "Propostas",           group: "PROPOSTAS" },
+    { label: "Crédito Imobiliário", group: "CREDITO_IMOBILIARIO" },
+    { label: "Negócio Fechado",     group: "NEGOCIO_FECHADO" },
+    { label: "Pós Venda",           group: "POS_VENDA" },
+  ];
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -64,9 +84,23 @@ export default function AppShell({
             Dashboard
           </Link>
 
-          <Link className={linkClass("/leads")} href="/leads">
-            Leads
-          </Link>
+          {/* Funil de Venda */}
+          <div className="pt-1">
+            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Funil de Venda
+            </div>
+            <div className="space-y-0.5">
+              {FUNNEL_GROUPS.map(({ label, group }) => (
+                <Link
+                  key={group}
+                  href={`/leads?group=${group}`}
+                  className={groupLinkClass(group)}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
 
           <Link className={linkClass("/products")} href="/products">
             Produtos

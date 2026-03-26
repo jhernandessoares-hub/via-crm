@@ -113,6 +113,7 @@ export class PipelineService {
         key: true,
         name: true,
         sortOrder: true,
+        group: true,
       },
     });
 

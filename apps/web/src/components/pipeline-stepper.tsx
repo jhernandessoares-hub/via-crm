@@ -6,179 +6,132 @@ export type PipelineStage = {
   id: string;
   key: string;
   name: string;
+  group?: string | null;
   sortOrder?: number;
 };
 
 type Props = {
   stages: PipelineStage[];
   currentStageId?: string | null;
-  currentStageKey?: string | null;
-  onSelectStage?: (stage: PipelineStage, index: number) => void;
+  currentGroup?: string | null;
+  allowedStageIds?: string[];
+  onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
-  minimizeChatAfterKeys?: string[];
-  onShouldMinimizeChatChange?: (shouldMinimize: boolean) => void;
-  className?: string;
 };
 
-function normalizeStages(stages: PipelineStage[]) {
-  const arr = Array.isArray(stages) ? stages.slice() : [];
-  arr.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  return arr;
-}
+const GROUP_LABELS: Record<string, string> = {
+  PRE_ATENDIMENTO:    "Pré-atendimento",
+  AGENDAMENTO:        "Agendamento",
+  PROPOSTAS:          "Propostas",
+  CREDITO_IMOBILIARIO:"Crédito Imobiliário",
+  NEGOCIO_FECHADO:    "Negócio Fechado",
+  POS_VENDA:          "Pós Venda",
+};
 
 export default function PipelineStepper({
   stages,
   currentStageId,
-  currentStageKey,
+  currentGroup,
+  allowedStageIds,
   onSelectStage,
   disabled,
-  minimizeChatAfterKeys,
-  onShouldMinimizeChatChange,
-  className,
 }: Props) {
-  const list = React.useMemo(() => normalizeStages(stages || []), [stages]);
-
-  const currentIndex = React.useMemo(() => {
-    if (!list.length) return -1;
-
-    if (currentStageId) {
-      const i = list.findIndex((s) => s.id === currentStageId);
-      if (i >= 0) return i;
-    }
-
-    if (currentStageKey) {
-      const i = list.findIndex(
-        (s) =>
-          String(s.key || "").toUpperCase() ===
-          String(currentStageKey || "").toUpperCase()
-      );
-      if (i >= 0) return i;
-    }
-
-    return -1;
-  }, [list, currentStageId, currentStageKey]);
-
-  const resolvedCurrentKey = React.useMemo(() => {
-    if (currentStageKey) return String(currentStageKey).toUpperCase();
-    if (currentIndex >= 0) return String(list[currentIndex]?.key || "").toUpperCase();
-    return "";
-  }, [currentStageKey, currentIndex, list]);
-
-  const shouldMinimizeChat = React.useMemo(() => {
-    const keys = (minimizeChatAfterKeys || []).map((k) => String(k).toUpperCase());
-    if (!keys.length) return false;
-
-    const curKey =
-      currentIndex >= 0 ? String(list[currentIndex]?.key || "").toUpperCase() : "";
-
-    return !!curKey && keys.includes(curKey);
-  }, [minimizeChatAfterKeys, currentIndex, list]);
-
-  React.useEffect(() => {
-    if (onShouldMinimizeChatChange) onShouldMinimizeChatChange(shouldMinimizeChat);
-  }, [shouldMinimizeChat, onShouldMinimizeChatChange]);
-
-  function isStageSelectable(stageKey: string) {
-    const targetKey = String(stageKey || "").toUpperCase();
-
-    if (!targetKey) return false;
-    if (!resolvedCurrentKey) return false;
-
-    // não pode clicar na própria etapa
-    if (targetKey === resolvedCurrentKey) return false;
-
-    // backend decide as regras
-    return true;
-  }
-
-  if (!list.length) {
-    return (
-      <div className={["rounded-xl border bg-white p-2", className || ""].join(" ")}>
-        <div className="text-[11px] text-gray-500">Funil</div>
-        <div className="mt-1 text-xs text-gray-700">Nenhuma etapa carregada.</div>
-      </div>
+  const list = React.useMemo(() => {
+    const arr = (stages || []).filter(
+      (s) => !currentGroup || s.group === currentGroup
     );
-  }
+    return arr.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [stages, currentGroup]);
+
+  const currentIndex = React.useMemo(
+    () => (currentStageId ? list.findIndex((s) => s.id === currentStageId) : -1),
+    [list, currentStageId]
+  );
+
+  if (!list.length) return null;
+
+  const groupLabel = currentGroup
+    ? (GROUP_LABELS[currentGroup] ?? currentGroup)
+    : "Todas as etapas";
+
+  // Width % of the blue progress line (spans from center of first to center of last)
+  const progressPct =
+    list.length > 1 && currentIndex >= 0
+      ? (currentIndex / (list.length - 1)) * 100
+      : 0;
 
   return (
-    <div className={["rounded-xl border bg-white p-2", className || ""].join(" ")}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] text-gray-500">Funil</div>
+    <div className="rounded-xl border bg-white p-4">
+      <p className="mb-4 text-xs text-gray-500">
+        Você está vendo este lead em:{" "}
+        <span className="font-semibold text-gray-700">{groupLabel}</span>
+      </p>
 
-        {currentIndex >= 0 ? (
-          <div className="text-[11px] text-gray-500 truncate max-w-[60%]">
-            Atual:{" "}
-            <span className="font-semibold text-gray-700">
-              {list[currentIndex]?.name}
-            </span>
-          </div>
-        ) : (
-          <div className="text-[11px] text-gray-400">(sem etapa atual)</div>
+      {/* Stepper row */}
+      <div className="relative flex items-start">
+        {/* Background line */}
+        {list.length > 1 && (
+          <div className="pointer-events-none absolute left-4 right-4 top-4 h-0.5 bg-gray-200" />
         )}
+        {/* Blue progress line */}
+        {list.length > 1 && currentIndex > 0 && (
+          <div
+            className="pointer-events-none absolute left-4 top-4 h-0.5 bg-blue-500 transition-all"
+            style={{ width: `calc(${progressPct}% - 8px)` }}
+          />
+        )}
+
+        {list.map((stage, idx) => {
+          const isCurrent = idx === currentIndex;
+          const isAllowed =
+            !isCurrent &&
+            (allowedStageIds ? allowedStageIds.includes(stage.id) : true);
+          const isClickable = isAllowed && !disabled;
+
+          const circleClass = [
+            "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition select-none",
+            isCurrent
+              ? "bg-blue-600 text-white"
+              : isAllowed
+              ? "border-2 border-blue-300 bg-white text-blue-600 hover:bg-blue-50"
+              : "border-2 border-gray-200 bg-gray-50 text-gray-400",
+            isClickable ? "cursor-pointer" : "cursor-default",
+          ].join(" ");
+
+          return (
+            <div
+              key={stage.id}
+              className="flex flex-1 flex-col items-center gap-1.5"
+            >
+              <button
+                type="button"
+                disabled={!isClickable}
+                onClick={() => isClickable && onSelectStage?.(stage)}
+                className={circleClass}
+                title={
+                  isCurrent
+                    ? "Etapa atual"
+                    : isAllowed
+                    ? `Mover para: ${stage.name}`
+                    : stage.name
+                }
+              >
+                {idx + 1}
+              </button>
+              <span
+                className={[
+                  "max-w-[72px] text-center text-[10px] leading-tight",
+                  isCurrent
+                    ? "font-semibold text-gray-900"
+                    : "text-gray-500",
+                ].join(" ")}
+              >
+                {stage.name}
+              </span>
+            </div>
+          );
+        })}
       </div>
-
-      <div className="mt-2">
-        <div className="flex flex-wrap items-center gap-1.5 pb-1">
-          {list.map((st, idx) => {
-            const isDone = currentIndex >= 0 ? idx < currentIndex : false;
-            const isCurrent = currentIndex >= 0 ? idx === currentIndex : false;
-            const isSelectable = isStageSelectable(st.key);
-            const isBlocked = false;
-
-            const base =
-              "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition select-none";
-
-            const color = isDone
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : isCurrent
-              ? "bg-amber-50 border-amber-200 text-amber-900"
-              : isSelectable
-              ? "bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100"
-              : "bg-gray-50 border-gray-200 text-gray-400";
-
-            const cursor =
-              disabled || isCurrent || !isSelectable
-                ? "opacity-60 cursor-not-allowed"
-                : "cursor-pointer";
-
-            return (
-              <React.Fragment key={st.id || st.key || String(idx)}>
-                <button
-                  type="button"
-                  className={[base, color, cursor].join(" ")}
-                  disabled={!!disabled || isCurrent || !isSelectable}
-                  onClick={() => {
-                    if (disabled || isCurrent || !isSelectable) return;
-                    if (onSelectStage) onSelectStage(st, idx);
-                  }}
-                  title={
-                    isCurrent
-                      ? "Etapa atual"
-                      : "Clique para mover o lead para esta etapa"
-                  }
-                >
-                  <span className="font-mono text-[10px] opacity-60">
-                    {String(idx + 1).padStart(2, "0")}
-                  </span>
-                  <span className="truncate max-w-[140px]">{st.name}</span>
-                </button>
-
-                {idx < list.length - 1 ? (
-                  <span className={isBlocked ? "text-gray-200 text-xs" : "text-gray-300 text-xs"}>
-                    →
-                  </span>
-                ) : null}
-              </React.Fragment>
-            );
-          })}
-        </div>
-      </div>
-
-      {minimizeChatAfterKeys && minimizeChatAfterKeys.length ? (
-        <div className="mt-1 text-[10px] text-gray-400">
-          Chat auto-minimizar: {shouldMinimizeChat ? "SIM" : "não"}
-        </div>
-      ) : null}
     </div>
   );
 }

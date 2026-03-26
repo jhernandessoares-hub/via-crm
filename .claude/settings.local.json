@@ -21,7 +21,9 @@
       "Bash(Get-Process node:*)",
       "Bash(Stop-Process -Force)",
       "Bash(Start-Sleep 2)",
-      "Bash(find /c/Users/User/Documents/via-crm -type f -name *copilot* -o -name *ai* -o -name *suggestion*)"
+      "Bash(find /c/Users/User/Documents/via-crm -type f -name *copilot* -o -name *ai* -o -name *suggestion*)",
+      "Bash(node -e \":*)",
+      "Bash(npx ts-node:*)"
     ]
   }
 }

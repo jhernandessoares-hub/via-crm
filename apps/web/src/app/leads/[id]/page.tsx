@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
@@ -1134,6 +1134,8 @@ function Bubble({
 export default function LeadDetailChatPage() {
   const params = useParams();
   const id = String((params as any)?.id || "");
+  const searchParams = useSearchParams();
+  const currentGroup = searchParams.get("group");
 
   const [user, setUser] = useState<StoredUser | null>(null);
 
@@ -1151,6 +1153,7 @@ export default function LeadDetailChatPage() {
   const [loadingPipeline, setLoadingPipeline] = useState(false);
   const [pipelineErr, setPipelineErr] = useState<string | null>(null);
   const [movingStage, setMovingStage] = useState(false);
+  const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
 
   // (preparação pro futuro) etapa �Sfinal⬝ pode sugerir minimizar chat
 
@@ -1292,9 +1295,20 @@ export default function LeadDetailChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachPreviewUrl]);
 
+  async function loadAllowedStages(leadId: string) {
+    try {
+      const data = await apiFetch("/leads/" + leadId + "/allowed-stage-transitions", { method: "GET" });
+      const list: PipelineStage[] = Array.isArray(data?.allowedStages) ? data.allowedStages : [];
+      setAllowedStages(list);
+    } catch {
+      setAllowedStages([]);
+    }
+  }
+
   async function loadLead() {
     const l = await apiFetch("/leads/" + id, { method: "GET" });
     setLead(l);
+    await loadAllowedStages(id);
   }
 
   async function loadEvents(opts?: { silent?: boolean }) {
@@ -2442,29 +2456,35 @@ async function requestAiPanelSuggestion(
             ) : null}
           </div>
 
-          {pipelineStages.length ? (
-            <PipelineStepper
-              stages={pipelineStages}
-              currentStageId={(lead as any)?.stageId || null}
-              currentStageKey={(lead as any)?.stageKey || null}
-              disabled={movingStage}
-              onSelectStage={async (stage) => {
-                try {
-                  setMovingStage(true);
-                  await apiFetch("/leads/" + id + "/stage", {
-                    method: "PATCH",
-                    body: JSON.stringify({ stageId: stage.id }),
-                  });
+          {pipelineStages.length ? (() => {
+            const currentStageId = (lead as any)?.stageId || null;
 
-                  await loadLead();
-                } catch (e: any) {
-                  alert(e?.message || "Erro ao mover etapa");
-                } finally {
-                  setMovingStage(false);
-                }
-              }}
-            />
-          ) : loadingPipeline ? (
+            async function moveToStage(stageId: string) {
+              try {
+                setMovingStage(true);
+                await apiFetch("/leads/" + id + "/stage", {
+                  method: "PATCH",
+                  body: JSON.stringify({ stageId }),
+                });
+                await loadLead();
+              } catch (e: any) {
+                alert(e?.message || "Erro ao mover etapa");
+              } finally {
+                setMovingStage(false);
+              }
+            }
+
+            return (
+              <PipelineStepper
+                stages={pipelineStages}
+                currentStageId={currentStageId}
+                currentGroup={currentGroup}
+                allowedStageIds={allowedStages.map((s) => s.id)}
+                disabled={movingStage}
+                onSelectStage={(stage) => moveToStage(stage.id)}
+              />
+            );
+          })() : loadingPipeline ? (
             <div className="text-sm text-gray-600">Carregando funil...</div>
           ) : pipelineErr ? (
             <div className="text-sm text-red-700">{pipelineErr}</div>

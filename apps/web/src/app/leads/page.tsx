@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
@@ -10,6 +11,16 @@ type PipelineStage = {
   key: string;
   name: string;
   sortOrder?: number;
+  group?: string | null;
+};
+
+const GROUP_LABEL: Record<string, string> = {
+  PRE_ATENDIMENTO:    "Pré-atendimento",
+  AGENDAMENTO:        "Agendamento",
+  PROPOSTAS:          "Propostas",
+  CREDITO_IMOBILIARIO:"Crédito Imobiliário",
+  NEGOCIO_FECHADO:    "Negócio Fechado",
+  POS_VENDA:          "Pós Venda",
 };
 
 type Lead = {
@@ -26,18 +37,15 @@ type Lead = {
   queuePriority?: number;
 };
 
-type AllowedStageTransitionsResponse = {
-  leadId: string;
-  currentStageId: string | null;
-  currentStageKey: string | null;
-  allowedStages: PipelineStage[];
-};
 
 export default function LeadsPage() {
+  const searchParams = useSearchParams();
+  const activeGroup = searchParams.get("group");
+  const pageTitle = activeGroup ? (GROUP_LABEL[activeGroup] ?? activeGroup) : "Leads";
+
   const [view, setView] = useState<"LISTA" | "KANBAN">("LISTA");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
-  const [allowedStagesByLeadId, setAllowedStagesByLeadId] = useState<Record<string, PipelineStage[]>>({});
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -62,6 +70,7 @@ export default function LeadsPage() {
               key: String(s.key),
               name: String(s.name),
               sortOrder: typeof s.sortOrder === "number" ? s.sortOrder : undefined,
+              group: s.group ?? null,
             }))
         : [];
 
@@ -72,44 +81,6 @@ export default function LeadsPage() {
     }
   }
 
-  async function loadAllowedStagesForLeads(list: Lead[]) {
-    const uniqueLeads = Array.isArray(list) ? list.filter((l) => !!l?.id) : [];
-
-    if (uniqueLeads.length === 0) {
-      setAllowedStagesByLeadId({});
-      return;
-    }
-
-    const results = await Promise.all(
-      uniqueLeads.map(async (lead) => {
-        try {
-          const data = (await apiFetch(
-            "/leads/" + lead.id + "/allowed-stage-transitions",
-            { method: "GET" }
-          )) as AllowedStageTransitionsResponse;
-
-          return {
-            leadId: lead.id,
-            allowedStages: Array.isArray(data?.allowedStages) ? data.allowedStages : [],
-          };
-        } catch {
-          return {
-            leadId: lead.id,
-            allowedStages: [],
-          };
-        }
-      })
-    );
-
-    const nextMap: Record<string, PipelineStage[]> = {};
-
-    for (const item of results) {
-      nextMap[item.leadId] = item.allowedStages;
-    }
-
-    setAllowedStagesByLeadId(nextMap);
-  }
-
   async function loadLeads() {
     setErro(null);
     setLoading(true);
@@ -118,17 +89,14 @@ export default function LeadsPage() {
       const data = await apiFetch("/leads/branch", { method: "GET" });
       const list = Array.isArray(data) ? data : data?.items ?? [];
       setLeads(list);
-      await loadAllowedStagesForLeads(list);
     } catch {
       try {
         const data = await apiFetch("/leads/my", { method: "GET" });
         const list = Array.isArray(data) ? data : data?.items ?? [];
         setLeads(list);
-        await loadAllowedStagesForLeads(list);
       } catch (e: any) {
         setErro(e?.message || "Erro ao carregar leads");
         setLeads([]);
-        setAllowedStagesByLeadId({});
       }
     } finally {
       setLoading(false);
@@ -161,23 +129,24 @@ export default function LeadsPage() {
     }
   }
 
-  async function moveLeadToStage(leadId: string, stageId: string) {
-    try {
-      setErro(null);
-      await apiFetch("/leads/" + leadId + "/stage", {
-        method: "PATCH",
-        body: JSON.stringify({ stageId }),
-      });
-      await loadLeads();
-    } catch (e: any) {
-      setErro(e?.message || "Erro ao mover lead de etapa");
-    }
-  }
+  // Etapas visíveis: todas ou só as do grupo ativo
+  const visibleStages = useMemo(() => {
+    if (!activeGroup) return pipelineStages;
+    return pipelineStages.filter((s) => s.group === activeGroup);
+  }, [pipelineStages, activeGroup]);
+
+  const visibleStageIds = useMemo(
+    () => new Set(visibleStages.map((s) => s.id)),
+    [visibleStages]
+  );
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
-    return leads.filter((l) => {
+    const result = leads.filter((l) => {
+      // quando grupo ativo, só mostra leads cuja etapa pertence ao grupo
+      if (activeGroup && !visibleStageIds.has(l.stageId ?? "")) return false;
+
       if (!qq) return true;
 
       const blob = [l.nome || "", l.telefone || "", l.whatsapp || "", l.observacao || "", l.id || ""]
@@ -186,16 +155,18 @@ export default function LeadsPage() {
 
       return blob.includes(qq);
     });
-  }, [leads, q]);
+
+    return result;
+  }, [leads, q, activeGroup, visibleStageIds]);
 
   const groupedKanban = useMemo(() => {
     const map: Record<string, Lead[]> = {};
 
-    for (const stage of pipelineStages) {
+    for (const stage of visibleStages) {
       map[stage.id] = [];
     }
 
-    const firstStageId = pipelineStages[0]?.id;
+    const firstStageId = visibleStages[0]?.id;
 
     for (const l of filtered) {
       const targetStageId = l.stageId && map[l.stageId] ? l.stageId : firstStageId;
@@ -206,14 +177,16 @@ export default function LeadsPage() {
     }
 
     return map;
-  }, [filtered, pipelineStages]);
+  }, [filtered, visibleStages]);
 
   return (
-    <AppShell title="Leads">
+    <AppShell title={pageTitle}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Leads</h1>
-          <div className="text-sm text-gray-600">Lista e Kanban (visual)</div>
+          <h1 className="text-2xl font-semibold text-gray-900">{pageTitle}</h1>
+          <div className="text-sm text-gray-600">
+            {activeGroup ? `Funil · ${pageTitle}` : "Lista e Kanban (visual)"}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -354,7 +327,7 @@ export default function LeadsPage() {
                 className="grid grid-cols-12 items-center gap-2 border-b px-4 py-3 last:border-b-0"
               >
                 <div className="col-span-4">
-                  <Link className="font-medium text-gray-900 hover:underline" href={`/leads/${l.id}`}>
+                  <Link className="font-medium text-gray-900 hover:underline" href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}>
                     {l.nome || "Sem nome"}
                   </Link>
                   <div className="text-xs text-gray-500">{l.id}</div>
@@ -384,7 +357,7 @@ export default function LeadsPage() {
       ) : (
         <div className="mt-4 overflow-x-auto">
           <div className="flex min-w-max items-start gap-4 pb-2">
-            {pipelineStages.map((stage) => {
+            {visibleStages.map((stage) => {
               const items = groupedKanban[stage.id] ?? [];
 
               return (
@@ -404,7 +377,7 @@ export default function LeadsPage() {
                       items.map((l) => (
                         <div key={l.id} className="rounded-lg border bg-white p-2">
                           <div className="text-sm font-medium text-gray-900">
-                            <Link className="hover:underline" href={`/leads/${l.id}`}>
+                            <Link className="hover:underline" href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}>
                               {l.nome || "Sem nome"}
                             </Link>
                           </div>
@@ -415,26 +388,6 @@ export default function LeadsPage() {
 
                           <div className="mt-1 text-[11px] text-gray-500">
                             {l.stageName || stage.name}
-                          </div>
-
-                                             <div className="mt-2">
-                            <select
-                              className="w-full rounded-md border bg-white px-2 py-1 text-[11px] text-gray-700"
-                              defaultValue=""
-                              onChange={(e) => {
-                                const nextStageId = e.target.value;
-                                if (!nextStageId) return;
-                                moveLeadToStage(l.id, nextStageId);
-                                e.target.value = "";
-                              }}
-                            >
-                              <option value="">Mover lead...</option>
-                              {(allowedStagesByLeadId[l.id] ?? []).map((targetStage) => (
-                                <option key={targetStage.id} value={targetStage.id}>
-                                  {targetStage.name}
-                                </option>
-                              ))}
-                            </select>
                           </div>
 
                           {l.needsManagerReview ? (
