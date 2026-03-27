@@ -22,7 +22,7 @@ type Props = {
 const GROUP_LABELS: Record<string, string> = {
   PRE_ATENDIMENTO:    "Pré-atendimento",
   AGENDAMENTO:        "Agendamento",
-  PROPOSTAS:          "Propostas",
+  NEGOCIACOES:        "Negociações",
   CREDITO_IMOBILIARIO:"Crédito Imobiliário",
   NEGOCIO_FECHADO:    "Negócio Fechado",
   POS_VENDA:          "Pós Venda",

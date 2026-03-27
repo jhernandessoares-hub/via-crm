@@ -64,7 +64,7 @@ export default function AppShell({
   const FUNNEL_GROUPS = [
     { label: "Pré-atendimento",     group: "PRE_ATENDIMENTO" },
     { label: "Agendamento",         group: "AGENDAMENTO" },
-    { label: "Propostas",           group: "PROPOSTAS" },
+    { label: "Negociações",          group: "NEGOCIACOES" },
     { label: "Crédito Imobiliário", group: "CREDITO_IMOBILIARIO" },
     { label: "Negócio Fechado",     group: "NEGOCIO_FECHADO" },
     { label: "Pós Venda",           group: "POS_VENDA" },

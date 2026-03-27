@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -A 30 'CREATE TABLE.*pipeline' /c/Users/User/documents/via-crm/apps/api/prisma/migrations/*/migration.sql)",
+      "Bash(for file:*)",
+      "Bash(do echo:*)",
+      "Read(//c/Users/User/documents/via-crm/apps/api/**)",
+      "Bash(done)",
+      "Bash(git -C /c/Users/User/documents/via-crm log --oneline --all -- prisma/schema.prisma)",
+      "Bash(grep -r \"pipelineId\\\\|stageId\" /c/Users/User/documents/via-crm/apps/api/prisma/migrations/ --include=*.sql)",
+      "Bash(find /c/Users/User/documents/via-crm/apps/api/prisma/migrations -name \"*.sql\" -exec wc -l {} +)",
+      "Bash(sort -k1 -rn)",
+      "Bash(find /c/Users/User/documents/via-crm/apps/api/src/leads -type f -name *.ts)",
+      "Bash(node:*)"
+    ]
+  }
+}
