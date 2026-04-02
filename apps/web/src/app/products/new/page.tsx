@@ -1,149 +1,86 @@
 "use client";
 
 import Link from "next/link";
+import AppShell from "@/components/AppShell";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
-import { createProduct } from "@/lib/products.service";
-
-type ProductType =
-  | "EMPREENDIMENTO" | "LOTEAMENTO" | "APARTAMENTO" | "CASA" | "KITNET"
-  | "SOBRADO" | "TERRENO" | "SALA_COMERCIAL" | "LOJA" | "SALAO_COMERCIAL"
-  | "BARRACAO" | "OUTRO";
-
-type ProductStatus = "ACTIVE" | "INACTIVE" | "RESERVED" | "SOLD" | "SOLD_OUT" | "ARCHIVED";
-
-const PRODUCT_TYPES: { value: ProductType; label: string }[] = [
-  { value: "APARTAMENTO",    label: "Apartamento" },
-  { value: "CASA",           label: "Casa" },
-  { value: "KITNET",         label: "Kitnet" },
-  { value: "SOBRADO",        label: "Sobrado" },
-  { value: "TERRENO",        label: "Terreno" },
-  { value: "SALA_COMERCIAL", label: "Sala comercial" },
-  { value: "LOJA",           label: "Loja" },
-  { value: "SALAO_COMERCIAL",label: "Salão comercial" },
-  { value: "BARRACAO",       label: "Barracão / Galpão" },
-  { value: "OUTRO",          label: "Outro" },
-  { value: "EMPREENDIMENTO", label: "Empreendimento" },
-  { value: "LOTEAMENTO",     label: "Loteamento" },
-];
-
-function labelStatus(s: ProductStatus) {
-  switch (s) {
-    case "ACTIVE":   return "Ativo";
-    case "INACTIVE": return "Inativo";
-    case "RESERVED": return "Reservado";
-    case "SOLD":     return "Vendido";
-    case "SOLD_OUT": return "Esgotado";
-    case "ARCHIVED": return "Arquivado";
-    default: return s;
-  }
-}
-
-const inp = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400";
-const sel = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400 bg-white";
 
 export default function NewProductPage() {
   const router = useRouter();
 
-  const [type, setType] = useState<ProductType>("APARTAMENTO");
-  const [status, setStatus] = useState<ProductStatus>("ACTIVE");
-  const [title, setTitle] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const isEmpreendimento = type === "EMPREENDIMENTO" || type === "LOTEAMENTO";
-  const typeLabel = PRODUCT_TYPES.find((t) => t.value === type)?.label ?? "";
-  const titleLabel = isEmpreendimento ? "Nome do empreendimento *" : "Título (opcional)";
-  const titlePlaceholder = isEmpreendimento ? "Ex.: Residencial Vista Verde" : typeLabel;
-
-  const canSave = !saving && (!isEmpreendimento || title.trim().length > 0);
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!canSave) return;
-    setSaving(true);
-    setError(null);
-    try {
-      // For non-EMPREENDIMENTO: title defaults to the type label if left blank
-      const resolvedTitle = title.trim() || typeLabel;
-      const origin = isEmpreendimento ? "DEVELOPMENT" : "THIRD_PARTY";
-      const created = await createProduct({ title: resolvedTitle, type, status, origin });
-      router.push(`/products/${created.id}`);
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao criar produto");
-      setSaving(false);
-    }
-  }
-
   return (
-    <div className="mx-auto w-full max-w-lg p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Novo produto</h1>
+    <AppShell title="Novo produto">
+    <div className="mx-auto w-full max-w-2xl">
+      <div className="mb-8">
+        <Link href="/products" className="text-xs text-gray-400 hover:text-gray-600">
+          ← Produtos
+        </Link>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900">
+          Novo produto
+        </h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Preencha o básico para criar. Você completará todos os detalhes na próxima tela.
+          O que você está cadastrando?
         </p>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Empreendimento */}
+        <button
+          type="button"
+          onClick={() => router.push("/products/new/empreendimento?type=EMPREENDIMENTO")}
+          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-white p-7 text-center hover:border-blue-400 hover:shadow-md transition-all"
+        >
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 group-hover:bg-blue-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">Empreendimento</p>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              Projeto residencial ou comercial com múltiplas unidades
+            </p>
+          </div>
+        </button>
 
-      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-800">Tipo *</label>
-          <select
-            value={type}
-            onChange={(e) => { setType(e.target.value as ProductType); setTitle(""); }}
-            className={sel}
-          >
-            {PRODUCT_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-        </div>
+        {/* Loteamento */}
+        <button
+          type="button"
+          onClick={() => router.push("/products/new/empreendimento?type=LOTEAMENTO")}
+          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-white p-7 text-center hover:border-emerald-400 hover:shadow-md transition-all"
+        >
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 group-hover:bg-emerald-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0Z" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">Loteamento</p>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              Projeto de divisão de terreno em lotes individuais
+            </p>
+          </div>
+        </button>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-800">{titleLabel}</label>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={titlePlaceholder}
-            className={inp}
-            autoFocus={isEmpreendimento}
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-800">Status</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as ProductStatus)}
-            className={sel}
-          >
-            {(["ACTIVE", "INACTIVE", "RESERVED", "SOLD", "SOLD_OUT", "ARCHIVED"] as ProductStatus[]).map((s) => (
-              <option key={s} value={s}>{labelStatus(s)}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <Link
-            href="/products"
-            className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:bg-neutral-50"
-          >
-            Cancelar
-          </Link>
-          <button
-            type="submit"
-            disabled={!canSave}
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? "Criando..." : "Criar e continuar"}
-          </button>
-        </div>
-      </form>
+        {/* Imóvel */}
+        <button
+          type="button"
+          onClick={() => router.push("/products/new/imovel")}
+          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-white p-7 text-center hover:border-slate-400 hover:shadow-md transition-all"
+        >
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 group-hover:bg-slate-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">Imóvel</p>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              Casa, apartamento, terreno, sala comercial e outros
+            </p>
+          </div>
+        </button>
+      </div>
     </div>
+    </AppShell>
   );
 }

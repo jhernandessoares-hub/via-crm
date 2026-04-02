@@ -8,6 +8,9 @@ import { apiFetch } from "@/lib/api";
 // Types
 // ──────────────────────────────────────────────
 
+type EventType = "VISITA" | "TAREFA" | "CAPTACAO" | "REUNIAO" | "FOLLOW_UP";
+type EventStatus = "AGENDADO" | "CONFIRMADO" | "REALIZADO" | "NO_SHOW" | "CANCELADO";
+
 type CalendarEvent = {
   id: string;
   title: string;
@@ -17,6 +20,10 @@ type CalendarEvent = {
   allDay: boolean;
   color: string;
   leadId?: string | null;
+  eventType: EventType;
+  status: EventStatus;
+  location?: string | null;
+  productId?: string | null;
   createdAt: string;
 };
 
@@ -28,6 +35,10 @@ type EventForm = {
   allDay: boolean;
   color: string;
   leadId: string;
+  productId: string;
+  eventType: EventType;
+  status: EventStatus;
+  location: string;
 };
 
 type View = "month" | "week" | "day";
@@ -52,6 +63,30 @@ const COLOR_CLASS: Record<string, string> = {
   amber: "bg-amber-400 text-white",
   purple: "bg-purple-500 text-white",
   gray: "bg-gray-400 text-white",
+};
+
+const EVENT_TYPE_OPTIONS: { value: EventType; label: string; color: string }[] = [
+  { value: "VISITA", label: "Visita", color: "green" },
+  { value: "TAREFA", label: "Tarefa", color: "blue" },
+  { value: "CAPTACAO", label: "Captação", color: "amber" },
+  { value: "REUNIAO", label: "Reunião", color: "purple" },
+  { value: "FOLLOW_UP", label: "Follow-up", color: "gray" },
+];
+
+const EVENT_STATUS_OPTIONS: { value: EventStatus; label: string }[] = [
+  { value: "AGENDADO", label: "Agendado" },
+  { value: "CONFIRMADO", label: "Confirmado" },
+  { value: "REALIZADO", label: "Realizado" },
+  { value: "NO_SHOW", label: "No-show" },
+  { value: "CANCELADO", label: "Cancelado" },
+];
+
+const STATUS_BADGE_CLASS: Record<EventStatus, string> = {
+  AGENDADO: "bg-gray-100 text-gray-500",
+  CONFIRMADO: "bg-emerald-100 text-emerald-700",
+  REALIZADO: "bg-slate-100 text-slate-600",
+  NO_SHOW: "bg-red-100 text-red-600",
+  CANCELADO: "bg-red-50 text-red-400",
 };
 
 const WEEKDAYS_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -130,6 +165,10 @@ function emptyForm(date?: Date): EventForm {
     allDay: false,
     color: "blue",
     leadId: "",
+    productId: "",
+    eventType: "TAREFA",
+    status: "AGENDADO",
+    location: "",
   };
 }
 
@@ -142,6 +181,10 @@ function eventToForm(ev: CalendarEvent): EventForm {
     allDay: ev.allDay,
     color: ev.color,
     leadId: ev.leadId ?? "",
+    productId: ev.productId ?? "",
+    eventType: ev.eventType || "TAREFA",
+    status: ev.status || "AGENDADO",
+    location: ev.location ?? "",
   };
 }
 
@@ -257,6 +300,10 @@ export default function CalendarPage() {
         allDay: form.allDay,
         color: form.color,
         leadId: form.leadId.trim() || undefined,
+        productId: form.productId.trim() || undefined,
+        eventType: form.eventType,
+        status: form.status,
+        location: form.location.trim() || undefined,
       };
 
       if (editingEvent) {
@@ -528,11 +575,19 @@ export default function CalendarPage() {
                         COLOR_CLASS[ev.color] || COLOR_CLASS.blue
                       }`}
                     >
-                      <div className="font-semibold text-sm">{ev.title}</div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-semibold text-sm">{ev.title}</div>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[ev.status] || STATUS_BADGE_CLASS.AGENDADO}`}>
+                          {EVENT_STATUS_OPTIONS.find((s) => s.value === ev.status)?.label || ev.status}
+                        </span>
+                      </div>
                       {!ev.allDay && (
                         <div className="text-xs opacity-80 mt-0.5">
                           {formatShortTime(ev.startAt)} – {formatShortTime(ev.endAt)}
                         </div>
+                      )}
+                      {ev.location && (
+                        <div className="text-xs opacity-80 mt-0.5 truncate">{ev.location}</div>
                       )}
                       {ev.description && (
                         <div className="text-xs opacity-80 mt-1 truncate">{ev.description}</div>
@@ -571,6 +626,27 @@ export default function CalendarPage() {
 
             {/* Modal body */}
             <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Type selector */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-600">Tipo</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {EVENT_TYPE_OPTIONS.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setForm((p) => ({ ...p, eventType: t.value, color: t.color }))}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                        form.eventType === t.value
+                          ? `${COLOR_CLASS[t.color] || COLOR_CLASS.blue} ring-2 ring-offset-1 ring-slate-700`
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">
                   Título <span className="text-red-400">*</span>
@@ -592,6 +668,16 @@ export default function CalendarPage() {
                   rows={2}
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
                   placeholder="Detalhes opcionais"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Local</label>
+                <input
+                  value={form.location}
+                  onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
+                  className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  placeholder="Endereço ou local do evento"
                 />
               </div>
 
@@ -643,6 +729,27 @@ export default function CalendarPage() {
                 </div>
               </div>
 
+              {/* Status */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {EVENT_STATUS_OPTIONS.map((s) => (
+                    <button
+                      key={s.value}
+                      type="button"
+                      onClick={() => setForm((p) => ({ ...p, status: s.value }))}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                        form.status === s.value
+                          ? `${STATUS_BADGE_CLASS[s.value]} ring-2 ring-offset-1 ring-slate-700`
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Color picker */}
               <div>
                 <label className="mb-2 block text-xs font-medium text-gray-600">Cor</label>
@@ -662,18 +769,35 @@ export default function CalendarPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
-                  Lead vinculado{" "}
-                  <span className="font-normal text-gray-400">(ID opcional)</span>
-                </label>
-                <input
-                  value={form.leadId}
-                  onChange={(e) => setForm((p) => ({ ...p, leadId: e.target.value }))}
-                  className="w-full rounded-md border px-3 py-2 text-sm font-mono outline-none focus:border-slate-400"
-                  placeholder="UUID do lead"
-                />
-              </div>
+              {/* Campo dinâmico por tipo */}
+              {(form.eventType === "VISITA" || form.eventType === "CAPTACAO") && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    {form.eventType === "VISITA" ? "Imóvel da visita" : "Imóvel em captação"}
+                    {" "}<span className="font-normal text-gray-400">(ID opcional)</span>
+                  </label>
+                  <input
+                    value={form.productId}
+                    onChange={(e) => setForm((p) => ({ ...p, productId: e.target.value }))}
+                    className="w-full rounded-md border px-3 py-2 text-sm font-mono outline-none focus:border-slate-400"
+                    placeholder="UUID do imóvel"
+                  />
+                </div>
+              )}
+              {(form.eventType === "REUNIAO" || form.eventType === "FOLLOW_UP" || form.eventType === "TAREFA") && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                    Lead vinculado{" "}
+                    <span className="font-normal text-gray-400">(ID opcional)</span>
+                  </label>
+                  <input
+                    value={form.leadId}
+                    onChange={(e) => setForm((p) => ({ ...p, leadId: e.target.value }))}
+                    className="w-full rounded-md border px-3 py-2 text-sm font-mono outline-none focus:border-slate-400"
+                    placeholder="UUID do lead"
+                  />
+                </div>
+              )}
 
               {formError && (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

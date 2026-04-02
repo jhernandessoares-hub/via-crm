@@ -50,8 +50,21 @@ model Tenant {
   nome                String
   slug                String                  @unique
   ativo               Boolean                 @default(true)
+  plan                String                  @default("STARTER") // STARTER | PREMIUM
+  autopilotEnabled    Boolean                 @default(true)
+  businessHours       Json?
+  outsideHoursMessage String?
+  aiDelayMin          Int                     @default(5)
+  aiDelayMax          Int                     @default(15)
+  aiTypingEnabled     Boolean                 @default(true)
+  aiHistoryLimit      Int                     @default(8)
+  // WhatsApp por tenant (multi-tenant)
+  whatsappPhoneNumberId String?
+  whatsappToken         String?
+  whatsappVerifyToken   String?
   criadoEm            DateTime                @default(now())
   agentKnowledgeBases    AgentKnowledgeBase[]
+  agentTools             AgentTool[]
   aiAgents               AiAgent[]
   aiExecutionLogs        AiExecutionLog[]
   baseFrias              BaseFria[]
@@ -76,8 +89,32 @@ model Tenant {
   products               Product[]
   slaRules               SlaRule[]
   users                  User[]
+  channels               Channel[]
 
   @@map("tenants")
+}
+
+model Channel {
+  id               String    @id @default(uuid())
+  tenantId         String
+  type             String    // META_ADS | GOOGLE_ADS | YOUTUBE | TIKTOK_ADS | PORTAL_ZAP | PORTAL_VIVAREAL | PORTAL_OLX | PORTAL_IMOVELWEB | SITE
+  name             String
+  active           Boolean   @default(true)
+  webhookToken     String    @unique @default(cuid())
+  webhookTokenHash String?   @unique  // HMAC-SHA256 do token para lookup seguro
+  config           Json?
+  monthlyBudget    Float?
+  leadsCount       Int       @default(0)
+  lastLeadAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, type])
+  @@index([tenantId])
+  @@index([webhookToken])
+  @@map("channels")
 }
 
 model Branch {
@@ -105,6 +142,12 @@ model User {
   criadoEm                 DateTime          @default(now())
   branchId                 String?
   role                     UserRole          @default(AGENT)
+  whatsappNumber           String?
+  passwordResetToken       String?   @unique
+  passwordResetExpiry      DateTime?
+  secretaryName            String?
+  secretaryBotName         String?
+  secretaryGender          String            @default("FEMININO")
   uploadedProductDocuments ProductDocument[] @relation("ProductDocumentUploadedBy")
   capturedProducts         Product[]         @relation("ProductCapturedBy")
   branch                   Branch?           @relation(fields: [branchId], references: [id])
@@ -131,6 +174,23 @@ model Lead {
   assignedUserId      String?
   branchId            String?
   lastInboundAt       DateTime?
+  botPaused           Boolean              @default(false)
+  deletedAt           DateTime?
+  deletedBy           String?
+  deletionReason      String?
+  // Qualificação — preenchido pelo Assistente Operacional
+  nomeCorreto              String?
+  rendaBrutaFamiliar       Float?
+  fgts                     Float?
+  valorEntrada             Float?
+  estadoCivil              String?
+  dataNascimento           DateTime?
+  tempoProcurandoImovel    String?
+  conversouComCorretor     Boolean?
+  qualCorretorImobiliaria  String?
+  perfilImovel             String?
+  produtoInteresseId       String?
+  resumoLead               String?
   pendingRouting      Boolean              @default(false)
   pendingRoutingScope PendingRoutingScope?
   pipelineId          String?
@@ -147,7 +207,7 @@ model Lead {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews             ManagerReview[]
 
-  @@unique([tenantId, telefoneKey], name: "leads_tenantId_telefoneKey_key")
+  @@index([tenantId, telefoneKey])
   @@index([tenantId, status])
   @@index([tenantId, branchId])
   @@index([tenantId, pipelineId])
@@ -239,6 +299,7 @@ model Product {
   streetNumber       String?
   complement         String?
   condominiumName    String?
+  referencePoint     String?
   latitude           Float?
   longitude          Float?
   hideAddress        Boolean                   @default(false)
@@ -261,11 +322,15 @@ model Product {
   yearBuilt          Int?
   sunPosition        String?
 
+  // ── Especificações das unidades (JSON array) ──────────────
+  unitSpecs          Json                  @default("[]")
+
   // ── Comercialização ────────────────────────
   propertySituation  String?
   hasExclusivity     Boolean                   @default(false)
   exclusivityUntil   DateTime?
   virtualTourUrl     String?
+  visitLocations     Json                  @default("[]")
 
   // ── Diferenciais ───────────────────────────
   internalFeatures   String[]                  @default([])
@@ -273,6 +338,33 @@ model Product {
   standard           ProductStandard?
   furnished          ProductFurnished?
   condition          ProductCondition?
+
+  // ── Empreendimento / Loteamento ─────────────
+  developer             String?
+  totalUnits            Int?
+  totalTowers           Int?
+  floorsPerTower        Int?
+  privateAreaMinM2      Int?
+  privateAreaMaxM2      Int?
+  parkingMin            Int?
+  parkingMax            Int?
+  deliveryForecast      String?
+  buyerIncomeLimit      Decimal?              @db.Decimal(18, 2)
+  socialPrograms        String[]              @default([])
+  unitTypes             String[]              @default([])
+  technicalDescription  String?
+  commercialDescription String?
+  aiGeneratedFields     Json?
+  // ── Valores, Preço e Condições ──────────────────────────────────────────────
+  minBuyerIncome         Decimal?              @db.Decimal(18, 2)
+  priceReviewDays        Int?
+  acceptsFGTS                Boolean               @default(false)
+  acceptsDirectFinancing     Boolean               @default(false)
+  acceptsTradeIn             Boolean               @default(false)
+  tradeInTypes           String[]              @default([])
+  minEntryValue          Decimal?              @db.Decimal(18, 2)
+  installmentEntryMonths Int?
+  paymentConditions      String?
 
   documents          ProductDocument[]
   images             ProductImage[]
@@ -427,30 +519,38 @@ model SlaRule {
 }
 
 model AiAgent {
-  id             String               @id @default(uuid())
-  tenantId       String
-  title          String
-  slug           String
-  description    String?
-  objective      String?
-  prompt         String
-  exampleOutput  String?
-  mode           AiAgentMode          @default(COPILOT)
-  audience       String?
-  permissions    String[]             @default([])
-  active         Boolean              @default(true)
-  priority       Int                  @default(0)
-  version        Int                  @default(1)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  knowledgeBases AgentKnowledgeBase[]
-  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  executionLogs  AiExecutionLog[]
-  learnings      Learning[]
+  id               String               @id @default(uuid())
+  tenantId         String
+  title            String
+  slug             String
+  description      String?
+  objective        String?
+  prompt           String
+  exampleOutput    String?
+  mode             AiAgentMode          @default(COPILOT)
+  audience         String?
+  permissions      String[]             @default([])
+  active           Boolean              @default(true)
+  version          Int                  @default(1)
+  model            String?
+  temperature      Float?
+  isOrchestrator   Boolean              @default(false)
+  parentAgentId    String?
+  routingKeywords  String[]             @default([])
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  knowledgeBases   AgentKnowledgeBase[]
+  tools            AgentTool[]
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  executionLogs    AiExecutionLog[]
+  learnings        Learning[]
+  parent           AiAgent?             @relation("AgentHierarchy", fields: [parentAgentId], references: [id])
+  children         AiAgent[]            @relation("AgentHierarchy")
 
   @@unique([tenantId, slug], name: "tenantId_slug")
-  @@index([tenantId, active, priority])
+  @@index([tenantId, active])
   @@index([tenantId, mode])
+  @@index([tenantId, parentAgentId])
   @@map("ai_agents")
 }
 
@@ -629,6 +729,7 @@ enum KnowledgeBaseType {
   PRODUTO
   MERCADO
   CUSTOM
+  SKILL
 }
 
 enum KnowledgeBaseAudience {
@@ -688,6 +789,8 @@ enum ProductOrigin {
 enum ProductImageLabel {
   SALA
   QUARTO
+  SUITE
+  BANHEIRO
   COZINHA
   LAVANDERIA
   LAVABO
@@ -696,6 +799,8 @@ enum ProductImageLabel {
   ACADEMIA
   BRINQUEDOTECA
   PISCINA
+  FACHADA
+  AREA_COMUM
   OUTROS
 }
 
@@ -778,6 +883,7 @@ enum ProductCondition {
   USADO
   EM_CONSTRUCAO
   NA_PLANTA
+  PRONTO
 }
 
 enum MaritalStatus {
@@ -895,6 +1001,32 @@ enum AiAgentMode {
   AUTOPILOT
 }
 
+model AgentTool {
+  id            String        @id @default(uuid())
+  tenantId      String
+  agentId       String
+  name          String
+  label         String
+  description   String
+  type          AgentToolType @default(WEBHOOK)
+  webhookUrl    String?
+  webhookMethod String        @default("POST")
+  parameters    Json?
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  agent         AiAgent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, agentId])
+  @@map("agent_tools")
+}
+
+enum AgentToolType {
+  SYSTEM
+  WEBHOOK
+}
+
 model SecretaryConversation {
   id        String   @id @default(uuid())
   tenantId  String
@@ -908,19 +1040,73 @@ model SecretaryConversation {
   @@index([tenantId, userId, sessionId])
 }
 
+model PlatformAdmin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  senhaHash String
+  nome      String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("platform_admins")
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  tenantId        String?
+  userId          String?
+  platformAdminId String?
+  action          String   // LOGIN, CREATE_LEAD, DELETE_LEAD, VIEW_LEAD, EXPORT_DATA, etc.
+  resourceType    String?  // lead, user, product, channel
+  resourceId      String?
+  ipAddress       String?
+  metadata        Json?    // contexto adicional (sem PII)
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action, createdAt])
+  @@index([tenantId, userId, createdAt])
+  @@map("audit_logs")
+}
+
 model CalendarEvent {
-  id          String   @id @default(uuid())
-  tenantId    String
-  userId      String
-  title       String
-  description String?
-  startAt     DateTime
-  endAt       DateTime
-  allDay      Boolean  @default(false)
-  color       String   @default("blue")
-  leadId      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String      @id @default(uuid())
+  tenantId       String
+  userId         String
+  title          String
+  description    String?
+  startAt        DateTime
+  endAt          DateTime
+  allDay         Boolean     @default(false)
+  color          String      @default("blue")
+  leadId         String?
+  eventType      EventType   @default(TAREFA)
+  status         EventStatus @default(AGENDADO)
+  productId      String?
+  location       String?
+  reminderSentAt DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([tenantId, userId])
+  @@index([tenantId, userId, status])
+  @@index([tenantId, userId, eventType])
+}
+
+enum EventType {
+  VISITA
+  TAREFA
+  CAPTACAO
+  REUNIAO
+  FOLLOW_UP
+}
+
+enum EventStatus {
+  AGENDADO
+  CONFIRMADO
+  REALIZADO
+  NO_SHOW
+  CANCELADO
 }
 
 enum LearningSourceType {

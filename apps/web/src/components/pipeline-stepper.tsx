@@ -1,6 +1,64 @@
 "use client";
 
-import React from "react";
+function cn(...classes: (string | undefined | false)[]): string {
+  return classes.filter(Boolean).join(" ");
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0, color: "#94a3b8" }}
+    >
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+
+export type StageKey =
+  | "NOVO_LEAD"
+  | "EM_CONTATO"
+  | "NAO_QUALIFICADO"
+  | "LEAD_POTENCIAL_QUALIFICADO"
+  | "ATENDIMENTO_ENCERRADO"
+  | "BASE_FRIA_PRE"
+  | "AGUARDANDO_AGENDAMENTO"
+  | "AGENDADO_VISITA"
+  | "REAGENDAMENTO"
+  | "CONFIRMADOS"
+  | "NAO_COMPARECEU"
+  | "VISITA_CANCELADA"
+  | "BASE_FRIA_AGENDAMENTO"
+  | "CRIACAO_PROPOSTA"
+  | "PROPOSTA_ANDAMENTO"
+  | "PROPOSTA_ACEITA"
+  | "ANALISE_CREDITO"
+  | "FORMALIZACAO"
+  | "CONTRATO_ASSINADO"
+  | "DECLINIO"
+  | "BASE_FRIA_NEGOCIACOES"
+  | "ITBI"
+  | "REGISTRO"
+  | "ENTREGA_CONTRATO"
+  | "POS_VENDA";
+
+export type GroupKey =
+  | "PRE_ATENDIMENTO"
+  | "AGENDAMENTO"
+  | "NEGOCIACOES"
+  | "NEGOCIO_FECHADO"
+  | "POS_VENDA";
 
 export type PipelineStage = {
   id: string;
@@ -10,43 +68,135 @@ export type PipelineStage = {
   sortOrder?: number;
 };
 
-type Props = {
+// ─── Etapas negativas → âmbar ─────────────────────────────────────────────────
+
+export const NEGATIVE_KEYS = new Set<string>([
+  "NAO_QUALIFICADO",
+  "ATENDIMENTO_ENCERRADO",
+  "BASE_FRIA_PRE",
+  "REAGENDAMENTO",
+  "NAO_COMPARECEU",
+  "VISITA_CANCELADA",
+  "BASE_FRIA_AGENDAMENTO",
+  "DECLINIO",
+  "BASE_FRIA_NEGOCIACOES",
+]);
+
+// ─── Labels de grupo ──────────────────────────────────────────────────────────
+
+const GROUP_LABELS: Record<string, string> = {
+  PRE_ATENDIMENTO:     "Pré-atendimento",
+  AGENDAMENTO:         "Agendamento",
+  NEGOCIACOES:         "Negociações",
+  CREDITO_IMOBILIARIO: "Crédito Imobiliário",
+  NEGOCIO_FECHADO:     "Negócio Fechado",
+  POS_VENDA:           "Pós Venda",
+};
+
+// ─── Chip ─────────────────────────────────────────────────────────────────────
+
+type ChipVariant =
+  | "past"           // etapa anterior — cinza, não clicável
+  | "past-prev"      // etapa imediatamente anterior permitida — cinza + texto azul, clicável
+  | "current"        // etapa atual — azul escuro
+  | "next-positive"  // transição positiva — verde
+  | "next-negative"  // transição negativa — âmbar
+  | "future";        // etapa futura bloqueada — cinza claro
+
+const chipBase =
+  "rounded-md border px-3 py-1.5 text-xs leading-none transition-colors whitespace-nowrap";
+
+const chipStyles: Record<ChipVariant, string> = {
+  past:
+    "bg-slate-100 border-slate-200 text-slate-400 cursor-default",
+  "past-prev":
+    "bg-slate-100 border-slate-200 text-blue-600 font-medium cursor-pointer hover:bg-blue-50 hover:border-blue-200",
+  current:
+    "bg-blue-600 border-blue-600 text-white font-semibold cursor-default shadow-sm",
+  "next-positive":
+    "bg-white border-green-300 text-green-700 font-medium cursor-pointer hover:bg-green-50",
+  "next-negative":
+    "bg-white border-amber-300 text-amber-700 font-medium cursor-pointer hover:bg-amber-50",
+  future:
+    "bg-white border-slate-200 text-slate-300 cursor-default",
+};
+
+function StageChip({
+  name,
+  variant,
+  disabled,
+  onClick,
+}: {
+  name: string;
+  variant: ChipVariant;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  const clickable =
+    !disabled &&
+    (variant === "past-prev" || variant === "next-positive" || variant === "next-negative");
+
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={onClick}
+      className={cn(chipBase, chipStyles[variant], "disabled:pointer-events-none")}
+    >
+      {name}
+    </button>
+  );
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
+
+interface PipelineStepperProps {
   stages: PipelineStage[];
   currentStageId?: string | null;
   currentGroup?: string | null;
   allowedStageIds?: string[];
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
-};
+}
 
-const GROUP_LABELS: Record<string, string> = {
-  PRE_ATENDIMENTO:    "Pré-atendimento",
-  AGENDAMENTO:        "Agendamento",
-  NEGOCIACOES:        "Negociações",
-  CREDITO_IMOBILIARIO:"Crédito Imobiliário",
-  NEGOCIO_FECHADO:    "Negócio Fechado",
-  POS_VENDA:          "Pós Venda",
-};
-
-export default function PipelineStepper({
+export function PipelineStepper({
   stages,
   currentStageId,
   currentGroup,
   allowedStageIds,
   onSelectStage,
   disabled,
-}: Props) {
-  const list = React.useMemo(() => {
-    const arr = (stages || []).filter(
-      (s) => !currentGroup || s.group === currentGroup
-    );
-    return arr.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  }, [stages, currentGroup]);
+}: PipelineStepperProps) {
+  const list = (stages || [])
+    .filter((s) => !currentGroup || s.group === currentGroup)
+    .slice()
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
-  const currentIndex = React.useMemo(
-    () => (currentStageId ? list.findIndex((s) => s.id === currentStageId) : -1),
-    [list, currentStageId]
+  const currentStage = list.find((s) => s.id === currentStageId) ?? null;
+  const currentOrder = currentStage?.sortOrder ?? -1;
+
+  const allowedSet = new Set(allowedStageIds ?? []);
+
+  const allSorted = (stages || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const currentGlobalOrder = (stages || []).find((s) => s.id === currentStageId)?.sortOrder ?? -1;
+
+  const pastStages = list.filter((s) => (s.sortOrder ?? 0) < currentOrder && !allowedSet.has(s.id));
+
+  // Busca em TODAS as stages recebidas — transições podem ir para outros grupos
+  const allowedStages = (stages || []).filter(
+    (s) => s.id !== currentStageId && allowedSet.has(s.id)
   );
+
+  // Stage "voltar": permitida pelo backend E com sortOrder menor que a atual (globalmente)
+  const backStages    = allowedStages.filter((s) => (s.sortOrder ?? 0) < currentGlobalOrder);
+  const forwardStages = allowedStages.filter((s) => (s.sortOrder ?? 0) >= currentGlobalOrder);
+
+  const futureStages  = list.filter(
+    (s) => (s.sortOrder ?? 0) > currentOrder && !allowedSet.has(s.id)
+  );
+
+  const allowedPositive = forwardStages.filter((s) => !NEGATIVE_KEYS.has(s.key));
+  const allowedNegative = forwardStages.filter((s) => NEGATIVE_KEYS.has(s.key));
 
   if (!list.length) return null;
 
@@ -54,84 +204,71 @@ export default function PipelineStepper({
     ? (GROUP_LABELS[currentGroup] ?? currentGroup)
     : "Todas as etapas";
 
-  // Width % of the blue progress line (spans from center of first to center of last)
-  const progressPct =
-    list.length > 1 && currentIndex >= 0
-      ? (currentIndex / (list.length - 1)) * 100
-      : 0;
-
   return (
-    <div className="rounded-xl border bg-white p-4">
-      <p className="mb-4 text-xs text-gray-500">
-        Você está vendo este lead em:{" "}
-        <span className="font-semibold text-gray-700">{groupLabel}</span>
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <p className="mb-3 text-xs text-slate-500">
+        Você está em:{" "}
+        <span className="font-semibold text-slate-700">{groupLabel}</span>
       </p>
 
-      {/* Stepper row */}
-      <div className="relative flex items-start">
-        {/* Background line */}
-        {list.length > 1 && (
-          <div className="pointer-events-none absolute left-4 right-4 top-4 h-0.5 bg-gray-200" />
-        )}
-        {/* Blue progress line */}
-        {list.length > 1 && currentIndex > 0 && (
-          <div
-            className="pointer-events-none absolute left-4 top-4 h-0.5 bg-blue-500 transition-all"
-            style={{ width: `calc(${progressPct}% - 8px)` }}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+
+        {/* Etapas passadas bloqueadas — cinza, sem clique */}
+        {pastStages.map((s) => (
+          <StageChip key={s.id} name={s.name} variant="past" />
+        ))}
+
+        {/* Etapa anterior permitida — cinza + texto azul, clicável (voltar) */}
+        {backStages.map((s) => (
+          <StageChip
+            key={s.id}
+            name={s.name}
+            variant="past-prev"
+            disabled={disabled}
+            onClick={() => onSelectStage?.(s)}
           />
+        ))}
+
+        {/* Etapa atual */}
+        {currentStage && (
+          <StageChip name={currentStage.name} variant="current" />
         )}
 
-        {list.map((stage, idx) => {
-          const isCurrent = idx === currentIndex;
-          const isAllowed =
-            !isCurrent &&
-            (allowedStageIds ? allowedStageIds.includes(stage.id) : true);
-          const isClickable = isAllowed && !disabled;
-
-          const circleClass = [
-            "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition select-none",
-            isCurrent
-              ? "bg-blue-600 text-white"
-              : isAllowed
-              ? "border-2 border-blue-300 bg-white text-blue-600 hover:bg-blue-50"
-              : "border-2 border-gray-200 bg-gray-50 text-gray-400",
-            isClickable ? "cursor-pointer" : "cursor-default",
-          ].join(" ");
-
-          return (
-            <div
-              key={stage.id}
-              className="flex flex-1 flex-col items-center gap-1.5"
-            >
-              <button
-                type="button"
-                disabled={!isClickable}
-                onClick={() => isClickable && onSelectStage?.(stage)}
-                className={circleClass}
-                title={
-                  isCurrent
-                    ? "Etapa atual"
-                    : isAllowed
-                    ? `Mover para: ${stage.name}`
-                    : stage.name
-                }
-              >
-                {idx + 1}
-              </button>
-              <span
-                className={[
-                  "max-w-[72px] text-center text-[10px] leading-tight",
-                  isCurrent
-                    ? "font-semibold text-gray-900"
-                    : "text-gray-500",
-                ].join(" ")}
-              >
-                {stage.name}
-              </span>
+        {/* Seta + transições permitidas */}
+        {allowedStages.length > 0 && (
+          <div className="flex items-center gap-2">
+            <ArrowRightIcon />
+            <div className="flex flex-col gap-1.5">
+              {allowedPositive.map((s) => (
+                <StageChip
+                  key={s.id}
+                  name={s.name}
+                  variant="next-positive"
+                  disabled={disabled}
+                  onClick={() => onSelectStage?.(s)}
+                />
+              ))}
+              {allowedNegative.map((s) => (
+                <StageChip
+                  key={s.id}
+                  name={s.name}
+                  variant="next-negative"
+                  disabled={disabled}
+                  onClick={() => onSelectStage?.(s)}
+                />
+              ))}
             </div>
-          );
-        })}
+          </div>
+        )}
+
+        {/* Etapas futuras bloqueadas — cinza claro */}
+        {futureStages.map((s) => (
+          <StageChip key={s.id} name={s.name} variant="future" />
+        ))}
+
       </div>
     </div>
   );
 }
+
+export default PipelineStepper;

@@ -130,6 +130,10 @@ export class UpdateProductDto {
 
   @IsOptional()
   @IsString()
+  referencePoint?: string | null;
+
+  @IsOptional()
+  @IsString()
   condominiumName?: string | null;
 
   @IsOptional()
@@ -221,6 +225,11 @@ export class UpdateProductDto {
   @IsString()
   sunPosition?: string | null;
 
+  // ── Especificações das unidades ──────────────
+  @IsOptional()
+  @IsArray()
+  unitSpecs?: any[];
+
   // ── Comercialização ────────────────────────
   @IsOptional()
   @IsString()
@@ -237,6 +246,10 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   virtualTourUrl?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  visitLocations?: any[];
 
   // ── Diferenciais ───────────────────────────
   @IsOptional()
@@ -260,4 +273,121 @@ export class UpdateProductDto {
   @IsOptional()
   @IsEnum(ProductCondition)
   condition?: ProductCondition | null;
+
+  // ── Empreendimento / Loteamento ─────────────
+  @IsOptional()
+  @IsString()
+  developer?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  totalUnits?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  totalTowers?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  floorsPerTower?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  privateAreaMinM2?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  privateAreaMaxM2?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  parkingMin?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  parkingMax?: number | null;
+
+  @IsOptional()
+  @IsString()
+  deliveryForecast?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  buyerIncomeLimit?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minBuyerIncome?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  socialPrograms?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  unitTypes?: string[];
+
+  @IsOptional()
+  @IsString()
+  technicalDescription?: string | null;
+
+  @IsOptional()
+  @IsString()
+  commercialDescription?: string | null;
+
+  @IsOptional()
+  aiGeneratedFields?: Record<string, boolean> | null;
+
+  // ── Valores e Condições ─────────────────────
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  priceReviewDays?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  acceptsFGTS?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  acceptsTradeIn?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tradeInTypes?: string[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minEntryValue?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  installmentEntryMonths?: number | null;
+
+  @IsOptional()
+  @IsString()
+  paymentConditions?: string | null;
 }

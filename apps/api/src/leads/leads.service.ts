@@ -53,12 +53,14 @@ import { Readable } from 'stream';
 
 // ✅ NOVO: Pipeline (ETAPA 2)
 import { PipelineService } from '../pipeline/pipeline.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class LeadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pipelineService: PipelineService,
+    private readonly audit: AuditService,
   ) {}
 
   // =========================================
@@ -1063,6 +1065,36 @@ export class LeadsService {
     return { to, metaResponse: data };
   }
 
+  async sendMetaImageByUrl(toRaw: string, imageUrl: string, caption?: string) {
+    const token = process.env.WHATSAPP_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
+
+    if (!token || !phoneNumberId) {
+      throw new Error('Config faltando: WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID');
+    }
+
+    const to = this.normalizeToE164(toRaw);
+    const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
+    const imagePayload: any = { link: imageUrl };
+    if (caption) imagePayload.caption = caption;
+
+    const body = { messaging_product: 'whatsapp', to, type: 'image', image: imagePayload };
+
+    const { ok, data } = await this.fetchMetaWithRetry(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!ok) {
+      const msg = data?.error?.message || data?.message || 'Erro Meta (send image by url)';
+      throw new Error(`Erro ao enviar imagem (Meta): ${msg}`);
+    }
+
+    return { to, metaResponse: data };
+  }
+
   private async sendMetaVideoMessage(toRaw: string, mediaId: string) {
     const token = process.env.WHATSAPP_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -1362,9 +1394,14 @@ export class LeadsService {
     return lead;
   }
 
-  async list(tenantId: string) {
+  async list(user: { tenantId: string; role: string; branchId?: string | null }) {
+    const { tenantId, role, branchId } = user;
+
+    // AGENT só vê leads da própria filial (isolamento LGPD por função)
+    const branchFilter = role === 'AGENT' && branchId ? { branchId } : {};
+
     const leads = await this.prisma.lead.findMany({
-      where: { tenantId },
+      where: { tenantId, ...branchFilter, deletedAt: null },
       orderBy: { criadoEm: 'desc' },
     });
 
@@ -1376,6 +1413,7 @@ async getById(user: any, id: string) {
     where: {
       id,
       tenantId: user.tenantId,
+      deletedAt: null,
     },
   });
 
@@ -1786,6 +1824,39 @@ async getById(user: any, id: string) {
       }
     } else {
       allowedStageKeys = allowedTransitions[fromStageKey] ?? [];
+
+      // Permite voltar apenas para stages que o lead realmente visitou
+      const transitions = await this.prisma.leadTransitionLog.findMany({
+        where: { tenantId: user.tenantId, leadId },
+        select: { fromStage: true, toStage: true },
+      });
+
+      const visitedNames = new Set<string>(
+        transitions.flatMap((t) => [t.fromStage, t.toStage]).filter((s): s is string => s !== null)
+      );
+
+      const currentStageInfo = await this.prisma.pipelineStage.findFirst({
+        where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
+        select: { sortOrder: true, group: true },
+      });
+
+      if (currentStageInfo?.group != null && currentStageInfo?.sortOrder != null) {
+        const prevStage = await this.prisma.pipelineStage.findFirst({
+          where: {
+            tenantId: user.tenantId,
+            isActive: true,
+            group: currentStageInfo.group,
+            sortOrder: { lt: currentStageInfo.sortOrder },
+            name: { in: Array.from(visitedNames) },
+          },
+          orderBy: { sortOrder: 'desc' },
+          select: { key: true },
+        });
+
+        if (prevStage?.key && !allowedStageKeys.includes(prevStage.key)) {
+          allowedStageKeys = [...allowedStageKeys, prevStage.key];
+        }
+      }
     }
 
     const allowedStages =
@@ -1817,6 +1888,60 @@ async getById(user: any, id: string) {
  // =============================
 // ✅ ETAPA 2 — mover lead de etapa
 // =============================
+
+async updateBotPaused(tenantId: string, leadId: string, botPaused: boolean) {
+  return this.prisma.lead.update({
+    where: { id: leadId, tenantId },
+    data: { botPaused },
+    select: { id: true, botPaused: true },
+  });
+}
+
+async updateQualification(tenantId: string, leadId: string, data: {
+  nomeCorreto?: string | null;
+  rendaBrutaFamiliar?: number | null;
+  fgts?: number | null;
+  valorEntrada?: number | null;
+  estadoCivil?: string | null;
+  dataNascimento?: string | null;
+  tempoProcurandoImovel?: string | null;
+  conversouComCorretor?: boolean | null;
+  qualCorretorImobiliaria?: string | null;
+  perfilImovel?: string | null;
+  produtoInteresseId?: string | null;
+  resumoLead?: string | null;
+}) {
+  const updateData: any = {};
+  if (data.nomeCorreto !== undefined) {
+    updateData.nomeCorreto = data.nomeCorreto;
+    // Se nome correto foi identificado, assume como nome do lead
+    if (data.nomeCorreto) updateData.nome = data.nomeCorreto;
+  }
+  if (data.rendaBrutaFamiliar !== undefined) updateData.rendaBrutaFamiliar = data.rendaBrutaFamiliar;
+  if (data.fgts !== undefined) updateData.fgts = data.fgts;
+  if (data.valorEntrada !== undefined) updateData.valorEntrada = data.valorEntrada;
+  if (data.estadoCivil !== undefined) updateData.estadoCivil = data.estadoCivil;
+  if (data.dataNascimento !== undefined) updateData.dataNascimento = data.dataNascimento ? new Date(data.dataNascimento) : null;
+  if (data.tempoProcurandoImovel !== undefined) updateData.tempoProcurandoImovel = data.tempoProcurandoImovel;
+  if (data.conversouComCorretor !== undefined) updateData.conversouComCorretor = data.conversouComCorretor;
+  if (data.qualCorretorImobiliaria !== undefined) updateData.qualCorretorImobiliaria = data.qualCorretorImobiliaria;
+  if (data.perfilImovel !== undefined) updateData.perfilImovel = data.perfilImovel;
+  if (data.produtoInteresseId !== undefined) updateData.produtoInteresseId = data.produtoInteresseId;
+  if (data.resumoLead !== undefined) updateData.resumoLead = data.resumoLead;
+
+  return this.prisma.lead.update({
+    where: { id: leadId, tenantId },
+    data: updateData,
+    select: {
+      id: true, nome: true, nomeCorreto: true, rendaBrutaFamiliar: true,
+      fgts: true, valorEntrada: true, estadoCivil: true, dataNascimento: true,
+      tempoProcurandoImovel: true, conversouComCorretor: true,
+      qualCorretorImobiliaria: true, perfilImovel: true,
+      produtoInteresseId: true, resumoLead: true,
+    },
+  });
+}
+
 async updateStage(user: any, leadId: string, stageId: string) {
   if (!leadId) throw new BadRequestException('leadId ausente');
   if (!stageId) throw new BadRequestException('stageId ausente');
@@ -1995,6 +2120,41 @@ async updateStage(user: any, leadId: string, stageId: string) {
   } else {
     const allowedTargets = allowedTransitions[fromStageKey] ?? [];
     isAllowed = allowedTargets.includes(toStage.key);
+
+    // Permite voltar apenas para stages que o lead realmente visitou
+    if (!isAllowed) {
+      const transitions = await this.prisma.leadTransitionLog.findMany({
+        where: { tenantId: user.tenantId, leadId },
+        select: { fromStage: true, toStage: true },
+      });
+
+      const visitedNames = new Set<string>(
+        transitions.flatMap((t) => [t.fromStage, t.toStage]).filter((s): s is string => s !== null)
+      );
+
+      const currentStageInfo = await this.prisma.pipelineStage.findFirst({
+        where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
+        select: { sortOrder: true, group: true },
+      });
+
+      if (currentStageInfo?.group != null && currentStageInfo?.sortOrder != null) {
+        const prevStage = await this.prisma.pipelineStage.findFirst({
+          where: {
+            tenantId: user.tenantId,
+            isActive: true,
+            group: currentStageInfo.group,
+            sortOrder: { lt: currentStageInfo.sortOrder },
+            name: { in: Array.from(visitedNames) },
+          },
+          orderBy: { sortOrder: 'desc' },
+          select: { id: true },
+        });
+
+        if (prevStage?.id === toStage.id) {
+          isAllowed = true;
+        }
+      }
+    }
   }
 
   if (!isAllowed) {
@@ -2021,25 +2181,6 @@ async updateStage(user: any, leadId: string, stageId: string) {
 
   return updated;
 }
-  // =============================
-  // MANAGER QUEUE
-  // =============================
-  async getManagerQueue(user: any) {
-    if (user.role === 'AGENT') {
-      throw new ForbiddenException('Sem permissão');
-    }
-
-    const leads = await this.prisma.lead.findMany({
-      where: {
-        tenantId: user.tenantId,
-        needsManagerReview: true,
-      },
-      orderBy: { lastInboundAt: 'desc' },
-    });
-
-    return this.attachLastInboundPreview(user.tenantId, leads);
-  }
-
   async getMyLeads(user: any) {
     const leads = await this.prisma.lead.findMany({
       where: {
@@ -2066,30 +2207,6 @@ async updateStage(user: any, leadId: string, stageId: string) {
     });
 
     return this.attachLastInboundPreview(user.tenantId, leads);
-  }
-
-  async managerDecision(id: string, dto: any, user: any) {
-    if (user.role === 'AGENT') {
-      throw new ForbiddenException('Sem permissão');
-    }
-
-    await this.prisma.lead.update({
-      where: { id },
-      data: {
-        needsManagerReview: false,
-      },
-    });
-
-    await this.prisma.leadEvent.create({
-      data: {
-        tenantId: user.tenantId,
-        leadId: id,
-        channel: 'system.manager_decision',
-        payloadRaw: dto,
-      },
-    });
-
-    return { ok: true };
   }
 
   // =============================
@@ -2248,5 +2365,73 @@ const aiAssistanceLabel =
     });
 
     return { ok: true };
+  }
+
+  async deleteLead(user: any, leadId: string, reason?: string) {
+    if (user.role !== 'OWNER') {
+      throw new ForbiddenException('Apenas o proprietário pode excluir leads');
+    }
+
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!lead) throw new NotFoundException('Lead não encontrado');
+
+    // Soft delete: mantém registro para auditoria LGPD (Art. 17)
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        deletedAt: new Date(),
+        deletedBy: user.id ?? user.sub,
+        deletionReason: reason ?? null,
+      },
+    });
+
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user.id ?? user.sub,
+      action: 'DELETE_LEAD',
+      resourceType: 'lead',
+      resourceId: leadId,
+      metadata: { reason: reason ?? null },
+    });
+
+    return { ok: true };
+  }
+
+  async exportCsv(user: { tenantId: string; role: string; branchId?: string }, filters: { from?: string; to?: string; stageId?: string }): Promise<string> {
+    const where: any = { tenantId: user.tenantId, deletedAt: null };
+    if (user.role === 'AGENT' && user.branchId) where.branchId = user.branchId;
+    if (filters.from) where.criadoEm = { ...(where.criadoEm || {}), gte: new Date(filters.from) };
+    if (filters.to) where.criadoEm = { ...(where.criadoEm || {}), lte: new Date(filters.to) };
+    if (filters.stageId) where.stageId = filters.stageId;
+
+    const leads = await this.prisma.lead.findMany({
+      where,
+      orderBy: { criadoEm: 'desc' },
+      take: 10000,
+      select: {
+        id: true, nome: true, telefone: true, email: true, origem: true, status: true,
+        criadoEm: true, atualizadoEm: true, resumoLead: true,
+        stage: { select: { name: true } },
+      },
+    });
+
+    this.audit.log({ tenantId: user.tenantId, action: 'EXPORT_DATA', metadata: { count: leads.length } });
+
+    const header = ['ID', 'Nome', 'Telefone', 'Email', 'Origem', 'Status', 'Etapa', 'Resumo', 'Criado em', 'Atualizado em'];
+    const escape = (v: any) => {
+      const s = String(v ?? '').replace(/"/g, '""');
+      return `"${s}"`;
+    };
+    const rows = leads.map((l) => [
+      escape(l.id), escape(l.nome), escape(l.telefone), escape(l.email),
+      escape(l.origem), escape(l.status), escape(l.stage?.name),
+      escape(l.resumoLead), escape(l.criadoEm?.toISOString()), escape(l.atualizadoEm?.toISOString()),
+    ].join(','));
+
+    return [header.join(','), ...rows].join('\n');
   }
 }

@@ -24,6 +24,7 @@ export enum KnowledgeBaseTypeDto {
   PRODUTO = 'PRODUTO',
   MERCADO = 'MERCADO',
   CUSTOM = 'CUSTOM',
+  SKILL = 'SKILL',
 }
 
 export class CreateKnowledgeBaseDto {

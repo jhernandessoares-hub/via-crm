@@ -70,6 +70,11 @@ export class ProductsController {
     return this.productsService.remove(req.user, id);
   }
 
+  @Post(':id/ai/extract')
+  async extractInfo(@Req() req: any, @Param('id') id: string) {
+    return this.productsService.extractInfoWithAI(req.user, id);
+  }
+
   // =========================
   // 📸 IMAGENS
   // =========================
@@ -80,6 +85,9 @@ export class ProductsController {
     @Req() req: any,
     @Param('id') id: string,
     @UploadedFile() file?: any,
+    @Body('label') label?: string,
+    @Body('title') title?: string,
+    @Body('customLabel') customLabel?: string,
   ) {
     if (!file?.buffer) {
       throw new BadRequestException('Envie um arquivo no campo "file"');
@@ -91,7 +99,11 @@ export class ProductsController {
     const url = result?.secure_url || result?.url;
     if (!url) throw new BadRequestException('Cloudinary não retornou URL');
 
-    const img = await this.productsService.addImage(req.user, id, url);
+    const img = await this.productsService.addImage(req.user, id, url, {
+      label: label || undefined,
+      title: title || undefined,
+      customLabel: customLabel || undefined,
+    });
 
     return { ok: true, image: img, url };
   }

@@ -5,7 +5,14 @@ import { PrismaService } from '../prisma/prisma.service';
 export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findMany(tenantId: string, userId: string, start?: string, end?: string) {
+  async findMany(
+    tenantId: string,
+    userId: string,
+    start?: string,
+    end?: string,
+    eventType?: string,
+    status?: string,
+  ) {
     const where: any = { tenantId, userId };
 
     if (start || end) {
@@ -13,6 +20,8 @@ export class CalendarService {
       if (start) where.startAt.gte = new Date(start);
       if (end) where.startAt.lte = new Date(end);
     }
+    if (eventType) where.eventType = eventType;
+    if (status) where.status = status;
 
     return this.prisma.calendarEvent.findMany({
       where,
@@ -46,6 +55,10 @@ export class CalendarService {
       allDay?: boolean;
       color?: string;
       leadId?: string;
+      eventType?: string;
+      status?: string;
+      productId?: string;
+      location?: string;
     },
   ) {
     return this.prisma.calendarEvent.create({
@@ -59,6 +72,10 @@ export class CalendarService {
         allDay: body.allDay ?? false,
         color: body.color || 'blue',
         leadId: body.leadId || null,
+        eventType: (body.eventType as any) || 'TAREFA',
+        status: (body.status as any) || 'AGENDADO',
+        productId: body.productId || null,
+        location: body.location?.trim() || null,
       },
     });
   }
@@ -75,6 +92,10 @@ export class CalendarService {
       allDay?: boolean;
       color?: string;
       leadId?: string | null;
+      eventType?: string;
+      status?: string;
+      productId?: string | null;
+      location?: string | null;
     },
   ) {
     const existing = await this.prisma.calendarEvent.findFirst({
@@ -91,6 +112,10 @@ export class CalendarService {
     if (body.allDay !== undefined) data.allDay = body.allDay;
     if (body.color !== undefined) data.color = body.color;
     if (body.leadId !== undefined) data.leadId = body.leadId || null;
+    if (body.eventType !== undefined) data.eventType = body.eventType;
+    if (body.status !== undefined) data.status = body.status;
+    if (body.productId !== undefined) data.productId = body.productId || null;
+    if (body.location !== undefined) data.location = body.location?.trim() || null;
 
     return this.prisma.calendarEvent.update({ where: { id }, data });
   }

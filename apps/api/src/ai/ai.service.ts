@@ -3,6 +3,7 @@ import { Logger } from '../logger';
 
 const logger = new Logger('AiService');
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Extrai os campos textuais de uma KB de forma uniforme para todos os tipos. */
@@ -15,6 +16,7 @@ function buildKbFields(kb: { prompt?: string | null }): string {
 @Injectable()
 export class AiService {
   private openai: OpenAI | null = null;
+  private anthropic: Anthropic | null = null;
 
   constructor(private readonly prisma: PrismaService) {
     if (!process.env.OPENAI_API_KEY) {
@@ -25,29 +27,151 @@ export class AiService {
   private getOpenAI(): OpenAI {
     if (!this.openai) {
       const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        throw new Error('OPENAI_API_KEY não definida no .env');
-      }
+      if (!apiKey) throw new Error('OPENAI_API_KEY não definida no .env');
       this.openai = new OpenAI({ apiKey });
     }
     return this.openai;
   }
 
+  private getAnthropic(): Anthropic {
+    if (!this.anthropic) {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) throw new Error('ANTHROPIC_API_KEY não definida no .env');
+      this.anthropic = new Anthropic({ apiKey });
+    }
+    return this.anthropic;
+  }
+
+  private isClaude(model: string): boolean {
+    return model.toLowerCase().startsWith('claude-');
+  }
+
+  /** Chamada unificada: detecta o provider pelo nome do modelo e executa com suporte a tools. */
+  private async callLLM(params: {
+    model: string;
+    temperature: number;
+    systemContent: string;
+    userPrompt: string;
+    tools?: { name: string; description: string }[];
+    onToolCall?: (toolName: string, args: Record<string, any>) => Promise<string>;
+  }): Promise<string> {
+    const { model, temperature, systemContent, userPrompt, tools = [], onToolCall } = params;
+
+    if (this.isClaude(model)) {
+      // ── Anthropic Claude ───────────────────────────────────────────────────
+      const anthropicTools: Anthropic.Tool[] = tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: { type: 'object' as const, properties: {}, additionalProperties: false },
+      }));
+
+      const firstResp = await this.getAnthropic().messages.create({
+        model,
+        max_tokens: 1024,
+        temperature,
+        system: systemContent,
+        messages: [{ role: 'user', content: userPrompt }],
+        ...(anthropicTools.length > 0 && { tools: anthropicTools }),
+      });
+
+      // Verifica se houve chamada de ferramenta
+      const toolUseBlocks = firstResp.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+
+      if (toolUseBlocks.length > 0 && onToolCall) {
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const block of toolUseBlocks) {
+          let result = 'ok';
+          try {
+            result = await onToolCall(block.name, block.input as Record<string, any>);
+          } catch (e: any) {
+            result = `erro: ${e?.message}`;
+          }
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+        }
+
+        const secondResp = await this.getAnthropic().messages.create({
+          model,
+          max_tokens: 1024,
+          temperature,
+          system: systemContent,
+          messages: [
+            { role: 'user', content: userPrompt },
+            { role: 'assistant', content: firstResp.content },
+            { role: 'user', content: toolResults },
+          ],
+          ...(anthropicTools.length > 0 && { tools: anthropicTools }),
+        });
+
+        return secondResp.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map((b) => b.text).join('').trim();
+      }
+
+      return firstResp.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text).join('').trim();
+    }
+
+    // ── OpenAI ──────────────────────────────────────────────────────────────
+    const openAiTools = tools.map((t) => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: { type: 'object', properties: {}, additionalProperties: false },
+      },
+    }));
+
+    const baseMessages: any[] = [
+      { role: 'system', content: systemContent },
+      { role: 'user', content: userPrompt },
+    ];
+
+    const completionParams: any = { model, messages: baseMessages, temperature };
+    if (openAiTools.length > 0) {
+      completionParams.tools = openAiTools;
+      completionParams.tool_choice = 'auto';
+    }
+
+    const firstCompletion = await this.getOpenAI().chat.completions.create(completionParams);
+    const firstChoice = firstCompletion.choices[0];
+
+    if (firstChoice?.finish_reason === 'tool_calls' && firstChoice.message.tool_calls?.length) {
+      const toolResults: any[] = [];
+      for (const tc of firstChoice.message.tool_calls as any[]) {
+        let result = 'ok';
+        if (onToolCall) {
+          try {
+            result = await onToolCall(tc.function?.name, JSON.parse(tc.function?.arguments || '{}'));
+          } catch (e: any) {
+            result = `erro: ${e?.message}`;
+          }
+        }
+        toolResults.push({ role: 'tool', tool_call_id: tc.id, content: result });
+      }
+
+      const secondCompletion = await this.getOpenAI().chat.completions.create({
+        model,
+        messages: [...baseMessages, firstChoice.message, ...toolResults],
+        temperature,
+      });
+      return secondCompletion.choices[0]?.message?.content?.trim() || '';
+    }
+
+    return firstChoice?.message?.content?.trim() || '';
+  }
+
   async findDefaultAgentForTenant(tenantId: string) {
+    // Tenta primeiro o agente de atendimento ao lead
+    const atendimento = await this.prisma.aiAgent.findFirst({
+      where: { tenantId, active: true, slug: 'atendimento-lead' },
+      select: { id: true, title: true, slug: true, mode: true, active: true, model: true, temperature: true },
+    });
+    if (atendimento) return atendimento;
+
+    // Fallback: qualquer agente não-orquestrador ativo
     return this.prisma.aiAgent.findFirst({
-      where: {
-        tenantId,
-        active: true,
-      },
-      orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        mode: true,
-        active: true,
-        priority: true,
-      },
+      where: { tenantId, active: true, isOrchestrator: false },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true, slug: true, mode: true, active: true, model: true, temperature: true },
     });
   }
 
@@ -61,12 +185,14 @@ export class AiService {
     previousSuggestion?: string;
     conversationContext?: string;
     mode?: 'REGENERATE' | 'SHORTEN' | 'IMPROVE' | 'VARIATE';
+    onToolCall?: (toolName: string, args: Record<string, any>) => Promise<string>;
   }) {
     let agentTitle = '';
     let agentDirectPrompt = ''; // campo prompt do próprio agente (prioridade máxima se preenchido)
     let personaBlock = '';
     let rulesBlock = '';
     let knowledgeContext = '';
+    let agentTools: any[] = [];
 
     if (params.agentId) {
       const agent = await this.prisma.aiAgent.findFirst({
@@ -85,12 +211,14 @@ export class AiService {
             },
             orderBy: { createdAt: 'asc' },
           },
+          tools: { where: { active: true } },
         },
       });
 
       if (agent) {
         agentTitle = agent.title?.trim() || '';
         if (agent.prompt?.trim()) agentDirectPrompt = agent.prompt.trim();
+        agentTools = (agent as any).tools ?? [];
 
         const activeKBs = agent.knowledgeBases
           .map((item) => item.knowledgeBase)
@@ -230,29 +358,43 @@ export class AiService {
     // ── role: system ────────────────────────────────────────────────────────
     const systemParts: string[] = [];
 
-    // 1. Persona (identidade e voz do agente)
+    // 1. Persona (prompt do agente — Central de Agentes)
     systemParts.push(personaBlock);
 
-    // 2. Instruções comportamentais fixas
-    const behaviorLines = [
-      'Escreva sempre como pessoa real. Nunca como assistente virtual.',
-      'Use linguagem simples, curta e natural.',
-      'Nunca use: "vi que você entrou em contato", "como posso ajudar", "fico feliz em ajudar".',
-      isModifyMode && previousSuggestion
-        ? 'Você está modificando uma sugestão anterior. NUNCA mude o assunto — responda exatamente a mesma pergunta do lead que a sugestão anterior respondia. Não reinicie a conversa. Não transforme em saudação.'
-        : 'Responda a pergunta do lead diretamente. Se for saudação simples, responda só com saudação curta.',
-    ].filter(Boolean);
-    systemParts.push(behaviorLines.join(' '));
-
-    // 3. Regras obrigatórias (KBs do tipo REGRAS)
+    // 2. Regras obrigatórias (KBs do tipo REGRAS — Central de Agentes)
     if (rulesBlock) systemParts.push(`Regras adicionais:\n${rulesBlock}`);
 
-    // 4. Instrução sobre uso dos imóveis disponíveis
+    // 2b. Regra de identidade: nunca revelar que é IA nem prefixar o próprio papel
+    systemParts.push(
+      'IMPORTANTE: Nunca inclua prefixos como "Agente:", "Corretor:", "Assistente:" ou qualquer outro rótulo de papel no início das suas mensagens. ' +
+      'Escreva diretamente a mensagem, como uma pessoa real escreveria no WhatsApp.',
+    );
+
+    // 2c. Nome do lead: o valor em "Lead:" veio automaticamente do WhatsApp e pode estar errado
+    systemParts.push(
+      'O nome que aparece no campo "Lead:" foi capturado automaticamente do perfil do WhatsApp e pode estar incorreto ou ser um apelido. ' +
+      'NUNCA use esse nome para chamar o lead até que ele próprio confirme o nome na conversa. ' +
+      'Se o nome já foi confirmado pelo lead no histórico da conversa, use-o normalmente. ' +
+      'Se ainda não foi confirmado, pergunte o nome sem mencionar o que veio do WhatsApp.',
+    );
+
+    // 3. Instrução de modo (apenas para operações de modificação de sugestão)
+    if (isModifyMode && previousSuggestion) {
+      systemParts.push('Você está modificando uma sugestão anterior. NUNCA mude o assunto — responda exatamente a mesma pergunta do lead que a sugestão anterior respondia. Não reinicie a conversa.');
+    }
+
+    // 3b. Formatação para WhatsApp
+    systemParts.push(
+      'Formatação obrigatória para WhatsApp: use *asterisco simples* para negrito (nunca ** dois asteriscos). ' +
+      'Não use markdown como ##, ---, tabelas ou blocos de código. ' +
+      'Escreva em texto corrido e natural, sem listas excessivas nem blocos de dados formatados.',
+    );
+
+    // 4. Instrução de produtos (apenas se houver produtos cadastrados)
     if (productsBlock) {
       systemParts.push(
         'Quando o lead demonstrar interesse em imóvel, consulte a lista de IMÓVEIS DISPONÍVEIS no contexto ' +
-        'e sugira os mais compatíveis com o perfil dele. Sempre mencione título, localização e preço. ' +
-        'Nunca invente imóveis que não estão na lista.',
+        'e sugira os mais compatíveis. Nunca invente imóveis que não estão na lista.',
       );
     }
 
@@ -274,16 +416,24 @@ export class AiService {
 
     const prompt = userParts.join('\n\n');
 
-    const completion = await this.getOpenAI().chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemContent },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-    });
+    // Model e temperature: agente > env > padrão
+    const agentModel = (params as any).agentModel as string | undefined;
+    const agentTemperature = (params as any).agentTemperature as number | undefined;
+    const model = agentModel || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const temperature = agentTemperature ?? 0.7;
 
-    const output = completion.choices[0]?.message?.content?.trim() || '';
+    const tools = agentTools
+      .filter((t: any) => t.active)
+      .map((t: any) => ({ name: t.name, description: t.description }));
+
+    const output = await this.callLLM({
+      model,
+      temperature,
+      systemContent,
+      userPrompt: prompt,
+      tools,
+      onToolCall: params.onToolCall,
+    });
 
     if (params.agentId) {
       try {
@@ -307,25 +457,25 @@ export class AiService {
 
   private async buildProductsBlock(tenantId: string): Promise<string> {
     const products = await this.prisma.product.findMany({
-      where: { tenantId, status: 'ACTIVE' },
+      where: { tenantId, status: 'ACTIVE', publicationStatus: 'PUBLISHED' },
       select: {
-        id: true,
-        title: true,
-        type: true,
-        dealType: true,
-        neighborhood: true,
-        city: true,
-        price: true,
-        rentPrice: true,
-        bedrooms: true,
-        suites: true,
-        bathrooms: true,
-        parkingSpaces: true,
-        areaM2: true,
-        builtAreaM2: true,
-        standard: true,
-        condominiumName: true,
-        description: true,
+        id: true, title: true, type: true, dealType: true,
+        // Localização
+        neighborhood: true, city: true, state: true, referencePoint: true,
+        // Preços
+        price: true, rentPrice: true,
+        // Imovel avulso
+        bedrooms: true, suites: true, bathrooms: true, parkingSpaces: true,
+        areaM2: true, builtAreaM2: true, standard: true, condominiumName: true,
+        condition: true, description: true,
+        // Empreendimento
+        developer: true, totalUnits: true, totalTowers: true, floorsPerTower: true,
+        privateAreaMinM2: true, privateAreaMaxM2: true, parkingMin: true, parkingMax: true,
+        deliveryForecast: true, unitTypes: true, condoFeatures: true, unitSpecs: true,
+        socialPrograms: true, commercialDescription: true,
+        // Condições
+        acceptsFGTS: true, acceptsFinancing: true, acceptsExchange: true,
+        paymentConditions: true, minBuyerIncome: true, buyerIncomeLimit: true,
       },
       take: 30,
       orderBy: { createdAt: 'desc' },
@@ -346,54 +496,116 @@ export class AiService {
       SALA_COMERCIAL: 'Sala Comercial', LOJA: 'Loja', SALAO_COMERCIAL: 'Salão Comercial',
       BARRACAO: 'Barracão/Galpão', OUTRO: 'Outro',
     };
-
     const STANDARD_LABEL: Record<string, string> = {
-      ECONOMICO: 'Econômico', MEDIO: 'Médio', ALTO: 'Alto', LUXO: 'Luxo',
+      ECONOMICO: 'Econômico/Popular', MEDIO: 'Médio padrão', ALTO: 'Alto padrão', LUXO: 'Luxo',
     };
+    const CONDITION_LABEL: Record<string, string> = {
+      NA_PLANTA: 'Na planta', EM_CONSTRUCAO: 'Em construção', PRONTO: 'Pronto',
+    };
+    const isEnterprise = (type: any) => ['EMPREENDIMENTO', 'LOTEAMENTO'].includes(String(type));
 
-    const lines = products.map((p, i) => {
+    const lines = (products as any[]).map((p, i) => {
       const parts: string[] = [];
 
-      // Linha 1: índice, título, tipo, localização
-      const location = [p.neighborhood, p.city].filter(Boolean).join(', ');
+      // Linha 1: título, tipo, condição, localização
+      const location = [p.neighborhood, p.city, p.state].filter(Boolean).join(', ');
       const typeLabel = TYPE_LABEL[String(p.type)] ?? String(p.type);
-      parts.push(`${i + 1}. ${p.title} — ${typeLabel}${location ? ` | ${location}` : ''}`);
+      const condLabel = p.condition ? ` | ${CONDITION_LABEL[String(p.condition)] ?? p.condition}` : '';
+      parts.push(`${i + 1}. ${p.title} — ${typeLabel}${condLabel}${location ? ` | ${location}` : ''}`);
 
-      // Linha 2: preços
+      if (p.referencePoint) parts.push(`   Referência: ${p.referencePoint}`);
+
+      // Preços
       const priceBRL = fmtBRL(p.price);
       const rentBRL = fmtBRL(p.rentPrice);
       const priceStr = [
-        priceBRL ? `Venda: R$ ${priceBRL}` : null,
+        priceBRL ? (isEnterprise(p.type) ? `A partir de: R$ ${priceBRL}` : `Venda: R$ ${priceBRL}`) : null,
         rentBRL ? `Locação: R$ ${rentBRL}/mês` : null,
       ].filter(Boolean).join(' | ');
       if (priceStr) parts.push(`   ${priceStr}`);
 
-      // Linha 3: características físicas
-      const physParts: string[] = [];
-      if (p.bedrooms != null) physParts.push(`${p.bedrooms} quarto${p.bedrooms !== 1 ? 's' : ''}`);
-      if (p.suites != null) physParts.push(`${p.suites} suíte${p.suites !== 1 ? 's' : ''}`);
-      if (p.bathrooms != null) physParts.push(`${p.bathrooms} banheiro${p.bathrooms !== 1 ? 's' : ''}`);
-      if (p.parkingSpaces != null) physParts.push(`${p.parkingSpaces} vaga${p.parkingSpaces !== 1 ? 's' : ''}`);
-      const area = p.builtAreaM2 ?? p.areaM2;
-      if (area != null) physParts.push(`${area}m²`);
-      if (physParts.length > 0) parts.push(`   ${physParts.join(' | ')}`);
+      if (isEnterprise(p.type)) {
+        // ── Empreendimento / Loteamento ──────────────────
+        if (p.developer) parts.push(`   Construtora: ${p.developer}`);
 
-      // Linha 4: padrão e condomínio
-      const extraParts: string[] = [];
-      if (p.standard) extraParts.push(`Padrão: ${STANDARD_LABEL[String(p.standard)] ?? p.standard}`);
-      if (p.condominiumName) extraParts.push(`Condomínio: ${p.condominiumName}`);
-      if (extraParts.length > 0) parts.push(`   ${extraParts.join(' | ')}`);
+        const devParts: string[] = [];
+        if (p.totalUnits) devParts.push(`${p.totalUnits} unidades`);
+        if (p.totalTowers) devParts.push(`${p.totalTowers} torre${p.totalTowers !== 1 ? 's' : ''}`);
+        if (p.floorsPerTower) devParts.push(`${p.floorsPerTower} andares/torre`);
+        if (devParts.length) parts.push(`   ${devParts.join(' | ')}`);
 
-      // Linha 5: descrição resumida
-      if (p.description?.trim()) {
-        const desc = p.description.trim().slice(0, 100);
-        parts.push(`   ${desc}${p.description.trim().length > 100 ? '...' : ''}`);
+        const areaParts: string[] = [];
+        if (p.privateAreaMinM2 && p.privateAreaMaxM2) areaParts.push(`Área privativa: ${p.privateAreaMinM2}–${p.privateAreaMaxM2}m²`);
+        else if (p.privateAreaMinM2) areaParts.push(`Área a partir de ${p.privateAreaMinM2}m²`);
+        if (p.parkingMin != null || p.parkingMax != null) {
+          const vStr = p.parkingMin === p.parkingMax ? `${p.parkingMin}` : `${p.parkingMin ?? '?'}–${p.parkingMax ?? '?'}`;
+          areaParts.push(`${vStr} vaga${Number(p.parkingMax ?? p.parkingMin) !== 1 ? 's' : ''}`);
+        }
+        if (areaParts.length) parts.push(`   ${areaParts.join(' | ')}`);
+
+        if (p.deliveryForecast) parts.push(`   Entrega prevista: ${p.deliveryForecast}`);
+
+        if (Array.isArray(p.unitTypes) && p.unitTypes.length)
+          parts.push(`   Tipos de unidade: ${p.unitTypes.join(', ')}`);
+
+        if (Array.isArray(p.unitSpecs) && p.unitSpecs.length) {
+          const specsLines = p.unitSpecs.map((s: any, si: number) => {
+            const sp: string[] = [];
+            if (s.bedrooms) sp.push(`${s.bedrooms} quarto${s.bedrooms !== 1 ? 's' : ''}`);
+            if (s.suites) sp.push(`${s.suites} suíte${s.suites !== 1 ? 's' : ''}`);
+            if (s.areaM2) sp.push(`${s.areaM2}m²`);
+            if (Array.isArray(s.features) && s.features.length) sp.push(s.features.join(', '));
+            return `     Tipologia ${si + 1}: ${sp.join(' | ')}`;
+          });
+          parts.push(`   Tipologias:\n${specsLines.join('\n')}`);
+        }
+
+        if (Array.isArray(p.condoFeatures) && p.condoFeatures.length)
+          parts.push(`   Lazer: ${p.condoFeatures.join(', ')}`);
+
+        if (Array.isArray(p.socialPrograms) && p.socialPrograms.length)
+          parts.push(`   Programas: ${p.socialPrograms.join(', ')}`);
+
+        const comercParts: string[] = [];
+        if (p.acceptsFGTS) comercParts.push('Aceita FGTS');
+        if (p.acceptsFinancing) comercParts.push('Aceita financiamento');
+        if (p.acceptsExchange) comercParts.push('Aceita permuta');
+        if (comercParts.length) parts.push(`   ${comercParts.join(' | ')}`);
+
+        const rendaParts: string[] = [];
+        if (p.minBuyerIncome) rendaParts.push(`Renda mínima: R$ ${fmtBRL(p.minBuyerIncome)}`);
+        if (p.buyerIncomeLimit) rendaParts.push(`Renda máxima: R$ ${fmtBRL(p.buyerIncomeLimit)}`);
+        if (rendaParts.length) parts.push(`   ${rendaParts.join(' | ')}`);
+
+        if (p.paymentConditions) parts.push(`   Pagamento: ${p.paymentConditions}`);
+
+        const desc = ((p.commercialDescription || p.description) ?? '').trim();
+        if (desc) parts.push(`   ${desc.slice(0, 400)}${desc.length > 400 ? '...' : ''}`);
+
+      } else {
+        // ── Imóvel avulso ────────────────────────────────
+        const physParts: string[] = [];
+        if (p.bedrooms != null) physParts.push(`${p.bedrooms} quarto${p.bedrooms !== 1 ? 's' : ''}`);
+        if (p.suites != null) physParts.push(`${p.suites} suíte${p.suites !== 1 ? 's' : ''}`);
+        if (p.bathrooms != null) physParts.push(`${p.bathrooms} banheiro${p.bathrooms !== 1 ? 's' : ''}`);
+        if (p.parkingSpaces != null) physParts.push(`${p.parkingSpaces} vaga${p.parkingSpaces !== 1 ? 's' : ''}`);
+        const area = p.builtAreaM2 ?? p.areaM2;
+        if (area != null) physParts.push(`${area}m²`);
+        if (physParts.length) parts.push(`   ${physParts.join(' | ')}`);
+
+        const extraParts: string[] = [];
+        if (p.standard) extraParts.push(`Padrão: ${STANDARD_LABEL[String(p.standard)] ?? p.standard}`);
+        if (p.condominiumName) extraParts.push(`Condomínio: ${p.condominiumName}`);
+        if (extraParts.length) parts.push(`   ${extraParts.join(' | ')}`);
+
+        const desc = (p.description ?? '').trim();
+        if (desc) parts.push(`   ${desc.slice(0, 150)}${desc.length > 150 ? '...' : ''}`);
       }
 
       return parts.join('\n');
     });
 
-    return `IMÓVEIS DISPONÍVEIS PARA VENDA/LOCAÇÃO:\n\n${lines.join('\n\n')}`;
+    return `IMÓVEIS DISPONÍVEIS (apenas publicados e ativos):\n\n${lines.join('\n\n')}`;
   }
 
   async generateTeachingTitle(leadMessage: string | null | undefined, approvedResponse: string): Promise<string> {
@@ -438,5 +650,157 @@ export class AiService {
     });
 
     return completion.choices[0]?.message?.content?.trim() || '';
+  }
+
+  // ── Assistente Operacional ─────────────────────────────────────────────────
+  async runOperationalAnalysis(params: {
+    tenantId: string;
+    leadId: string;
+    leadNome: string;
+    leadStatus: string;
+    currentStageKey: string | null;
+    conversation: string;
+    currentQualification: Record<string, any>;
+    availableStages: { key: string; name: string }[];
+    availableProducts: { id: string; title: string; standard?: string | null }[];
+  }): Promise<{
+    updates: Record<string, any>;
+    stageKey?: string | null;
+    notifyBroker?: boolean;
+    notifyMessage?: string;
+  }> {
+    const systemPrompt = `Você é o Assistente Operacional de um CRM imobiliário. Sua função é analisar conversas entre a IA e leads, extrair informações estruturadas e decidir ações no CRM.
+
+Você NÃO conversa com o lead. Você apenas analisa e retorna um JSON.
+
+Campos que você pode extrair:
+- nomeCorreto: string (nome real identificado, diferente do automático do WhatsApp)
+- rendaBrutaFamiliar: number (renda familiar em reais, extraia de "R$ X" ou "X mil")
+- fgts: number (saldo FGTS em reais)
+- valorEntrada: number (valor de entrada disponível em reais)
+- estadoCivil: "SOLTEIRO" | "CASADO" | "UNIAO_ESTAVEL" | "DIVORCIADO" | "VIUVO"
+- dataNascimento: "YYYY-MM-DD" (converta de qualquer formato)
+- tempoProcurandoImovel: string (ex: "3 meses", "1 ano", "recém começou")
+- conversouComCorretor: boolean
+- qualCorretorImobiliaria: string (nome do corretor/imobiliária anterior)
+- perfilImovel: "POPULAR" | "MEDIO" | "ALTO_PADRAO" | "LUXO"
+- produtoInteresseId: string (ID do produto se identificado na lista)
+- resumoLead: string (resumo completo de tudo que foi coletado, para envio ao corretor)
+- stageKey: string (mova o lead para esta etapa se houver motivo claro)
+- notifyBroker: boolean (notifique o corretor se o lead for qualificado ou precisar de atenção)
+- notifyMessage: string (mensagem curta para o corretor)
+Regras:
+- Retorne APENAS os campos que foram claramente identificados na conversa
+- Não invente informações
+- stageKey: NUNCA mova o lead na primeira mensagem ou em conversas com menos de 4 trocas. Só mova se houver intenção clara E dados concretos (ex: lead confirmou interesse, forneceu renda, agendou visita, ou recusou explicitamente)
+- notifyBroker: só use true se o lead estiver qualificado com pelo menos 3 campos preenchidos
+- resumoLead: monte sempre que tiver 3 ou mais campos preenchidos
+- Retorne APENAS JSON válido, sem texto adicional`;
+
+    const stagesText = params.availableStages.map(s => `${s.key}: ${s.name}`).join('\n');
+    const productsText = params.availableProducts.length > 0
+      ? params.availableProducts.map(p => `ID: ${p.id} | ${p.title}${p.standard ? ` (${p.standard})` : ''}`).join('\n')
+      : 'Nenhum produto cadastrado';
+
+    const currentQualText = Object.entries(params.currentQualification)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\n') || 'Nenhum dado coletado ainda';
+
+    const userPrompt = `Lead: ${params.leadNome} | Status: ${params.leadStatus} | Etapa atual: ${params.currentStageKey || 'não definida'}
+
+Dados já coletados:
+${currentQualText}
+
+Etapas disponíveis no funil:
+${stagesText}
+
+Produtos disponíveis:
+${productsText}
+
+Conversa recente:
+${params.conversation}
+
+Analise e retorne JSON com as informações identificadas.`;
+
+    try {
+      const completion = await this.getOpenAI().chat.completions.create({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() || '{}';
+      const parsed = JSON.parse(raw);
+
+      const { stageKey, notifyBroker, notifyMessage, ...updates } = parsed;
+      return { updates, stageKey: stageKey || null, notifyBroker: !!notifyBroker, notifyMessage };
+    } catch (err: any) {
+      logger.error(`Erro no Assistente Operacional leadId=${params.leadId}: ${err?.message}`);
+      return { updates: {} };
+    }
+  }
+
+  async runOrchestrator(params: {
+    orchestratorPrompt: string;
+    conversation: string;
+    leadNome: string;
+    leadStatus: string;
+    currentStageKey: string | null;
+    qualification: Record<string, any>;
+    childAgents: { id: string; slug: string; title: string; description?: string | null; objective?: string | null }[];
+  }): Promise<{ agentId: string | null; agentSlug: string | null }> {
+    if (!params.childAgents.length) return { agentId: null, agentSlug: null };
+
+    const agentsList = params.childAgents
+      .map(a => `- "${a.slug}": ${a.title}${a.description ? ` — ${a.description}` : ''}${a.objective ? ` (Objetivo: ${a.objective})` : ''}`)
+      .join('\n');
+
+    const systemPrompt = `${params.orchestratorPrompt}
+
+---
+Agentes disponíveis (use exatamente o slug entre aspas):
+${agentsList}
+
+Retorne APENAS JSON válido no formato: {"agentSlug": "slug-do-agente"}
+Escolha o agente mais adequado para o momento atual da conversa.`;
+
+    const qualText = Object.entries(params.qualification)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ') || 'nenhum dado coletado';
+
+    const userMsg = `Lead: ${params.leadNome} | Status: ${params.leadStatus} | Etapa: ${params.currentStageKey || 'não definida'}
+Dados coletados: ${qualText}
+
+Conversa recente:
+${params.conversation}`;
+
+    try {
+      const completion = await this.getOpenAI().chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMsg },
+        ],
+        temperature: 0,
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() || '{}';
+      const parsed = JSON.parse(raw);
+      const slug = typeof parsed.agentSlug === 'string' ? parsed.agentSlug.trim() : null;
+      if (!slug) return { agentId: null, agentSlug: null };
+
+      const found = params.childAgents.find(a => a.slug === slug);
+      return { agentId: found?.id ?? null, agentSlug: slug };
+    } catch (err: any) {
+      logger.error(`Erro no Orquestrador: ${err?.message}`);
+      return { agentId: null, agentSlug: null };
+    }
   }
 }

@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Logger } from '../logger';
+
+const logger = new Logger('ProductsService');
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import {
   ProductDocVisibility,
   ProductDocumentCategory,
@@ -150,6 +155,22 @@ export class ProductsService {
         standard: body.standard ?? null,
         furnished: body.furnished ?? null,
         condition: body.condition ?? null,
+
+        developer: body.developer || null,
+        totalUnits: body.totalUnits ?? null,
+        totalTowers: body.totalTowers ?? null,
+        floorsPerTower: body.floorsPerTower ?? null,
+        privateAreaMinM2: body.privateAreaMinM2 ?? null,
+        privateAreaMaxM2: body.privateAreaMaxM2 ?? null,
+        parkingMin: body.parkingMin ?? null,
+        parkingMax: body.parkingMax ?? null,
+        deliveryForecast: body.deliveryForecast || null,
+        buyerIncomeLimit: body.buyerIncomeLimit ?? null,
+        socialPrograms: body.socialPrograms ?? [],
+        unitTypes: body.unitTypes ?? [],
+        technicalDescription: body.technicalDescription || null,
+        commercialDescription: body.commercialDescription || null,
+        aiGeneratedFields: body.aiGeneratedFields ?? null,
       },
       include: {
         images: { orderBy: this.imagesOrderBy() },
@@ -226,6 +247,7 @@ export class ProductsService {
     if (body.street !== undefined) data.street = body.street || null;
     if (body.streetNumber !== undefined) data.streetNumber = body.streetNumber || null;
     if (body.complement !== undefined) data.complement = body.complement || null;
+    if (body.referencePoint !== undefined) data.referencePoint = body.referencePoint || null;
     if (body.condominiumName !== undefined) data.condominiumName = body.condominiumName || null;
     if (body.latitude !== undefined) data.latitude = body.latitude ?? null;
     if (body.longitude !== undefined) data.longitude = body.longitude ?? null;
@@ -251,12 +273,40 @@ export class ProductsService {
     if (body.hasExclusivity !== undefined) data.hasExclusivity = body.hasExclusivity;
     if (body.exclusivityUntil !== undefined) data.exclusivityUntil = body.exclusivityUntil ? new Date(body.exclusivityUntil) : null;
     if (body.virtualTourUrl !== undefined) data.virtualTourUrl = body.virtualTourUrl || null;
+    if (body.visitLocations !== undefined) data.visitLocations = body.visitLocations;
 
     if (body.internalFeatures !== undefined) data.internalFeatures = body.internalFeatures;
     if (body.condoFeatures !== undefined) data.condoFeatures = body.condoFeatures;
     if (body.standard !== undefined) data.standard = body.standard ?? null;
     if (body.furnished !== undefined) data.furnished = body.furnished ?? null;
     if (body.condition !== undefined) data.condition = body.condition ?? null;
+
+    if (body.developer !== undefined) data.developer = body.developer || null;
+    if (body.totalUnits !== undefined) data.totalUnits = body.totalUnits ?? null;
+    if (body.totalTowers !== undefined) data.totalTowers = body.totalTowers ?? null;
+    if (body.floorsPerTower !== undefined) data.floorsPerTower = body.floorsPerTower ?? null;
+    if (body.privateAreaMinM2 !== undefined) data.privateAreaMinM2 = body.privateAreaMinM2 ?? null;
+    if (body.privateAreaMaxM2 !== undefined) data.privateAreaMaxM2 = body.privateAreaMaxM2 ?? null;
+    if (body.parkingMin !== undefined) data.parkingMin = body.parkingMin ?? null;
+    if (body.parkingMax !== undefined) data.parkingMax = body.parkingMax ?? null;
+    if (body.deliveryForecast !== undefined) data.deliveryForecast = body.deliveryForecast || null;
+    if (body.buyerIncomeLimit !== undefined) data.buyerIncomeLimit = body.buyerIncomeLimit ?? null;
+    if (body.socialPrograms !== undefined) data.socialPrograms = body.socialPrograms;
+    if (body.unitTypes !== undefined) data.unitTypes = body.unitTypes;
+    if (body.technicalDescription !== undefined) data.technicalDescription = body.technicalDescription || null;
+    if (body.commercialDescription !== undefined) data.commercialDescription = body.commercialDescription || null;
+    if (body.aiGeneratedFields !== undefined) data.aiGeneratedFields = body.aiGeneratedFields;
+    if (body.minBuyerIncome !== undefined) data.minBuyerIncome = body.minBuyerIncome;
+    if (body.priceReviewDays !== undefined) data.priceReviewDays = body.priceReviewDays;
+    if (body.acceptsFGTS !== undefined) data.acceptsFGTS = body.acceptsFGTS;
+    if (body.acceptsDirectFinancing !== undefined) data.acceptsDirectFinancing = body.acceptsDirectFinancing;
+    if (body.acceptsFinancing !== undefined) data.acceptsFinancing = body.acceptsFinancing;
+    if (body.acceptsTradeIn !== undefined) data.acceptsTradeIn = body.acceptsTradeIn;
+    if (body.tradeInTypes !== undefined) data.tradeInTypes = body.tradeInTypes;
+    if (body.minEntryValue !== undefined) data.minEntryValue = body.minEntryValue ?? null;
+    if (body.installmentEntryMonths !== undefined) data.installmentEntryMonths = body.installmentEntryMonths;
+    if (body.paymentConditions !== undefined) data.paymentConditions = body.paymentConditions || null;
+    if (body.unitSpecs !== undefined) data.unitSpecs = body.unitSpecs;
 
     if (body.dealType !== undefined) data.dealType = body.dealType;
     if (body.kind !== undefined) data.kind = body.kind;
@@ -924,7 +974,7 @@ export class ProductsService {
   }
 
   async downloadDocument(user: any, productId: string, documentId: string, res: Response) {
-    await this.getById(user, productId);
+    const product = await this.getById(user, productId);
 
     const doc = await this.prisma.productDocument.findFirst({
       where: { id: documentId, tenantId: user.tenantId, productId },
@@ -932,6 +982,11 @@ export class ProductsService {
 
     if (!doc) throw new NotFoundException('Documento não encontrado');
     if (!doc.url) throw new BadRequestException('Documento sem URL');
+
+    const productName = (product as any).title || productId;
+    const docTypeLabel = { BOOK: 'Book_de_Vendas', MEMORIAL: 'Memorial_Descritivo', TABELA: 'Tabela_de_Precos', PLANTA: 'Planta', OUTROS: 'Documento' }[doc.type as string] ?? doc.type ?? 'Documento';
+    const docTitle = doc.title ? `_${doc.title}` : '';
+    const baseFilename = `${productName}_${docTypeLabel}${docTitle}`;
 
     const upstream = await fetch(doc.url);
     if (!upstream.ok) {
@@ -953,7 +1008,7 @@ export class ProductsService {
         if (sniffed) contentType = sniffed;
       }
 
-      const base = this.safeFileNameBase(doc.title || `${doc.type || 'DOCUMENTO'}_${doc.id}`);
+      const base = this.safeFileNameBase(baseFilename);
       const ext = this.extFromContentType(contentType);
       const filename = `${base}.${ext}`;
 
@@ -996,5 +1051,160 @@ export class ProductsService {
     }
 
     Readable.from(gen()).pipe(res);
+  }
+
+  // ── AI: extract empreendimento fields from BOOK/MEMORIAL documents ──────────
+  async extractInfoWithAI(user: any, productId: string) {
+    logger.log(`[AI Extract] Iniciando extração para produto: ${productId}`);
+    const product = await this.getById(user, productId);
+
+    const docs = ((product as any).documents ?? []).filter(
+      (d: any) => ['BOOK', 'MEMORIAL', 'TABELA', 'OUTROS'].includes(d.type),
+    );
+
+    if (!docs.length) {
+      throw new BadRequestException(
+        'Nenhum documento do tipo Book ou Memorial Descritivo encontrado. Faça o upload antes de usar a IA.',
+      );
+    }
+
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    if (!anthropicKey) throw new BadRequestException('ANTHROPIC_API_KEY não configurada.');
+    const anthropic = new Anthropic({ apiKey: anthropicKey });
+
+    const conditionLabel: Record<string, string> = {
+      NA_PLANTA: 'Na planta',
+      EM_CONSTRUCAO: 'Em construção',
+      PRONTO: 'Pronto',
+    };
+    const standardLabel: Record<string, string> = {
+      ECONOMICO: 'Econômico/Popular',
+      MEDIO: 'Médio padrão',
+      ALTO: 'Alto padrão',
+      LUXO: 'Luxo',
+    };
+    const pa = product as any;
+    const contextInfo = [
+      pa.condition ? `Estado do imóvel: ${conditionLabel[pa.condition] ?? pa.condition}` : null,
+      pa.standard ? `Padrão: ${standardLabel[pa.standard] ?? pa.standard}` : null,
+      pa.socialPrograms?.length ? `Programas sociais: ${pa.socialPrograms.join(', ')}` : null,
+    ].filter(Boolean).join('\n');
+
+    const prompt = `Você é um assistente especialista em empreendimentos imobiliários.
+Analise os documentos anexados (Book de Vendas e/ou Memorial Descritivo) e extraia as informações abaixo em JSON.
+Leia todo o conteúdo com atenção, incluindo imagens, tabelas e textos visuais.
+Se uma informação não estiver disponível, use null.
+${contextInfo ? `\nCONTEXTO DO PRODUTO (já informado pelo usuário — use para calibrar os textos gerados):\n${contextInfo}\n\nIMPORTANTE: A descrição comercial DEVE ser compatível com o padrão e programas informados. Se o padrão é Econômico/Popular ou há MCMV, NÃO use termos como "alto padrão", "luxuoso" ou "exclusivo".\n` : ''}
+Campos esperados:
+- developer: string (construtora ou incorporadora)
+- totalUnits: number (total de unidades/apartamentos/lotes)
+- totalTowers: number (número de torres ou blocos)
+- floorsPerTower: number (andares por torre)
+- privateAreaMinM2: number (área privativa mínima em m²)
+- privateAreaMaxM2: number (área privativa máxima em m²)
+- parkingMin: number (vagas mínimas por unidade)
+- parkingMax: number (vagas máximas por unidade)
+- deliveryForecast: string (previsão de entrega, ex: "12/2025")
+- unitTypes: array de strings com os tipos de unidades (ex: ["Apartamento", "Studio", "Cobertura", "Casa em condomínio"]) — somente o tipo, sem detalhar quartos
+- condoFeatures: array de strings (amenidades e itens de lazer, ex: ["Piscina", "Academia", "Salão de Festas"])
+- technicalDescription: string (descrição técnica em 3-5 parágrafos com base nos acabamentos e especificações — mencione número de quartos, suítes, varandas, piso, lavabo, copa e pontos de ar-condicionado se disponíveis)
+- commercialDescription: string (descrição comercial em 2-3 parágrafos, compatível com o padrão do empreendimento — destaque diferenciais como suíte, varanda, acabamentos)
+- landAreaM2: number (área total do terreno em m²)
+- price: number (preço a partir de, em reais, sem formatação — extraia da tabela de preços se disponível)
+- city: string (cidade onde o empreendimento está localizado)
+- state: string (estado/UF, ex: "SP", "RJ")
+- neighborhood: string (bairro ou região)
+- minBuyerIncome: number (renda mínima exigida, em reais)
+- buyerIncomeLimit: number (renda máxima permitida, em reais — comum em MCMV)
+- acceptsFGTS: boolean (aceita FGTS?)
+- acceptsFinancing: boolean (aceita financiamento bancário / banco?)
+- acceptsDirectFinancing: boolean (aceita financiamento direto com a incorporadora?)
+- paymentConditions: string (condições de pagamento, entrada, parcelas — resumo em 1-2 frases)
+- unitSpecs: array de objetos, um por tipologia de unidade encontrada no documento. Cada objeto:
+  {
+    bedrooms: number — quantidade de quartos,
+    suites: number — quantidade de suítes (quarto com banheiro privativo),
+    livingRooms: number — salas de estar/jantar,
+    areaM2: number — área privativa desta tipologia em m² (se informada no documento),
+    acPoints: number — pontos de ar-condicionado previstos,
+    features: array de strings — LISTE TUDO que o documento menciona para esta tipologia:
+      varanda (tipo: simples, gourmet, sacada), piso (tipo e material se informado),
+      lavabo, copa, área de serviço, dependência de serviço, closet, banheira,
+      churrasqueira, cozinha americana, ponto de gás, armários planejados,
+      depósito, automação, e qualquer outro detalhe construtivo mencionado.
+      Use termos claros em português, ex: ["Varanda gourmet", "Piso porcelanato", "Lavabo",
+      "Área de serviço", "Closet na suíte master", "2 pontos de gás na cozinha"]
+  }
+  IMPORTANTE: se o documento descrever múltiplas tipologias (ex: Tipo A 2q, Tipo B 3q), crie um objeto por tipologia.
+
+Responda SOMENTE com o JSON válido, sem markdown, sem explicações adicionais.`;
+
+    // Download PDFs e monta content com documentos para Claude
+    const contentBlocks: Anthropic.MessageParam['content'] = [];
+    let docsLoaded = 0;
+
+    for (const doc of docs) {
+      try {
+        logger.log(`[AI Extract] Baixando ${doc.type}...`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const resp = await fetch(doc.url, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!resp.ok) { logger.warn(`[AI Extract] HTTP ${resp.status} para ${doc.type}`); continue; }
+        const buf = Buffer.from(await resp.arrayBuffer());
+        logger.log(`[AI Extract] ${doc.type} baixado: ${(buf.length / 1024).toFixed(0)}KB`);
+        contentBlocks.push({
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: buf.toString('base64'),
+          },
+          title: doc.title ?? doc.type,
+        } as any);
+        docsLoaded++;
+      } catch (err) {
+        logger.warn(`[AI Extract] Falha ao baixar ${doc.type} (${doc.id}): ${(err as any)?.message}`);
+      }
+    }
+
+    logger.log(`[AI Extract] ${docsLoaded} docs carregados. Enviando para Claude...`);
+
+    if (docsLoaded === 0) {
+      throw new BadRequestException('Não foi possível baixar os documentos. Verifique os uploads.');
+    }
+
+    contentBlocks.push({ type: 'text', text: prompt });
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: contentBlocks }],
+    });
+
+    const raw = response.content
+      .filter((b) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('');
+
+    // Remove markdown code blocks se presentes
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/, '')
+      .trim();
+
+    // Extrai o objeto JSON caso haja texto antes/depois
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    const jsonStr = match ? match[0] : cleaned;
+
+    let extracted: Record<string, any> = {};
+    try {
+      extracted = JSON.parse(jsonStr);
+    } catch {
+      console.error('Claude retornou:', raw.slice(0, 500));
+      throw new BadRequestException('A IA retornou um formato inválido. Tente novamente.');
+    }
+
+    return { extracted };
   }
 }

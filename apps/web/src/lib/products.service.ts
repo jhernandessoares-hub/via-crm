@@ -81,11 +81,18 @@ export type CreateProductInput = {
   status?: string;
   city?: string;
   neighborhood?: string;
+  state?: string;
   description?: string;
   price?: number;
 };
 
-export type UpdateProductInput = Partial<CreateProductInput>;
+export type UpdateProductInput = Partial<Record<string, any>>;
+
+export async function extractProductInfo(id: string): Promise<{ extracted: Record<string, any> }> {
+  return apiFetch(`/products/${encodeURIComponent(id)}/ai/extract`, {
+    method: "POST",
+  }) as Promise<{ extracted: Record<string, any> }>;
+}
 
 // ==============================
 // Helpers (normalização)
@@ -214,15 +221,49 @@ export async function updateProduct(id: string, input: UpdateProductInput): Prom
 
 export async function uploadProductImage(
   id: string,
-  file: File
+  file: File,
+  opts?: { label?: string; title?: string; customLabel?: string }
 ): Promise<{ url?: string; image?: any; product?: Product; [k: string]: any }> {
   const form = new FormData();
   form.append("file", file);
+  if (opts?.label) form.append("label", opts.label);
+  if (opts?.title) form.append("title", opts.title);
+  if (opts?.customLabel) form.append("customLabel", opts.customLabel);
 
   return apiFetch(`/products/${encodeURIComponent(id)}/images`, {
     method: "POST",
     body: form,
   }) as Promise<{ url?: string; image?: any; product?: Product; [k: string]: any }>;
+}
+
+export async function deleteProductImage(
+  productId: string,
+  imageId: string
+): Promise<void> {
+  await apiFetch(`/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function setPrimaryProductImage(
+  productId: string,
+  imageId: string
+): Promise<void> {
+  await apiFetch(`/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}/primary`, {
+    method: "POST",
+  });
+}
+
+export async function updateProductImage(
+  productId: string,
+  imageId: string,
+  data: { label?: string; title?: string; customLabel?: string; publishSite?: boolean; isPrimary?: boolean }
+): Promise<any> {
+  return apiFetch(`/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
 }
 
 export function normalizeImageUrl(img: ProductImage): string | null {

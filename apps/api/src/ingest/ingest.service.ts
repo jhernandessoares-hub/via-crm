@@ -23,9 +23,14 @@ function makeTelefoneKey(raw: string | null): string | null {
 export class IngestService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Por padrão, se não souber a filial, cai em TRIAGEM.
-  // (Hoje fixo para o tenant VIA - Empresa Teste; depois vamos resolver por tenant.)
-  private readonly TRIAGEM_BRANCH_ID = 'dd34ed95-0a1e-47d6-83db-70eeff987799';
+  private async resolveDefaultBranchId(tenantId: string): Promise<string | null> {
+    const branch = await this.prisma.branch.findFirst({
+      where: { tenantId, ativo: true },
+      orderBy: { criadoEm: 'asc' },
+      select: { id: true },
+    });
+    return branch?.id ?? null;
+  }
 
   async ingestLead(data: { tenantId: string; channel: string; payload: any }) {
     const { tenantId, channel, payload } = data;
@@ -36,8 +41,8 @@ export class IngestService {
     const email: string | null = payload.email ?? null;
     const nome: string = payload.nome ?? 'Sem nome';
 
-    // branchId vindo do payload (futuro: meta/site/campaign). Se não vier, TRIAGEM.
-    const branchId: string = payload.branchId ?? this.TRIAGEM_BRANCH_ID;
+    // branchId vindo do payload ou resolução automática pela primeira branch ativa do tenant
+    const branchId: string | null = payload.branchId ?? await this.resolveDefaultBranchId(tenantId);
 
     // 1) procurar lead existente pela chave
     const existingLead = telefoneKey
@@ -64,10 +69,6 @@ export class IngestService {
             email: email ?? existingLead.email,
             origem: channel,
 
-            // se reentrada: vai pro gerente e topo da fila
-            needsManagerReview: true,
-            queuePriority: 1,
-
             // branch: só define se ainda estiver vazio
             branchId: existingLead.branchId ?? branchId,
           },
@@ -81,9 +82,7 @@ export class IngestService {
             telefoneKey,
             email,
             origem: channel,
-            needsManagerReview: false,
-            queuePriority: 9999,
-          },
+            },
         });
 
     // 3) SEMPRE cria um evento (histórico)
@@ -97,42 +96,9 @@ export class IngestService {
       },
     });
 
-    // 4) Notifica gerentes quando é re-entrada
-    if (isReentry) {
-      await this.notifyManagerOnReentry(tenantId, lead.id, event.id);
-    }
-
     logger.log(`Lead: ${lead.id} Event: ${event.id} Reentry: ${isReentry}`);
 
     return { lead, event };
   }
 
-  private async notifyManagerOnReentry(
-    tenantId: string,
-    leadId: string,
-    eventId: string,
-  ) {
-    const managers = await this.prisma.user.findMany({
-      where: { tenantId, role: { in: ['MANAGER', 'OWNER'] }, ativo: true },
-      select: { id: true, nome: true, email: true },
-    });
-
-    if (managers.length === 0) return;
-
-    await this.prisma.leadEvent.create({
-      data: {
-        tenantId,
-        leadId,
-        channel: 'system.reentry_alert',
-        payloadRaw: {
-          eventId,
-          notifiedManagers: managers.map((m) => ({ id: m.id, nome: m.nome, email: m.email })),
-        },
-      },
-    });
-
-    logger.log(
-      `[ingest] Re-entrada lead=${leadId} — alertando ${managers.length} gerente(s): ${managers.map((m) => m.email).join(', ')}`,
-    );
-  }
 }

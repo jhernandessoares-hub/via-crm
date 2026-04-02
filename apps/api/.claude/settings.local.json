@@ -11,7 +11,24 @@
       "Bash(find /c/Users/User/documents/via-crm/apps/api/prisma/migrations -name \"*.sql\" -exec wc -l {} +)",
       "Bash(sort -k1 -rn)",
       "Bash(find /c/Users/User/documents/via-crm/apps/api/src/leads -type f -name *.ts)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(grep:*)",
+      "Bash(find /c/Users/User/documents/via-crm/apps/web/src -type f \\\\\\(-name *.ts -o -name *.tsx \\\\\\))",
+      "Bash(find C:/Users/User/documents/via-crm/apps/api/src -type f -name *.ts -o -name *.prisma)",
+      "Bash(find C:/Users/User/documents/via-crm/apps/web/src -type f -name *.ts -o -name *.tsx)",
+      "Bash(find C:/Users/User/documents/via-crm/apps/api/prisma/migrations -type f -name *.sql)",
+      "Bash(npx prisma:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm list:*)",
+      "Bash(npm install:*)",
+      "Bash(find C:UsersUserdocumentsvia-crmappswebsrccomponents -type f -name *.tsx -o -name *.ts)",
+      "Bash(find C:UsersUserdocumentsvia-crmappswebsrcappcalendar -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
+      "Bash(find C:UsersUserdocumentsvia-crmappswebsrcappsecretary -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
+      "Bash(npx ts-node:*)",
+      "Bash(ls:*)",
+      "Bash(xargs head:*)",
+      "Bash(node -e \"require\\(''''resend''''\\)\")",
+      "Bash(\"C:\\\\Users\\\\User\\\\documents\\\\via-crm\\\\apps\\\\api\\\\.env\":*)"
     ]
   }
 }

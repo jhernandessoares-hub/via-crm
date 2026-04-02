@@ -6,6 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteProductDocument,
+  deleteProductImage,
+  setPrimaryProductImage,
   getProduct,
   listProductDocuments,
   normalizeImageUrl,
@@ -107,6 +109,7 @@ const CONDO_FEATURES = [
 ];
 
 const SUN_POSITIONS = ["Frente", "Fundos", "Lateral", "Frente e fundos"];
+
 
 const ROOM_TYPE_CONFIG: {
   value: string; label: string; suggestions: string[]; freeLabel?: boolean;
@@ -817,6 +820,7 @@ export default function ProductEditPage() {
   const [docVisibility, setDocVisibility] = useState<DocVisibility>("INTERNAL");
   const [docUploading, setDocUploading] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
+  const [imgTitle, setImgTitle] = useState("");
 
   // Rooms state
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -843,8 +847,8 @@ export default function ProductEditPage() {
     return (n / 12).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }, [form.iptu]);
 
-  // Auto-title for non-EMPREENDIMENTO types
-  const isEmpreendimento = form.type === "EMPREENDIMENTO";
+  // Auto-title for non-development types
+  const isEmpreendimento = form.type === "EMPREENDIMENTO" || form.type === "LOTEAMENTO";
 
   const computedTitle = useMemo(() => {
     if (isEmpreendimento) return form.title;
@@ -881,6 +885,13 @@ export default function ProductEditPage() {
       const p = await getProduct(id);
       setProduct(p);
       const pa = p as any;
+
+      // Redirect empreendimentos to their dedicated page
+      if (pa.type === "EMPREENDIMENTO" || pa.type === "LOTEAMENTO") {
+        router.replace(`/products/${id}/empreendimento`);
+        return;
+      }
+
       setForm({
         title: pa.title ?? "",
         origin: pa.origin ?? "THIRD_PARTY",
@@ -1105,12 +1116,45 @@ export default function ProductEditPage() {
     setImgUploading(true);
     setError(null);
     try {
-      await uploadProductImage(id, file);
+      await uploadProductImage(id, file, {
+        title: imgTitle.trim() || undefined,
+        customLabel: imgTitle.trim() || undefined,
+      });
+      setImgTitle("");
       await load();
       setSuccess("Imagem enviada.");
     } catch (e: any) {
       setError(e?.message ?? "Erro no upload");
     } finally { setImgUploading(false); }
+  }
+
+  async function onDeleteImage(imageId: string) {
+    if (!id || !confirm("Excluir esta imagem?")) return;
+    try {
+      await deleteProductImage(id, imageId);
+      setProduct((prev) => {
+        if (!prev) return prev;
+        return { ...prev, images: ((prev as any).images ?? []).filter((img: any) => img.id !== imageId) } as any;
+      });
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao excluir imagem");
+    }
+  }
+
+  async function onSetPrimaryImage(imageId: string) {
+    if (!id) return;
+    try {
+      await setPrimaryProductImage(id, imageId);
+      setProduct((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          images: ((prev as any).images ?? []).map((img: any) => ({ ...img, isPrimary: img.id === imageId })),
+        } as any;
+      });
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao definir capa");
+    }
   }
 
   // ── Doc upload / delete / download ──────────────────────────────────────────
@@ -1624,7 +1668,7 @@ export default function ProductEditPage() {
             </Section>
 
             {/* ── S4: Cômodos ───────────────────────────────────────────── */}
-            <Section id="comodos" title="4. Cômodos" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
+            {!isEmpreendimento && <Section id="comodos" title="4. Cômodos" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
 
               {roomsLoading ? (
                 <p className="text-sm text-gray-400">Carregando cômodos...</p>
@@ -1741,10 +1785,10 @@ export default function ProductEditPage() {
                   )}
                 </div>
               )}
-            </Section>
+            </Section>}
 
             {/* ── S5: Comodidades ───────────────────────────────────────── */}
-            <Section id="comodidades" title="5. Comodidades" open={open.has("comodidades")} onToggle={() => toggle("comodidades")}>
+            {!isEmpreendimento && <Section id="comodidades" title="5. Comodidades" open={open.has("comodidades")} onToggle={() => toggle("comodidades")}>
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Internas</p>
                 <div className="grid grid-cols-3 gap-y-2 gap-x-3">
@@ -1779,10 +1823,10 @@ export default function ProductEditPage() {
                   ))}
                 </div>
               </div>
-            </Section>
+            </Section>}
 
             {/* ── S6: Proprietários ─────────────────────────────────────── */}
-            <Section id="proprietarios" title="6. Proprietários" open={open.has("proprietarios")} onToggle={() => toggle("proprietarios")}>
+            {!isEmpreendimento && <Section id="proprietarios" title="6. Proprietários" open={open.has("proprietarios")} onToggle={() => toggle("proprietarios")}>
 
               {ownersLoading ? (
                 <p className="text-sm text-gray-400">Carregando proprietários...</p>
@@ -1838,7 +1882,7 @@ export default function ProductEditPage() {
                   Novo proprietário
                 </button>
               )}
-            </Section>
+            </Section>}
 
             {/* ── S7: Documentação ──────────────────────────────────────── */}
             <Section id="documentacao" title="7. Documentação" open={open.has("documentacao")} onToggle={() => toggle("documentacao")}>
@@ -1874,30 +1918,66 @@ export default function ProductEditPage() {
 
               {/* Fotos */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Fotos</p>
-                <label className="block">
-                  <input type="file" accept="image/*" disabled={imgUploading || loading}
-                    onChange={(e) => onUploadImage(e.target.files?.[0] ?? null)}
-                    className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-50" />
-                </label>
-                {imgUploading && <p className="mt-1 text-xs text-gray-400">Enviando...</p>}
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fotos</p>
+
+                {/* Upload form */}
+                <div className="rounded-lg border bg-gray-50 p-3 space-y-2 mb-4">
+                  <Field label="Nome da imagem">
+                    <input
+                      value={imgTitle}
+                      onChange={(e) => setImgTitle(e.target.value)}
+                      placeholder="Ex: Suíte Master, Fachada, Área Gourmet..."
+                      className={inp}
+                      disabled={imgUploading}
+                    />
+                  </Field>
+                  <label className="block">
+                    <input type="file" accept="image/*" disabled={imgUploading || loading}
+                      onChange={(e) => onUploadImage(e.target.files?.[0] ?? null)}
+                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-50" />
+                  </label>
+                  {imgUploading && <p className="text-xs text-gray-400">Enviando...</p>}
+                </div>
+
                 {productImages.length > 0 && (
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {productImages.map((img: any) => {
                       const url = normalizeImageUrl(img);
                       const isPublic = img.publishSite !== false;
+                      const isCover = img.isPrimary === true;
+                      const displayName = img.customLabel || img.title || "";
                       return (
-                        <div key={img.id ?? url} className="relative overflow-hidden rounded-lg border bg-gray-50">
+                        <div key={img.id ?? url} className={`relative overflow-hidden rounded-lg border bg-gray-50 ${isCover ? "ring-2 ring-amber-400" : ""}`}>
                           <a href={url ?? undefined} target="_blank" rel="noreferrer">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={url ?? undefined} alt="" className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
+                            <img src={url ?? undefined} alt={displayName} className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
                           </a>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleImagePublic(img.id, isPublic)}
-                            title={isPublic ? "Pública — clique para tornar privada" : "Privada — clique para tornar pública"}
-                            className="absolute top-1 right-1 rounded-full bg-white/90 p-1 shadow hover:bg-white transition-colors"
-                          >
+                          {/* Nome */}
+                          {displayName && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/55 px-1.5 py-0.5">
+                              <p className="text-[10px] text-white truncate">{displayName}</p>
+                            </div>
+                          )}
+                          {/* Capa badge */}
+                          {isCover && (
+                            <div className="absolute top-1 left-1 rounded-full bg-amber-400 px-1.5 py-0.5">
+                              <p className="text-[9px] font-bold text-white leading-none">CAPA</p>
+                            </div>
+                          )}
+                          {/* Botão definir capa (estrela) */}
+                          {!isCover && (
+                            <button type="button" onClick={() => onSetPrimaryImage(img.id)}
+                              title="Definir como capa do produto"
+                              className="absolute top-1 left-1 rounded-full bg-white/90 p-1 shadow hover:bg-amber-50 transition-colors">
+                              <svg className="h-3.5 w-3.5 text-gray-400 hover:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            </button>
+                          )}
+                          {/* Toggle público/privado (olho) */}
+                          <button type="button" onClick={() => handleToggleImagePublic(img.id, isPublic)}
+                            title={isPublic ? "Pública (divulgada) — clique para uso interno" : "Interna — clique para divulgar"}
+                            className="absolute top-1 right-6 rounded-full bg-white/90 p-1 shadow hover:bg-white transition-colors">
                             {isPublic ? (
                               <svg className="h-3.5 w-3.5 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
                                 <path d="M10 3C5 3 1.73 7.11 1.05 8.45a1 1 0 000 1.1C1.73 10.89 5 15 10 15s8.27-4.11 8.95-5.45a1 1 0 000-1.1C18.27 7.11 15 3 10 3zm0 10a4 4 0 110-8 4 4 0 010 8zm0-6a2 2 0 100 4 2 2 0 000-4z" />
@@ -1908,6 +1988,14 @@ export default function ProductEditPage() {
                                 <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
                               </svg>
                             )}
+                          </button>
+                          {/* Excluir */}
+                          <button type="button" onClick={() => onDeleteImage(img.id)}
+                            title="Excluir imagem"
+                            className="absolute top-1 right-1 rounded-full bg-white/90 p-1 shadow hover:bg-red-50 transition-colors">
+                            <svg className="h-3.5 w-3.5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
                           </button>
                         </div>
                       );

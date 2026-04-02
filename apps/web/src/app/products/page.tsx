@@ -118,42 +118,35 @@ function labelOrigin(origin?: string) {
 }
 
 function labelStatus(status?: string, active?: boolean) {
-  // Se ainda existir legado `active: boolean`, mostramos coerente
   if (!status && typeof active === "boolean") return active ? "Ativo" : "Inativo";
-
   switch (status) {
-    case "ACTIVE":
-      return "Ativo";
-    case "RESERVED":
-      return "Reservado";
-    case "INACTIVE":
-      return "Inativo";
-    case "SOLD":
-      return "Vendido";
-    case "SOLD_OUT":
-      return "Esgotado";
-    case "ARCHIVED":
-      return "Arquivado";
-    default:
-      return status ?? "-";
+    case "ACTIVE": return "Ativo";
+    case "RESERVED": return "Reservado";
+    case "INACTIVE": return "Inativo";
+    case "SOLD": return "Vendido";
+    case "SOLD_OUT": return "Esgotado";
+    case "ARCHIVED": return "Arquivado";
+    default: return status ?? "-";
   }
 }
 
 function toneByStatus(status?: string, active?: boolean) {
   if (!status && typeof active === "boolean") return active ? "success" : "neutral";
   switch (status) {
-    case "ACTIVE":
-      return "success";
-    case "RESERVED":
-      return "warning";
-    case "INACTIVE":
-    case "ARCHIVED":
-      return "neutral";
-    case "SOLD":
-    case "SOLD_OUT":
-      return "danger";
-    default:
-      return "neutral";
+    case "ACTIVE": return "success";
+    case "RESERVED": return "warning";
+    case "INACTIVE": case "ARCHIVED": return "neutral";
+    case "SOLD": case "SOLD_OUT": return "danger";
+    default: return "neutral";
+  }
+}
+
+function labelCondition(condition?: string) {
+  switch (condition) {
+    case "NA_PLANTA": return "Na planta";
+    case "EM_CONSTRUCAO": return "Em construção";
+    case "PRONTO": return "Pronto";
+    default: return null;
   }
 }
 
@@ -482,71 +475,78 @@ export default function ProductsPage() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredItems.map((p: any) => {
-                  const origin = getString(p, ["origin"]);
                   const type = getString(p, ["type"]);
                   const status = getString(p, ["status"]);
+                  const pubStatus = getString(p, ["publicationStatus"]);
+                  const condition = getString(p, ["condition"]);
                   const active = typeof p?.active === "boolean" ? p.active : undefined;
 
                   const title = getString(p, ["title", "name", "nome"]);
-                  const bairro = getString(p, ["neighborhood", "bairro"]);
-                  const address = getString(p, ["address", "endereco", "logradouro", "street"]);
+                  const city = getString(p, ["city"]);
+                  const state = getString(p, ["state"]);
+                  const neighborhood = getString(p, ["neighborhood", "bairro"]);
                   const price = getNumber(p, ["price", "priceFrom", "startingPrice", "minPrice", "valor"]);
 
                   const img = getPrimaryImageUrl(p);
+                  const condLabel = labelCondition(condition);
+
+                  // Publicação como status primário: Rascunho se DRAFT, senão usa status operacional
+                  const isDraft = pubStatus === "DRAFT";
 
                   return (
                     <Link
                       key={p.id}
                       href={`/products/${p.id}`}
-                      className="rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md overflow-hidden"
+                      className="rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md overflow-hidden transition-shadow"
                     >
+                      {/* Imagem */}
                       <div className="h-36 w-full bg-neutral-100">
                         {img ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={img}
-                            alt={title || "Produto"}
-                            className="h-36 w-full object-cover"
-                          />
+                          <img src={img} alt={title || "Produto"} className="h-36 w-full object-cover" />
                         ) : (
-                          <div className="flex h-36 w-full items-center justify-center text-xs text-neutral-500">
+                          <div className="flex h-36 w-full items-center justify-center text-xs text-neutral-400">
                             Sem imagem
                           </div>
                         )}
                       </div>
 
                       <div className="p-4">
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          <Badge tone="neutral">{labelOrigin(origin)}</Badge>
+                        {/* Badges: tipo + condição + status */}
+                        <div className="mb-2.5 flex flex-wrap gap-1.5">
                           {type && <Badge tone="neutral">{labelType(type)}</Badge>}
-                          <Badge tone={toneByStatus(status, active) as any}>
-                            {labelStatus(status, active)}
-                          </Badge>
+                          {condLabel && <Badge tone="neutral">{condLabel}</Badge>}
+                          {isDraft
+                            ? <Badge tone="warning">Rascunho</Badge>
+                            : <Badge tone={toneByStatus(status, active) as any}>{labelStatus(status, active)}</Badge>
+                          }
                         </div>
 
-                        <div className="mb-1 text-lg font-semibold text-neutral-900">
+                        {/* Nome */}
+                        <div className="mb-1.5 text-sm font-semibold text-neutral-900 leading-snug line-clamp-2">
                           {title || "(Sem título)"}
                         </div>
 
-                        {(bairro || address) && (
-                          <div className="mb-2 text-sm text-neutral-600">
-                            {[bairro, address].filter(Boolean).join(" • ")}
+                        {/* Localização */}
+                        {(city || neighborhood) && (
+                          <div className="mb-2 text-xs text-neutral-500 leading-relaxed">
+                            {city && state ? `${city} — ${state}` : city || state}
+                            {neighborhood && (city || state) ? ` · ${neighborhood}` : neighborhood}
                           </div>
                         )}
 
-                        <div className="text-sm font-medium text-neutral-900">
-                          {price !== null ? (
-                            formatBRL(price)
-                          ) : (
-                            <span className="text-neutral-500">Preço não definido</span>
-                          )}
+                        {/* Preço */}
+                        <div className="text-sm font-semibold text-neutral-900">
+                          {price !== null
+                            ? <>{["EMPREENDIMENTO", "LOTEAMENTO"].includes(type) ? "A partir de " : ""}{formatBRL(price)}</>
+                            : <span className="font-normal text-neutral-400">Preço não definido</span>
+                          }
                         </div>
 
-                        {(p.createdAt || p.updatedAt) && (
-                          <div className="mt-2 text-xs text-neutral-500">
-                            {p.updatedAt
-                              ? `Atualizado: ${new Date(p.updatedAt).toLocaleString("pt-BR")}`
-                              : ""}
+                        {/* Data atualização */}
+                        {p.updatedAt && (
+                          <div className="mt-2 text-[11px] text-neutral-400">
+                            Atualizado {new Date(p.updatedAt).toLocaleDateString("pt-BR")}
                           </div>
                         )}
                       </div>

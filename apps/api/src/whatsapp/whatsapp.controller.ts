@@ -25,17 +25,25 @@ export class WhatsAppController {
 
   // ====== META VERIFY ======
   @Get()
-  verify(
+  async verify(
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
     @Query('hub.challenge') challenge: string,
     @Res() res: Response,
   ) {
-    const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'via-crm-dev';
+    if (mode !== 'subscribe') return res.sendStatus(403);
 
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      return res.status(200).send(challenge);
-    }
+    // Check env-level verify token (default / fallback)
+    const envToken = process.env.WHATSAPP_VERIFY_TOKEN || 'via-crm-dev';
+    if (token === envToken) return res.status(200).send(challenge);
+
+    // Check per-tenant verify tokens stored in DB
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { whatsappVerifyToken: token, ativo: true },
+      select: { id: true },
+    });
+    if (tenant) return res.status(200).send(challenge);
+
     return res.sendStatus(403);
   }
 

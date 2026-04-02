@@ -5,6 +5,7 @@ const logger = new Logger('WhatsappInboundWorker');
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
+import { WhatsappService } from '../secretary/whatsapp.service';
 
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -150,6 +151,41 @@ function buildMedia(msg: any) {
 }
 
 // ──────────────────────────────────────────────
+// Resolve tenant by phone_number_id (multi-tenant)
+// ──────────────────────────────────────────────
+
+async function resolveTenantForPhoneNumberId(
+  prisma: PrismaService,
+  phoneNumberId: string | null,
+): Promise<{ id: string } | null> {
+  // 1) Try to find tenant with this specific phoneNumberId
+  if (phoneNumberId) {
+    const tenant = await prisma.tenant.findFirst({
+      where: { whatsappPhoneNumberId: phoneNumberId, ativo: true },
+      select: { id: true },
+    });
+    if (tenant) return tenant;
+  }
+
+  // 2) Fallback: use env-based phoneNumberId to find or upsert default tenant
+  const envPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (envPhoneId && phoneNumberId && phoneNumberId !== envPhoneId) {
+    // payload is for a different phone number not registered in DB
+    logger.warn(`phone_number_id=${phoneNumberId} não corresponde a nenhum tenant. Ignorando.`);
+    return null;
+  }
+
+  const tenantSlug = process.env.DEFAULT_TENANT_SLUG || 'via-crm-dev';
+  const tenant = await prisma.tenant.upsert({
+    where: { slug: tenantSlug },
+    update: {},
+    create: { slug: tenantSlug, nome: 'VIA CRM DEV', ativo: true },
+    select: { id: true },
+  });
+  return tenant?.id ? tenant : null;
+}
+
+// ──────────────────────────────────────────────
 // Core processing (extraído de processPayload)
 // ──────────────────────────────────────────────
 
@@ -157,24 +193,12 @@ async function processPayload(
   payload: any,
   prisma: PrismaService,
   queueService: QueueService,
+  whatsappService?: WhatsappService,
 ) {
   try {
     const entriesCount = Array.isArray(payload?.entry) ? payload.entry.length : 0;
     logger.log(`📩 WhatsApp Webhook processando (entries=${entriesCount})`);
   } catch {}
-
-  const tenantSlug = process.env.DEFAULT_TENANT_SLUG || 'via-crm-dev';
-
-  const tenant = await prisma.tenant.upsert({
-    where: { slug: tenantSlug },
-    update: {},
-    create: { slug: tenantSlug, nome: 'VIA CRM DEV', ativo: true },
-    select: { id: true },
-  });
-
-  if (!tenant?.id) {
-    throw new Error(`Falha ao obter/criar tenant para slug="${tenantSlug}"`);
-  }
 
   const entries = Array.isArray(payload?.entry) ? payload.entry : [];
   if (!entries.length) return;
@@ -188,6 +212,14 @@ async function processPayload(
       const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
 
       if (!messages.length) continue;
+
+      // Resolve tenant by phone_number_id from Meta metadata
+      const phoneNumberId: string | null = value?.metadata?.phone_number_id || null;
+      const tenant = await resolveTenantForPhoneNumberId(prisma, phoneNumberId);
+      if (!tenant) {
+        logger.warn(`Nenhum tenant encontrado para phone_number_id=${phoneNumberId}. Ignorando change.`);
+        continue;
+      }
 
       for (const msg of messages) {
         try {
@@ -204,11 +236,37 @@ async function processPayload(
                 ? describeUnsupported(msg)
                 : summarizeNonText(type);
 
+          // ── Roteamento: usuário interno → secretária ──────────────────
+          if (whatsappService) {
+            const audioId = msg?.audio?.id || msg?.voice?.id || null;
+            const isUser = await whatsappService.tryHandleAsUser(
+              from, type, extractedText, audioId,
+            );
+            if (isUser) continue; // não cria lead, secretária já respondeu
+          }
+          // ─────────────────────────────────────────────────────────────
+
           let leadId: string;
           let isReentry: boolean;
 
-          try {
-            // Fast path: new lead (lead + transitionLog em transação)
+          // Busca lead existente pelo telefoneKey ANTES de tentar criar
+          const existingLead = telefoneKey
+            ? await prisma.lead.findFirst({
+                where: { tenantId: tenant.id, telefoneKey },
+                select: { id: true },
+                orderBy: { criadoEm: 'desc' },
+              })
+            : null;
+
+          if (existingLead) {
+            leadId = existingLead.id;
+            isReentry = true;
+          } else {
+            // Novo lead
+            const firstStageId = await prisma.pipelineStage
+              .findFirst({ where: { tenantId: tenant.id, key: 'NOVO_LEAD' }, select: { id: true } })
+              .then((s) => s?.id ?? null);
+
             const created = await prisma.$transaction(async (tx) => {
               const c = await tx.lead.create({
                 data: {
@@ -216,10 +274,10 @@ async function processPayload(
                   nome: contactName || 'Lead WhatsApp',
                   telefone: digitsOnly(from) || null,
                   telefoneKey: telefoneKey || null,
+                  origem: 'WhatsApp',
                   status: 'NOVO',
                   lastInboundAt: now,
-                  needsManagerReview: false,
-                  queuePriority: 9999,
+                  stageId: firstStageId,
                 },
                 select: { id: true },
               });
@@ -237,19 +295,21 @@ async function processPayload(
 
             leadId = created.id;
             isReentry = false;
-          } catch (err: any) {
-            // P2002: lead já existe (race condition entre requests concorrentes)
-            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-              const existing = await prisma.lead.findFirst({
-                where: { tenantId: tenant.id, telefoneKey },
-                select: { id: true },
+
+            // Notifica usuários do tenant com WhatsApp cadastrado
+            if (whatsappService) {
+              const usersToNotify = await prisma.user.findMany({
+                where: { tenantId: tenant.id, ativo: true, whatsappNumber: { not: null } },
+                select: { whatsappNumber: true, nome: true },
               });
-              if (!existing) throw err;
-              leadId = existing.id;
-            } else {
-              throw err;
+              const nome = contactName || 'Novo lead';
+              const notifMsg = `🔔 Novo lead chegou: *${nome}*${from ? `\nWhatsApp: ${from}` : ''}`;
+              for (const u of usersToNotify) {
+                if (u.whatsappNumber) {
+                  whatsappService.sendMessage(u.whatsappNumber, notifMsg).catch(() => {});
+                }
+              }
             }
-            isReentry = true;
           }
 
           const media = buildMedia(msg);
@@ -260,7 +320,7 @@ async function processPayload(
             if (isReentry) {
               await tx.lead.update({
                 where: { id: leadId },
-                data: { lastInboundAt: now, needsManagerReview: true, queuePriority: 1 },
+                data: { lastInboundAt: now },
               });
             }
 
@@ -315,11 +375,12 @@ async function processPayload(
 export function startWhatsappInboundWorker(
   prisma: PrismaService,
   queueService: QueueService,
+  whatsappService?: WhatsappService,
 ) {
   const worker = new Worker(
     'whatsapp-inbound-queue',
     async (job: Job) => {
-      await processPayload(job.data?.payload, prisma, queueService);
+      await processPayload(job.data?.payload, prisma, queueService, whatsappService);
     },
     {
       connection: getRedisConnection(),

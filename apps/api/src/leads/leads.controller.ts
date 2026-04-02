@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -16,7 +17,6 @@ import {
 } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ManagerDecisionDto } from './dto/manager-decision.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 
@@ -44,11 +44,6 @@ export class LeadsController {
     return this.leadsService.create(req.user.tenantId, body);
   }
 
-  @Get('manager-queue')
-  async getManagerQueue(@Req() req: any) {
-    return this.leadsService.getManagerQueue(req.user);
-  }
-
   @Get('my')
   async getMyLeads(@Req() req: any) {
     return this.leadsService.getMyLeads(req.user);
@@ -68,7 +63,21 @@ export class LeadsController {
 
   @Get()
   async list(@Req() req: any) {
-    return this.leadsService.list(req.user.tenantId);
+    return this.leadsService.list(req.user);
+  }
+
+  @Get('export')
+  async exportCsv(
+    @Req() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('stageId') stageId?: string,
+    @Res() res?: any,
+  ) {
+    const csv = await this.leadsService.exportCsv(req.user, { from, to, stageId });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="leads.csv"');
+    res.send('\uFEFF' + csv); // BOM for Excel UTF-8
   }
 
   // =========================
@@ -142,6 +151,37 @@ export class LeadsController {
    * PATCH /leads/:id/stage
    * body: { stageId: "uuid" }
    */
+  @Patch(':id/qualification')
+  async updateQualification(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: {
+      nomeCorreto?: string | null;
+      rendaBrutaFamiliar?: number | null;
+      fgts?: number | null;
+      valorEntrada?: number | null;
+      estadoCivil?: string | null;
+      dataNascimento?: string | null;
+      tempoProcurandoImovel?: string | null;
+      conversouComCorretor?: boolean | null;
+      qualCorretorImobiliaria?: string | null;
+      perfilImovel?: string | null;
+      produtoInteresseId?: string | null;
+      resumoLead?: string | null;
+    },
+  ) {
+    return this.leadsService.updateQualification(req.user.tenantId, id, body);
+  }
+
+  @Patch(':id/bot-paused')
+  async updateBotPaused(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { botPaused: boolean },
+  ) {
+    return this.leadsService.updateBotPaused(req.user.tenantId, id, body.botPaused);
+  }
+
   @Patch(':id/stage')
   async updateStage(
     @Req() req: any,
@@ -215,6 +255,15 @@ export class LeadsController {
     return this.leadsService.freezeSla(req.user, id, minutes);
   }
 
+  @Delete(':id')
+  async deleteLead(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('reason') reason?: string,
+  ) {
+    return this.leadsService.deleteLead(req.user, id, reason);
+  }
+
   @Post(':id/assign')
   async assignLead(
     @Req() req: any,
@@ -222,15 +271,6 @@ export class LeadsController {
     @Body() body: { assignedUserId: string },
   ) {
     return this.leadsService.assignLead(id, body.assignedUserId, req.user);
-  }
-
-  @Post(':id/manager-decision')
-  async managerDecision(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() dto: ManagerDecisionDto,
-  ) {
-    return this.leadsService.managerDecision(id, dto, req.user);
   }
 
   // 🚀 ENVIO REAL WHATSAPP (TEXTO)

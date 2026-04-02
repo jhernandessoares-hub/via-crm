@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type LoginResp = {
   accessToken: string;
@@ -48,6 +49,7 @@ export default function LoginPage() {
       const data = j as LoginResp;
 
       localStorage.setItem("accessToken", data.accessToken);
+      if ((data as any).refreshToken) localStorage.setItem("refreshToken", (data as any).refreshToken);
       localStorage.setItem("user", JSON.stringify(data.user));
 
       router.push("/dashboard");
@@ -105,6 +107,12 @@ export default function LoginPage() {
           >
             {loading ? "Entrando..." : "Entrar"}
           </button>
+
+          <div className="text-center">
+            <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline">
+              Esqueci minha senha
+            </Link>
+          </div>
         </form>
       </div>
     </div>

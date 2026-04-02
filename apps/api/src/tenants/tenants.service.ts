@@ -20,9 +20,81 @@ export class TenantsService {
     });
   }
 
-  async list() {
-    return this.prisma.tenant.findMany({
-      orderBy: { criadoEm: 'desc' },
+  async getById(tenantId: string) {
+    return this.prisma.tenant.findUnique({ where: { id: tenantId } });
+  }
+
+  async getBotConfig(tenantId: string) {
+    return this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        autopilotEnabled: true,
+        businessHours: true,
+        outsideHoursMessage: true,
+        aiDelayMin: true,
+        aiDelayMax: true,
+        aiTypingEnabled: true,
+        aiHistoryLimit: true,
+      },
+    });
+  }
+
+  async updateWhatsappSettings(tenantId: string, data: { whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string }) {
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        whatsappPhoneNumberId: data.whatsappPhoneNumberId ?? undefined,
+        whatsappToken: data.whatsappToken ?? undefined,
+        whatsappVerifyToken: data.whatsappVerifyToken ?? undefined,
+      },
+      select: { id: true, whatsappPhoneNumberId: true, whatsappVerifyToken: true },
+    });
+  }
+
+  async getWhatsappSettings(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, whatsappPhoneNumberId: true, whatsappVerifyToken: true, whatsappToken: true },
+    });
+    // Mask token for security
+    return {
+      whatsappPhoneNumberId: tenant?.whatsappPhoneNumberId || null,
+      whatsappVerifyToken: tenant?.whatsappVerifyToken || null,
+      whatsappTokenConfigured: !!tenant?.whatsappToken,
+    };
+  }
+
+  async updateBotConfig(tenantId: string, data: {
+    autopilotEnabled?: boolean;
+    businessHours?: any;
+    outsideHoursMessage?: string | null;
+    aiDelayMin?: number;
+    aiDelayMax?: number;
+    aiTypingEnabled?: boolean;
+    aiHistoryLimit?: number;
+  }) {
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        ...(data.autopilotEnabled !== undefined && { autopilotEnabled: data.autopilotEnabled }),
+        ...(data.businessHours !== undefined && { businessHours: data.businessHours }),
+        ...(data.outsideHoursMessage !== undefined && { outsideHoursMessage: data.outsideHoursMessage }),
+        ...(data.aiDelayMin !== undefined && { aiDelayMin: data.aiDelayMin }),
+        ...(data.aiDelayMax !== undefined && { aiDelayMax: data.aiDelayMax }),
+        ...(data.aiTypingEnabled !== undefined && { aiTypingEnabled: data.aiTypingEnabled }),
+        ...(data.aiHistoryLimit !== undefined && { aiHistoryLimit: data.aiHistoryLimit }),
+      },
+      select: {
+        id: true,
+        autopilotEnabled: true,
+        businessHours: true,
+        outsideHoursMessage: true,
+        aiDelayMin: true,
+        aiDelayMax: true,
+        aiTypingEnabled: true,
+        aiHistoryLimit: true,
+      },
     });
   }
 }

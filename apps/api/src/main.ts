@@ -1,21 +1,43 @@
+// ✝️ Proteção sobre este sistema e sobre quem o construiu:
+//
+// "O Senhor guardará a tua entrada e a tua saída, desde agora e para sempre."
+//  📖 Salmos 121:8
+//
+// "Mil cairão ao teu lado, e dez mil à tua direita, mas tu não serás atingido."
+//  📖 Salmos 91:7
+//
+// "O Senhor firmará os teus passos e guardará o teu caminho."
+//  📖 Salmos 37:23-24
+//
+// "O Senhor é meu pastor, e nada me faltará."
+//  📖 Salmos 23:1
+
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { ValidationPipe } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import * as path from "path";
+import helmet from "helmet";
 import { startSlaWorker } from "./queue/sla.worker";
 import { startWhatsappMediaWorker } from "./queue/whatsapp-media.worker";
 import { startInboundAiWorker } from "./queue/inbound-ai.worker";
 import { startWhatsappInboundWorker } from "./queue/whatsapp-inbound.worker";
+import { startReminderWorker } from "./queue/reminder.worker";
 import { PrismaService } from "./prisma/prisma.service";
 import { AiService } from "./ai/ai.service";
 import { QueueService } from "./queue/queue.service";
+import { WhatsappService } from "./secretary/whatsapp.service";
 import { NestLogger, Logger } from "./logger";
 
 const logger = new Logger('Bootstrap');
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: new NestLogger() });
+
+  // 🔒 Security headers (LGPD / OWASP)
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // permite assets estáticos
+  }));
 
   // Serve arquivos estáticos de uploads (ex: /uploads/secretary/...)
   app.useStaticAssets(path.join(process.cwd(), 'public'), { prefix: '/' });
@@ -31,7 +53,8 @@ async function bootstrap() {
   if (extraOrigins) {
     for (const o of extraOrigins.split(',')) {
       const s = o.trim();
-      if (s) allowedOrigins.push(s);
+      // Aceita apenas origens com formato de URL válido (sem regex arbitrário)
+      if (s && /^https?:\/\/[a-zA-Z0-9.-]+(:\d+)?$/.test(s)) allowedOrigins.push(s);
     }
   }
 
@@ -66,10 +89,13 @@ async function bootstrap() {
   startWhatsappMediaWorker(app.get(PrismaService));
 
   // 🚀 INICIAR WORKER INBOUND AI (reutiliza instâncias do container NestJS)
-  startInboundAiWorker(app.get(PrismaService), app.get(AiService));
+  startInboundAiWorker(app.get(PrismaService), app.get(AiService), app.get(WhatsappService));
 
   // 🚀 INICIAR WORKER WHATSAPP INBOUND (reutiliza instâncias do container NestJS)
-  startWhatsappInboundWorker(app.get(PrismaService), queueService);
+  startWhatsappInboundWorker(app.get(PrismaService), queueService, app.get(WhatsappService));
+
+  // 🔔 INICIAR WORKER DE LEMBRETES (BullMQ cron: a cada 5 min)
+  startReminderWorker(app.get(PrismaService), app.get(WhatsappService), queueService);
 }
 
 bootstrap();

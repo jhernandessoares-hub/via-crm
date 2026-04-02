@@ -1,5 +1,9 @@
 import { ConfigModule } from './config/config.module';
 import { Module } from '@nestjs/common';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { AuditModule } from './audit/audit.module';
+import { EmailModule } from './email/email.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -17,12 +21,21 @@ import { AiModule } from './ai/ai.module';
 import { AiAgentsModule } from './ai-agents/ai-agents.module';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 import { SecretaryModule } from './secretary/secretary.module';
+import { ChannelsModule } from './channels/channels.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { DevModule } from './dev/dev.module';
 import { OwnersModule } from './owners/owners.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
+    // 🔒 Rate limiting global (LGPD / OWASP)
+    ThrottlerModule.forRoot([
+      { name: 'default', ttl: 60_000, limit: 120 },  // 120 req/min por IP (geral)
+      { name: 'auth',    ttl: 60_000, limit: 10  },  // 10 req/min em rotas de auth
+    ]),
+    AuditModule,
+    EmailModule,
     WhatsAppModule,
     ConfigModule,
     PrismaModule,
@@ -39,11 +52,16 @@ import { OwnersModule } from './owners/owners.module';
     AiAgentsModule,
     KnowledgeBaseModule,
     SecretaryModule,
+    ChannelsModule,
     CalendarModule,
     DevModule,
     OwnersModule,
+    AdminModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

@@ -130,6 +130,21 @@ export default function LeadsPage() {
     }
   }
 
+  async function exportLeads() {
+    const token = localStorage.getItem("accessToken");
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const resp = await fetch(`${apiUrl}/leads/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // Etapas visíveis: todas ou só as do grupo ativo
   const visibleStages = useMemo(() => {
     if (!activeGroup) return pipelineStages;
@@ -205,6 +220,13 @@ export default function LeadsPage() {
               Kanban
             </button>
           </div>
+
+          <button
+            className="rounded-md border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={exportLeads}
+          >
+            Exportar CSV
+          </button>
 
           <button
             className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700"

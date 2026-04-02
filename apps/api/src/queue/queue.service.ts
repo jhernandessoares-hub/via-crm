@@ -8,6 +8,7 @@ export class QueueService implements OnModuleDestroy {
   private whatsappMediaQueue: Queue;
   private inboundAiQueue: Queue;
   private whatsappInboundQueue: Queue;
+  reminderQueue: Queue;
 
   constructor() {
     const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -31,6 +32,21 @@ export class QueueService implements OnModuleDestroy {
     this.whatsappInboundQueue = new Queue('whatsapp-inbound-queue', {
       connection: { host, port },
     });
+
+    // ✅ fila para lembretes de eventos do calendário (repeatable job)
+    this.reminderQueue = new Queue('reminder-queue', {
+      connection: { host, port },
+    });
+  }
+
+  async scheduleReminderRepeat() {
+    // Remove agendamentos antigos antes de recriar (evita duplicatas após restart)
+    await this.reminderQueue.removeRepeatable('reminder-check', { pattern: '*/5 * * * *' });
+    await this.reminderQueue.add(
+      'reminder-check',
+      {},
+      { repeat: { pattern: '*/5 * * * *' }, removeOnComplete: true, removeOnFail: false },
+    );
   }
 
   // =============================
@@ -360,5 +376,6 @@ export class QueueService implements OnModuleDestroy {
     await this.whatsappMediaQueue.close();
     await this.inboundAiQueue.close();
     await this.whatsappInboundQueue.close();
+    await this.reminderQueue.close();
   }
 }

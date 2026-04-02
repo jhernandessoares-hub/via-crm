@@ -4,12 +4,83 @@ import { Logger } from '../logger';
 const logger = new Logger('InboundAiWorker');
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsappService } from '../secretary/whatsapp.service';
+import { resolveWhatsappCreds, sendWhatsappImage } from '../whatsapp/whatsapp-creds';
+
+async function sendImageViaWhatsapp(
+  prisma: PrismaService,
+  tenantId: string,
+  toRaw: string,
+  imageUrl: string,
+  caption?: string,
+) {
+  const creds = await resolveWhatsappCreds(prisma, tenantId);
+  if (!creds) return;
+  await sendWhatsappImage(creds, toRaw, imageUrl, caption);
+}
 
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
   const port = Number(process.env.REDIS_PORT || 6379);
   return { host, port };
 }
+
+// ── Business Hours ─────────────────────────────────────────────────────────
+
+const DAY_KEYS: Record<number, string> = {
+  0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
+  4: 'thursday', 5: 'friday', 6: 'saturday',
+};
+
+function isWithinBusinessHours(businessHours: any, timezone: string): boolean {
+  if (!businessHours) return true; // sem configuração = sempre aberto
+
+  // Se nenhum dia está habilitado (todos null), sem restrição de horário
+  const ALL_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const hasAnyDayEnabled = ALL_DAYS.some(k => businessHours[k] != null);
+  if (!hasAnyDayEnabled) return true;
+
+  const tz = timezone || 'America/Sao_Paulo';
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(new Date());
+    const weekdayShort = parts.find(p => p.type === 'weekday')?.value?.toLowerCase();
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+
+    // Map short weekday to full key
+    const shortToFull: Record<string, string> = {
+      sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday',
+      thu: 'thursday', fri: 'friday', sat: 'saturday',
+    };
+    const dayKey = weekdayShort ? shortToFull[weekdayShort] : null;
+    if (!dayKey) return true;
+
+    const schedule = businessHours[dayKey];
+    if (!schedule) return false; // dia específico fechado
+
+    const [openH, openM] = String(schedule.open || '00:00').split(':').map(Number);
+    const [closeH, closeM] = String(schedule.close || '23:59').split(':').map(Number);
+
+    const currentMinutes = hour * 60 + minute;
+    const openMinutes = openH * 60 + openM;
+    const closeMinutes = closeH * 60 + closeM;
+
+    return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+  } catch {
+    return true; // em caso de erro, não bloqueia
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 async function registerAiSuggestion(
   prisma: PrismaService,
@@ -20,6 +91,7 @@ async function registerAiSuggestion(
     agentTitle?: string | null;
     text: string;
     source: string;
+    mode: 'COPILOT' | 'AUTOPILOT';
     responseFormat?: string | null;
     audioScript?: string | null;
     suggestedAttachments?: any[] | null;
@@ -32,7 +104,7 @@ async function registerAiSuggestion(
       channel: 'ai.suggestion',
       payloadRaw: {
         source: params.source,
-        mode: 'COPILOT',
+        mode: params.mode,
         agentId: params.agentId ?? null,
         agentTitle: params.agentTitle ?? null,
         text: params.text,
@@ -45,8 +117,95 @@ async function registerAiSuggestion(
   });
 
   logger.log(
-    `🤖 INBOUND AI SUGGESTION: leadId=${params.leadId} agentId=${params.agentId || 'none'}`,
+    `🤖 INBOUND AI [${params.mode}]: leadId=${params.leadId} agentId=${params.agentId || 'none'}`,
   );
+}
+
+async function sendImagesForProduct(
+  prisma: PrismaService,
+  whatsapp: WhatsappService,
+  lead: { id: string; tenantId: string; telefone: string | null },
+  productId: string,
+): Promise<string> {
+  const productWithImages = await prisma.product.findUnique({
+    where: { id: productId },
+    select: {
+      title: true,
+      images: {
+        where: { publishSite: true },
+        orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
+        take: 6,
+        select: { id: true, url: true, title: true, customLabel: true, isPrimary: true },
+      },
+    },
+  });
+
+  const images = productWithImages?.images ?? [];
+  if (images.length === 0 || !lead.telefone) {
+    logger.warn(`⚠️ Produto sem imagens públicas leadId=${lead.id} productId=${productId}`);
+    return 'nenhuma imagem disponível';
+  }
+
+  for (const img of images) {
+    const caption = img.customLabel || img.title || productWithImages?.title || undefined;
+    try {
+      await sendImageViaWhatsapp(prisma, lead.tenantId, lead.telefone, img.url, caption);
+      await prisma.leadEvent.create({
+        data: {
+          tenantId: lead.tenantId,
+          leadId: lead.id,
+          channel: 'whatsapp.out',
+          payloadRaw: {
+            type: 'image',
+            url: img.url,
+            caption,
+            source: 'agent-tool.enviar_fotos_produto',
+            at: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (imgErr: any) {
+      logger.warn(`⚠️ Erro ao enviar imagem leadId=${lead.id}: ${imgErr?.message}`);
+    }
+  }
+
+  logger.log(`📸 FERRAMENTA: ${images.length} foto(s) enviada(s) leadId=${lead.id}`);
+  return `${images.length} foto(s) enviada(s)`;
+}
+
+async function sendOutsideHoursMessage(
+  prisma: PrismaService,
+  whatsapp: WhatsappService,
+  tenantId: string,
+  leadId: string,
+  telefone: string,
+  message: string,
+) {
+  // Verifica se já enviou msg fora de horário nas últimas 8h para este lead
+  const recent = await prisma.leadEvent.findFirst({
+    where: {
+      tenantId,
+      leadId,
+      channel: 'bot.outside_hours',
+      criadoEm: { gte: new Date(Date.now() - 8 * 60 * 60 * 1000) },
+    },
+    select: { id: true },
+  });
+
+  if (recent) return; // já enviou recentemente, não reenvia
+
+  await whatsapp.sendMessage(telefone, message);
+
+  await prisma.leadEvent.create({
+    data: {
+      tenantId,
+      leadId,
+      channel: 'bot.outside_hours',
+      payloadRaw: { text: message, sentAt: new Date().toISOString() },
+    },
+  });
+
+  logger.log(`🕐 BOT FORA DE HORÁRIO: leadId=${leadId}`);
 }
 
 function pickEventText(payloadRaw: any): string {
@@ -97,16 +256,9 @@ function formatMinutesSince(dateValue?: Date | string | null): string {
 
 async function getLastInboundEvent(prisma: PrismaService, leadId: string) {
   return prisma.leadEvent.findFirst({
-    where: {
-      leadId,
-      channel: 'whatsapp.in',
-    },
+    where: { leadId, channel: 'whatsapp.in' },
     orderBy: { criadoEm: 'desc' },
-    select: {
-      id: true,
-      criadoEm: true,
-      payloadRaw: true,
-    },
+    select: { id: true, criadoEm: true, payloadRaw: true },
   });
 }
 
@@ -116,19 +268,10 @@ async function getRecentConversationContext(
   limit = 8,
 ) {
   const events = await prisma.leadEvent.findMany({
-    where: {
-      leadId,
-      channel: {
-        in: ['whatsapp.in', 'whatsapp.out'],
-      },
-    },
+    where: { leadId, channel: { in: ['whatsapp.in', 'whatsapp.out'] } },
     orderBy: { criadoEm: 'desc' },
     take: limit,
-    select: {
-      channel: true,
-      criadoEm: true,
-      payloadRaw: true,
-    },
+    select: { channel: true, criadoEm: true, payloadRaw: true },
   });
 
   const ordered = [...events].reverse();
@@ -138,9 +281,8 @@ async function getRecentConversationContext(
       const ch = String(ev.channel || '').toLowerCase();
       const text = pickEventText(ev.payloadRaw);
       if (!text) return null;
-
       if (ch === 'whatsapp.in') return `Lead: ${text}`;
-      if (ch === 'whatsapp.out') return `Corretor: ${text}`;
+      if (ch === 'whatsapp.out') return `Agente: ${text}`;
       return null;
     })
     .filter(Boolean);
@@ -148,17 +290,28 @@ async function getRecentConversationContext(
   return lines.join('\n');
 }
 
-async function handleInboundAiJob(job: Job, prisma: PrismaService, ai: AiService) {
+// ── Core job handler ───────────────────────────────────────────────────────
+
+async function handleInboundAiJob(
+  job: Job,
+  prisma: PrismaService,
+  ai: AiService,
+  whatsapp?: WhatsappService,
+) {
   const leadId = job.data?.leadId as string | undefined;
   if (!leadId) return;
 
-  logger.log('🧠 INBOUND AI JOB START', {
-    jobId: job.id,
-    jobName: job.name,
-    leadId,
-    data: job.data,
-  });
+  const jobStartAt = Date.now();
+  logger.log('🧠 INBOUND AI JOB START', { jobId: job.id, leadId, data: job.data });
 
+  // ── Nível 1: SaaS global ─────────────────────────────────────────────────
+  const saasAutopilot = process.env.AUTOPILOT_ENABLED !== 'false';
+  if (!saasAutopilot) {
+    logger.log(`⏸ AUTOPILOT desligado globalmente (AUTOPILOT_ENABLED=false)`);
+    return;
+  }
+
+  // ── Busca lead + tenant ───────────────────────────────────────────────────
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     select: {
@@ -167,82 +320,400 @@ async function handleInboundAiJob(job: Job, prisma: PrismaService, ai: AiService
       nome: true,
       telefone: true,
       status: true,
+      botPaused: true,
       lastInboundAt: true,
     },
   });
-
   if (!lead) return;
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: lead.tenantId },
+    select: {
+      id: true,
+      autopilotEnabled: true,
+      businessHours: true,
+      outsideHoursMessage: true,
+      aiDelayMin: true,
+      aiDelayMax: true,
+      aiTypingEnabled: true,
+      aiHistoryLimit: true,
+    },
+  });
+  if (!tenant) return;
+
+  // ── Nível 2: Tenant autopilot ─────────────────────────────────────────────
+  if (!tenant.autopilotEnabled) {
+    logger.log(`⏸ AUTOPILOT desligado para tenant=${lead.tenantId}`);
+    return;
+  }
+
+  // ── Nível 3: Horário de atendimento ───────────────────────────────────────
+  const bh = tenant.businessHours as any;
+  const tz = bh?.timezone || 'America/Sao_Paulo';
+  if (!isWithinBusinessHours(bh, tz)) {
+    logger.log(`🕐 Fora do horário de atendimento — tenant=${lead.tenantId}`);
+    const msg = tenant.outsideHoursMessage ||
+      'Olá! Nosso atendimento está encerrado no momento. Retornaremos assim que possível. 😊';
+    if (whatsapp && lead.telefone) {
+      await sendOutsideHoursMessage(prisma, whatsapp, lead.tenantId, lead.id, lead.telefone, msg);
+    }
+    return;
+  }
+
+  // ── Nível 4: Bot pausado por lead ─────────────────────────────────────────
+  if (lead.botPaused) {
+    logger.log(`⏸ Bot pausado para leadId=${lead.id} — corretor atende manualmente`);
+    return;
+  }
+
+  // ── Busca agente ──────────────────────────────────────────────────────────
   const lastInbound = await getLastInboundEvent(prisma, lead.id);
   if (!lastInbound) {
     logger.log(`⚠️ INBOUND AI: último inbound não encontrado para leadId=${lead.id}`);
     return;
   }
 
-  const defaultAgent = await ai.findDefaultAgentForTenant(lead.tenantId);
+  const historyLimit = tenant.aiHistoryLimit ?? 8;
+  const lastLeadMessage = pickEventText(lastInbound.payloadRaw);
+  const recentConversation = await getRecentConversationContext(prisma, lead.id, historyLimit);
+  const minutesSinceLastInbound = formatMinutesSince(lastInbound.criadoEm);
 
-  if (!defaultAgent?.id) {
-    logger.log(
-      `⚠️ INBOUND AI: nenhum agent ativo encontrado para tenant=${lead.tenantId}`,
+  // ── Roteamento via Orquestrador ───────────────────────────────────────────
+  let selectedAgent: any = null;
+
+  const orchestrator = await prisma.aiAgent.findFirst({
+    where: { tenantId: lead.tenantId, isOrchestrator: true, active: true },
+    select: { id: true, title: true, slug: true, prompt: true, model: true, temperature: true },
+  });
+
+  // Slugs que operam em segundo plano e nunca devem conversar diretamente com o lead
+  const NON_CONVERSATIONAL_SLUGS = ['agendamento', 'produtos', 'assistente_operacional'];
+
+  if (orchestrator?.prompt) {
+    const childAgents = await prisma.aiAgent.findMany({
+      where: { tenantId: lead.tenantId, parentAgentId: orchestrator.id, active: true },
+      select: { id: true, slug: true, title: true, description: true, objective: true, model: true, temperature: true, mode: true },
+    });
+
+    // Remove agentes não-conversacionais: eles não devem gerar respostas ao lead
+    const conversationalAgents = childAgents.filter(
+      (a) => !NON_CONVERSATIONAL_SLUGS.includes(a.slug),
     );
+
+    if (conversationalAgents.length > 0) {
+      // Busca etapa atual do lead para passar ao orquestrador
+      const leadStage = await prisma.lead.findUnique({
+        where: { id: lead.id },
+        select: {
+          stageId: true,
+          nomeCorreto: true, rendaBrutaFamiliar: true, fgts: true,
+          estadoCivil: true, perfilImovel: true, resumoLead: true,
+        },
+      });
+      const stageKey = leadStage?.stageId
+        ? (await prisma.pipelineStage.findUnique({ where: { id: leadStage.stageId }, select: { key: true } }))?.key ?? null
+        : null;
+
+      const qual: Record<string, any> = {};
+      if (leadStage) {
+        const { stageId: _s, ...fields } = leadStage;
+        for (const [k, v] of Object.entries(fields)) {
+          if (v !== null && v !== undefined) qual[k] = v;
+        }
+      }
+
+      const routing = await ai.runOrchestrator({
+        orchestratorPrompt: orchestrator.prompt,
+        conversation: recentConversation,
+        leadNome: lead.nome || 'Lead',
+        leadStatus: lead.status || 'NOVO',
+        currentStageKey: stageKey,
+        qualification: qual,
+        childAgents: conversationalAgents,
+      });
+
+      if (routing.agentId) {
+        selectedAgent = conversationalAgents.find(a => a.id === routing.agentId) ?? null;
+        logger.log(`🎯 ORQUESTRADOR roteou para: ${routing.agentSlug} (leadId=${lead.id})`);
+      }
+    }
+  }
+
+  // Fallback se orquestrador não encontrado ou não roteou
+  if (!selectedAgent) {
+    selectedAgent = await ai.findDefaultAgentForTenant(lead.tenantId);
+  }
+
+  if (!selectedAgent?.id) {
+    logger.log(`⚠️ INBOUND AI: nenhum agent ativo encontrado para tenant=${lead.tenantId}`);
     return;
   }
 
-  const lastLeadMessage = pickEventText(lastInbound.payloadRaw);
-  const recentConversation = await getRecentConversationContext(prisma, lead.id, 8);
-  const minutesSinceLastInbound = formatMinutesSince(lastInbound.criadoEm);
+  // ── Nível 5: Modo do agente ───────────────────────────────────────────────
+  const agentMode = (selectedAgent as any).mode ?? 'COPILOT';
 
-  const conversationContextParts = [
+  const conversationContext = [
     `Tempo desde a última mensagem do lead: ${minutesSinceLastInbound}.`,
     recentConversation ? `Histórico recente real da conversa:\n${recentConversation}` : '',
-  ].filter(Boolean);
-
-  const conversationContext = conversationContextParts.join('\n\n');
+  ].filter(Boolean).join('\n\n');
 
   try {
     const suggestion = await ai.generateFollowUp({
       nome: String(lead.nome || 'Cliente').trim() || 'Cliente',
       status: String(lead.status || 'NOVO'),
       tenantId: lead.tenantId,
-      agentId: defaultAgent.id,
+      agentId: selectedAgent.id,
       leadId: lead.id,
       lastLeadMessage,
       conversationContext,
-    });
+      agentModel: (selectedAgent as any).model ?? undefined,
+      agentTemperature: (selectedAgent as any).temperature ?? undefined,
+      onToolCall: async (toolName, args) => {
+        if (toolName === 'enviar_fotos_produto' && whatsapp) {
+          const productId =
+            args.productId ||
+            (await prisma.lead.findUnique({ where: { id: lead.id }, select: { produtoInteresseId: true } }))
+              ?.produtoInteresseId;
+          if (productId) {
+            return sendImagesForProduct(prisma, whatsapp, lead, productId);
+          }
+          return 'produto de interesse não identificado';
+        }
+        return 'ferramenta não reconhecida';
+      },
+    } as any);
 
     if (!suggestion || !suggestion.trim()) {
       logger.log(`⚠️ INBOUND AI: suggestion vazia para leadId=${lead.id}`);
       return;
     }
 
-    await registerAiSuggestion(prisma, {
-      tenantId: lead.tenantId,
-      leadId: lead.id,
-      agentId: defaultAgent.id,
-      agentTitle: defaultAgent.title,
-      text: suggestion.trim(),
-      source: 'inbound-ai.worker',
-      responseFormat: 'TEXT',
-      audioScript: null,
-      suggestedAttachments: [],
-    });
+    if (agentMode === 'AUTOPILOT' && whatsapp && lead.telefone) {
+      // Delay humanizado: descontamos o tempo já gasto desde o início do job
+      const elapsedMs = Date.now() - jobStartAt;
+      const minMs = (tenant.aiDelayMin ?? 5) * 1000;
+      const maxMs = (tenant.aiDelayMax ?? 15) * 1000;
+      const targetMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+      const remainingMs = Math.max(0, targetMs - elapsedMs);
+      if (remainingMs > 0) {
+        await new Promise((r) => setTimeout(r, remainingMs));
+      }
+
+      // Salva o evento ANTES de enviar — garante rastreabilidade mesmo se o envio falhar
+      await prisma.leadEvent.create({
+        data: {
+          tenantId: lead.tenantId,
+          leadId: lead.id,
+          channel: 'whatsapp.out',
+          payloadRaw: {
+            text: suggestion.trim(),
+            source: 'inbound-ai.worker',
+            mode: 'AUTOPILOT',
+            agentId: selectedAgent.id,
+            agentTitle: selectedAgent.title,
+            sentAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      // Atualiza status para EM_CONTATO se ainda for NOVO
+      if (lead.status === 'NOVO') {
+        await prisma.lead.update({
+          where: { id: lead.id },
+          data: { status: 'EM_CONTATO' },
+        });
+      }
+
+      await whatsapp.sendMessage(lead.telefone, suggestion.trim());
+      logger.log(`⚡ AUTOPILOT ENVIOU: leadId=${lead.id}`);
+    } else {
+      // Salva como sugestão para o corretor aprovar
+      await registerAiSuggestion(prisma, {
+        tenantId: lead.tenantId,
+        leadId: lead.id,
+        agentId: selectedAgent.id,
+        agentTitle: selectedAgent.title,
+        text: suggestion.trim(),
+        source: 'inbound-ai.worker',
+        mode: 'COPILOT',
+        responseFormat: 'TEXT',
+        audioScript: null,
+        suggestedAttachments: [],
+      });
+    }
   } catch (err: any) {
     logger.log(
       `⚠️ Erro ao gerar suggestion no inbound-ai worker leadId=${lead.id}: ${err?.message || err}`,
     );
   }
+
+  // ── Assistente Operacional (análise silenciosa pós-resposta) ────────────
+  try {
+    const [leadWithQual, stages, products] = await Promise.all([
+      prisma.lead.findUnique({
+        where: { id: lead.id },
+        select: {
+          stageId: true,
+          nomeCorreto: true,
+          rendaBrutaFamiliar: true,
+          fgts: true,
+          valorEntrada: true,
+          estadoCivil: true,
+          dataNascimento: true,
+          tempoProcurandoImovel: true,
+          conversouComCorretor: true,
+          qualCorretorImobiliaria: true,
+          perfilImovel: true,
+          produtoInteresseId: true,
+          resumoLead: true,
+        },
+      }),
+      prisma.pipelineStage.findMany({
+        where: { tenantId: lead.tenantId, isActive: true },
+        select: { id: true, key: true, name: true },
+        orderBy: { sortOrder: 'asc' },
+      }),
+      prisma.product.findMany({
+        where: { tenantId: lead.tenantId, status: 'ACTIVE' },
+        select: { id: true, title: true, type: true },
+        take: 20,
+      }),
+    ]);
+
+    const currentStage = leadWithQual?.stageId
+      ? stages.find((s) => s.id === leadWithQual.stageId)
+      : null;
+    const currentStageKey = currentStage?.key ?? null;
+
+    const { stageId: _sid, ...qualFields } = leadWithQual ?? {};
+    const currentQualification: Record<string, any> = {};
+    for (const [k, v] of Object.entries(qualFields)) {
+      if (v !== null && v !== undefined) currentQualification[k] = v;
+    }
+
+    const analysis = await ai.runOperationalAnalysis({
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      leadNome: lead.nome || 'Lead',
+      leadStatus: lead.status || 'NOVO',
+      currentStageKey,
+      conversation: recentConversation,
+      currentQualification,
+      availableStages: stages.map((s) => ({ key: s.key, name: s.name })),
+      availableProducts: products.map((p) => ({
+        id: p.id,
+        title: p.title,
+        standard: String(p.type ?? ''),
+      })),
+    });
+
+    // Aplica campos de qualificação
+    const u = analysis.updates ?? {};
+    const updateData: any = {};
+    if (u.nomeCorreto !== undefined) {
+      updateData.nomeCorreto = u.nomeCorreto;
+      if (u.nomeCorreto) updateData.nome = u.nomeCorreto;
+    }
+    if (u.rendaBrutaFamiliar !== undefined) updateData.rendaBrutaFamiliar = u.rendaBrutaFamiliar;
+    if (u.fgts !== undefined) updateData.fgts = u.fgts;
+    if (u.valorEntrada !== undefined) updateData.valorEntrada = u.valorEntrada;
+    if (u.estadoCivil !== undefined) updateData.estadoCivil = u.estadoCivil;
+    if (u.dataNascimento !== undefined) {
+      updateData.dataNascimento = u.dataNascimento ? new Date(u.dataNascimento) : null;
+    }
+    if (u.tempoProcurandoImovel !== undefined) updateData.tempoProcurandoImovel = u.tempoProcurandoImovel;
+    if (u.conversouComCorretor !== undefined) updateData.conversouComCorretor = u.conversouComCorretor;
+    if (u.qualCorretorImobiliaria !== undefined) updateData.qualCorretorImobiliaria = u.qualCorretorImobiliaria;
+    if (u.perfilImovel !== undefined) updateData.perfilImovel = u.perfilImovel;
+    if (u.produtoInteresseId !== undefined) updateData.produtoInteresseId = u.produtoInteresseId;
+    if (u.resumoLead !== undefined) updateData.resumoLead = u.resumoLead;
+
+    if (Object.keys(updateData).length > 0) {
+      await prisma.lead.update({
+        where: { id: lead.id, tenantId: lead.tenantId },
+        data: updateData,
+      });
+      logger.log(
+        `🤖 ASSISTENTE OPERACIONAL: ${Object.keys(updateData).length} campo(s) atualizado(s) leadId=${lead.id}`,
+      );
+    }
+
+    // Move de etapa se identificado
+    if (analysis.stageKey) {
+      const targetStage = stages.find((s) => s.key === analysis.stageKey);
+      if (targetStage && targetStage.id !== leadWithQual?.stageId) {
+        await prisma.lead.update({
+          where: { id: lead.id, tenantId: lead.tenantId },
+          data: { stageId: targetStage.id },
+        });
+        await prisma.leadEvent.create({
+          data: {
+            tenantId: lead.tenantId,
+            leadId: lead.id,
+            channel: 'stage.changed',
+            payloadRaw: {
+              fromStageKey: currentStageKey,
+              toStageKey: analysis.stageKey,
+              toStageName: targetStage.name,
+              source: 'assistente-operacional',
+              at: new Date().toISOString(),
+            },
+          },
+        });
+        logger.log(`🔄 ASSISTENTE OPERACIONAL: etapa → ${analysis.stageKey} leadId=${lead.id}`);
+      }
+    }
+
+    // Notificação para o corretor (throttle: no máximo 1 a cada 30 minutos)
+    if (analysis.notifyBroker && analysis.notifyMessage) {
+      const recentNotify = await prisma.leadEvent.findFirst({
+        where: {
+          tenantId: lead.tenantId,
+          leadId: lead.id,
+          channel: 'ai.broker_notify',
+          criadoEm: { gte: new Date(Date.now() - 30 * 60 * 1000) },
+        },
+        select: { id: true },
+      });
+
+      if (!recentNotify) {
+        await prisma.leadEvent.create({
+          data: {
+            tenantId: lead.tenantId,
+            leadId: lead.id,
+            channel: 'ai.broker_notify',
+            payloadRaw: {
+              message: analysis.notifyMessage,
+              source: 'assistente-operacional',
+              at: new Date().toISOString(),
+            },
+          },
+        });
+        logger.log(`📢 ASSISTENTE OPERACIONAL: notificou corretor leadId=${lead.id}`);
+      } else {
+        logger.log(`🔕 ASSISTENTE OPERACIONAL: notificação suprimida (throttle 30min) leadId=${lead.id}`);
+      }
+    }
+  } catch (opErr: any) {
+    logger.log(
+      `⚠️ Assistente Operacional erro leadId=${lead.id}: ${opErr?.message || opErr}`,
+    );
+  }
 }
 
-export function startInboundAiWorker(prisma: PrismaService, ai: AiService) {
-  logger.log('🧠 Inbound AI Worker boot', {
-    redis: getRedisConnection(),
-    mode: 'COPILOT_ONLY',
-  });
+// ── Worker bootstrap ───────────────────────────────────────────────────────
+
+export function startInboundAiWorker(
+  prisma: PrismaService,
+  ai: AiService,
+  whatsapp?: WhatsappService,
+) {
+  logger.log('🧠 Inbound AI Worker boot', { redis: getRedisConnection() });
 
   const worker = new Worker(
     'inbound-ai-queue',
     async (job) => {
-      await handleInboundAiJob(job, prisma, ai);
+      await handleInboundAiJob(job, prisma, ai, whatsapp);
     },
     {
       connection: getRedisConnection(),

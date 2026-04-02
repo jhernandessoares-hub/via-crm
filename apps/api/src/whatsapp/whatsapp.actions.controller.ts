@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   Body,
+  Req,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -11,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { v2 as cloudinary } from 'cloudinary';
+import { resolveWhatsappCreds, WhatsappCreds } from './whatsapp-creds';
 
 type MediaKind = 'image' | 'video' | 'audio' | 'document';
 
@@ -24,18 +26,10 @@ export class WhatsAppActionsController {
     return String(v || '').replace(/\D/g, '');
   }
 
-  private ensureWhatsappEnv() {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
-    if (!token || !phoneNumberId) {
-      throw new BadRequestException(
-        'WHATSAPP_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado.',
-      );
-    }
-
-    return { token, phoneNumberId, version };
+  private async resolveCredsForTenant(tenantId?: string): Promise<WhatsappCreds> {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new BadRequestException('WhatsApp não configurado para este tenant.');
+    return creds;
   }
 
   private ensureCloudinaryEnv() {
@@ -59,8 +53,8 @@ export class WhatsAppActionsController {
     });
   }
 
-  private async callMetaSend(body: any) {
-    const { token, phoneNumberId, version } = this.ensureWhatsappEnv();
+  private async callMetaSend(body: any, tenantId?: string) {
+    const { token, phoneNumberId, version } = await this.resolveCredsForTenant(tenantId);
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
 
     const resp = await fetch(url, {
@@ -85,8 +79,8 @@ export class WhatsAppActionsController {
     return data;
   }
 
-  private async callMetaMarkRead(messageId: string) {
-    const { token, phoneNumberId, version } = this.ensureWhatsappEnv();
+  private async callMetaMarkRead(messageId: string, tenantId?: string) {
+    const { token, phoneNumberId, version } = await this.resolveCredsForTenant(tenantId);
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
 
     const resp = await fetch(url, {
@@ -210,7 +204,7 @@ export class WhatsAppActionsController {
       to,
       type: 'text',
       text: { body: text },
-    });
+    }, lead.tenantId);
 
     const providerMessageId = result?.messages?.[0]?.id || null;
 
@@ -306,7 +300,7 @@ export class WhatsAppActionsController {
       };
     }
 
-    const result = await this.callMetaSend(base);
+    const result = await this.callMetaSend(base, lead.tenantId);
     const providerMessageId = result?.messages?.[0]?.id || null;
 
     await this.prisma.leadEvent.create({
@@ -379,7 +373,7 @@ export class WhatsAppActionsController {
         message_id: messageId,
         emoji,
       },
-    });
+    }, lead.tenantId);
 
     const providerMessageId = result?.messages?.[0]?.id || null;
 
@@ -428,7 +422,7 @@ export class WhatsAppActionsController {
 
     if (!lead) throw new BadRequestException('Lead não encontrado.');
 
-    const result = await this.callMetaMarkRead(messageId);
+    const result = await this.callMetaMarkRead(messageId, lead.tenantId);
 
     await this.prisma.leadEvent.create({
       data: {

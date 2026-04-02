@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
@@ -77,13 +78,17 @@ export default function DashboardPage() {
 
           {!loading &&
             leads.slice(0, 5).map((lead) => (
-              <div
+              <Link
                 key={lead.id}
-                className="rounded-md border p-3 text-sm"
+                href={`/leads/${lead.id}`}
+                className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-gray-50 transition-colors"
               >
-                <div className="font-medium">{lead.nome}</div>
-                <div className="text-gray-500">{lead.telefone}</div>
-              </div>
+                <div>
+                  <div className="font-medium text-gray-900">{lead.nome}</div>
+                  <div className="text-gray-500">{lead.telefone}</div>
+                </div>
+                <span className="text-gray-400 text-xs">→</span>
+              </Link>
             ))}
         </div>
       </div>

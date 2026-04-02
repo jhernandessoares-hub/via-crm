@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
@@ -16,43 +16,6 @@ type StoredUser = {
   role: Role;
   branchId: string | null;
 };
-
-type Reason = {
-  id: string;
-  label: string;
-  active: boolean;
-  sortOrder: number;
-};
-
-const DECISIONS = [
-  { value: "KEEP_AGENT_REENTRY", label: "Manter corretor e reentrada (sobe na fila)" },
-  {
-    value: "AI_ROUTE_OTHER_IF_AVAILABLE_AFTER_QUALIFICATION",
-    label: "Ativar IA e rotear outro se houver (após qualificação)",
-  },
-  { value: "KEEP_CLOSED", label: "Manter fechado sem novo atendimento" },
-  {
-    value: "AI_ROUTE_ANY_AFTER_QUALIFICATION",
-    label: "Ativar IA e rotear qualquer corretor (após qualificação)",
-  },
-] as const;
-
-type DecisionValue = (typeof DECISIONS)[number]["value"];
-
-type TreatedItem = {
-  leadId: string;
-  leadName: string;
-  telefoneKey?: string | null;
-  decision: DecisionValue;
-  decisionLabel: string;
-  reasonId: string;
-  reasonLabel: string;
-  justification?: string | null;
-  createdAt: string;
-};
-
-const TREATED_KEY = "managerQueue.treated.v1";
-const TREATED_MAX = 30;
 
 function safeJsonParse<T>(s: string | null): T | null {
   if (!s) return null;
@@ -70,13 +33,25 @@ type Lead = {
   whatsapp?: string;
   observacao?: string;
   status?: string;
+  origem?: string | null;
   criadoEm?: string;
-  needsManagerReview?: boolean;
-  queuePriority?: number;
   assignedUserId?: string | null;
   branchId?: string | null;
   telefoneKey?: string | null;
   avatarUrl?: string | null;
+  // Qualificação IA
+  nomeCorreto?: string | null;
+  rendaBrutaFamiliar?: number | null;
+  fgts?: number | null;
+  valorEntrada?: number | null;
+  estadoCivil?: string | null;
+  dataNascimento?: string | null;
+  tempoProcurandoImovel?: string | null;
+  conversouComCorretor?: boolean | null;
+  qualCorretorImobiliaria?: string | null;
+  perfilImovel?: string | null;
+  produtoInteresseId?: string | null;
+  resumoLead?: string | null;
 };
 
 type LeadEvent = {
@@ -1136,12 +1111,10 @@ export default function LeadDetailChatPage() {
   const id = String((params as any)?.id || "");
   const searchParams = useSearchParams();
   const currentGroup = searchParams.get("group");
+  const router = useRouter();
 
   const [user, setUser] = useState<StoredUser | null>(null);
 
-  const canManagerDecide = useMemo(() => {
-    return user?.role === "OWNER" || user?.role === "MANAGER";
-  }, [user]);
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [events, setEvents] = useState<LeadEvent[]>([]);
@@ -1214,16 +1187,6 @@ export default function LeadDetailChatPage() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
 
-  const [managerOpen, setManagerOpen] = useState(false);
-  const [managerReasons, setManagerReasons] = useState<Reason[]>([]);
-  const [managerLoadingReasons, setManagerLoadingReasons] = useState(false);
-  const [managerSubmitting, setManagerSubmitting] = useState(false);
-  const [managerErr, setManagerErr] = useState<string | null>(null);
-
-  const [decision, setDecision] = useState<DecisionValue>("KEEP_AGENT_REENTRY");
-  const [reasonId, setReasonId] = useState<string>("");
-  const [justification, setJustification] = useState<string>("");
-
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsErr, setProductsErr] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -1240,6 +1203,8 @@ export default function LeadDetailChatPage() {
 
   const [hasNewInbound, setHasNewInbound] = useState(false);
   const lastInboundIdRef = useRef<string | null>(null);
+
+  const [qualOpen, setQualOpen] = useState(false);
 
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -1258,14 +1223,8 @@ export default function LeadDetailChatPage() {
   }, []);
 
   useEffect(() => {
-    if (!id) return;
-    try {
-      const raw = localStorage.getItem("lead.autopilot.v1." + id);
-      setAutopilotEnabled(raw === "1");
-    } catch {
-      setAutopilotEnabled(false);
-    }
-  }, [id]);
+    if (lead) setAutopilotEnabled(!(lead as any).botPaused);
+  }, [lead]);
 
   useEffect(() => {
     try {
@@ -1394,7 +1353,7 @@ export default function LeadDetailChatPage() {
   useEffect(() => {
     if (!id) return;
 
-    const intervalMs = 5000;
+    const intervalMs = 2000;
     let inFlight = false;
 
     const tick = async () => {
@@ -1750,19 +1709,13 @@ async function requestAiPanelSuggestion(
   }
 }
 
-  function toggleAutopilot(nextValue: boolean) {
-    if (nextValue) {
-      const ok = window.confirm(
-        "Ao ativar o Autopilot, a IA poderá responder automaticamente este lead quando as regras permitirem. Deseja continuar?",
-      );
-      if (!ok) return;
-    }
-
+  async function toggleAutopilot(nextValue: boolean) {
     setAutopilotEnabled(nextValue);
-
-    try {
-      localStorage.setItem("lead.autopilot.v1." + id, nextValue ? "1" : "0");
-    } catch {}
+    await apiFetch(`/leads/${id}/bot-paused`, {
+      method: "PATCH",
+      body: JSON.stringify({ botPaused: !nextValue }),
+    });
+    setLead((prev: any) => prev ? { ...prev, botPaused: !nextValue } : prev);
   }
 
   async function useSuggestedAttachment(att: AiSuggestedAttachment) {
@@ -1799,6 +1752,9 @@ async function requestAiPanelSuggestion(
       const ch = String(ev?.channel || "").toLowerCase();
       if (ch.startsWith("system.")) continue;
       if (ch === "ai.suggestion") continue;
+      if (ch === "stage.changed") continue;
+      if (ch === "ai.broker_notify") continue;
+      if (ch === "bot.outside_hours") continue;
       if (isGhostEvent(ev)) continue;
       normal.push(ev);
     }
@@ -2149,96 +2105,6 @@ async function requestAiPanelSuggestion(
     // propositalmente vazio: evita mensagem fantasma⬝
   }
 
-  async function loadManagerReasons() {
-    setManagerErr(null);
-    setManagerLoadingReasons(true);
-
-    try {
-      const r = await apiFetch("/config/manager-reasons", { method: "GET" });
-      const rr: Reason[] = Array.isArray(r) ? r : [];
-      rr.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-
-      const active = rr.filter((x) => x.active !== false);
-      setManagerReasons(active);
-
-      if (!reasonId && active.length) setReasonId(active[0].id);
-
-      if (!active.length) {
-        setManagerErr("Nenhum motivo ativo encontrado. Cadastre motivos para o tenant (manager_decision_reasons).");
-      }
-    } catch (e: any) {
-      setManagerErr(e?.message || "Erro ao carregar motivos");
-    } finally {
-      setManagerLoadingReasons(false);
-    }
-  }
-
-  function openManagerModal() {
-    setManagerErr(null);
-    setManagerOpen(true);
-    if (canManagerDecide && managerReasons.length === 0 && !managerLoadingReasons) loadManagerReasons();
-  }
-
-  function closeManagerModal() {
-    setManagerOpen(false);
-    setManagerErr(null);
-    setManagerSubmitting(false);
-  }
-
-  function pushTreatedToStorage(item: TreatedItem) {
-    try {
-      const raw = localStorage.getItem(TREATED_KEY);
-      const parsed = safeJsonParse<TreatedItem[]>(raw);
-      const current = Array.isArray(parsed) ? parsed : [];
-      const next = [item, ...current].slice(0, TREATED_MAX);
-      localStorage.setItem(TREATED_KEY, JSON.stringify(next));
-    } catch {}
-  }
-
-  async function submitManagerDecision() {
-    if (!canManagerDecide) return;
-    if (!reasonId) {
-      setManagerErr("Selecione um motivo.");
-      return;
-    }
-
-    setManagerErr(null);
-    setManagerSubmitting(true);
-
-    try {
-      await apiFetch("/leads/" + id + "/manager-decision", {
-        method: "POST",
-        body: JSON.stringify({
-          decision,
-          reasonId,
-          justification: (justification || "").trim() ? (justification || "").trim() : null,
-        }),
-      });
-
-      const leadName = lead?.nome || id;
-      const decisionLabel = DECISIONS.find((d) => d.value === decision)?.label || decision;
-      const reasonLabel = managerReasons.find((r) => r.id === reasonId)?.label || reasonId;
-
-      pushTreatedToStorage({
-        leadId: id,
-        leadName,
-        telefoneKey: lead?.telefoneKey ?? null,
-        decision,
-        decisionLabel,
-        reasonId,
-        reasonLabel,
-        justification: (justification || "").trim() ? (justification || "").trim() : null,
-        createdAt: new Date().toISOString(),
-      });
-
-      closeManagerModal();
-      await Promise.all([loadLead(), loadEvents({ silent: true })]);
-    } catch (e: any) {
-      setManagerErr(e?.message || "Erro ao enviar decisão");
-    } finally {
-      setManagerSubmitting(false);
-    }
-  }
 
   const filteredProducts = useMemo(() => {
     const q = productsQuery.trim().toLowerCase();
@@ -2318,132 +2184,6 @@ async function requestAiPanelSuggestion(
   return (
     <AppShell title="Lead">
       <div className="h-screen flex flex-col overflow-hidden">
-        {/* MODAL DECISÃO DO GERENTE */}
-        {managerOpen ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-2xl rounded-xl bg-white shadow-lg overflow-hidden">
-              <div className="flex items-center justify-between border-b px-5 py-3">
-                <div className="text-sm font-semibold text-gray-900">Decisão do Gerente</div>
-                <button
-                  type="button"
-                  onClick={closeManagerModal}
-                  className="rounded-md px-2 py-1 text-sm hover:bg-gray-100"
-                >
-                  Fechar
-                </button>
-              </div>
-
-              <div className="p-5 space-y-4">
-                <div className="rounded-lg border bg-gray-50 p-3">
-                  <div className="text-xs text-gray-600">Lead</div>
-                  <div className="text-sm font-medium text-gray-900">{lead?.nome || "�"}</div>
-                  <div className="mt-1 text-xs text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
-                    <span className="font-mono">ID: {id}</span>
-                    {lead?.telefone ? <span>Tel: {lead.telefone}</span> : null}
-                    {lead?.status ? <span>Status: {lead.status}</span> : null}
-                    {lead?.needsManagerReview ? (
-                      <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-800">
-                        needsManagerReview=true
-                      </span>
-                    ) : (
-                      <span className="text-gray-500">needsManagerReview=false</span>
-                    )}
-                  </div>
-                </div>
-
-                {managerErr ? (
-                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{managerErr}</div>
-                ) : null}
-
-                <div className="grid gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-900">Motivo</label>
-                    <div className="mt-1">
-                      <select
-                        className="w-full rounded-md border bg-white p-2 text-sm"
-                        value={reasonId}
-                        onChange={(e) => setReasonId(e.target.value)}
-                        disabled={managerLoadingReasons || managerSubmitting}
-                      >
-                        {managerReasons.length === 0 ? (
-                          <option value="">(Sem motivos)</option>
-                        ) : (
-                          managerReasons.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {r.sortOrder}. {r.label}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
-                        onClick={loadManagerReasons}
-                        disabled={managerLoadingReasons || managerSubmitting}
-                      >
-                        {managerLoadingReasons ? "Carregando..." : "Recarregar motivos"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-900">Decisão</label>
-                    <div className="mt-1">
-                      <select
-                        className="w-full rounded-md border bg-white p-2 text-sm"
-                        value={decision}
-                        onChange={(e) => setDecision(e.target.value as DecisionValue)}
-                        disabled={managerSubmitting}
-                      >
-                        {DECISIONS.map((d) => (
-                          <option key={d.value} value={d.value}>
-                            {d.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-900">Justificativa (opcional)</label>
-                    <textarea
-                      className="mt-1 w-full rounded-md border bg-white p-2 text-sm"
-                      rows={4}
-                      value={justification}
-                      onChange={(e) => setJustification(e.target.value)}
-                      placeholder="Opcional..."
-                      disabled={managerSubmitting}
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      className="rounded-md border bg-white px-4 py-2 text-sm hover:bg-gray-50"
-                      onClick={closeManagerModal}
-                      disabled={managerSubmitting}
-                    >
-                      Cancelar
-                    </button>
-
-                    <button
-                      type="button"
-                      className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
-                      onClick={submitManagerDecision}
-                      disabled={managerSubmitting || managerLoadingReasons || !reasonId}
-                    >
-                      {managerSubmitting ? "Enviando..." : "Confirmar decisão"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
             {/* STEPPER DO FUNIL (ETAPA 4) */}
         <div className="mb-4 rounded-xl border bg-white p-3">
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -2467,6 +2207,11 @@ async function requestAiPanelSuggestion(
                   body: JSON.stringify({ stageId }),
                 });
                 await loadLead();
+
+                const newStage = pipelineStages.find((s) => s.id === stageId);
+                if (newStage?.group && newStage.group !== currentGroup) {
+                  router.replace(`/leads/${id}?group=${newStage.group}`);
+                }
               } catch (e: any) {
                 alert(e?.message || "Erro ao mover etapa");
               } finally {
@@ -2523,18 +2268,13 @@ async function requestAiPanelSuggestion(
                     <div className="text-gray-900">{lead.status || "NOVO"}</div>
                   </div>
 
-                  <div>
-                    <div className="text-xs text-gray-500">Manager Review</div>
-                    <div className="text-gray-900">
-                      {lead.needsManagerReview ? (
-                        <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
-                          needsManagerReview=true
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">�</span>
-                      )}
+                  {lead.origem && (
+                    <div>
+                      <div className="text-xs text-gray-500">Origem</div>
+                      <div className="text-gray-900">{lead.origem}</div>
                     </div>
-                  </div>
+                  )}
+
                 </div>
               ) : (
                 <div className="mt-3 text-sm text-gray-600">Não carregou.</div>
@@ -2548,21 +2288,21 @@ async function requestAiPanelSuggestion(
                 Atualizar
               </button>
 
-              {canManagerDecide ? (
-                lead?.needsManagerReview ? (
-                  <button
-                    className="mt-2 w-full rounded-md bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
-                    onClick={openManagerModal}
-                    disabled={loadingLead || !lead}
-                    title="Somente OWNER/MANAGER (apenas em reentrada)"
-                  >
-                    Decisão do Gerente
-                  </button>
-                ) : (
-                  <div className="mt-3 text-[11px] text-gray-500">(Sem decisão do gerente � este lead não está em reentrada)</div>
-                )
-              ) : (
-                <div className="mt-3 text-[11px] text-gray-500">(Sem permissão de gerente)</div>
+              {user?.role === "OWNER" && lead && (
+                <button
+                  className="mt-2 w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                  onClick={async () => {
+                    if (!confirm(`Excluir o lead "${lead.nome}"? Esta ação não pode ser desfeita.`)) return;
+                    try {
+                      await apiFetch("/leads/" + id, { method: "DELETE" });
+                      router.push("/leads");
+                    } catch (e: any) {
+                      alert(e?.message || "Erro ao excluir lead");
+                    }
+                  }}
+                >
+                  Excluir lead
+                </button>
               )}
 
               {err ? (
@@ -2623,6 +2363,144 @@ async function requestAiPanelSuggestion(
                 </div>
               ) : null}
             </div>
+
+            {/* Qualificação IA */}
+            {lead && (() => {
+              const hasAnyQual = !!(
+                lead.nomeCorreto || lead.rendaBrutaFamiliar != null || lead.fgts != null ||
+                lead.valorEntrada != null || lead.estadoCivil || lead.dataNascimento ||
+                lead.tempoProcurandoImovel || lead.conversouComCorretor != null ||
+                lead.qualCorretorImobiliaria || lead.perfilImovel || lead.resumoLead
+              );
+
+              const fmtCurrency = (v?: number | null) =>
+                v != null ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : null;
+
+              const fmtDate = (v?: string | null) => {
+                if (!v) return null;
+                try {
+                  return new Date(v).toLocaleDateString("pt-BR");
+                } catch { return v; }
+              };
+
+              const estadoCivilLabels: Record<string, string> = {
+                SOLTEIRO: "Solteiro(a)", CASADO: "Casado(a)", UNIAO_ESTAVEL: "União Estável",
+                DIVORCIADO: "Divorciado(a)", VIUVO: "Viúvo(a)",
+              };
+
+              const perfilLabels: Record<string, string> = {
+                POPULAR: "Popular", MEDIO: "Médio", ALTO_PADRAO: "Alto Padrão", LUXO: "Luxo",
+              };
+
+              return (
+                <div className="rounded-xl border bg-white p-4">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 text-left"
+                    onClick={() => setQualOpen((v) => !v)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900">Qualificação IA</span>
+                      {hasAnyQual && (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                          Coletado
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-gray-400 text-xs">{qualOpen ? "▲" : "▼"}</span>
+                  </button>
+
+                  {qualOpen && (
+                    <div className="mt-3 space-y-2 text-sm">
+                      {!hasAnyQual && (
+                        <div className="text-xs text-gray-400 italic">
+                          Nenhum dado coletado ainda. A IA preenche automaticamente durante a conversa.
+                        </div>
+                      )}
+
+                      {lead.nomeCorreto && (
+                        <div>
+                          <div className="text-xs text-gray-500">Nome identificado</div>
+                          <div className="font-medium text-gray-900">{lead.nomeCorreto}</div>
+                        </div>
+                      )}
+
+                      {fmtCurrency(lead.rendaBrutaFamiliar) && (
+                        <div>
+                          <div className="text-xs text-gray-500">Renda bruta familiar</div>
+                          <div className="text-gray-900">{fmtCurrency(lead.rendaBrutaFamiliar)}</div>
+                        </div>
+                      )}
+
+                      {fmtCurrency(lead.fgts) && (
+                        <div>
+                          <div className="text-xs text-gray-500">FGTS</div>
+                          <div className="text-gray-900">{fmtCurrency(lead.fgts)}</div>
+                        </div>
+                      )}
+
+                      {fmtCurrency(lead.valorEntrada) && (
+                        <div>
+                          <div className="text-xs text-gray-500">Valor de entrada</div>
+                          <div className="text-gray-900">{fmtCurrency(lead.valorEntrada)}</div>
+                        </div>
+                      )}
+
+                      {lead.estadoCivil && (
+                        <div>
+                          <div className="text-xs text-gray-500">Estado civil</div>
+                          <div className="text-gray-900">{estadoCivilLabels[lead.estadoCivil] ?? lead.estadoCivil}</div>
+                        </div>
+                      )}
+
+                      {fmtDate(lead.dataNascimento) && (
+                        <div>
+                          <div className="text-xs text-gray-500">Data de nascimento</div>
+                          <div className="text-gray-900">{fmtDate(lead.dataNascimento)}</div>
+                        </div>
+                      )}
+
+                      {lead.tempoProcurandoImovel && (
+                        <div>
+                          <div className="text-xs text-gray-500">Tempo buscando imóvel</div>
+                          <div className="text-gray-900">{lead.tempoProcurandoImovel}</div>
+                        </div>
+                      )}
+
+                      {lead.conversouComCorretor != null && (
+                        <div>
+                          <div className="text-xs text-gray-500">Conversou com corretor antes?</div>
+                          <div className="text-gray-900">{lead.conversouComCorretor ? "Sim" : "Não"}</div>
+                        </div>
+                      )}
+
+                      {lead.qualCorretorImobiliaria && (
+                        <div>
+                          <div className="text-xs text-gray-500">Corretor/Imobiliária anterior</div>
+                          <div className="text-gray-900">{lead.qualCorretorImobiliaria}</div>
+                        </div>
+                      )}
+
+                      {lead.perfilImovel && (
+                        <div>
+                          <div className="text-xs text-gray-500">Perfil do imóvel</div>
+                          <div className="text-gray-900">{perfilLabels[lead.perfilImovel] ?? lead.perfilImovel}</div>
+                        </div>
+                      )}
+
+                      {lead.resumoLead && (
+                        <div>
+                          <div className="text-xs text-gray-500">Resumo</div>
+                          <div className="rounded-md border bg-gray-50 p-2 text-xs text-gray-800 leading-relaxed whitespace-pre-wrap">
+                            {lead.resumoLead}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Produtos Disponíveis */}
             <div className="rounded-xl border bg-white p-4">
@@ -3050,20 +2928,18 @@ async function requestAiPanelSuggestion(
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-700">Autopilot</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-amber-900">IA Autopilot</span>
                     <button
                       type="button"
                       onClick={() => toggleAutopilot(!autopilotEnabled)}
-                      className={[
-                        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition",
-                        autopilotEnabled
-                          ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                          : "border-gray-300 bg-white text-gray-700",
-                      ].join(" ")}
+                      className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${autopilotEnabled ? "bg-emerald-500" : "bg-gray-300"}`}
                     >
-                      {autopilotEnabled ? "ON" : "OFF"}
+                      <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow-md transition-transform duration-200 ${autopilotEnabled ? "translate-x-6" : "translate-x-0"}`} />
                     </button>
+                    <span className={`text-xs font-semibold ${autopilotEnabled ? "text-emerald-700" : "text-gray-400"}`}>
+                      {autopilotEnabled ? "ON" : "OFF"}
+                    </span>
                   </div>
                 </div>
 

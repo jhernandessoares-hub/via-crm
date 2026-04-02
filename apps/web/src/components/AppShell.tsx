@@ -37,10 +37,6 @@ export default function AppShell({
     }
   }, []);
 
-  const canSeeManagerQueue = useMemo(() => {
-    return user?.role === "OWNER" || user?.role === "MANAGER";
-  }, [user]);
-
   function logout() {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("user");
@@ -106,12 +102,8 @@ export default function AppShell({
             Produtos
           </Link>
 
-          <Link className={linkClass("/knowledge-base")} href="/knowledge-base">
-            Base de Conhecimento de Vendas
-          </Link>
-
-          <Link className={linkClass("/ai-agents")} href="/ai-agents">
-            AI Agents
+          <Link className={linkClass("/central-agentes")} href="/central-agentes">
+            Central de Agentes
           </Link>
 
           <Link className={linkClass("/secretary")} href="/secretary">
@@ -122,11 +114,18 @@ export default function AppShell({
             Agenda
           </Link>
 
-          {canSeeManagerQueue ? (
-            <Link className={linkClass("/manager-queue")} href="/manager-queue">
-              Fila do Gerente
-            </Link>
-          ) : null}
+          <Link className={linkClass("/channels")} href="/channels">
+            Canais
+          </Link>
+
+          <Link className={linkClass("/settings/bot")} href="/settings/bot">
+            Config. IA
+          </Link>
+
+          <Link className={linkClass("/settings")} href="/settings">
+            Configurações
+          </Link>
+
         </nav>
 
         <div className="mt-auto p-3 border-t border-slate-800">

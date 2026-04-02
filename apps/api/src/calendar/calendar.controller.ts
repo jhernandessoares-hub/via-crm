@@ -29,12 +29,16 @@ export class CalendarController {
     @Req() req: any,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('eventType') eventType?: string,
+    @Query('status') status?: string,
   ) {
     return this.service.findMany(
       req.user.tenantId,
       req.user.sub || req.user.id,
       start,
       end,
+      eventType,
+      status,
     );
   }
 
@@ -50,6 +54,10 @@ export class CalendarController {
       allDay?: boolean;
       color?: string;
       leadId?: string;
+      eventType?: string;
+      status?: string;
+      productId?: string;
+      location?: string;
     },
   ) {
     if (!body?.title?.trim()) throw new BadRequestException('"title" é obrigatório.');
@@ -76,6 +84,10 @@ export class CalendarController {
       allDay?: boolean;
       color?: string;
       leadId?: string | null;
+      eventType?: string;
+      status?: string;
+      productId?: string | null;
+      location?: string | null;
     },
   ) {
     return this.service.update(
