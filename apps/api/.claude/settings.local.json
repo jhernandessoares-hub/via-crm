@@ -45,7 +45,9 @@
       "Bash(git add:*)",
       "Bash(git checkout:*)",
       "Bash(git merge:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Read(//tmp/**)",
+      "Bash(cygpath -w /tmp/agents.json)"
     ]
   }
 }

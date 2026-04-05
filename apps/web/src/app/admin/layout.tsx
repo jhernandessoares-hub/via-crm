@@ -6,6 +6,7 @@ import Link from "next/link";
 const navItems = [
   { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/clientes", label: "Clientes" },
+  { href: "/admin/agent-templates", label: "Agent Templates" },
   { href: "/admin/audit", label: "Audit Log" },
   { href: "/admin/saude", label: "Saúde do Sistema" },
 ];
