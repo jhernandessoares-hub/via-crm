@@ -530,7 +530,20 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                       <option value="claude-opus-4-6" />
                     </optgroup>
                   </datalist>
-                  <p className="mt-1 text-xs text-gray-400">Deixe vazio para usar o padrão do sistema.</p>
+                  {(() => {
+                    const KNOWN_MODELS = ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-6", "claude-sonnet-4-5", "claude-opus-4-6"];
+                    if (!model.trim()) return <p className="mt-1 text-xs text-gray-400">Deixe vazio para usar o padrão do sistema.</p>;
+                    if (KNOWN_MODELS.includes(model.trim())) return (
+                      <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                        <span>✓</span> Tecnologia ativada
+                      </p>
+                    );
+                    return (
+                      <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+                        <span>⚠</span> Modelo não reconhecido — verifique o nome exato
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Temperature ({temperature})</label>
