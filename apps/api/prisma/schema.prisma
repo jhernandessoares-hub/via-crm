@@ -548,11 +548,15 @@ model AiAgent {
   isOrchestrator   Boolean              @default(false)
   parentAgentId    String?
   routingKeywords  String[]             @default([])
+  templateId       String?
+  isCustomized     Boolean              @default(false)
+  syncedAt         DateTime?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   knowledgeBases   AgentKnowledgeBase[]
   tools            AgentTool[]
   tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template         AgentTemplate?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
   executionLogs    AiExecutionLog[]
   learnings        Learning[]
   parent           AiAgent?             @relation("AgentHierarchy", fields: [parentAgentId], references: [id])
@@ -562,7 +566,50 @@ model AiAgent {
   @@index([tenantId, active])
   @@index([tenantId, mode])
   @@index([tenantId, parentAgentId])
+  @@index([templateId])
   @@map("ai_agents")
+}
+
+model AgentTemplate {
+  id              String      @id @default(uuid())
+  title           String
+  slug            String      @unique
+  description     String?
+  objective       String?
+  prompt          String
+  exampleOutput   String?
+  mode            AiAgentMode @default(COPILOT)
+  audience        String?
+  permissions     String[]    @default([])
+  active          Boolean     @default(true)
+  model           String?
+  temperature     Float?
+  isOrchestrator  Boolean     @default(false)
+  routingKeywords String[]    @default([])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  agents          AiAgent[]
+  tools           AgentTemplateTool[]
+
+  @@map("agent_templates")
+}
+
+model AgentTemplateTool {
+  id            String        @id @default(uuid())
+  templateId    String
+  name          String
+  label         String
+  description   String
+  type          AgentToolType @default(WEBHOOK)
+  webhookUrl    String?
+  webhookMethod String        @default("POST")
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  template      AgentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("agent_template_tools")
 }
 
 model KnowledgeBase {

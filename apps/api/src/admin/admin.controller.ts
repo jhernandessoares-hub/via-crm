@@ -121,6 +121,96 @@ export class AdminController {
     return this.adminService.deleteUser(id, userId);
   }
 
+  // ── TEMP: migração de agents prd → dev (remover após uso) ───────────────
+  @UseGuards(PlatformAdminGuard)
+  @Get('tenants/:id/export-agents')
+  exportTenantAgents(@Param('id') id: string) {
+    return this.adminService.exportTenantAgents(id);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('agent-templates/import')
+  importAgentTemplates(@Body() body: { agents: any[] }) {
+    return this.adminService.importAgentTemplates(body.agents);
+  }
+
+  // ── Agent Templates ─────────────────────────────────────────────────────
+  @UseGuards(PlatformAdminGuard)
+  @Get('agent-templates')
+  listAgentTemplates() {
+    return this.adminService.listAgentTemplates();
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('agent-templates')
+  createAgentTemplate(@Body() body: {
+    title: string; slug: string; description?: string; objective?: string;
+    prompt: string; exampleOutput?: string; mode?: string; audience?: string;
+    permissions?: string[]; active?: boolean; model?: string;
+    temperature?: number; isOrchestrator?: boolean; routingKeywords?: string[];
+  }) {
+    return this.adminService.createAgentTemplate(body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Patch('agent-templates/:id')
+  updateAgentTemplate(@Param('id') id: string, @Body() body: {
+    title?: string; description?: string; objective?: string;
+    prompt?: string; exampleOutput?: string; mode?: string; audience?: string;
+    permissions?: string[]; active?: boolean; model?: string;
+    temperature?: number; isOrchestrator?: boolean; routingKeywords?: string[];
+  }) {
+    return this.adminService.updateAgentTemplate(id, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Delete('agent-templates/:id')
+  deleteAgentTemplate(@Param('id') id: string) {
+    return this.adminService.deleteAgentTemplate(id);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('agent-templates/:id/tools')
+  listTemplateTool(@Param('id') id: string) {
+    return this.adminService.listTemplateTool(id);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('agent-templates/:id/tools')
+  createTemplateTool(@Param('id') id: string, @Body() body: { name: string; label: string; description: string; webhookUrl?: string; webhookMethod?: string }) {
+    return this.adminService.createTemplateTool(id, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Patch('agent-templates/:id/tools/:toolId')
+  updateTemplateTool(@Param('id') id: string, @Param('toolId') toolId: string, @Body() body: { label?: string; description?: string; webhookUrl?: string; webhookMethod?: string; active?: boolean }) {
+    return this.adminService.updateTemplateTool(id, toolId, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Delete('agent-templates/:id/tools/:toolId')
+  deleteTemplateTool(@Param('id') id: string, @Param('toolId') toolId: string) {
+    return this.adminService.deleteTemplateTool(id, toolId);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('agent-templates/:id/push')
+  pushAgentTemplate(@Param('id') id: string, @Body() body: { tenantIds?: string[]; all?: boolean; force?: boolean }) {
+    return this.adminService.pushAgentTemplate(id, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('agent-templates/outdated-tenants')
+  getOutdatedTenants() {
+    return this.adminService.getOutdatedTenants();
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('tenants/:id/seed-agents')
+  seedAgents(@Param('id') id: string) {
+    return this.adminService.seedTemplatesForTenant(id);
+  }
+
   // ── Health & Audit ───────────────────────────────────────────────────────
   @UseGuards(PlatformAdminGuard)
   @Get('health')

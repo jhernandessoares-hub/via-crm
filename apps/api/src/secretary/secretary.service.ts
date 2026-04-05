@@ -7,9 +7,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { Logger } from '../logger';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse');
-
 const logger = new Logger('SecretaryService');
 
 const SECRETARY_SLUG = 'secretaria-pessoal';
@@ -324,9 +321,11 @@ export class SecretaryService {
       result.text = file.buffer.toString('utf-8').trim();
     }
 
-    // Extração de texto para PDF
+    // Extração de texto para PDF — import dinâmico para evitar crash no startup (Node.js v18)
     if (file.mimetype === 'application/pdf' || ext === '.pdf') {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse');
         const parsed = await pdfParse(file.buffer);
         result.text = parsed.text?.trim() || '';
       } catch (err) {

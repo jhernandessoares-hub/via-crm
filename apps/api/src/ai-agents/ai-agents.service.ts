@@ -131,11 +131,12 @@ export class AiAgentsService {
   }
 
   async update(tenantId: string, id: string, data: UpdateAiAgentInput) {
-    await this.findOne(tenantId, id);
+    const agent = await this.findOne(tenantId, id);
 
     return this.prisma.aiAgent.update({
       where: { id },
       data: {
+        ...(agent.templateId && { isCustomized: true }),
         ...(data.title !== undefined && { title: data.title }),
         ...(data.slug !== undefined && { slug: data.slug }),
         ...(data.description !== undefined && { description: data.description }),
