@@ -525,13 +525,14 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                       <option value="gpt-4o-mini" />
                     </optgroup>
                     <optgroup label="Anthropic">
+                      <option value="claude-opus-4-6" />
                       <option value="claude-sonnet-4-6" />
                       <option value="claude-sonnet-4-5" />
-                      <option value="claude-opus-4-6" />
+                      <option value="claude-haiku-4-5-20251001" />
                     </optgroup>
                   </datalist>
                   {(() => {
-                    const KNOWN_MODELS = ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-6", "claude-sonnet-4-5", "claude-opus-4-6"];
+                    const KNOWN_MODELS = ["gpt-4o", "gpt-4o-mini", "claude-opus-4-6", "claude-sonnet-4-6", "claude-sonnet-4-5", "claude-haiku-4-5-20251001"];
                     if (!model.trim()) return <p className="mt-1 text-xs text-gray-400">Deixe vazio para usar o padrão do sistema.</p>;
                     if (KNOWN_MODELS.includes(model.trim())) return (
                       <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
