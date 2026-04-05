@@ -9,6 +9,7 @@ import {
   Res,
   HttpCode,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { Logger } from '../logger';
 
@@ -16,6 +17,7 @@ const logger = new Logger('WhatsappController');
 import { QueueService } from '../queue/queue.service';
 import type { Response } from 'express';
 
+@SkipThrottle()
 @Controller('webhooks/whatsapp')
 export class WhatsAppController {
   constructor(
