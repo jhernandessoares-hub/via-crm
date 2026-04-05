@@ -58,13 +58,14 @@ export function startReminderWorker(
 ) {
   const host = process.env.REDIS_HOST || '127.0.0.1';
   const port = Number(process.env.REDIS_PORT || 6379);
+  const password = process.env.REDIS_PASSWORD || undefined;
 
   const worker = new Worker(
     'reminder-queue',
     async () => {
       await checkReminders(prisma, whatsapp);
     },
-    { connection: { host, port }, concurrency: 1 },
+    { connection: { host, port, password }, concurrency: 1 },
   );
 
   worker.on('completed', () => logger.log('Check de lembretes concluído'));

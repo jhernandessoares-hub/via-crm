@@ -13,29 +13,30 @@ export class QueueService implements OnModuleDestroy {
   constructor() {
     const host = process.env.REDIS_HOST || '127.0.0.1';
     const port = Number(process.env.REDIS_PORT || 6379);
+    const password = process.env.REDIS_PASSWORD || undefined;
 
     this.slaQueue = new Queue('sla-queue', {
-      connection: { host, port },
+      connection: { host, port, password },
     });
 
     // ✅ fila para resolver mídia do WhatsApp (Cloudinary)
     this.whatsappMediaQueue = new Queue('whatsapp-media-queue', {
-      connection: { host, port },
+      connection: { host, port, password },
     });
 
     // ✅ NOVA: fila para inbound da IA em tempo real
     this.inboundAiQueue = new Queue('inbound-ai-queue', {
-      connection: { host, port },
+      connection: { host, port, password },
     });
 
     // ✅ fila durável para processar payloads de webhook recebidos
     this.whatsappInboundQueue = new Queue('whatsapp-inbound-queue', {
-      connection: { host, port },
+      connection: { host, port, password },
     });
 
     // ✅ fila para lembretes de eventos do calendário (repeatable job)
     this.reminderQueue = new Queue('reminder-queue', {
-      connection: { host, port },
+      connection: { host, port, password },
     });
   }
 
@@ -358,7 +359,8 @@ export class QueueService implements OnModuleDestroy {
   async redisHealthCheck(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
     const host = process.env.REDIS_HOST || '127.0.0.1';
     const port = Number(process.env.REDIS_PORT || 6379);
-    const client = new Redis({ host, port, connectTimeout: 3000, lazyConnect: true, maxRetriesPerRequest: 0 });
+    const password = process.env.REDIS_PASSWORD || undefined;
+    const client = new Redis({ host, port, password, connectTimeout: 3000, lazyConnect: true, maxRetriesPerRequest: 0 });
     try {
       await client.connect();
       const start = Date.now();
