@@ -369,6 +369,10 @@ export class UpdateProductDto {
 
   @IsOptional()
   @IsBoolean()
+  acceptsDirectFinancing?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   acceptsTradeIn?: boolean;
 
   @IsOptional()
