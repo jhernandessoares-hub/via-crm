@@ -90,12 +90,23 @@ export class AdminService {
     return tenant;
   }
 
-  async updateTenant(id: string, data: { nome?: string; slug?: string; whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string }) {
+  async updateTenant(id: string, data: {
+    nome?: string; slug?: string;
+    cidade?: string; estado?: string; site?: string; redesSociais?: string;
+    proprietarioNome?: string; proprietarioTelefone?: string;
+    whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string;
+  }) {
     const tenant = await this.prisma.tenant.update({
       where: { id },
       data: {
         ...(data.nome !== undefined && { nome: data.nome }),
         ...(data.slug !== undefined && { slug: data.slug }),
+        ...(data.cidade !== undefined && { cidade: data.cidade || null }),
+        ...(data.estado !== undefined && { estado: data.estado || null }),
+        ...(data.site !== undefined && { site: data.site || null }),
+        ...(data.redesSociais !== undefined && { redesSociais: data.redesSociais || null }),
+        ...(data.proprietarioNome !== undefined && { proprietarioNome: data.proprietarioNome || null }),
+        ...(data.proprietarioTelefone !== undefined && { proprietarioTelefone: data.proprietarioTelefone || null }),
         ...(data.whatsappPhoneNumberId !== undefined && { whatsappPhoneNumberId: data.whatsappPhoneNumberId || null }),
         ...(data.whatsappToken !== undefined && { whatsappToken: data.whatsappToken || null }),
         ...(data.whatsappVerifyToken !== undefined && { whatsappVerifyToken: data.whatsappVerifyToken || null }),

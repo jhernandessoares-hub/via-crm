@@ -58,6 +58,13 @@ model Tenant {
   aiDelayMax          Int                     @default(15)
   aiTypingEnabled     Boolean                 @default(true)
   aiHistoryLimit      Int                     @default(8)
+  // Dados da imobiliária
+  cidade              String?
+  estado              String?
+  site                String?
+  redesSociais        String?
+  proprietarioNome    String?
+  proprietarioTelefone String?
   // WhatsApp por tenant (multi-tenant)
   whatsappPhoneNumberId String?
   whatsappToken         String?

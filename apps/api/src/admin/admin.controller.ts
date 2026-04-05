@@ -44,7 +44,12 @@ export class AdminController {
 
   @UseGuards(PlatformAdminGuard)
   @Patch('tenants/:id')
-  updateTenant(@Param('id') id: string, @Body() body: { nome?: string; slug?: string; whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string }) {
+  updateTenant(@Param('id') id: string, @Body() body: {
+    nome?: string; slug?: string;
+    cidade?: string; estado?: string; site?: string; redesSociais?: string;
+    proprietarioNome?: string; proprietarioTelefone?: string;
+    whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string;
+  }) {
     return this.adminService.updateTenant(id, body);
   }
 

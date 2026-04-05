@@ -18,8 +18,18 @@ export default function AdminClienteDetailPage() {
 
   // edit tenant
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ nome: "", slug: "", whatsappPhoneNumberId: "", whatsappToken: "", whatsappVerifyToken: "" });
+  const [editForm, setEditForm] = useState({
+    nome: "", slug: "",
+    cidade: "", estado: "", site: "", redesSociais: "",
+    proprietarioNome: "", proprietarioTelefone: "",
+    whatsappPhoneNumberId: "", whatsappToken: "", whatsappVerifyToken: "",
+  });
   const [saving, setSaving] = useState(false);
+
+  function slugify(str: string) {
+    return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  }
 
   // edit user modal
   const [editUser, setEditUser] = useState<User | null>(null);
@@ -52,6 +62,12 @@ export default function AdminClienteDetailPage() {
       setEditForm({
         nome: t.nome || "",
         slug: t.slug || "",
+        cidade: t.cidade || "",
+        estado: t.estado || "",
+        site: t.site || "",
+        redesSociais: t.redesSociais || "",
+        proprietarioNome: t.proprietarioNome || "",
+        proprietarioTelefone: t.proprietarioTelefone || "",
         whatsappPhoneNumberId: t.whatsappPhoneNumberId || "",
         whatsappToken: t.whatsappToken || "",
         whatsappVerifyToken: t.whatsappVerifyToken || "",
@@ -212,25 +228,77 @@ export default function AdminClienteDetailPage() {
           {!editing && <button onClick={() => setEditing(true)} className="text-xs text-blue-600 hover:underline">Editar</button>}
         </div>
         {editing ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {/* Nome + slug automático */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Nome da imobiliária</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" value={editForm.nome}
+                  onChange={(e) => setEditForm({ ...editForm, nome: e.target.value, slug: slugify(e.target.value) })} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Slug (gerado automaticamente)</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm bg-gray-50 text-gray-400" value={editForm.slug} readOnly />
+              </div>
+            </div>
+
+            {/* Localização */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Cidade</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" value={editForm.cidade}
+                  onChange={(e) => setEditForm({ ...editForm, cidade: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Estado</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="SP" value={editForm.estado}
+                  onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })} />
+              </div>
+            </div>
+
+            {/* Web */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Site</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="https://..." value={editForm.site}
+                  onChange={(e) => setEditForm({ ...editForm, site: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Rede social</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="@imobiliaria" value={editForm.redesSociais}
+                  onChange={(e) => setEditForm({ ...editForm, redesSociais: e.target.value })} />
+              </div>
+            </div>
+
+            {/* Proprietário */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Nome do proprietário</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" value={editForm.proprietarioNome}
+                  onChange={(e) => setEditForm({ ...editForm, proprietarioNome: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Telefone do proprietário</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="(11) 99999-9999" value={editForm.proprietarioTelefone}
+                  onChange={(e) => setEditForm({ ...editForm, proprietarioTelefone: e.target.value })} />
+              </div>
+            </div>
+
+            {/* WhatsApp */}
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Nome", field: "nome" },
-                { label: "Slug", field: "slug" },
                 { label: "WhatsApp Phone Number ID", field: "whatsappPhoneNumberId" },
                 { label: "WhatsApp Token", field: "whatsappToken" },
                 { label: "WhatsApp Verify Token", field: "whatsappVerifyToken" },
               ].map(({ label, field }) => (
                 <div key={field}>
                   <label className="text-xs text-gray-500 block mb-1">{label}</label>
-                  <input
-                    className="w-full border rounded px-3 py-1.5 text-sm"
-                    value={(editForm as any)[field]}
-                    onChange={(e) => setEditForm({ ...editForm, [field]: e.target.value })}
-                  />
+                  <input className="w-full border rounded px-3 py-1.5 text-sm" value={(editForm as any)[field]}
+                    onChange={(e) => setEditForm({ ...editForm, [field]: e.target.value })} />
                 </div>
               ))}
             </div>
+
             <div className="flex gap-2">
               <button onClick={saveTenant} disabled={saving} className="text-sm px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
                 {saving ? "Salvando..." : "Salvar"}
@@ -240,9 +308,22 @@ export default function AdminClienteDetailPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <span className="text-gray-500">Nome</span><span>{tenant.nome}</span>
-            <span className="text-gray-500">Slug</span><span>{tenant.slug}</span>
-            <span className="text-gray-500">WhatsApp Phone ID</span><span className="text-gray-700">{tenant.whatsappPhoneNumberId || <em className="text-gray-400">não configurado</em>}</span>
+            {[
+              { label: "Nome", value: tenant.nome },
+              { label: "Slug", value: tenant.slug },
+              { label: "Cidade", value: tenant.cidade },
+              { label: "Estado", value: tenant.estado },
+              { label: "Site", value: tenant.site },
+              { label: "Rede social", value: tenant.redesSociais },
+              { label: "Proprietário", value: tenant.proprietarioNome },
+              { label: "Tel. proprietário", value: tenant.proprietarioTelefone },
+              { label: "WhatsApp Phone ID", value: tenant.whatsappPhoneNumberId },
+            ].map(({ label, value }) => (
+              <>
+                <span key={label + "_l"} className="text-gray-500">{label}</span>
+                <span key={label + "_v"}>{value || <em className="text-gray-300">—</em>}</span>
+              </>
+            ))}
           </div>
         )}
       </div>
