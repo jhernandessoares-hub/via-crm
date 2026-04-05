@@ -147,6 +147,10 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsBoolean()
+  acceptsDirectFinancing?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   acceptsExchange?: boolean;
 
   // ── Características físicas ────────────────
