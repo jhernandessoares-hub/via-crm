@@ -90,6 +90,21 @@ export class AdminService {
     return tenant;
   }
 
+  async updateTenant(id: string, data: { nome?: string; slug?: string; whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string }) {
+    const tenant = await this.prisma.tenant.update({
+      where: { id },
+      data: {
+        ...(data.nome !== undefined && { nome: data.nome }),
+        ...(data.slug !== undefined && { slug: data.slug }),
+        ...(data.whatsappPhoneNumberId !== undefined && { whatsappPhoneNumberId: data.whatsappPhoneNumberId || null }),
+        ...(data.whatsappToken !== undefined && { whatsappToken: data.whatsappToken || null }),
+        ...(data.whatsappVerifyToken !== undefined && { whatsappVerifyToken: data.whatsappVerifyToken || null }),
+      },
+    });
+    this.audit.log({ action: 'PLATFORM_UPDATE_TENANT', resourceType: 'tenant', resourceId: id, metadata: { fields: Object.keys(data) } });
+    return tenant;
+  }
+
   async suspendTenant(id: string, suspend: boolean) {
     const tenant = await this.prisma.tenant.update({ where: { id }, data: { ativo: !suspend } });
     this.audit.log({ action: suspend ? 'PLATFORM_SUSPEND_TENANT' : 'PLATFORM_ACTIVATE_TENANT', resourceType: 'tenant', resourceId: id });
@@ -156,6 +171,79 @@ export class AdminService {
       this.prisma.aiAgent.count({ where: { tenantId } }),
     ]);
     return { leadsTotal, leadsThisMonth, users, channels, aiAgents };
+  }
+
+  async createUser(tenantId: string, data: { nome: string; email: string; senha: string; role?: string }) {
+    const existing = await this.prisma.user.findFirst({ where: { email: data.email.trim().toLowerCase() } });
+    if (existing) throw new BadRequestException('E-mail já está em uso.');
+    const branch = await this.prisma.branch.findFirst({ where: { tenantId, ativo: true }, orderBy: { criadoEm: 'asc' } });
+    if (!branch) throw new BadRequestException('Nenhuma branch encontrada para este tenant.');
+    const senhaHash = await bcrypt.hash(data.senha, 10);
+    const user = await this.prisma.user.create({
+      data: {
+        tenantId,
+        branchId: branch.id,
+        nome: data.nome,
+        email: data.email.trim().toLowerCase(),
+        senhaHash,
+        ativo: true,
+        role: (data.role as any) || 'AGENT',
+      },
+      select: { id: true, nome: true, email: true, role: true, ativo: true, criadoEm: true },
+    });
+    this.audit.log({ action: 'PLATFORM_CREATE_USER', resourceType: 'tenant', resourceId: tenantId, metadata: { userId: user.id } });
+    return user;
+  }
+
+  async updateUser(tenantId: string, userId: string, data: { nome?: string; email?: string; role?: string }) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new BadRequestException('Usuário não encontrado.');
+    if (data.email) {
+      const conflict = await this.prisma.user.findFirst({ where: { email: data.email.trim().toLowerCase(), id: { not: userId } } });
+      if (conflict) throw new BadRequestException('E-mail já está em uso.');
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.nome !== undefined && { nome: data.nome }),
+        ...(data.email !== undefined && { email: data.email.trim().toLowerCase() }),
+        ...(data.role !== undefined && { role: data.role as any }),
+      },
+      select: { id: true, nome: true, email: true, role: true, ativo: true, criadoEm: true },
+    });
+    this.audit.log({ action: 'PLATFORM_UPDATE_USER', resourceType: 'tenant', resourceId: tenantId, metadata: { userId, fields: Object.keys(data) } });
+    return updated;
+  }
+
+  async toggleUser(tenantId: string, userId: string) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new BadRequestException('Usuário não encontrado.');
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { ativo: !user.ativo },
+      select: { id: true, nome: true, email: true, role: true, ativo: true, criadoEm: true },
+    });
+    this.audit.log({ action: 'PLATFORM_TOGGLE_USER', resourceType: 'tenant', resourceId: tenantId, metadata: { userId, ativo: updated.ativo } });
+    return updated;
+  }
+
+  async resetUserPassword(tenantId: string, userId: string, novaSenha: string) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new BadRequestException('Usuário não encontrado.');
+    if (!novaSenha || novaSenha.length < 6) throw new BadRequestException('Senha deve ter ao menos 6 caracteres.');
+    const senhaHash = await bcrypt.hash(novaSenha, 10);
+    await this.prisma.user.update({ where: { id: userId }, data: { senhaHash } });
+    this.audit.log({ action: 'PLATFORM_RESET_USER_PASSWORD', resourceType: 'tenant', resourceId: tenantId, metadata: { userId } });
+    return { ok: true };
+  }
+
+  async deleteUser(tenantId: string, userId: string) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new BadRequestException('Usuário não encontrado.');
+    if (user.role === 'OWNER') throw new BadRequestException('Não é possível remover o OWNER do tenant.');
+    await this.prisma.user.delete({ where: { id: userId } });
+    this.audit.log({ action: 'PLATFORM_DELETE_USER', resourceType: 'tenant', resourceId: tenantId, metadata: { userId } });
+    return { ok: true };
   }
 
   async exportTenantData(tenantId: string) {

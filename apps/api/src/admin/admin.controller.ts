@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { PlatformAdminGuard } from './admin-auth.guard';
 import { AdminService } from './admin.service';
 
@@ -43,6 +43,12 @@ export class AdminController {
   }
 
   @UseGuards(PlatformAdminGuard)
+  @Patch('tenants/:id')
+  updateTenant(@Param('id') id: string, @Body() body: { nome?: string; slug?: string; whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string }) {
+    return this.adminService.updateTenant(id, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
   @Post('tenants/:id/suspend')
   suspend(@Param('id') id: string) {
     return this.adminService.suspendTenant(id, true);
@@ -70,6 +76,37 @@ export class AdminController {
   @Get('tenants/:id/export')
   exportTenant(@Param('id') id: string) {
     return this.adminService.exportTenantData(id);
+  }
+
+  // ── Users (dentro de tenant) ────────────────────────────────────────────
+  @UseGuards(PlatformAdminGuard)
+  @Post('tenants/:id/users')
+  createUser(@Param('id') id: string, @Body() body: { nome: string; email: string; senha: string; role?: string }) {
+    return this.adminService.createUser(id, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Patch('tenants/:id/users/:userId')
+  updateUser(@Param('id') id: string, @Param('userId') userId: string, @Body() body: { nome?: string; email?: string; role?: string }) {
+    return this.adminService.updateUser(id, userId, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Patch('tenants/:id/users/:userId/toggle')
+  toggleUser(@Param('id') id: string, @Param('userId') userId: string) {
+    return this.adminService.toggleUser(id, userId);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('tenants/:id/users/:userId/reset-password')
+  resetUserPassword(@Param('id') id: string, @Param('userId') userId: string, @Body() body: { novaSenha: string }) {
+    return this.adminService.resetUserPassword(id, userId, body.novaSenha);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Delete('tenants/:id/users/:userId')
+  deleteUser(@Param('id') id: string, @Param('userId') userId: string) {
+    return this.adminService.deleteUser(id, userId);
   }
 
   // ── Health & Audit ───────────────────────────────────────────────────────
