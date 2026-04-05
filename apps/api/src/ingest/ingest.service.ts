@@ -47,7 +47,7 @@ export class IngestService {
     // 1) procurar lead existente pela chave
     const existingLead = telefoneKey
       ? await this.prisma.lead.findFirst({
-          where: { tenantId, telefoneKey },
+          where: { tenantId, telefoneKey, deletedAt: null },
         })
       : null;
 
