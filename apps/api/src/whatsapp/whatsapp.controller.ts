@@ -25,12 +25,13 @@ export class WhatsAppController {
 
   // ====== META VERIFY ======
   @Get()
-  async verify(
-    @Query('hub.mode') mode: string,
-    @Query('hub.verify_token') token: string,
-    @Query('hub.challenge') challenge: string,
-    @Res() res: Response,
-  ) {
+  async verify(@Req() req: any, @Res() res: Response) {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
+
+    logger.log(`Webhook verify — mode=${mode} token=${token}`);
+
     if (mode !== 'subscribe') return res.sendStatus(403);
 
     // Check env-level verify token (default / fallback)
