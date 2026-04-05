@@ -28,7 +28,17 @@
       "Bash(ls:*)",
       "Bash(xargs head:*)",
       "Bash(node -e \"require\\(''''resend''''\\)\")",
-      "Bash(\"C:\\\\Users\\\\User\\\\documents\\\\via-crm\\\\apps\\\\api\\\\.env\":*)"
+      "Bash(\"C:\\\\Users\\\\User\\\\documents\\\\via-crm\\\\apps\\\\api\\\\.env\":*)",
+      "Bash(__NEW_LINE_090fca5918d25855__ TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODMyODViMS1iMWQ4LTRhNzAtODIxOS0yYTZlMzUzMjNlYmYiLCJ0ZW5hbnRJZCI6Ijg1MTBmYTJlLWM0YjQtNGNjMS1hZmYxLWIxNjFlZTlmMWU2NiIsImVtYWlsIjoiamhlcm5hbmRlc19zb2FyZXNAaG90bWFpbC5jb20iLCJyb2xlIjoiT1dORVIiLCJicmFuY2hJZCI6bnVsbCwiaWF0IjoxNzc1MTMwODg4LCJleHAiOjE3NzUxMzE3ODh9.Bs-PGN82EMws5L0FXI86OLHeE5Pxgf5zJELgF6eSOQ8\" REFRESH=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkODMyODViMS1iMWQ4LTRhNzAtODIxOS0yYTZlMzUzMjNlYmYiLCJ0ZW5hbnRJZCI6Ijg1MTBmYTJlLWM0YjQtNGNjMS1hZmYxLWIxNjFlZTlmMWU2NiIsImVtYWlsIjoiamhlcm5hbmRlc19zb2FyZXNAaG90bWFpbC5jb20iLCJyb2xlIjoiT1dORVIiLCJicmFuY2hJZCI6bnVsbCwidHlwZSI6InJlZnJlc2giLCJpYXQiOjE3NzUxMzA4ODgsImV4cCI6MTc3NTczNTY4OH0.ZPvilqIf1gEN3r9ePqMU19kWiXBFepQhEsNc48g-d3M\" __NEW_LINE_090fca5918d25855__ echo \"=== 2. REFRESH TOKEN ===\" curl -s -X POST https://via-crm-production.up.railway.app/auth/refresh -H \"Content-Type: application/json\" -d \"{\"\"refreshToken\"\":\"\"$REFRESH\"\"}\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''PASS - novo accessToken gerado'''' if d.get\\(''''accessToken''''\\) else ''''FAIL: ''''+str\\(d\\)\\)\" 2)",
+      "Bash(/dev/null __NEW_LINE_090fca5918d25855__ echo echo '=== 3. FORGOT PASSWORD ===' curl -s -X POST https://via-crm-production.up.railway.app/auth/forgot-password -H 'Content-Type: application/json' -d {\"\"email\"\":\"\"jhernandes_soares@hotmail.com\"\"} __NEW_LINE_090fca5918d25855__ echo echo '=== 4. GET TENANT ===' curl -s https://via-crm-production.up.railway.app/tenants -H 'Authorization: Bearer $TOKEN')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''PASS - tenant:'''', d.get\\(''''nome''''\\), ''''| plano:'''', d.get\\(''''plan''''\\)\\)\" 2)",
+      "Bash(/dev/null __NEW_LINE_090fca5918d25855__ echo echo '=== 5. WHATSAPP SETTINGS ===' curl -s https://via-crm-production.up.railway.app/tenants/whatsapp-settings -H 'Authorization: Bearer $TOKEN' __NEW_LINE_090fca5918d25855__ echo echo '=== 6. PLAN GUARD - AI AGENTS \\(esperado 403\\) ===' curl -s https://via-crm-production.up.railway.app/ai-agents -H 'Authorization: Bearer $TOKEN')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''PASS - bloqueado plano STARTER:'''', d.get\\(''''message''''\\)\\) if d.get\\(''''statusCode''''\\)==403 else print\\(''''FAIL:'''', d\\)\" 2)",
+      "Bash(/dev/null __NEW_LINE_090fca5918d25855__ echo echo '=== 7. LIST LEADS ===' curl -s https://via-crm-production.up.railway.app/leads -H 'Authorization: Bearer $TOKEN')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''PASS -'''', len\\(d\\) if isinstance\\(d,list\\) else d.get\\(''''total'''',''''?''''\\), ''''leads''''\\)\" 2)",
+      "Bash(/dev/null __NEW_LINE_090fca5918d25855__ echo echo '=== 8. EXPORT CSV ===' curl -s -I https://via-crm-production.up.railway.app/leads/export -H 'Authorization: Bearer $TOKEN')",
+      "Bash(DATABASE_URL=\"postgresql://postgres:wRyoGaXEnpFEUZlOBKuduSuSGnEbtRLL@interchange.proxy.rlwy.net:14471/railway\" npx prisma db push)"
     ]
   }
 }
