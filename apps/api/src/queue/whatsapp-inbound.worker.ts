@@ -253,7 +253,7 @@ async function processPayload(
           // Busca lead existente pelo telefoneKey ANTES de tentar criar
           const existingLead = telefoneKey
             ? await prisma.lead.findFirst({
-                where: { tenantId: tenant.id, telefoneKey },
+                where: { tenantId: tenant.id, telefoneKey, deletedAt: null },
                 select: { id: true },
                 orderBy: { criadoEm: 'desc' },
               })
