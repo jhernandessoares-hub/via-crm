@@ -445,6 +445,7 @@ export class AiService {
             inputText: prompt,
             outputText: output,
             mode: 'COPILOT',
+            modelUsed: model,
           },
         });
       } catch (err) {

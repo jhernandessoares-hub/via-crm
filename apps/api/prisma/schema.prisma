@@ -695,6 +695,7 @@ model AiExecutionLog {
   suggestedStage String?
   confidence     Decimal?    @db.Decimal(5, 2)
   mode           AiAgentMode
+  modelUsed      String?
   createdAt      DateTime    @default(now())
   agent          AiAgent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
   lead           Lead?       @relation(fields: [leadId], references: [id])
