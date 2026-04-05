@@ -92,6 +92,7 @@ export class AdminService {
 
   async updateTenant(id: string, data: {
     nome?: string; slug?: string;
+    logradouro?: string; numero?: string; bairro?: string; cep?: string;
     cidade?: string; estado?: string; site?: string; redesSociais?: string;
     proprietarioNome?: string; proprietarioTelefone?: string;
     whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string;
@@ -101,6 +102,10 @@ export class AdminService {
       data: {
         ...(data.nome !== undefined && { nome: data.nome }),
         ...(data.slug !== undefined && { slug: data.slug }),
+        ...(data.logradouro !== undefined && { logradouro: data.logradouro || null }),
+        ...(data.numero !== undefined && { numero: data.numero || null }),
+        ...(data.bairro !== undefined && { bairro: data.bairro || null }),
+        ...(data.cep !== undefined && { cep: data.cep || null }),
         ...(data.cidade !== undefined && { cidade: data.cidade || null }),
         ...(data.estado !== undefined && { estado: data.estado || null }),
         ...(data.site !== undefined && { site: data.site || null }),

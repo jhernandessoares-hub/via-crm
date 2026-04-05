@@ -20,6 +20,7 @@ export default function AdminClienteDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     nome: "", slug: "",
+    logradouro: "", numero: "", bairro: "", cep: "",
     cidade: "", estado: "", site: "", redesSociais: "",
     proprietarioNome: "", proprietarioTelefone: "",
     whatsappPhoneNumberId: "", whatsappToken: "", whatsappVerifyToken: "",
@@ -62,6 +63,10 @@ export default function AdminClienteDetailPage() {
       setEditForm({
         nome: t.nome || "",
         slug: t.slug || "",
+        logradouro: t.logradouro || "",
+        numero: t.numero || "",
+        bairro: t.bairro || "",
+        cep: t.cep || "",
         cidade: t.cidade || "",
         estado: t.estado || "",
         site: t.site || "",
@@ -242,18 +247,40 @@ export default function AdminClienteDetailPage() {
               </div>
             </div>
 
-            {/* Localização */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Endereço */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs text-gray-500 block mb-1">Logradouro</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="Rua, Av., Alameda..." value={editForm.logradouro}
+                  onChange={(e) => setEditForm({ ...editForm, logradouro: e.target.value })} />
+              </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Cidade</label>
-                <input className="w-full border rounded px-3 py-1.5 text-sm" value={editForm.cidade}
-                  onChange={(e) => setEditForm({ ...editForm, cidade: e.target.value })} />
+                <label className="text-xs text-gray-500 block mb-1">Número</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="123" value={editForm.numero}
+                  onChange={(e) => setEditForm({ ...editForm, numero: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Bairro</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" value={editForm.bairro}
+                  onChange={(e) => setEditForm({ ...editForm, bairro: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">CEP</label>
+                <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="00000-000" value={editForm.cep}
+                  onChange={(e) => setEditForm({ ...editForm, cep: e.target.value })} />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Estado</label>
                 <input className="w-full border rounded px-3 py-1.5 text-sm" placeholder="SP" value={editForm.estado}
                   onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })} />
               </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Cidade</label>
+              <input className="w-full border rounded px-3 py-1.5 text-sm" value={editForm.cidade}
+                onChange={(e) => setEditForm({ ...editForm, cidade: e.target.value })} />
             </div>
 
             {/* Web */}
@@ -311,6 +338,9 @@ export default function AdminClienteDetailPage() {
             {[
               { label: "Nome", value: tenant.nome },
               { label: "Slug", value: tenant.slug },
+              { label: "Endereço", value: [tenant.logradouro, tenant.numero].filter(Boolean).join(", ") },
+              { label: "Bairro", value: tenant.bairro },
+              { label: "CEP", value: tenant.cep },
               { label: "Cidade", value: tenant.cidade },
               { label: "Estado", value: tenant.estado },
               { label: "Site", value: tenant.site },

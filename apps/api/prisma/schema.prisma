@@ -59,6 +59,10 @@ model Tenant {
   aiTypingEnabled     Boolean                 @default(true)
   aiHistoryLimit      Int                     @default(8)
   // Dados da imobiliária
+  logradouro          String?
+  numero              String?
+  bairro              String?
+  cep                 String?
   cidade              String?
   estado              String?
   site                String?
