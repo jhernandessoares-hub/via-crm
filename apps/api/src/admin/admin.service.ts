@@ -333,7 +333,7 @@ export class AdminService {
   async listAgentTemplates() {
     return this.prisma.agentTemplate.findMany({
       orderBy: { createdAt: 'asc' },
-      include: { _count: { select: { agents: true } } },
+      include: { tools: { orderBy: { createdAt: 'asc' } }, _count: { select: { agents: true } } },
     });
   }
 
@@ -521,8 +521,50 @@ export class AdminService {
     return report.filter((r) => r.canUpdate.length > 0 || r.customized.length > 0);
   }
 
+  // ── Template Tools ───────────────────────────────────────────────────────
+  async listTemplateTool(templateId: string) {
+    return this.prisma.agentTemplateTool.findMany({ where: { templateId }, orderBy: { createdAt: 'asc' } });
+  }
+
+  async createTemplateTool(templateId: string, data: { name: string; label: string; description: string; webhookUrl?: string; webhookMethod?: string }) {
+    const template = await this.prisma.agentTemplate.findUnique({ where: { id: templateId } });
+    if (!template) throw new BadRequestException('Template não encontrado.');
+    return this.prisma.agentTemplateTool.create({
+      data: {
+        templateId,
+        name: data.name.toLowerCase().replace(/\s+/g, '_'),
+        label: data.label,
+        description: data.description,
+        type: 'WEBHOOK',
+        webhookUrl: data.webhookUrl ?? null,
+        webhookMethod: data.webhookMethod ?? 'POST',
+        active: true,
+      },
+    });
+  }
+
+  async updateTemplateTool(templateId: string, toolId: string, data: { label?: string; description?: string; webhookUrl?: string; webhookMethod?: string; active?: boolean }) {
+    return this.prisma.agentTemplateTool.update({
+      where: { id: toolId },
+      data: {
+        ...(data.label !== undefined && { label: data.label }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),
+        ...(data.webhookMethod !== undefined && { webhookMethod: data.webhookMethod }),
+        ...(data.active !== undefined && { active: data.active }),
+      },
+    });
+  }
+
+  async deleteTemplateTool(templateId: string, toolId: string) {
+    return this.prisma.agentTemplateTool.delete({ where: { id: toolId } });
+  }
+
   async seedTemplatesForTenant(tenantId: string) {
-    const templates = await this.prisma.agentTemplate.findMany({ where: { active: true } });
+    const templates = await this.prisma.agentTemplate.findMany({
+      where: { active: true },
+      include: { tools: true },
+    });
     let seeded = 0;
 
     for (const tpl of templates) {
@@ -531,7 +573,7 @@ export class AdminService {
       const slugConflict = await this.prisma.aiAgent.findFirst({ where: { tenantId, slug: tpl.slug } });
       if (slugConflict) continue;
 
-      await this.prisma.aiAgent.create({
+      const agent = await this.prisma.aiAgent.create({
         data: {
           tenantId,
           templateId: tpl.id,
@@ -553,6 +595,24 @@ export class AdminService {
           syncedAt: new Date(),
         },
       });
+
+      // Copia tools do template
+      for (const tool of tpl.tools) {
+        await this.prisma.agentTool.create({
+          data: {
+            tenantId,
+            agentId: agent.id,
+            name: tool.name,
+            label: tool.label,
+            description: tool.description,
+            type: tool.type,
+            webhookUrl: tool.webhookUrl,
+            webhookMethod: tool.webhookMethod,
+            active: tool.active,
+          },
+        });
+      }
+
       seeded++;
     }
 

@@ -589,8 +589,27 @@ model AgentTemplate {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   agents          AiAgent[]
+  tools           AgentTemplateTool[]
 
   @@map("agent_templates")
+}
+
+model AgentTemplateTool {
+  id            String        @id @default(uuid())
+  templateId    String
+  name          String
+  label         String
+  description   String
+  type          AgentToolType @default(WEBHOOK)
+  webhookUrl    String?
+  webhookMethod String        @default("POST")
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  template      AgentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("agent_template_tools")
 }
 
 model KnowledgeBase {

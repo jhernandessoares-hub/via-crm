@@ -170,6 +170,30 @@ export class AdminController {
   }
 
   @UseGuards(PlatformAdminGuard)
+  @Get('agent-templates/:id/tools')
+  listTemplateTool(@Param('id') id: string) {
+    return this.adminService.listTemplateTool(id);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('agent-templates/:id/tools')
+  createTemplateTool(@Param('id') id: string, @Body() body: { name: string; label: string; description: string; webhookUrl?: string; webhookMethod?: string }) {
+    return this.adminService.createTemplateTool(id, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Patch('agent-templates/:id/tools/:toolId')
+  updateTemplateTool(@Param('id') id: string, @Param('toolId') toolId: string, @Body() body: { label?: string; description?: string; webhookUrl?: string; webhookMethod?: string; active?: boolean }) {
+    return this.adminService.updateTemplateTool(id, toolId, body);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Delete('agent-templates/:id/tools/:toolId')
+  deleteTemplateTool(@Param('id') id: string, @Param('toolId') toolId: string) {
+    return this.adminService.deleteTemplateTool(id, toolId);
+  }
+
+  @UseGuards(PlatformAdminGuard)
   @Post('agent-templates/:id/push')
   pushAgentTemplate(@Param('id') id: string, @Body() body: { tenantIds?: string[]; all?: boolean; force?: boolean }) {
     return this.adminService.pushAgentTemplate(id, body);
