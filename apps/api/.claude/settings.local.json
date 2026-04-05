@@ -38,7 +38,14 @@
       "Bash(/dev/null __NEW_LINE_090fca5918d25855__ echo echo '=== 7. LIST LEADS ===' curl -s https://via-crm-production.up.railway.app/leads -H 'Authorization: Bearer $TOKEN')",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''PASS -'''', len\\(d\\) if isinstance\\(d,list\\) else d.get\\(''''total'''',''''?''''\\), ''''leads''''\\)\" 2)",
       "Bash(/dev/null __NEW_LINE_090fca5918d25855__ echo echo '=== 8. EXPORT CSV ===' curl -s -I https://via-crm-production.up.railway.app/leads/export -H 'Authorization: Bearer $TOKEN')",
-      "Bash(DATABASE_URL=\"postgresql://postgres:wRyoGaXEnpFEUZlOBKuduSuSGnEbtRLL@interchange.proxy.rlwy.net:14471/railway\" npx prisma db push)"
+      "Bash(DATABASE_URL=\"postgresql://postgres:wRyoGaXEnpFEUZlOBKuduSuSGnEbtRLL@interchange.proxy.rlwy.net:14471/railway\" npx prisma db push)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:wRyoGaXEnpFEUZlOBKuduSuSGnEbtRLL@interchange.proxy.rlwy.net:14471/railway\" npx prisma db push --skip-generate)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)"
     ]
   }
 }

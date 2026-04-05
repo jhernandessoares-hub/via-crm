@@ -105,6 +105,9 @@ export class AdminService {
     try {
       await this.email.sendWelcome(data.ownerEmail, data.ownerNome, data.nome);
     } catch {}
+    try {
+      await this.seedTemplatesForTenant(tenant.id);
+    } catch {}
     this.audit.log({ action: 'PLATFORM_CREATE_TENANT', metadata: { slug: data.slug } });
     return tenant;
   }
@@ -290,5 +293,269 @@ export class AdminService {
     ]);
     this.audit.log({ action: 'PLATFORM_EXPORT_TENANT_DATA', resourceType: 'tenant', resourceId: tenantId });
     return { tenant, leads, users, channels, exportedAt: new Date() };
+  }
+
+  // ── TEMP: migração de agents prd → dev (remover após uso) ───────────────
+  async exportTenantAgents(tenantId: string) {
+    const agents = await this.prisma.aiAgent.findMany({
+      where: { tenantId },
+      include: { tools: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return { tenantId, agents, exportedAt: new Date() };
+  }
+
+  async importAgentTemplates(agents: any[]) {
+    const results = { created: 0, skipped: 0 };
+    for (const a of agents) {
+      const slug = a.slug?.trim().toLowerCase();
+      if (!slug || !a.title || !a.prompt) { results.skipped++; continue; }
+      const exists = await this.prisma.agentTemplate.findUnique({ where: { slug } });
+      if (exists) { results.skipped++; continue; }
+      await this.prisma.agentTemplate.create({
+        data: {
+          title: a.title, slug, description: a.description ?? null,
+          objective: a.objective ?? null, prompt: a.prompt,
+          exampleOutput: a.exampleOutput ?? null, mode: a.mode ?? 'COPILOT',
+          audience: a.audience ?? null, permissions: a.permissions ?? [],
+          active: a.active ?? true, model: a.model ?? null,
+          temperature: a.temperature ?? null, isOrchestrator: a.isOrchestrator ?? false,
+          routingKeywords: a.routingKeywords ?? [],
+        },
+      });
+      results.created++;
+    }
+    return results;
+  }
+
+  // ── Agent Templates ──────────────────────────────────────────────────────
+
+  async listAgentTemplates() {
+    return this.prisma.agentTemplate.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { _count: { select: { agents: true } } },
+    });
+  }
+
+  async createAgentTemplate(data: {
+    title: string; slug: string; description?: string; objective?: string;
+    prompt: string; exampleOutput?: string; mode?: string; audience?: string;
+    permissions?: string[]; active?: boolean; model?: string | null;
+    temperature?: number | null; isOrchestrator?: boolean; routingKeywords?: string[];
+  }) {
+    const slug = data.slug.trim().toLowerCase();
+    const existing = await this.prisma.agentTemplate.findUnique({ where: { slug } });
+    if (existing) throw new BadRequestException('Já existe um template com esse slug.');
+    const template = await this.prisma.agentTemplate.create({
+      data: {
+        title: data.title,
+        slug,
+        description: data.description ?? null,
+        objective: data.objective ?? null,
+        prompt: data.prompt,
+        exampleOutput: data.exampleOutput ?? null,
+        mode: (data.mode as any) ?? 'COPILOT',
+        audience: data.audience ?? null,
+        permissions: data.permissions ?? [],
+        active: data.active ?? true,
+        model: data.model ?? null,
+        temperature: data.temperature ?? null,
+        isOrchestrator: data.isOrchestrator ?? false,
+        routingKeywords: data.routingKeywords ?? [],
+      },
+    });
+    this.audit.log({ action: 'PLATFORM_CREATE_AGENT_TEMPLATE', resourceType: 'agentTemplate', resourceId: template.id, metadata: { slug } });
+    return template;
+  }
+
+  async updateAgentTemplate(id: string, data: {
+    title?: string; description?: string | null; objective?: string | null;
+    prompt?: string; exampleOutput?: string | null; mode?: string; audience?: string | null;
+    permissions?: string[]; active?: boolean; model?: string | null;
+    temperature?: number | null; isOrchestrator?: boolean; routingKeywords?: string[];
+  }) {
+    const template = await this.prisma.agentTemplate.findUnique({ where: { id } });
+    if (!template) throw new BadRequestException('Template não encontrado.');
+    const updated = await this.prisma.agentTemplate.update({
+      where: { id },
+      data: {
+        ...(data.title !== undefined && { title: data.title }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.objective !== undefined && { objective: data.objective }),
+        ...(data.prompt !== undefined && { prompt: data.prompt }),
+        ...(data.exampleOutput !== undefined && { exampleOutput: data.exampleOutput }),
+        ...(data.mode !== undefined && { mode: data.mode as any }),
+        ...(data.audience !== undefined && { audience: data.audience }),
+        ...(data.permissions !== undefined && { permissions: data.permissions }),
+        ...(data.active !== undefined && { active: data.active }),
+        ...(data.model !== undefined && { model: data.model }),
+        ...(data.temperature !== undefined && { temperature: data.temperature }),
+        ...(data.isOrchestrator !== undefined && { isOrchestrator: data.isOrchestrator }),
+        ...(data.routingKeywords !== undefined && { routingKeywords: data.routingKeywords }),
+      },
+    });
+    this.audit.log({ action: 'PLATFORM_UPDATE_AGENT_TEMPLATE', resourceType: 'agentTemplate', resourceId: id });
+    return updated;
+  }
+
+  async deleteAgentTemplate(id: string) {
+    const template = await this.prisma.agentTemplate.findUnique({ where: { id } });
+    if (!template) throw new BadRequestException('Template não encontrado.');
+    // Desvincula agents existentes (templateId → null, mantém isCustomized)
+    await this.prisma.aiAgent.updateMany({
+      where: { templateId: id },
+      data: { templateId: null },
+    });
+    await this.prisma.agentTemplate.delete({ where: { id } });
+    this.audit.log({ action: 'PLATFORM_DELETE_AGENT_TEMPLATE', resourceType: 'agentTemplate', resourceId: id });
+    return { ok: true };
+  }
+
+  async pushAgentTemplate(templateId: string, options: { tenantIds?: string[]; all?: boolean; force?: boolean }) {
+    const template = await this.prisma.agentTemplate.findUnique({ where: { id: templateId } });
+    if (!template) throw new BadRequestException('Template não encontrado.');
+
+    let tenants: { id: string }[];
+    if (options.all) {
+      tenants = await this.prisma.tenant.findMany({ where: { ativo: true }, select: { id: true } });
+    } else if (options.tenantIds?.length) {
+      tenants = options.tenantIds.map((id) => ({ id }));
+    } else {
+      throw new BadRequestException('Informe tenantIds ou use all: true.');
+    }
+
+    const results = { created: 0, updated: 0, skipped: 0 };
+
+    for (const { id: tenantId } of tenants) {
+      const existing = await this.prisma.aiAgent.findFirst({ where: { tenantId, templateId } });
+
+      if (existing) {
+        if (existing.isCustomized && !options.force) {
+          results.skipped++;
+          continue;
+        }
+        await this.prisma.aiAgent.update({
+          where: { id: existing.id },
+          data: {
+            title: template.title,
+            description: template.description,
+            objective: template.objective,
+            prompt: template.prompt,
+            exampleOutput: template.exampleOutput,
+            mode: template.mode,
+            audience: template.audience,
+            permissions: template.permissions,
+            model: template.model,
+            temperature: template.temperature,
+            isOrchestrator: template.isOrchestrator,
+            routingKeywords: template.routingKeywords,
+            syncedAt: new Date(),
+            ...(options.force && { isCustomized: false }),
+          },
+        });
+        results.updated++;
+      } else {
+        // Verifica conflito de slug no tenant
+        const slugConflict = await this.prisma.aiAgent.findFirst({ where: { tenantId, slug: template.slug } });
+        if (slugConflict) {
+          results.skipped++;
+          continue;
+        }
+        await this.prisma.aiAgent.create({
+          data: {
+            tenantId,
+            templateId: template.id,
+            title: template.title,
+            slug: template.slug,
+            description: template.description,
+            objective: template.objective,
+            prompt: template.prompt,
+            exampleOutput: template.exampleOutput,
+            mode: template.mode,
+            audience: template.audience,
+            permissions: template.permissions,
+            active: template.active,
+            model: template.model,
+            temperature: template.temperature,
+            isOrchestrator: template.isOrchestrator,
+            routingKeywords: template.routingKeywords,
+            isCustomized: false,
+            syncedAt: new Date(),
+          },
+        });
+        results.created++;
+      }
+    }
+
+    this.audit.log({ action: 'PLATFORM_PUSH_AGENT_TEMPLATE', resourceType: 'agentTemplate', resourceId: templateId, metadata: results });
+    return results;
+  }
+
+  async getOutdatedTenants() {
+    const templates = await this.prisma.agentTemplate.findMany({ where: { active: true } });
+
+    const report = await Promise.all(
+      templates.map(async (tpl) => {
+        const outdatedAgents = await this.prisma.aiAgent.findMany({
+          where: {
+            templateId: tpl.id,
+            syncedAt: { lt: tpl.updatedAt },
+          },
+          select: {
+            id: true,
+            tenantId: true,
+            isCustomized: true,
+            syncedAt: true,
+            tenant: { select: { nome: true, slug: true } },
+          },
+        });
+
+        return {
+          template: { id: tpl.id, title: tpl.title, slug: tpl.slug, updatedAt: tpl.updatedAt },
+          canUpdate: outdatedAgents.filter((a) => !a.isCustomized),
+          customized: outdatedAgents.filter((a) => a.isCustomized),
+        };
+      }),
+    );
+
+    return report.filter((r) => r.canUpdate.length > 0 || r.customized.length > 0);
+  }
+
+  async seedTemplatesForTenant(tenantId: string) {
+    const templates = await this.prisma.agentTemplate.findMany({ where: { active: true } });
+    let seeded = 0;
+
+    for (const tpl of templates) {
+      const exists = await this.prisma.aiAgent.findFirst({ where: { tenantId, templateId: tpl.id } });
+      if (exists) continue;
+      const slugConflict = await this.prisma.aiAgent.findFirst({ where: { tenantId, slug: tpl.slug } });
+      if (slugConflict) continue;
+
+      await this.prisma.aiAgent.create({
+        data: {
+          tenantId,
+          templateId: tpl.id,
+          title: tpl.title,
+          slug: tpl.slug,
+          description: tpl.description,
+          objective: tpl.objective,
+          prompt: tpl.prompt,
+          exampleOutput: tpl.exampleOutput,
+          mode: tpl.mode,
+          audience: tpl.audience,
+          permissions: tpl.permissions,
+          active: tpl.active,
+          model: tpl.model,
+          temperature: tpl.temperature,
+          isOrchestrator: tpl.isOrchestrator,
+          routingKeywords: tpl.routingKeywords,
+          isCustomized: false,
+          syncedAt: new Date(),
+        },
+      });
+      seeded++;
+    }
+
+    return { seeded };
   }
 }
