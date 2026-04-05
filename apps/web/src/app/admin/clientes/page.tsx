@@ -33,7 +33,7 @@ export default function AdminClientesPage() {
           <h1 className="text-2xl font-bold">Clientes</h1>
           <p className="text-sm text-gray-500 mt-1">{data?.total ?? 0} tenant(s) cadastrados</p>
         </div>
-        <Link href="/admin/clientes/novo" className="rounded-md bg-slate-950 text-white px-4 py-2 text-sm hover:bg-slate-900">
+        <Link href="/admin/novo-cliente" className="rounded-md bg-slate-950 text-white px-4 py-2 text-sm hover:bg-slate-900">
           + Novo cliente
         </Link>
       </div>

@@ -26,7 +26,13 @@ export class AdminController {
 
   @UseGuards(PlatformAdminGuard)
   @Post('tenants')
-  createTenant(@Body() body: { nome: string; slug: string; ownerNome: string; ownerEmail: string; ownerSenha: string; plan?: string }) {
+  createTenant(@Body() body: {
+    nome: string; slug: string; ownerNome: string; ownerEmail: string; ownerSenha: string; plan?: string;
+    logradouro?: string; numero?: string; bairro?: string; cep?: string;
+    cidade?: string; estado?: string; site?: string; redesSociais?: string;
+    proprietarioNome?: string; proprietarioTelefone?: string;
+    whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string;
+  }) {
     return this.adminService.createTenant(body);
   }
 

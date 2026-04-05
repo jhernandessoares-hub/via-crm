@@ -65,10 +65,29 @@ export class AdminService {
     return tenant;
   }
 
-  async createTenant(data: { nome: string; slug: string; ownerNome: string; ownerEmail: string; ownerSenha: string; plan?: string }) {
+  async createTenant(data: {
+    nome: string; slug: string; ownerNome: string; ownerEmail: string; ownerSenha: string; plan?: string;
+    logradouro?: string; numero?: string; bairro?: string; cep?: string;
+    cidade?: string; estado?: string; site?: string; redesSociais?: string;
+    proprietarioNome?: string; proprietarioTelefone?: string;
+    whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string;
+  }) {
     const senhaHash = await bcrypt.hash(data.ownerSenha, 10);
     const tenant = await this.prisma.$transaction(async (tx) => {
-      const t = await tx.tenant.create({ data: { nome: data.nome, slug: data.slug, plan: data.plan || 'STARTER' } });
+      const t = await tx.tenant.create({
+        data: {
+          nome: data.nome, slug: data.slug, plan: data.plan || 'STARTER',
+          logradouro: data.logradouro || null, numero: data.numero || null,
+          bairro: data.bairro || null, cep: data.cep || null,
+          cidade: data.cidade || null, estado: data.estado || null,
+          site: data.site || null, redesSociais: data.redesSociais || null,
+          proprietarioNome: data.proprietarioNome || null,
+          proprietarioTelefone: data.proprietarioTelefone || null,
+          whatsappPhoneNumberId: data.whatsappPhoneNumberId || null,
+          whatsappToken: data.whatsappToken || null,
+          whatsappVerifyToken: data.whatsappVerifyToken || null,
+        },
+      });
       const branch = await tx.branch.create({ data: { tenantId: t.id, nome: 'Principal', ativo: true } });
       await tx.user.create({
         data: {
