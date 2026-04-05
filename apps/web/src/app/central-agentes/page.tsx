@@ -511,9 +511,25 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Modelo de IA</label>
-                  <input value={model} onChange={e => setModel(e.target.value)}
+                  <input
+                    list="ai-models"
+                    value={model}
+                    onChange={e => setModel(e.target.value)}
                     className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
-                    placeholder="gpt-4o-mini (padrão)" />
+                    placeholder="gpt-4o-mini (padrão)"
+                  />
+                  <datalist id="ai-models">
+                    <option value="">— Padrão do sistema (gpt-4o-mini) —</option>
+                    <optgroup label="OpenAI">
+                      <option value="gpt-4o" />
+                      <option value="gpt-4o-mini" />
+                    </optgroup>
+                    <optgroup label="Anthropic">
+                      <option value="claude-sonnet-4-6" />
+                      <option value="claude-sonnet-4-5" />
+                      <option value="claude-opus-4-6" />
+                    </optgroup>
+                  </datalist>
                   <p className="mt-1 text-xs text-gray-400">Deixe vazio para usar o padrão do sistema.</p>
                 </div>
                 <div>
