@@ -2186,6 +2186,7 @@ async updateStage(user: any, leadId: string, stageId: string) {
       where: {
         tenantId: user.tenantId,
         assignedUserId: user.id,
+        deletedAt: null,
       },
       orderBy: { criadoEm: 'desc' },
     });
@@ -2201,6 +2202,7 @@ async updateStage(user: any, leadId: string, stageId: string) {
     const leads = await this.prisma.lead.findMany({
       where: {
         tenantId: user.tenantId,
+        deletedAt: null,
         ...(branchId ? { branchId } : {}),
       },
       orderBy: { criadoEm: 'desc' },
