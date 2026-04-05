@@ -422,6 +422,8 @@ export class AiService {
     const model = agentModel || process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const temperature = agentTemperature ?? 0.7;
 
+    logger.log(`🤖 Modelo em uso: ${model} (provider: ${this.isClaude(model) ? 'Anthropic' : 'OpenAI'})`);
+
     const tools = agentTools
       .filter((t: any) => t.active)
       .map((t: any) => ({ name: t.name, description: t.description }));
