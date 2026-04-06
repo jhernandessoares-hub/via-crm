@@ -486,6 +486,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               </div>
 
               {agentType === "CONVERSACIONAL" && (
+              <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Modo</label>
@@ -540,7 +541,8 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                   placeholder="Ex: preço, visita, renda" />
                 <p className="mt-1.5 text-xs text-gray-400">Separadas por vírgula. O orquestrador usa essas palavras para rotear a mensagem.</p>
               </div>
-              )} {/* end agentType === CONVERSACIONAL */}
+              </> /* end agentType === CONVERSACIONAL */
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
