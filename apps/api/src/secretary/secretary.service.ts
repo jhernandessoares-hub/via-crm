@@ -549,7 +549,13 @@ export class SecretaryService {
             ],
           },
           take: 5,
-          select: { id: true, nome: true, telefone: true, origem: true, status: true, criadoEm: true, observacao: true, stage: { select: { name: true } } },
+          select: {
+            id: true, nome: true, telefone: true, origem: true, status: true, criadoEm: true, observacao: true,
+            resumoLead: true, perfilImovel: true, rendaBrutaFamiliar: true, fgts: true, valorEntrada: true,
+            estadoCivil: true, dataNascimento: true, tempoProcurandoImovel: true,
+            conversouComCorretor: true, qualCorretorImobiliaria: true,
+            stage: { select: { name: true } },
+          },
           orderBy: { criadoEm: 'desc' },
         });
         if (leads.length === 0) return `Nenhum lead encontrado para "${q}".`;
@@ -557,7 +563,16 @@ export class SecretaryService {
         const results: string[] = [];
         for (const l of leads as any[]) {
           const partes = [`[ID:${l.id}] ${l.nome}`, `Etapa: ${l.stage?.name || l.status || '—'}`, `Tel: ${l.telefone || '—'}`, `Origem: ${l.origem || '—'}`];
-          if (l.observacao) partes.push(`Resumo: ${l.observacao}`);
+          if (l.observacao) partes.push(`Obs: ${l.observacao}`);
+          if (l.resumoLead) partes.push(`Resumo IA: ${l.resumoLead}`);
+          if (l.perfilImovel) partes.push(`Perfil: ${l.perfilImovel}`);
+          if (l.rendaBrutaFamiliar) partes.push(`Renda: R$${l.rendaBrutaFamiliar.toLocaleString('pt-BR')}`);
+          if (l.fgts) partes.push(`FGTS: R$${l.fgts.toLocaleString('pt-BR')}`);
+          if (l.valorEntrada) partes.push(`Entrada: R$${l.valorEntrada.toLocaleString('pt-BR')}`);
+          if (l.estadoCivil) partes.push(`Estado civil: ${l.estadoCivil}`);
+          if (l.tempoProcurandoImovel) partes.push(`Procurando há: ${l.tempoProcurandoImovel}`);
+          if (l.conversouComCorretor != null) partes.push(`Já conversou com corretor: ${l.conversouComCorretor ? 'Sim' : 'Não'}`);
+          if (l.qualCorretorImobiliaria) partes.push(`Corretor/imobiliária: ${l.qualCorretorImobiliaria}`);
 
           // Busca histórico de conversa com a IA (últimas 10 mensagens)
           const logs = await this.prisma.aiExecutionLog.findMany({
@@ -776,7 +791,12 @@ export class SecretaryService {
           where: leadWhere,
           orderBy: { criadoEm: 'desc' },
           take: 15,
-          select: { id: true, nome: true, telefone: true, status: true, origem: true, criadoEm: true, observacao: true, stage: { select: { name: true } } },
+          select: {
+            id: true, nome: true, telefone: true, status: true, origem: true, criadoEm: true,
+            observacao: true, resumoLead: true, perfilImovel: true,
+            rendaBrutaFamiliar: true, fgts: true, valorEntrada: true,
+            stage: { select: { name: true } },
+          },
         }),
       ]);
 
@@ -786,7 +806,12 @@ export class SecretaryService {
         const partes = [`[ID:${l.id}] ${l.nome}`, `etapa: ${etapa}`, `entrada: ${data}`];
         if (l.telefone) partes.push(`tel: ${l.telefone}`);
         if (l.origem) partes.push(`origem: ${l.origem}`);
-        if (l.observacao) partes.push(`resumo: ${l.observacao.slice(0, 120)}`);
+        if (l.observacao) partes.push(`obs: ${l.observacao.slice(0, 100)}`);
+        if (l.resumoLead) partes.push(`resumo IA: ${l.resumoLead.slice(0, 150)}`);
+        if (l.perfilImovel) partes.push(`perfil: ${l.perfilImovel.slice(0, 80)}`);
+        if (l.rendaBrutaFamiliar) partes.push(`renda: R$${l.rendaBrutaFamiliar.toLocaleString('pt-BR')}`);
+        if (l.fgts) partes.push(`fgts: R$${l.fgts.toLocaleString('pt-BR')}`);
+        if (l.valorEntrada) partes.push(`entrada: R$${l.valorEntrada.toLocaleString('pt-BR')}`);
         return `  - ${partes.join(' | ')}`;
       }).join('\n');
 
