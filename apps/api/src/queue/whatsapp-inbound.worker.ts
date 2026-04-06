@@ -358,6 +358,12 @@ async function processPayload(
             await queueService.enqueueWhatsappMediaResolve(createdEvent.id);
           }
 
+          // Reações não disparam IA nem atualizam SLA — são só feedback do lead
+          if (type === 'reaction') {
+            logger.log(`💬 Reação recebida (leadId=${leadId}) — sem resposta IA`);
+            continue;
+          }
+
           await queueService.rescheduleSla(leadId);
           await queueService.scheduleInboundAi(leadId, { isFirstReply: !isReentry });
         } catch (e: any) {
