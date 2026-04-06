@@ -569,13 +569,16 @@ export class AdminService {
   }
 
   async getStuckLeads(windowMinutes = 120) {
+    // Só considera leads com mensagem mais antiga que 5 minutos (delay normal da IA é até 90s)
+    const MIN_STUCK_MINUTES = 5;
     const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+    const stuckCutoff = new Date(Date.now() - MIN_STUCK_MINUTES * 60 * 1000);
 
     // Leads que receberam mensagem recente mas não tiveram resposta da IA depois
     const recentInbound = await this.prisma.leadEvent.findMany({
       where: {
         channel: 'whatsapp.in',
-        criadoEm: { gte: since },
+        criadoEm: { gte: since, lte: stuckCutoff },
         lead: { deletedAt: null },
       },
       select: {
@@ -637,7 +640,7 @@ export class AdminService {
   }
 
   async recoverQueue(tenantId?: string) {
-    const retryResult = await this.queue.retryFailedInboundAiJobs();
+    const retryResult = await this.queue.retryAllFailedJobs();
 
     let rescheduleResult = { scheduled: 0, leadIds: [] as string[] };
     if (tenantId) {
@@ -655,10 +658,11 @@ export class AdminService {
       }
     }
 
-    this.audit.log({ action: 'PLATFORM_QUEUE_RECOVER', metadata: { tenantId: tenantId || 'all', ...retryResult, ...rescheduleResult } });
+    this.audit.log({ action: 'PLATFORM_QUEUE_RECOVER', metadata: { tenantId: tenantId || 'all', retriedFailed: retryResult.retried, byQueue: retryResult.byQueue, rescheduled: rescheduleResult.scheduled } });
 
     return {
       retriedFailed: retryResult.retried,
+      byQueue: retryResult.byQueue,
       rescheduled: rescheduleResult.scheduled,
       leadIds: rescheduleResult.leadIds,
     };

@@ -351,6 +351,35 @@ export class QueueService implements OnModuleDestroy {
     };
   }
 
+  async retryAllFailedJobs(): Promise<{ retried: number; byQueue: Record<string, number> }> {
+    const queues = [
+      { name: 'inboundAi', queue: this.inboundAiQueue },
+      { name: 'whatsappInbound', queue: this.whatsappInboundQueue },
+      { name: 'whatsappMedia', queue: this.whatsappMediaQueue },
+      { name: 'sla', queue: this.slaQueue },
+    ];
+
+    const byQueue: Record<string, number> = {};
+    let total = 0;
+
+    for (const { name, queue } of queues) {
+      const failedJobs = await queue.getFailed(0, 100);
+      let count = 0;
+      for (const job of failedJobs) {
+        try {
+          await job.retry();
+          count++;
+        } catch {
+          // job expirado, ignorar
+        }
+      }
+      byQueue[name] = count;
+      total += count;
+    }
+
+    return { retried: total, byQueue };
+  }
+
   async retryFailedInboundAiJobs(): Promise<{ retried: number; leadIds: string[] }> {
     const failedJobs = await this.inboundAiQueue.getFailed(0, 100);
     const leadIds: string[] = [];
