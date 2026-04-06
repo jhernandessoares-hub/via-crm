@@ -75,14 +75,28 @@ export class QueueController {
 
   // ✅ reagenda IA para leads que receberam mensagem sem resposta na última janela
   // POST /queue/inbound-ai/reschedule?tenantId=xxx&windowMinutes=60
+  // POST /queue/inbound-ai/reschedule?tenantSlug=minha-imobiliaria&windowMinutes=60
   @Post('inbound-ai/reschedule')
   async rescheduleInboundAi(
-    @Query('tenantId') tenantId: string,
+    @Query('tenantId') tenantId?: string,
+    @Query('tenantSlug') tenantSlug?: string,
     @Query('windowMinutes') windowMinutes?: string,
   ) {
-    if (!tenantId) return { ok: false, message: 'tenantId obrigatório' };
+    let resolvedTenantId = tenantId;
+
+    if (!resolvedTenantId && tenantSlug) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { slug: tenantSlug },
+        select: { id: true },
+      });
+      if (!tenant) return { ok: false, message: `Tenant com slug "${tenantSlug}" não encontrado` };
+      resolvedTenantId = tenant.id;
+    }
+
+    if (!resolvedTenantId) return { ok: false, message: 'Informe tenantId ou tenantSlug' };
+
     const minutes = windowMinutes ? Number(windowMinutes) : 60;
-    return this.queueService.rescheduleInboundAiForRecentLeads(this.prisma, tenantId, minutes);
+    return this.queueService.rescheduleInboundAiForRecentLeads(this.prisma, resolvedTenantId, minutes);
   }
 
   // ✅ agenda um job rápido (default 10s) pra testar o TEMPLATE (sla-23h-template)
