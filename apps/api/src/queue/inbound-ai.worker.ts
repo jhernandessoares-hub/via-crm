@@ -393,18 +393,15 @@ async function handleInboundAiJob(
     select: { id: true, title: true, slug: true, prompt: true, model: true, temperature: true },
   });
 
-  // Slugs que operam em segundo plano e nunca devem conversar diretamente com o lead
-  const NON_CONVERSATIONAL_SLUGS = ['agendamento', 'produtos', 'assistente_operacional'];
-
   if (orchestrator?.prompt) {
-    const childAgents = await prisma.aiAgent.findMany({
+    const childAgents = await (prisma.aiAgent.findMany as any)({
       where: { tenantId: lead.tenantId, parentAgentId: orchestrator.id, active: true },
-      select: { id: true, slug: true, title: true, description: true, objective: true, model: true, temperature: true, mode: true },
-    });
+      select: { id: true, slug: true, title: true, description: true, objective: true, model: true, temperature: true, mode: true, agentType: true },
+    }) as any[];
 
-    // Remove agentes não-conversacionais: eles não devem gerar respostas ao lead
+    // Apenas agentes CONVERSACIONAL falam diretamente com o lead
     const conversationalAgents = childAgents.filter(
-      (a) => !NON_CONVERSATIONAL_SLUGS.includes(a.slug),
+      (a: any) => a.agentType !== 'OPERACIONAL',
     );
 
     if (conversationalAgents.length > 0) {

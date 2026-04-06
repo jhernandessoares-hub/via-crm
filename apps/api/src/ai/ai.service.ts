@@ -370,6 +370,13 @@ export class AiService {
       'Escreva diretamente a mensagem, como uma pessoa real escreveria no WhatsApp.',
     );
 
+    // 2c. Regra de separação: nunca incluir notificações internas na resposta ao lead
+    systemParts.push(
+      'NUNCA inclua na sua resposta blocos internos como "NOTIFICAÇÃO INTERNA", "RESUMO DO LEAD", "DADOS DO CLIENTE" ou qualquer seção separada por "---". ' +
+      'Sua resposta vai diretamente para o WhatsApp do lead. ' +
+      'Atualizações de CRM, resumos e notificações ao corretor são responsabilidade de outro sistema.',
+    );
+
     // 2c. Nome do lead: o valor em "Lead:" veio automaticamente do WhatsApp e pode estar errado
     systemParts.push(
       'O nome que aparece no campo "Lead:" foi capturado automaticamente do perfil do WhatsApp e pode estar incorreto ou ser um apelido. ' +
@@ -672,7 +679,37 @@ export class AiService {
     notifyBroker?: boolean;
     notifyMessage?: string;
   }> {
-    const systemPrompt = `Você é o Assistente Operacional de um CRM imobiliário. Sua função é analisar conversas entre a IA e leads, extrair informações estruturadas e decidir ações no CRM.
+    // Busca agente OPERACIONAL do tenant (se existir, usa o prompt dele)
+    const operationalAgent = await this.prisma.aiAgent.findFirst({
+      where: { tenantId: params.tenantId, active: true, ...({ agentType: 'OPERACIONAL' } as any) },
+      select: { prompt: true },
+    });
+
+    const customPrompt = operationalAgent?.prompt?.trim() || '';
+
+    const JSON_SPEC = `
+Retorne APENAS JSON válido, sem texto adicional, com os campos que se aplicam:
+- nomeCorreto: string
+- rendaBrutaFamiliar: number (em reais)
+- fgts: number (em reais)
+- valorEntrada: number (em reais)
+- estadoCivil: "SOLTEIRO" | "CASADO" | "UNIAO_ESTAVEL" | "DIVORCIADO" | "VIUVO"
+- dataNascimento: "YYYY-MM-DD"
+- tempoProcurandoImovel: string
+- conversouComCorretor: boolean
+- qualCorretorImobiliaria: string
+- perfilImovel: "POPULAR" | "MEDIO" | "ALTO_PADRAO" | "LUXO"
+- produtoInteresseId: string (ID exato do produto)
+- resumoLead: string (resumo completo para o corretor)
+- stageKey: string (key da etapa do funil — omita se não mudar)
+- notifyBroker: boolean (true quando lead qualificado ou precisa de atenção do corretor)
+- notifyMessage: string (mensagem curta para o corretor)
+
+Retorne apenas os campos claramente identificados. Não invente dados.`;
+
+    const systemPrompt = customPrompt
+      ? `${customPrompt}\n\n${JSON_SPEC}`
+      : `Você é o Assistente Operacional de um CRM imobiliário. Sua função é analisar conversas entre a IA e leads, extrair informações estruturadas e decidir ações no CRM.
 
 Você NÃO conversa com o lead. Você apenas analisa e retorna um JSON.
 

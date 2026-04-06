@@ -9,6 +9,7 @@ import { apiFetch } from "@/lib/api";
 // ──────────────────────────────────────────────
 
 type AiAgentMode = "COPILOT" | "AUTOPILOT";
+type AgentType = "CONVERSACIONAL" | "OPERACIONAL";
 
 type AiAgent = {
   id: string;
@@ -19,6 +20,7 @@ type AiAgent = {
   objective?: string | null;
   prompt: string;
   mode: AiAgentMode;
+  agentType: AgentType;
   permissions: string[];
   active: boolean;
   priority: number;
@@ -50,6 +52,7 @@ type AgentForm = {
   description: string;
   objective: string;
   prompt: string;
+  agentType: AgentType;
   mode: AiAgentMode;
   permissions: string[];
   active: boolean;
@@ -66,6 +69,7 @@ const EMPTY_FORM: AgentForm = {
   description: "",
   objective: "",
   prompt: "",
+  agentType: "CONVERSACIONAL",
   mode: "COPILOT",
   permissions: [],
   active: true,
@@ -88,6 +92,7 @@ function agentToForm(a: AiAgent): AgentForm {
     description: a.description ?? "",
     objective: a.objective ?? "",
     prompt: a.prompt ?? "",
+    agentType: a.agentType ?? "CONVERSACIONAL",
     mode: a.mode ?? "COPILOT",
     permissions: Array.isArray(a.permissions) ? a.permissions : [],
     active: a.active ?? true,
@@ -197,7 +202,8 @@ export default function AiAgentsPage() {
             description: form.description.trim() || undefined,
             objective: form.objective.trim() || undefined,
             prompt: form.prompt.trim(),
-            mode: form.mode,
+            agentType: form.agentType,
+            mode: form.agentType === "OPERACIONAL" ? "COPILOT" : form.mode,
             permissions: form.permissions,
             active: form.active,
             priority: Number(form.priority || 0),
@@ -218,7 +224,8 @@ export default function AiAgentsPage() {
               description: form.description.trim() || null,
               objective: form.objective.trim() || null,
               prompt: form.prompt.trim(),
-              mode: form.mode,
+              agentType: form.agentType,
+              mode: form.agentType === "OPERACIONAL" ? "COPILOT" : form.mode,
               permissions: form.permissions,
               active: form.active,
               priority: Number(form.priority || 0),
@@ -348,12 +355,19 @@ export default function AiAgentsPage() {
                           title={agent.active ? "Ativo" : "Inativo"}
                         />
                       </div>
-                      <div
-                        className={`text-xs mt-0.5 truncate ${
-                          selected ? "text-slate-300" : "text-gray-400"
-                        }`}
-                      >
-                        {agent.mode} · prioridade {agent.priority}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                          agent.agentType === "OPERACIONAL"
+                            ? selected ? "bg-purple-700 text-purple-100" : "bg-purple-100 text-purple-700"
+                            : selected ? "bg-slate-600 text-slate-200" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          {agent.agentType === "OPERACIONAL" ? "Operacional" : "Conv."}
+                        </span>
+                        {agent.agentType !== "OPERACIONAL" && (
+                          <span className={`text-xs truncate ${selected ? "text-slate-300" : "text-gray-400"}`}>
+                            {agent.mode}
+                          </span>
+                        )}
                       </div>
                     </button>
                   </li>
@@ -473,11 +487,21 @@ export default function AiAgentsPage() {
                   />
                 </div>
 
+                {form.agentType === "OPERACIONAL" && (
+                  <div className="rounded-md border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-700">
+                    <b>Agente Operacional</b> — opera em segundo plano, nunca fala com o lead.
+                    Use o prompt para definir regras de qualificação, mudança de etapa e quando notificar o corretor.
+                    O sistema complementa automaticamente com as instruções de formato JSON.
+                  </div>
+                )}
+
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Prompt direto{" "}
+                    {form.agentType === "OPERACIONAL" ? "Prompt operacional" : "Prompt direto"}{" "}
                     <span className="font-normal text-gray-400">
-                      (sobrepõe a KB de Personalidade quando preenchido)
+                      {form.agentType === "OPERACIONAL"
+                        ? "(regras de análise, qualificação e ações no CRM)"
+                        : "(sobrepõe a KB de Personalidade quando preenchido)"}
                     </span>
                   </label>
                   <textarea
@@ -491,11 +515,34 @@ export default function AiAgentsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 items-end">
+                <div className="grid grid-cols-4 gap-4 items-end">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">
+                      Tipo
+                    </label>
+                    <select
+                      value={form.agentType}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          agentType: e.target.value as AgentType,
+                        }))
+                      }
+                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    >
+                      <option value="CONVERSACIONAL">Conversacional</option>
+                      <option value="OPERACIONAL">Operacional</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-600">
                       Modo
                     </label>
+                    {form.agentType === "OPERACIONAL" ? (
+                      <div className="w-full rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-400">
+                        Automático
+                      </div>
+                    ) : (
                     <select
                       value={form.mode}
                       onChange={(e) =>
@@ -509,6 +556,7 @@ export default function AiAgentsPage() {
                       <option value="COPILOT">COPILOT</option>
                       <option value="AUTOPILOT">AUTOPILOT</option>
                     </select>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-600">
