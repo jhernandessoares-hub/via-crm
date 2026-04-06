@@ -1938,6 +1938,7 @@ export default function ProductEditPage() {
 
                 {/* Upload form */}
                 <div className="rounded-lg border bg-gray-50 p-3 space-y-2 mb-4">
+                  <p className="text-[11px] text-blue-500">Clique no ícone ↓ azul para baixar cada imagem</p>
                   <Field label="Nome da imagem">
                     <input
                       value={imgTitle}
