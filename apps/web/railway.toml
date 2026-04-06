@@ -1,6 +1,7 @@
 [build]
 builder = "nixpacks"
 buildCommand = "npm run build || ([ -f '.next/prerender-manifest.json' ] && echo 'WARNING: build had non-critical prerender errors' || exit 1)"
+watchPatterns = ["apps/web/**"]
 
 [build.env]
 NIXPACKS_NODE_VERSION = "20"

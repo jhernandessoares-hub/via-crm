@@ -1,6 +1,7 @@
 [build]
 builder = "nixpacks"
 buildCommand = "npm run build"
+watchPatterns = ["apps/api/**"]
 
 [deploy]
 startCommand = "npm run start:prod"

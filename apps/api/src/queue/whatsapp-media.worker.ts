@@ -9,6 +9,12 @@ import ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
 import { Readable, PassThrough } from 'stream';
 
+// Node 18 não tem File como global — necessário para o SDK OpenAI
+if (!globalThis.File) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  (globalThis as any).File = require('node:buffer').File;
+}
+
 ffmpeg.setFfmpegPath(ffmpegPath as any);
 
 function getRedisConnection() {
