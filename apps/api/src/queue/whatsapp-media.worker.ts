@@ -4,7 +4,7 @@ import { Logger } from '../logger';
 const logger = new Logger('WhatsappMediaWorker');
 import { PrismaService } from '../prisma/prisma.service';
 import { v2 as cloudinary } from 'cloudinary';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -105,7 +105,7 @@ async function transcribeAudio(buffer: Buffer, mimeType: string | undefined): Pr
       : mimeType?.includes('webm') ? 'webm'
       : 'ogg'; // WhatsApp voice usa ogg/opus por padrão
 
-    const file = new File([new Uint8Array(buffer)], `audio.${ext}`, { type: mimeType || 'audio/ogg' });
+    const file = await toFile(buffer, `audio.${ext}`, { type: mimeType || 'audio/ogg' });
     const result = await openai.audio.transcriptions.create({
       file,
       model: 'whisper-1',
@@ -113,7 +113,7 @@ async function transcribeAudio(buffer: Buffer, mimeType: string | undefined): Pr
     });
     return result.text?.trim() || null;
   } catch (err: any) {
-    logger.error('Erro ao transcrever áudio via Whisper', { error: err?.message });
+    logger.error(`Erro ao transcrever áudio via Whisper: ${err?.message || err}`);
     return null;
   }
 }
