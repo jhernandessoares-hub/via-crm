@@ -68,6 +68,20 @@ export class SecretaryController {
     return this.service.upload(req.user.tenantId, file);
   }
 
+  /** Histórico unificado — todas as sessões (web + WhatsApp) */
+  @UseGuards(JwtAuthGuard)
+  @Get('history/all')
+  getAllHistory(
+    @Req() req: any,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.getAllHistory({
+      tenantId: req.user.tenantId,
+      userId: req.user.sub || req.user.id,
+      limit: limit ? Number(limit) : 100,
+    });
+  }
+
   /** Histórico de uma sessão */
   @UseGuards(JwtAuthGuard)
   @Get('history')

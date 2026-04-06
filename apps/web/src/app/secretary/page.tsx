@@ -120,7 +120,7 @@ export default function SecretaryPage() {
   async function loadHistory() {
     setHistoryLoading(true);
     try {
-      const data = await apiFetch(`/secretary/history?sessionId=${SESSION_ID}&limit=100`);
+      const data = await apiFetch(`/secretary/history/all?limit=100`);
       setMessages(Array.isArray(data.messages) ? data.messages : []);
     } catch { setMessages([]); }
     finally { setHistoryLoading(false); }
@@ -128,7 +128,7 @@ export default function SecretaryPage() {
 
   async function refreshMessages() {
     try {
-      const data = await apiFetch(`/secretary/history?sessionId=${SESSION_ID}&limit=100`);
+      const data = await apiFetch(`/secretary/history/all?limit=100`);
       const incoming = Array.isArray(data.messages) ? data.messages : [];
       setMessages((prev) => incoming.length === prev.length ? prev : incoming);
     } catch {}
