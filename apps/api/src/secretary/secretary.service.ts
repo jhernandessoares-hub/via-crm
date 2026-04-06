@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { Logger } from '../logger';
@@ -169,6 +170,7 @@ const CRITICAL_RULE =
 @Injectable()
 export class SecretaryService {
   private openai: OpenAI | null = null;
+  private anthropic: Anthropic | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -180,6 +182,13 @@ export class SecretaryService {
     if (!apiKey) throw new Error('OPENAI_API_KEY não definida no .env');
     if (!this.openai) this.openai = new OpenAI({ apiKey });
     return this.openai;
+  }
+
+  private getAnthropic(): Anthropic {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY não definida no .env');
+    if (!this.anthropic) this.anthropic = new Anthropic({ apiKey });
+    return this.anthropic;
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -241,29 +250,73 @@ export class SecretaryService {
       { role: 'user', content: params.text },
     ];
 
+    const isClaudeModel = agentModel.startsWith('claude-');
     let replyText = '';
-    for (let round = 0; round < 4; round++) {
-      const completion = await this.getOpenAI().chat.completions.create({
-        model: agentModel,
-        messages,
-        tools: SECRETARY_TOOLS,
-        tool_choice: 'auto',
-        temperature: agentTemperature,
-      });
 
-      const choice = completion.choices[0];
+    if (isClaudeModel) {
+      // ── Anthropic path ──────────────────────────────────────────────────
+      const anthropicTools: Anthropic.Tool[] = SECRETARY_TOOLS.map((t) => ({
+        name: (t as any).function.name,
+        description: (t as any).function.description || '',
+        input_schema: (t as any).function.parameters as Anthropic.Tool['input_schema'],
+      }));
 
-      if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
-        messages.push(choice.message);
-        for (const toolCall of choice.message.tool_calls) {
-          const tc = toolCall as any;
-          const args = JSON.parse(tc.function?.arguments || '{}');
-          const result = await this.executeTool(tc.function?.name, args, params.tenantId, params.userId);
-          messages.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+      const anthropicMessages: Anthropic.MessageParam[] = [
+        ...contextMessages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content as string })),
+        { role: 'user' as const, content: params.text },
+      ];
+
+      for (let round = 0; round < 4; round++) {
+        const response = await this.getAnthropic().messages.create({
+          model: agentModel,
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: anthropicMessages,
+          tools: anthropicTools,
+          temperature: agentTemperature,
+        });
+
+        const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use') as Anthropic.ToolUseBlock[];
+
+        if (toolUseBlocks.length > 0) {
+          anthropicMessages.push({ role: 'assistant', content: response.content });
+          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+          for (const block of toolUseBlocks) {
+            const result = await this.executeTool(block.name, block.input as any, params.tenantId, params.userId);
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+          }
+          anthropicMessages.push({ role: 'user', content: toolResults });
+        } else {
+          const textBlock = response.content.find((b) => b.type === 'text') as Anthropic.TextBlock | undefined;
+          replyText = textBlock?.text?.trim() || '';
+          break;
         }
-      } else {
-        replyText = choice.message.content?.trim() || '';
-        break;
+      }
+    } else {
+      // ── OpenAI path ─────────────────────────────────────────────────────
+      for (let round = 0; round < 4; round++) {
+        const completion = await this.getOpenAI().chat.completions.create({
+          model: agentModel,
+          messages,
+          tools: SECRETARY_TOOLS,
+          tool_choice: 'auto',
+          temperature: agentTemperature,
+        });
+
+        const choice = completion.choices[0];
+
+        if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
+          messages.push(choice.message);
+          for (const toolCall of choice.message.tool_calls) {
+            const tc = toolCall as any;
+            const args = JSON.parse(tc.function?.arguments || '{}');
+            const result = await this.executeTool(tc.function?.name, args, params.tenantId, params.userId);
+            messages.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+          }
+        } else {
+          replyText = choice.message.content?.trim() || '';
+          break;
+        }
       }
     }
 
