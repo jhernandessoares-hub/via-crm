@@ -689,16 +689,31 @@ Campos que você pode extrair:
 - perfilImovel: "POPULAR" | "MEDIO" | "ALTO_PADRAO" | "LUXO"
 - produtoInteresseId: string (ID do produto se identificado na lista)
 - resumoLead: string (resumo completo de tudo que foi coletado, para envio ao corretor)
-- stageKey: string (mova o lead para esta etapa se houver motivo claro)
+- stageKey: string (mova o lead para esta etapa conforme as regras abaixo)
 - notifyBroker: boolean (notifique o corretor se o lead for qualificado ou precisar de atenção)
 - notifyMessage: string (mensagem curta para o corretor)
-Regras:
+
+Regras gerais:
 - Retorne APENAS os campos que foram claramente identificados na conversa
 - Não invente informações
-- stageKey: NUNCA mova o lead na primeira mensagem ou em conversas com menos de 4 trocas. Só mova se houver intenção clara E dados concretos (ex: lead confirmou interesse, forneceu renda, agendou visita, ou recusou explicitamente)
-- notifyBroker: só use true se o lead estiver qualificado com pelo menos 3 campos preenchidos
-- resumoLead: monte sempre que tiver 3 ou mais campos preenchidos
-- Retorne APENAS JSON válido, sem texto adicional`;
+- Retorne APENAS JSON válido, sem texto adicional
+
+Regras para stageKey (mudança de etapa do funil):
+- Use o nome exato da chave (key) da etapa conforme a lista fornecida
+- NUNCA mova na primeira troca de mensagens
+- Mova PARA FRENTE no funil quando o lead demonstrar progressão clara:
+  * Lead respondeu e está engajado → mova da etapa de entrada para a próxima
+  * Lead forneceu dados pessoais (renda, FGTS, entrada) → avance para etapa de qualificação
+  * Lead demonstrou interesse em produto específico → avance para etapa de interesse/apresentação
+  * Lead aceitou/confirmou visita → avance para etapa de visita/agendamento
+  * Lead sinalizou que vai comprar ou assinou → avance para etapa de fechamento
+- Mova para etapa de DESCARTE/PERDA quando: lead recusou explicitamente, pediu para não ser contatado, ou disse que já comprou em outro lugar
+- Se a etapa atual já for a correta para o momento da conversa, NÃO inclua stageKey no JSON
+- Em caso de dúvida, NÃO mova (omita stageKey)
+
+Regras para notifyBroker:
+- Use true apenas se o lead tiver pelo menos 3 campos de qualificação preenchidos
+- resumoLead: monte sempre que tiver 3 ou mais campos preenchidos`;
 
     const stagesText = params.availableStages.map(s => `${s.key}: ${s.name}`).join('\n');
     const productsText = params.availableProducts.length > 0
