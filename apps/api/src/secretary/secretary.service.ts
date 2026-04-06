@@ -20,7 +20,9 @@ const BEHAVIOR_RULES =
   '4. Para criar um evento na agenda, colete antes de criar: (a) título ou assunto, (b) data e horário. Quando tiver título e data/horário, crie IMEDIATAMENTE sem pedir confirmação extra.\n' +
   '5. Para criar um lead, colete: (a) nome. Telefone e e-mail são opcionais. Quando tiver o nome, crie IMEDIATAMENTE.\n' +
   '6. Para mover um lead no funil, use buscar_lead primeiro se não tiver o ID, depois use mover_funil com o ID encontrado.\n' +
-  '7. Seja direta e concisa. Não repita informações que já foram ditas na conversa.';
+  '7. Seja direta e concisa. Não repita informações que já foram ditas na conversa.\n' +
+  '8. LEMBRETES: Quando o usuário pedir para ser lembrado de algo daqui X minutos/horas, use criar_evento com startAt = agora + o tempo informado. Isso garante que o lembrete será enviado via WhatsApp.\n' +
+  '9. CALORIAS: Quando o usuário mencionar que comeu ou bebeu algo (ex: "comi um pão", "tomei whey"), salve AUTOMATICAMENTE como nota categoria NOTA com título "🍽️ [alimento] - [kcal estimada]kcal" sem perguntar. Quando pedir para contar as calorias do dia, use buscar_notas com query "🍽️" para recuperar todos os registros e some.';
 
 const SECRETARY_TOOLS: OpenAI.ChatCompletionTool[] = [
   {
@@ -645,7 +647,7 @@ export class SecretaryService {
     // Detecta contexto da mensagem para injetar só dados relevantes
     const msg = userText.toLowerCase();
     const wantsLeads = /lead|cliente|contato|prospect|quant|novo|qualific|proposta|fechad|perdid|funil|origem|telefone/.test(msg);
-    const wantsProducts = /produto|imóvel|imovel|apart|casa|terreno|comercial|venda|locaç|aluguel|m²|quarto|bairro/.test(msg);
+    const wantsProducts = /produto|im[oó]vel|apart|casa|terreno|comercial|venda|loca[cç]|aluguel|m²|quarto|bairro|cadastr|empreend/.test(msg);
     // Agenda: sempre injeta (é o principal uso) a menos que seja claramente sobre outra coisa
     const wantsCalendar = !msg || !/^(lead|produto|imóvel)/.test(msg);
 
