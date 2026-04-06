@@ -4,6 +4,8 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -100,6 +102,44 @@ export class SecretaryController {
       req.user.tenantId,
       req.user.sub || req.user.id,
     );
+  }
+
+  // ── Biblioteca pessoal ────────────────────────────────────────────────
+
+  @UseGuards(JwtAuthGuard)
+  @Get('notes')
+  listNotes(
+    @Req() req: any,
+    @Query('category') category?: string,
+    @Query('q') query?: string,
+  ) {
+    return this.service.listNotes(req.user.tenantId, req.user.sub || req.user.id, category, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('notes')
+  createNote(
+    @Req() req: any,
+    @Body() body: { title?: string; content: string; category?: string; tags?: string[] },
+  ) {
+    if (!body?.content?.trim()) throw new BadRequestException('content é obrigatório.');
+    return this.service.createNote(req.user.tenantId, req.user.sub || req.user.id, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('notes/:id')
+  updateNote(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { title?: string; content?: string; category?: string; tags?: string[] },
+  ) {
+    return this.service.updateNote(req.user.tenantId, req.user.sub || req.user.id, id, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('notes/:id')
+  deleteNote(@Req() req: any, @Param('id') id: string) {
+    return this.service.deleteNote(req.user.tenantId, req.user.sub || req.user.id, id);
   }
 
 }

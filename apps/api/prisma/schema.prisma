@@ -1184,3 +1184,18 @@ enum LearningStatus {
   REJECTED
   APPLIED
 }
+
+model PersonalNote {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  title     String?
+  content   String
+  category  String   @default("NOTA")
+  tags      String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId])
+  @@map("personal_notes")
+}
