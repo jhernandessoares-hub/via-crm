@@ -34,8 +34,6 @@ type Lead = {
   stageKey?: string | null;
   stageName?: string | null;
   criadoEm?: string;
-  needsManagerReview?: boolean;
-  queuePriority?: number;
 };
 
 
@@ -365,13 +363,7 @@ export default function LeadsPage() {
                 </div>
 
                 <div className="col-span-3 text-right text-xs text-gray-500">
-                  {l.needsManagerReview ? (
-                    <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
-                      Manager Review
-                    </span>
-                  ) : (
-                    <span>-</span>
-                  )}
+                  <span>-</span>
                 </div>
               </div>
             ))
@@ -413,13 +405,6 @@ export default function LeadsPage() {
                             {l.stageName || stage.name}
                           </div>
 
-                          {l.needsManagerReview ? (
-                            <div className="mt-2">
-                              <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-                                Review
-                              </span>
-                            </div>
-                          ) : null}
                         </div>
                       ))
                     )}

@@ -179,8 +179,6 @@ model Lead {
   observacao          String?
   criadoEm            DateTime             @default(now())
   atualizadoEm        DateTime             @updatedAt
-  needsManagerReview  Boolean              @default(false)
-  queuePriority       Int                  @default(9999)
   telefoneKey         String?
   assignedUserId      String?
   branchId            String?
