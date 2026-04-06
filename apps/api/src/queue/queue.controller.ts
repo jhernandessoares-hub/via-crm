@@ -66,6 +66,25 @@ export class QueueController {
     return this.queueService.scheduleTest(lead.id, s);
   }
 
+  // ✅ reprocessa jobs com falha na fila inbound-ai-queue
+  // POST /queue/inbound-ai/retry-failed
+  @Post('inbound-ai/retry-failed')
+  async retryFailedInboundAi() {
+    return this.queueService.retryFailedInboundAiJobs();
+  }
+
+  // ✅ reagenda IA para leads que receberam mensagem sem resposta na última janela
+  // POST /queue/inbound-ai/reschedule?tenantId=xxx&windowMinutes=60
+  @Post('inbound-ai/reschedule')
+  async rescheduleInboundAi(
+    @Query('tenantId') tenantId: string,
+    @Query('windowMinutes') windowMinutes?: string,
+  ) {
+    if (!tenantId) return { ok: false, message: 'tenantId obrigatório' };
+    const minutes = windowMinutes ? Number(windowMinutes) : 60;
+    return this.queueService.rescheduleInboundAiForRecentLeads(this.prisma, tenantId, minutes);
+  }
+
   // ✅ agenda um job rápido (default 10s) pra testar o TEMPLATE (sla-23h-template)
   // POST /queue/sla/test-template-latest?seconds=10
   @Post('sla/test-template-latest')

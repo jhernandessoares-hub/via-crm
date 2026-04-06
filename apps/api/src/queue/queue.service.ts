@@ -306,6 +306,67 @@ export class QueueService implements OnModuleDestroy {
     }));
   }
 
+  async retryFailedInboundAiJobs(): Promise<{ retried: number; leadIds: string[] }> {
+    const failedJobs = await this.inboundAiQueue.getFailed(0, 100);
+    const leadIds: string[] = [];
+
+    for (const job of failedJobs) {
+      try {
+        await job.retry();
+        if (job.data?.leadId) leadIds.push(job.data.leadId);
+      } catch {
+        // job pode ter expirado, ignorar
+      }
+    }
+
+    return { retried: failedJobs.length, leadIds };
+  }
+
+  async rescheduleInboundAiForRecentLeads(
+    prisma: any,
+    tenantId: string,
+    windowMinutes = 60,
+  ): Promise<{ scheduled: number; leadIds: string[] }> {
+    const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+
+    // Busca leads do tenant que receberam mensagem recentemente mas não têm resposta da IA depois
+    const recentInbound = await prisma.leadEvent.findMany({
+      where: {
+        tenantId,
+        channel: 'whatsapp.in',
+        criadoEm: { gte: since },
+        lead: { deletedAt: null, botPaused: false },
+      },
+      select: { leadId: true, criadoEm: true },
+      orderBy: { criadoEm: 'desc' },
+      distinct: ['leadId'],
+    });
+
+    const leadIds: string[] = [];
+
+    for (const ev of recentInbound) {
+      // Verifica se já existe job ativo ou se houve resposta da IA depois
+      const existingJob = await this.inboundAiQueue.getJob(`inbound-ai-${ev.leadId}`);
+      if (existingJob) continue;
+
+      const aiResponse = await prisma.leadEvent.findFirst({
+        where: {
+          leadId: ev.leadId,
+          channel: { in: ['whatsapp.out', 'ai.suggestion'] },
+          criadoEm: { gte: ev.criadoEm },
+        },
+        select: { id: true },
+      });
+      if (aiResponse) continue;
+
+      // Sem resposta e sem job — reagenda com delay imediato (5s)
+      await this.scheduleInboundAi(ev.leadId, { delaySeconds: 5 });
+      leadIds.push(ev.leadId);
+    }
+
+    return { scheduled: leadIds.length, leadIds };
+  }
+
   // =============================
   // AGENDAR TODOS ESTÁGIOS
   // =============================
