@@ -219,6 +219,8 @@ function pickEventText(payloadRaw: any): string {
   const p = payloadRaw || {};
 
   const candidates = [
+    // Transcrição de áudio tem prioridade sobre '[ÁUDIO]'
+    typeof p?.transcription === 'string' ? p.transcription : '',
     typeof p?.text === 'string' ? p.text : '',
     typeof p?.text?.body === 'string' ? p.text.body : '',
     typeof p?.message === 'string' ? p.message : '',
