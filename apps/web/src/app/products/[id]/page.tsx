@@ -1927,7 +1927,7 @@ export default function ProductEditPage() {
             </Section>
 
             {/* ── S8: Mídia ────────────────────────────────────────────── */}
-            <Section id="midia" title="8. Mídia" open={open.has("midia")} onToggle={() => {
+            <Section id="midia" title="8. Mídia ↓" open={open.has("midia")} onToggle={() => {
               toggle("midia");
               if (!open.has("midia")) loadDocs();
             }}>
