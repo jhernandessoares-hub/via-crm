@@ -109,6 +109,42 @@ const SECRETARY_TOOLS: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'salvar_nota',
+      description: 'Salva uma nota, informação, contato ou documento na biblioteca pessoal do usuário',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Título da nota (opcional)' },
+          content: { type: 'string', description: 'Conteúdo da nota' },
+          category: {
+            type: 'string',
+            enum: ['NOTA', 'CONTATO', 'DOCUMENTO', 'SENHA', 'LEMBRETE', 'OUTRO'],
+            description: 'Categoria da nota',
+          },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags opcionais' },
+        },
+        required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_notas',
+      description: 'Busca notas na biblioteca pessoal do usuário por texto ou categoria',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Texto para buscar no título ou conteúdo' },
+          category: { type: 'string', description: 'Filtrar por categoria (opcional)' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'mover_funil',
       description: 'Move um lead para uma etapa do funil de vendas',
       parameters: {
@@ -501,10 +537,90 @@ export class SecretaryService {
         return `Lead movido para "${stage.name}" com sucesso.`;
       }
 
+      // ── Biblioteca pessoal ──────────────────────────────
+      if (name === 'salvar_nota') {
+        const note = await (this.prisma as any).personalNote.create({
+          data: {
+            tenantId, userId,
+            title: args.title?.trim() || null,
+            content: args.content.trim(),
+            category: args.category || 'NOTA',
+            tags: Array.isArray(args.tags) ? args.tags : [],
+          },
+        });
+        return `Nota salva com sucesso. ID: ${note.id} | Categoria: ${note.category}`;
+      }
+
+      if (name === 'buscar_notas') {
+        const where: any = { tenantId, userId };
+        if (args.category) where.category = args.category;
+        if (args.query) {
+          where.OR = [
+            { title: { contains: args.query, mode: 'insensitive' } },
+            { content: { contains: args.query, mode: 'insensitive' } },
+          ];
+        }
+        const notes = await (this.prisma as any).personalNote.findMany({
+          where, orderBy: { createdAt: 'desc' }, take: 10,
+          select: { id: true, title: true, content: true, category: true, createdAt: true },
+        });
+        if (notes.length === 0) return 'Nenhuma nota encontrada.';
+        return notes.map((n: any) =>
+          `• [${n.category}] ${n.title || 'Sem título'}: ${n.content.slice(0, 200)}${n.content.length > 200 ? '...' : ''}`
+        ).join('\n');
+      }
+
       return 'Função desconhecida.';
     } catch (err: any) {
       return `Erro: ${err?.message || 'Não foi possível executar a operação.'}`;
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Biblioteca pessoal (CRUD direto via API)
+  // ─────────────────────────────────────────────────────────────────────
+
+  async listNotes(tenantId: string, userId: string, category?: string, query?: string) {
+    const where: any = { tenantId, userId };
+    if (category) where.category = category;
+    if (query) {
+      where.OR = [
+        { title: { contains: query, mode: 'insensitive' } },
+        { content: { contains: query, mode: 'insensitive' } },
+      ];
+    }
+    return (this.prisma as any).personalNote.findMany({
+      where, orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createNote(tenantId: string, userId: string, data: { title?: string; content: string; category?: string; tags?: string[] }) {
+    return (this.prisma as any).personalNote.create({
+      data: {
+        tenantId, userId,
+        title: data.title?.trim() || null,
+        content: data.content.trim(),
+        category: data.category || 'NOTA',
+        tags: data.tags || [],
+      },
+    });
+  }
+
+  async deleteNote(tenantId: string, userId: string, noteId: string) {
+    await (this.prisma as any).personalNote.deleteMany({ where: { id: noteId, tenantId, userId } });
+    return { ok: true };
+  }
+
+  async updateNote(tenantId: string, userId: string, noteId: string, data: { title?: string; content?: string; category?: string; tags?: string[] }) {
+    return (this.prisma as any).personalNote.update({
+      where: { id: noteId },
+      data: {
+        ...(data.title !== undefined && { title: data.title?.trim() || null }),
+        ...(data.content !== undefined && { content: data.content.trim() }),
+        ...(data.category !== undefined && { category: data.category }),
+        ...(data.tags !== undefined && { tags: data.tags }),
+      },
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────
