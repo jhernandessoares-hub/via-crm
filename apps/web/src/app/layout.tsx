@@ -4,6 +4,7 @@ import ClientProviders from "@/components/ClientProviders";
 
 export const metadata: Metadata = {
   title: "VIA CRM",
+  description: "CRM imobiliário",
 };
 
 export default function RootLayout({
