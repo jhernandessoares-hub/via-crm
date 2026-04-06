@@ -4,6 +4,7 @@ import { Logger } from '../logger';
 const logger = new Logger('WhatsappMediaWorker');
 import { PrismaService } from '../prisma/prisma.service';
 import { v2 as cloudinary } from 'cloudinary';
+import OpenAI from 'openai';
 
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -90,6 +91,31 @@ async function metaDownloadBuffer(downloadUrl: string) {
 
   const ab = await res.arrayBuffer();
   return Buffer.from(ab);
+}
+
+async function transcribeAudio(buffer: Buffer, mimeType: string | undefined): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const openai = new OpenAI({ apiKey });
+    // Whisper aceita: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
+    const ext = mimeType?.includes('ogg') ? 'ogg'
+      : mimeType?.includes('mp4') || mimeType?.includes('mpeg') ? 'mp4'
+      : mimeType?.includes('webm') ? 'webm'
+      : 'ogg'; // WhatsApp voice usa ogg/opus por padrão
+
+    const file = new File([new Uint8Array(buffer)], `audio.${ext}`, { type: mimeType || 'audio/ogg' });
+    const result = await openai.audio.transcriptions.create({
+      file,
+      model: 'whisper-1',
+      language: 'pt',
+    });
+    return result.text?.trim() || null;
+  } catch (err: any) {
+    logger.error('Erro ao transcrever áudio via Whisper', { error: err?.message });
+    return null;
+  }
 }
 
 function pickResourceType(
@@ -198,8 +224,19 @@ async function resolveEventMedia(prisma: PrismaService, eventId: string) {
     payload?.media?.kind || type,
   );
 
+  // Transcrição automática para áudio/voz
+  const mediaKind = String(payload?.media?.kind || type).toLowerCase();
+  let transcription: string | null = null;
+  if (mediaKind === 'audio' || mediaKind === 'voice') {
+    transcription = await transcribeAudio(buf, info.mimeType);
+    if (transcription) {
+      logger.log(`🎙️ Áudio transcrito (leadEvent=${eventId}): "${transcription.slice(0, 80)}..."`);
+    }
+  }
+
   const nextPayload = {
     ...payload,
+    transcription,
     media: {
       ...(payload.media || {}),
       id: payload?.media?.id || mediaId,
@@ -217,7 +254,7 @@ async function resolveEventMedia(prisma: PrismaService, eventId: string) {
     data: { payloadRaw: nextPayload },
   });
 
-  return { ok: true as const, url: cloudUrl };
+  return { ok: true as const, url: cloudUrl, transcription };
 }
 
 async function handleJob(job: Job, prisma: PrismaService) {
