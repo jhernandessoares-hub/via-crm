@@ -544,6 +544,22 @@ export default function EmpreendimentoEditPage() {
     } finally { setImgUploading(false); }
   }
 
+  async function downloadImage(url: string, filename: string) {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename || "imagem";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open(url, "_blank");
+    }
+  }
+
   async function onDeleteImage(imageId: string) {
     if (!id || !confirm("Excluir esta imagem?")) return;
     try {
@@ -1606,6 +1622,16 @@ export default function EmpreendimentoEditPage() {
                                   className="absolute top-1 left-1 rounded-full bg-white/90 p-1 shadow hover:bg-amber-50 transition-colors">
                                   <svg className="h-3.5 w-3.5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                </button>
+                              )}
+                              {/* Download */}
+                              {url && (
+                                <button type="button" onClick={() => downloadImage(url, displayName || `imagem-${img.id}`)}
+                                  title="Baixar imagem"
+                                  className="absolute top-1 right-11 rounded-full bg-white/90 p-1 shadow hover:bg-blue-50 transition-colors">
+                                  <svg className="h-3.5 w-3.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                                   </svg>
                                 </button>
                               )}
