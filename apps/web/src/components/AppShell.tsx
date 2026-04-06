@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -15,7 +15,7 @@ type StoredUser = {
   branchId: string | null;
 };
 
-export default function AppShell({
+function AppShellInner({
   title,
   children,
 }: {
@@ -162,5 +162,19 @@ export default function AppShell({
         <main className="p-6">{children}</main>
       </div>
     </div>
+  );
+}
+
+export default function AppShell({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <AppShellInner title={title}>{children}</AppShellInner>
+    </Suspense>
   );
 }
