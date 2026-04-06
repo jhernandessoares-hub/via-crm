@@ -40,6 +40,7 @@ type Agent = {
   description: string | null;
   objective: string | null;
   prompt: string;
+  agentType: "CONVERSACIONAL" | "OPERACIONAL";
   mode: "COPILOT" | "AUTOPILOT";
   active: boolean;
   isOrchestrator: boolean;
@@ -123,7 +124,9 @@ function OrgNode({ agent, selectedId, onSelect, depth = 0 }: {
           <span className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${agent.active ? "bg-emerald-400" : "bg-gray-300"}`} />
         </div>
         <p className={`mt-1 text-xs ${sel || agent.isOrchestrator ? "text-slate-300" : "text-gray-400"}`}>
-          {agent.mode === "AUTOPILOT" ? "⚡ Autopilot" : "🤝 Copilot"}
+          {(agent as any).agentType === "OPERACIONAL"
+            ? "🔧 Operacional"
+            : agent.mode === "AUTOPILOT" ? "⚡ Autopilot" : "🤝 Copilot"}
         </p>
         <div className={`mt-3 flex gap-3 text-[11px] ${sel || agent.isOrchestrator ? "text-slate-300" : "text-gray-400"}`}>
           <span>📚 {agent.knowledgeBases.length} KB</span>
@@ -171,6 +174,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
   const [description, setDescription] = useState(agent?.description ?? "");
   const [objective, setObjective] = useState(agent?.objective ?? "");
   const [prompt, setPrompt] = useState(agent?.prompt ?? "");
+  const [agentType, setAgentType] = useState<"CONVERSACIONAL" | "OPERACIONAL">((agent as any)?.agentType ?? "CONVERSACIONAL");
   const [mode, setMode] = useState<"COPILOT" | "AUTOPILOT">(agent?.mode ?? "COPILOT");
   const [active, setActive] = useState(agent?.active ?? true);
   const [model, setModel] = useState((agent as any)?.model ?? "");
@@ -361,17 +365,21 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
     if (!title.trim() || !slug.trim()) return alert("Título e slug obrigatórios.");
     setSaving(true);
     try {
+      const isOp = agentType === "OPERACIONAL";
       const body = {
         title: title.trim(), slug: slug.trim().toLowerCase().replace(/\s+/g, "-"),
         description: description.trim() || null,
         objective: objective.trim() || null,
         prompt: prompt.trim(),
-        mode, active, isOrchestrator,
+        agentType,
+        mode: isOp ? "AUTOPILOT" : mode,
+        active,
+        isOrchestrator: isOp ? false : isOrchestrator,
         model: model.trim() || null,
         temperature: temperature ?? null,
-        parentAgentId: parentId || null,
-        routingKeywords: keywords.split(",").map(s => s.trim()).filter(Boolean),
-        permissions,
+        parentAgentId: isOp ? null : (parentId || null),
+        routingKeywords: isOp ? [] : keywords.split(",").map(s => s.trim()).filter(Boolean),
+        permissions: isOp ? [] : permissions,
       };
       if (isNew) {
         await apiFetch("/ai-agents", { method: "POST", body: JSON.stringify({ ...body, tenantId }) });
@@ -453,6 +461,31 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
             {/* Comportamento */}
             <div className="px-8 py-6 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Comportamento</p>
+
+              {/* Tipo: Conversacional / Operacional */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo</label>
+                <div className="flex rounded-xl border border-gray-200 overflow-hidden w-fit">
+                  {(["CONVERSACIONAL", "OPERACIONAL"] as const).map(t => (
+                    <button key={t} type="button"
+                      onClick={() => setAgentType(t)}
+                      className={`px-6 py-2.5 text-sm font-medium transition-colors ${
+                        agentType === t
+                          ? t === "OPERACIONAL" ? "bg-purple-600 text-white" : "bg-slate-900 text-white"
+                          : "bg-white text-gray-500 hover:bg-gray-50"
+                      }`}>
+                      {t === "CONVERSACIONAL" ? "Conversacional" : "Operacional"}
+                    </button>
+                  ))}
+                </div>
+                {agentType === "OPERACIONAL" && (
+                  <p className="mt-2 text-xs text-purple-600">
+                    Opera em segundo plano — nunca fala diretamente com o lead.
+                  </p>
+                )}
+              </div>
+
+              {agentType === "CONVERSACIONAL" && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Modo</label>
@@ -507,6 +540,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                   placeholder="Ex: preço, visita, renda" />
                 <p className="mt-1.5 text-xs text-gray-400">Separadas por vírgula. O orquestrador usa essas palavras para rotear a mensagem.</p>
               </div>
+              )} {/* end agentType === CONVERSACIONAL */}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -558,7 +592,8 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               </div>
             </div>
 
-            {/* Permissões */}
+            {/* Permissões — só para Conversacional */}
+            {agentType === "CONVERSACIONAL" && (
             <div className="px-8 py-6 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Acesso a dados do CRM</p>
               <div className="grid grid-cols-2 gap-2.5">
@@ -579,6 +614,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                 ))}
               </div>
             </div>
+            )}
 
             {/* Prompt */}
             <div className="px-8 py-6 space-y-3">
