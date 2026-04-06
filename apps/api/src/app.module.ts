@@ -1,6 +1,6 @@
 import { ConfigModule } from './config/config.module';
 import { Module } from '@nestjs/common';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AuditModule } from './audit/audit.module';
 import { EmailModule } from './email/email.module';
@@ -29,10 +29,9 @@ import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
-    // 🔒 Rate limiting global (LGPD / OWASP)
+    // Rate limiting — aplicado apenas nas rotas de auth via @Throttle() no AuthController
     ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 120 },  // 120 req/min por IP (geral)
-      { name: 'auth',    ttl: 60_000, limit: 10  },  // 10 req/min em rotas de auth
+      { name: 'auth', ttl: 900_000, limit: 10 },
     ]),
     AuditModule,
     EmailModule,
@@ -61,7 +60,6 @@ import { AdminModule } from './admin/admin.module';
   controllers: [AppController],
   providers: [
     AppService,
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

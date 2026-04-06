@@ -1,4 +1,5 @@
 import { Controller, Get, HttpCode, Post, Param, Query, Req, Res } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import * as crypto from 'crypto';
 import { ChannelsService } from './channels.service';
@@ -162,6 +163,7 @@ async function parsePayload(type: string, body: any, config: any): Promise<Norma
 
 // ─── Controller ──────────────────────────────────────────────────────────────
 
+@SkipThrottle()
 @Controller('webhooks/channel')
 export class ChannelsWebhookController {
   constructor(
