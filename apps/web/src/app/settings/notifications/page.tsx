@@ -22,22 +22,6 @@ const EVENTS = [
   },
 ];
 
-const STAGES = [
-  { key: "NOVO_LEAD", name: "Novo Lead" },
-  { key: "PRIMEIRO_CONTATO", name: "Primeiro Contato" },
-  { key: "NAO_QUALIFICADO", name: "Não Qualificado" },
-  { key: "INTERESSE_QUALIFICACAO_CONFIRMADOS", name: "Interesse e Qualificação Confirmados" },
-  { key: "AGENDAMENTO_VISITA", name: "Agendamento de Visita" },
-  { key: "PROPOSTA", name: "Proposta" },
-  { key: "APROVACAO_CREDITO_PROPOSTA", name: "Aprovação de Crédito e Proposta" },
-  { key: "CONTRATO", name: "Contrato" },
-  { key: "ASSINATURA_CONTRATO", name: "Assinatura de Contrato" },
-  { key: "BANCO", name: "Banco" },
-  { key: "REGISTRO", name: "Registro" },
-  { key: "ENTREGA_CONTRATO_REGISTRADO", name: "Entrega de Contrato Registrado" },
-  { key: "POS_VENDA_IA", name: "Pós Venda - IA" },
-  { key: "BASE_FRIA", name: "Base Fria" },
-];
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -52,6 +36,8 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
+type PipelineStage = { id: string; key: string; name: string; sortOrder: number };
+
 export default function NotificationsSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,17 +45,20 @@ export default function NotificationsSettingsPage() {
   const [events, setEvents] = useState<string[]>(["new_lead"]);
   const [stages, setStages] = useState<string[]>([]);
   const [whatsappNumber, setWhatsappNumber] = useState<string | null>(null);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
 
   useEffect(() => {
     Promise.all([
       apiFetch("/users/me/notifications"),
       apiFetch("/users/me"),
-    ]).then(([notif, me]: any[]) => {
+      apiFetch("/pipeline/active/stages"),
+    ]).then(([notif, me, pipeline]: any[]) => {
       if (notif) {
         setEvents(notif.events ?? ["new_lead"]);
         setStages(notif.stages ?? []);
       }
       if (me) setWhatsappNumber(me.whatsappNumber || null);
+      if (Array.isArray(pipeline)) setPipelineStages(pipeline);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -169,7 +158,7 @@ export default function NotificationsSettingsPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {STAGES.map((stage) => (
+            {pipelineStages.map((stage) => (
               <label
                 key={stage.key}
                 className="flex items-center gap-3 rounded-xl border border-gray-100 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
