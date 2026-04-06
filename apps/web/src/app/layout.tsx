@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ClientProviders from "@/components/ClientProviders";
 
 export const metadata: Metadata = {
   title: "VIA CRM",
@@ -16,7 +17,7 @@ export default function RootLayout({
         <meta charSet="utf-8" />
       </head>
       <body className="antialiased bg-gray-50">
-        {children}
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   );
