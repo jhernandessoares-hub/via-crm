@@ -170,8 +170,9 @@ const SECRETARY_TOOLS: OpenAI.ChatCompletionTool[] = [
 ];
 
 const CRITICAL_RULE =
-  'REGRA CRÍTICA: Nunca invente dados do CRM (leads, eventos, produtos, estatísticas do sistema). ' +
-  'Se uma informação do CRM não estiver disponível no contexto, diga que não tem acesso naquele momento. ' +
+  'REGRA CRÍTICA: Para dados do CRM (leads, eventos, produtos, estatísticas), ' +
+  'use APENAS as informações do bloco CONTEXTO desta mensagem — nunca dados mencionados em mensagens anteriores da conversa, pois podem estar desatualizados ou o registro pode ter sido excluído. ' +
+  'Se uma informação do CRM não estiver no bloco CONTEXTO atual, diga que não tem acesso naquele momento. ' +
   'Para tudo o mais — cálculos, conhecimento geral, datas, taxas, legislação, redação, análises — ' +
   'use seu conhecimento normalmente e responda com confiança. ' +
   'Você é uma assistente pessoal completa, não apenas uma interface do CRM.';
@@ -225,6 +226,8 @@ export class SecretaryService {
     // 2. Consultas reais de dados do sistema (filtradas pelas permissões do agente)
     logger.log(`agent found: ${agent ? agent.slug : 'NULL - agente não encontrado'}`);
     const agentPermissions: string[] = (agent as any)?.permissions ?? [];
+    const agentModel: string = (agent as any)?.model?.trim() || 'gpt-4o-mini';
+    const agentTemperature: number = (agent as any)?.temperature ?? 0.7;
     const { block: realDataBlock, gender } = await this.buildRealDataBlock(params.tenantId, params.userId, agentPermissions, params.text);
 
     // 3. Monta system prompt (persona + KB + regra crítica)
@@ -252,11 +255,11 @@ export class SecretaryService {
     let replyText = '';
     for (let round = 0; round < 4; round++) {
       const completion = await this.getOpenAI().chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: agentModel,
         messages,
         tools: SECRETARY_TOOLS,
         tool_choice: 'auto',
-        temperature: 0.7,
+        temperature: agentTemperature,
       });
 
       const choice = completion.choices[0];
