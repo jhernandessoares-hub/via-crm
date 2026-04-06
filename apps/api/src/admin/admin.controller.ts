@@ -223,4 +223,23 @@ export class AdminController {
   auditLogs(@Query('page') page?: string, @Query('limit') limit?: string, @Query('tenantId') tenantId?: string) {
     return this.adminService.getAuditLogs(Number(page) || 1, Number(limit) || 50, tenantId);
   }
+
+  // ── Queue Monitoring ─────────────────────────────────────────────────────
+  @UseGuards(PlatformAdminGuard)
+  @Get('queue/status')
+  queueStatus() {
+    return this.adminService.getQueueStatus();
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('queue/stuck-leads')
+  stuckLeads(@Query('windowMinutes') windowMinutes?: string) {
+    return this.adminService.getStuckLeads(Number(windowMinutes) || 120);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('queue/recover')
+  recoverQueue(@Query('tenantId') tenantId?: string) {
+    return this.adminService.recoverQueue(tenantId);
+  }
 }

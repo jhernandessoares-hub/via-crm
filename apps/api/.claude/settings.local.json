@@ -47,7 +47,15 @@
       "Bash(git merge:*)",
       "Bash(git stash:*)",
       "Read(//tmp/**)",
-      "Bash(cygpath -w /tmp/agents.json)"
+      "Bash(cygpath -w /tmp/agents.json)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://via-crm-api-backend-dev.up.railway.app/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://via-crm-api-backend-dev.up.railway.app/)",
+      "Bash(curl -s -X POST https://via-crm-api-backend-dev.up.railway.app/admin/login -H 'Content-Type: application/json' -d '{\"email\":\"jhernandessoares@gmail.com\",\"password\":\"20052416081994334Music4\"}')",
+      "Bash(curl -s -X POST https://via-crm-api-backend-dev.up.railway.app/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"jhernandessoares@gmail.com\",\"password\":\"20052416081994334Music4\"}')",
+      "Bash(curl -s -X POST https://via-crm-api-backend-dev.up.railway.app/admin/login -H 'Content-Type: application/json' -d '{\"email\":\"jhernandessoares@gmail.com\",\"senha\":\"20052416081994334Music4\"}')",
+      "Bash(curl:*)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('accessToken',''\\)[:50]\\)\")",
+      "Bash(find . -name \"*.ts\" -exec grep -l \"scheduleInitialSla\\\\|rescheduleSla\" {} \\\\;)"
     ]
   }
 }
