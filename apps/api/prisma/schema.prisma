@@ -545,6 +545,7 @@ model AiAgent {
   version          Int                  @default(1)
   model            String?
   temperature      Float?
+  agentType        String               @default("CONVERSACIONAL")
   isOrchestrator   Boolean              @default(false)
   parentAgentId    String?
   routingKeywords  String[]             @default([])

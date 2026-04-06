@@ -10,6 +10,7 @@ type CreateAiAgentInput = {
   objective?: string;
   prompt: string;
   exampleOutput?: string;
+  agentType?: string;
   mode?: AiAgentMode;
   audience?: string;
   permissions?: string[];
@@ -29,6 +30,7 @@ type UpdateAiAgentInput = {
   objective?: string | null;
   prompt?: string;
   exampleOutput?: string | null;
+  agentType?: string;
   mode?: AiAgentMode;
   audience?: string | null;
   permissions?: string[];
@@ -76,6 +78,7 @@ export class AiAgentsService {
         objective: data.objective,
         prompt: data.prompt,
         exampleOutput: data.exampleOutput,
+        ...({ agentType: data.agentType ?? 'CONVERSACIONAL' } as any),
         mode: data.mode ?? 'COPILOT',
         audience: data.audience,
         permissions: data.permissions ?? [],
@@ -143,6 +146,7 @@ export class AiAgentsService {
         ...(data.objective !== undefined && { objective: data.objective }),
         ...(data.prompt !== undefined && { prompt: data.prompt }),
         ...(data.exampleOutput !== undefined && { exampleOutput: data.exampleOutput }),
+        ...(data.agentType !== undefined && ({ agentType: data.agentType } as any)),
         ...(data.mode !== undefined && { mode: data.mode }),
         ...(data.audience !== undefined && { audience: data.audience }),
         ...(data.permissions !== undefined && { permissions: data.permissions }),
