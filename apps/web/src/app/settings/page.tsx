@@ -14,6 +14,11 @@ export default function SettingsPage() {
       title: "Config. IA",
       desc: "Configure o comportamento dos agentes de IA",
     },
+    {
+      href: "/settings/notifications",
+      title: "Notificações",
+      desc: "Escolha quais eventos e etapas te notificam pelo WhatsApp",
+    },
   ];
 
   return (

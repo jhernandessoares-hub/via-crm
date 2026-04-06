@@ -39,4 +39,26 @@ export class UsersController {
       body,
     );
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get("me/notifications")
+  async getNotifications(@Req() req: any) {
+    return this.usersService.getNotificationSettings(
+      req.user.sub || req.user.id,
+      req.user.tenantId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch("me/notifications")
+  async updateNotifications(
+    @Req() req: any,
+    @Body() body: { events: string[]; stages: string[] },
+  ) {
+    return this.usersService.updateNotificationSettings(
+      req.user.sub || req.user.id,
+      req.user.tenantId,
+      body,
+    );
+  }
 }

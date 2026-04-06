@@ -159,6 +159,7 @@ model User {
   secretaryName            String?
   secretaryBotName         String?
   secretaryGender          String            @default("FEMININO")
+  notificationSettings     Json?             // { events: string[], stages: string[] }
   uploadedProductDocuments ProductDocument[] @relation("ProductDocumentUploadedBy")
   capturedProducts         Product[]         @relation("ProductCapturedBy")
   branch                   Branch?           @relation(fields: [branchId], references: [id])

@@ -19,6 +19,50 @@ async function sendImageViaWhatsapp(
   await sendWhatsappImage(creds, toRaw, imageUrl, caption);
 }
 
+// ── Notification helpers ───────────────────────────────────────────────────
+
+async function notifyUsersForEvent(
+  prisma: PrismaService,
+  whatsapp: WhatsappService,
+  tenantId: string,
+  eventKey: string,
+  message: string,
+) {
+  const users = await prisma.user.findMany({
+    where: { tenantId, ativo: true, whatsappNumber: { not: null } },
+    select: { whatsappNumber: true, notificationSettings: true },
+  });
+
+  for (const u of users) {
+    if (!u.whatsappNumber) continue;
+    const settings = (u.notificationSettings as any) || {};
+    const events: string[] = settings.events ?? ['new_lead'];
+    if (!events.includes(eventKey)) continue;
+    whatsapp.sendMessage(u.whatsappNumber, message, tenantId).catch(() => {});
+  }
+}
+
+async function notifyUsersForStage(
+  prisma: PrismaService,
+  whatsapp: WhatsappService,
+  tenantId: string,
+  stageKey: string,
+  message: string,
+) {
+  const users = await prisma.user.findMany({
+    where: { tenantId, ativo: true, whatsappNumber: { not: null } },
+    select: { whatsappNumber: true, notificationSettings: true },
+  });
+
+  for (const u of users) {
+    if (!u.whatsappNumber) continue;
+    const settings = (u.notificationSettings as any) || {};
+    const stages: string[] = settings.stages ?? [];
+    if (!stages.includes(stageKey)) continue;
+    whatsapp.sendMessage(u.whatsappNumber, message, tenantId).catch(() => {});
+  }
+}
+
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
   const port = Number(process.env.REDIS_PORT || 6379);
@@ -670,6 +714,12 @@ async function handleInboundAiJob(
           },
         });
         logger.log(`🔄 ASSISTENTE OPERACIONAL: etapa → ${analysis.stageKey} leadId=${lead.id}`);
+
+        // Notifica usuários que querem saber desta etapa
+        if (whatsapp) {
+          const stageMsg = `📍 *${lead.nome}* avançou para *${targetStage.name}*\nWhatsApp: ${lead.telefone || '—'}`;
+          await notifyUsersForStage(prisma, whatsapp, lead.tenantId, analysis.stageKey, stageMsg);
+        }
       }
     }
 
@@ -698,6 +748,13 @@ async function handleInboundAiJob(
             },
           },
         });
+
+        // Envia WhatsApp para usuários que querem notificação de lead qualificado
+        if (whatsapp) {
+          const qualMsg = `🎯 *Lead qualificado: ${lead.nome}*\n${analysis.notifyMessage}`;
+          await notifyUsersForEvent(prisma, whatsapp, lead.tenantId, 'lead_qualified', qualMsg);
+        }
+
         logger.log(`📢 ASSISTENTE OPERACIONAL: notificou corretor leadId=${lead.id}`);
       } else {
         logger.log(`🔕 ASSISTENTE OPERACIONAL: notificação suprimida (throttle 30min) leadId=${lead.id}`);
