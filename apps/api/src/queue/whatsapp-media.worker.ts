@@ -99,13 +99,19 @@ async function transcribeAudio(buffer: Buffer, mimeType: string | undefined): Pr
 
   try {
     const openai = new OpenAI({ apiKey });
+    // Remove codec suffix: "audio/ogg; codecs=opus" → "audio/ogg"
+    const cleanMime = (mimeType || 'audio/ogg').split(';')[0].trim();
+
     // Whisper aceita: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
-    const ext = mimeType?.includes('ogg') ? 'ogg'
-      : mimeType?.includes('mp4') || mimeType?.includes('mpeg') ? 'mp4'
-      : mimeType?.includes('webm') ? 'webm'
+    const ext = cleanMime.includes('ogg') ? 'ogg'
+      : cleanMime.includes('mp4') || cleanMime.includes('mpeg') ? 'mp4'
+      : cleanMime.includes('webm') ? 'webm'
+      : cleanMime.includes('wav') ? 'wav'
       : 'ogg'; // WhatsApp voice usa ogg/opus por padrão
 
-    const file = await toFile(buffer, `audio.${ext}`, { type: mimeType || 'audio/ogg' });
+    logger.log(`🎙️ Iniciando transcrição Whisper: ext=${ext}, mime=${cleanMime}, size=${buffer.length}b`);
+
+    const file = await toFile(buffer, `audio.${ext}`, { type: cleanMime });
     const result = await openai.audio.transcriptions.create({
       file,
       model: 'whisper-1',
@@ -113,7 +119,7 @@ async function transcribeAudio(buffer: Buffer, mimeType: string | undefined): Pr
     });
     return result.text?.trim() || null;
   } catch (err: any) {
-    logger.error(`Erro ao transcrever áudio via Whisper: ${err?.message || err}`);
+    logger.error(`Erro ao transcrever áudio via Whisper: ${err?.message || err} | status=${(err as any)?.status} | code=${(err as any)?.code}`);
     return null;
   }
 }
