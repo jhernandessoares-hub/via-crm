@@ -281,6 +281,15 @@ NEXT_PUBLIC_API_URL=
 - Tokens admin em `localStorage`: `adminToken` (8h), `adminUser`.
 - Logout tenant: remove `accessToken`, `refreshToken`, `user` → redireciona `/login`.
 - Logout admin: remove `adminToken`, `adminUser` → redireciona `/admin/login`.
+
+### Páginas de detalhe de produto — DUAS páginas, sempre atualizar ambas
+
+| Página | Rota | Tipo de produto |
+|--------|------|-----------------|
+| `app/products/[id]/page.tsx` | `/products/:id` | Imóvel simples |
+| `app/products/[id]/empreendimento/page.tsx` | `/products/:id/empreendimento` | Empreendimento (condomínio, lançamento) |
+
+**Regra:** qualquer mudança visual ou funcional na tela de produto deve ser replicada nas **duas** páginas.
 - `/settings/whatsapp` → configuração do número WhatsApp do tenant.
 - `/forgot-password` e `/reset-password` → recuperação de senha.
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
