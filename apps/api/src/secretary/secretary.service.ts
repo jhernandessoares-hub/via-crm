@@ -826,7 +826,7 @@ export class SecretaryService {
     // ── AGENDA ─────────────────────────────────────────
     {
       const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-      const next7days = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7, 23, 59, 59);
+      const next7days = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate(), 23, 59, 59);
 
       const [eventosHoje, proximosEventos] = await Promise.all([
         this.prisma.calendarEvent.findMany({
@@ -854,7 +854,7 @@ export class SecretaryService {
 
       const hojeBlock = eventosHoje.length === 0 ? '  Nenhum evento hoje.' : eventosHoje.map(formatEvento).join('\n');
       const proximosBlock = proximosEventos.length === 0 ? '  Nenhum evento nos próximos 7 dias.' : proximosEventos.map(formatEvento).join('\n');
-      sections.push(`AGENDA:\n- Hoje (${eventosHoje.length} evento${eventosHoje.length !== 1 ? 's' : ''}):\n${hojeBlock}\n- Próximos 7 dias:\n${proximosBlock}`);
+      sections.push(`AGENDA:\n- Hoje (${eventosHoje.length} evento${eventosHoje.length !== 1 ? 's' : ''}):\n${hojeBlock}\n- Próximos 12 meses:\n${proximosBlock}`);
     }
 
     // ── PRODUTOS ───────────────────────────────────────
