@@ -170,10 +170,11 @@ const SECRETARY_TOOLS: OpenAI.ChatCompletionTool[] = [
 ];
 
 const CRITICAL_RULE =
-  'REGRA CRÍTICA: Você NUNCA deve inventar dados do sistema (leads, produtos, valores, estatísticas). ' +
-  'Se não tiver acesso a um dado do CRM, diga: "Não tenho acesso a essa informação no momento." ' +
-  'PORÉM: informações fornecidas diretamente pelo usuário na conversa (nomes de pessoas, locais, horários, contexto) ' +
-  'devem ser usadas normalmente — NÃO aplique essa regra a elas.';
+  'REGRA CRÍTICA: Nunca invente dados do CRM (leads, eventos, produtos, estatísticas do sistema). ' +
+  'Se uma informação do CRM não estiver disponível no contexto, diga que não tem acesso naquele momento. ' +
+  'Para tudo o mais — cálculos, conhecimento geral, datas, taxas, legislação, redação, análises — ' +
+  'use seu conhecimento normalmente e responda com confiança. ' +
+  'Você é uma assistente pessoal completa, não apenas uma interface do CRM.';
 
 @Injectable()
 export class SecretaryService {
