@@ -12,17 +12,6 @@ const logger = new Logger('SecretaryService');
 const SECRETARY_SLUG = 'secretaria-pessoal';
 const CONTEXT_MESSAGES = 10;
 
-const BEHAVIOR_RULES =
-  'REGRAS DE COMPORTAMENTO:\n' +
-  '1. Responda SOMENTE ao que foi perguntado. Não traga informações extras não solicitadas.\n' +
-  '2. NÃO misture contextos: se a conversa é sobre agenda, fale só de agenda. Se for sobre leads, fale só de leads.\n' +
-  '3. Dados de leads (nomes, telefones, status) só devem ser mencionados quando o usuário perguntar explicitamente sobre leads.\n' +
-  '4. Para criar um evento na agenda, colete antes de criar: (a) título ou assunto, (b) data e horário. Quando tiver título e data/horário, crie IMEDIATAMENTE sem pedir confirmação extra.\n' +
-  '5. Para criar um lead, colete: (a) nome. Telefone e e-mail são opcionais. Quando tiver o nome, crie IMEDIATAMENTE.\n' +
-  '6. Para mover um lead no funil, use buscar_lead primeiro se não tiver o ID, depois use mover_funil com o ID encontrado.\n' +
-  '7. Seja direta e concisa. Não repita informações que já foram ditas na conversa.\n' +
-  '8. LEMBRETES: Quando o usuário pedir para ser lembrado de algo daqui X minutos/horas, use criar_evento com startAt = agora + o tempo informado. Isso garante que o lembrete será enviado via WhatsApp.\n' +
-  '9. CALORIAS: Quando o usuário mencionar que comeu ou bebeu algo (ex: "comi um pão", "tomei whey"), salve AUTOMATICAMENTE como nota categoria NOTA com título "🍽️ [alimento] - [kcal estimada]kcal" sem perguntar. Quando pedir para contar as calorias do dia, use buscar_notas com query "🍽️" para recuperar todos os registros e some.';
 
 const SECRETARY_TOOLS: OpenAI.ChatCompletionTool[] = [
   {
@@ -172,12 +161,10 @@ const SECRETARY_TOOLS: OpenAI.ChatCompletionTool[] = [
 ];
 
 const CRITICAL_RULE =
-  'REGRA CRÍTICA: Para dados do CRM (leads, eventos, produtos, estatísticas), ' +
-  'use APENAS as informações do bloco CONTEXTO desta mensagem — nunca dados mencionados em mensagens anteriores da conversa, pois podem estar desatualizados ou o registro pode ter sido excluído. ' +
-  'Se uma informação do CRM não estiver no bloco CONTEXTO atual, diga que não tem acesso naquele momento. ' +
-  'Para tudo o mais — cálculos, conhecimento geral, datas, taxas, legislação, redação, análises — ' +
-  'use seu conhecimento normalmente e responda com confiança. ' +
-  'Você é uma assistente pessoal completa, não apenas uma interface do CRM.';
+  'REGRA TÉCNICA: Para dados do CRM (leads, eventos, produtos), use APENAS o bloco CONTEXTO desta mensagem — ' +
+  'nunca dados de mensagens anteriores, pois podem estar desatualizados. ' +
+  'Quando o usuário se referir a "este lead" ou "ele/ela", use o lead mencionado mais recentemente na conversa. ' +
+  'Nunca invente nomes, telefones ou dados de leads. Se não estiver no CONTEXTO, diga que não tem acesso agora.';
 
 @Injectable()
 export class SecretaryService {
@@ -815,9 +802,8 @@ export class SecretaryService {
   private buildSystemPrompt(agent: any, realDataBlock: string): string {
     const parts: string[] = [];
 
-    // Regras sempre em primeiro lugar
+    // Regra técnica mínima — comportamento fica no prompt do agente
     parts.push(CRITICAL_RULE);
-    parts.push(BEHAVIOR_RULES);
 
     // Persona / prompt do agente (instruções gerais)
     if (agent?.prompt?.trim()) {
