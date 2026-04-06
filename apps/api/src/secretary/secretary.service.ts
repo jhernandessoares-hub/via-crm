@@ -422,6 +422,15 @@ export class SecretaryService {
   // GET /secretary/history
   // ─────────────────────────────────────────────────────────────────────
 
+  async getAllHistory(params: { tenantId: string; userId: string; limit?: number }) {
+    const messages = await this.prisma.secretaryConversation.findMany({
+      where: { tenantId: params.tenantId, userId: params.userId },
+      orderBy: { createdAt: 'asc' },
+      take: Math.min(params.limit ?? 100, 200),
+    });
+    return { messages };
+  }
+
   async getHistory(params: {
     tenantId: string;
     userId: string;
@@ -539,13 +548,15 @@ export class SecretaryService {
             ],
           },
           take: 5,
-          select: { id: true, nome: true, telefone: true, origem: true, status: true, criadoEm: true, stage: { select: { name: true } } },
+          select: { id: true, nome: true, telefone: true, origem: true, status: true, criadoEm: true, observacao: true, stage: { select: { name: true } } },
           orderBy: { criadoEm: 'desc' },
         });
         if (leads.length === 0) return `Nenhum lead encontrado para "${q}".`;
-        return leads.map(l =>
-          `• [ID:${l.id}] ${l.nome} | Tel: ${l.telefone || '—'} | Etapa: ${(l as any).stage?.name || l.status || '—'} | Origem: ${l.origem || '—'}`
-        ).join('\n');
+        return leads.map((l: any) => {
+          const partes = [`[ID:${l.id}] ${l.nome}`, `Etapa: ${l.stage?.name || l.status || '—'}`, `Tel: ${l.telefone || '—'}`, `Origem: ${l.origem || '—'}`];
+          if (l.observacao) partes.push(`Resumo: ${l.observacao}`);
+          return `• ${partes.join(' | ')}`;
+        }).join('\n');
       }
 
       if (name === 'criar_lead') {
@@ -747,15 +758,17 @@ export class SecretaryService {
             where: base,
             orderBy: { criadoEm: 'desc' },
             take: 10,
-            select: { nome: true, telefone: true, status: true, origem: true, criadoEm: true },
+            select: { nome: true, telefone: true, status: true, origem: true, criadoEm: true, observacao: true, stage: { select: { name: true } } },
           }),
         ]);
 
-      const ultimosLines = ultimosLeads.map((l) => {
+      const ultimosLines = (ultimosLeads as any[]).map((l) => {
         const data = new Date(l.criadoEm).toLocaleDateString('pt-BR');
-        const partes = [`${l.nome}`, `status: ${l.status}`, `entrada: ${data}`];
+        const etapa = l.stage?.name || l.status;
+        const partes = [`${l.nome}`, `etapa: ${etapa}`, `entrada: ${data}`];
         if (l.telefone) partes.push(`tel: ${l.telefone}`);
         if (l.origem) partes.push(`origem: ${l.origem}`);
+        if (l.observacao) partes.push(`resumo: ${l.observacao.slice(0, 150)}`);
         return `  - ${partes.join(' | ')}`;
       }).join('\n');
 
