@@ -517,22 +517,25 @@ export default function AiAgentsPage() {
 
                 <div className="grid grid-cols-4 gap-4 items-end">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">
-                      Tipo
-                    </label>
-                    <select
-                      value={form.agentType}
-                      onChange={(e) =>
-                        setForm((p) => ({
-                          ...p,
-                          agentType: e.target.value as AgentType,
-                        }))
-                      }
-                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    >
-                      <option value="CONVERSACIONAL">Conversacional</option>
-                      <option value="OPERACIONAL">Operacional</option>
-                    </select>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">Tipo</label>
+                    <div className="flex rounded-md border overflow-hidden text-sm">
+                      {(["CONVERSACIONAL", "OPERACIONAL"] as AgentType[]).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setForm((p) => ({ ...p, agentType: t }))}
+                          className={`flex-1 py-2 text-xs font-medium transition ${
+                            form.agentType === t
+                              ? t === "OPERACIONAL"
+                                ? "bg-purple-600 text-white"
+                                : "bg-slate-900 text-white"
+                              : "bg-white text-gray-500 hover:bg-gray-50"
+                          }`}
+                        >
+                          {t === "CONVERSACIONAL" ? "Conversacional" : "Operacional"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-600">
