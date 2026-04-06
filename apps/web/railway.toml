@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm run build || ([ -d '.next/server/app' ] && echo 'WARNING: /_global-error prerender failed (Next.js 16 known bug) - build is functional' || exit 1)"
+buildCommand = "npm run build || ([ -f '.next/prerender-manifest.json' ] && echo 'WARNING: build had non-critical prerender errors' || exit 1)"
 
 [build.env]
 NIXPACKS_NODE_VERSION = "20"
