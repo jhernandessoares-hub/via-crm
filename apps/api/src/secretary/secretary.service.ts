@@ -688,111 +688,106 @@ export class SecretaryService {
   private async buildRealDataBlock(
     tenantId: string,
     userId: string,
-    permissions: string[],
-    userText = '',
+    _permissions: string[],
+    _userText = '',
   ): Promise<{ block: string; gender: string }> {
-    const permSet = new Set(permissions);
-
-    const hasPermission = (p: string) => permissions.length === 0 || permissions.includes(p);
-
-    // Detecta contexto da mensagem para injetar só dados relevantes
-    const msg = userText.toLowerCase();
-    const wantsLeads = /lead|cliente|contato|prospect|quant|novo|qualific|proposta|fechad|perdid|funil|origem|telefone/.test(msg);
-    const wantsProducts = /produto|im[oó]vel|apart|casa|terreno|comercial|venda|loca[cç]|aluguel|m²|quarto|bairro|cadastr|empreend/.test(msg);
-    // Agenda: sempre injeta (é o principal uso) a menos que seja claramente sobre outra coisa
-    const wantsCalendar = !msg || !/^(lead|produto|imóvel)/.test(msg);
-
-    const has = (p: string) => {
-      if (!hasPermission(p)) return false;
-      if (p === 'leads') return wantsLeads;
-      if (p === 'products') return wantsProducts;
-      if (p === 'calendar') return wantsCalendar;
-      return true;
-    };
-
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-
     const nowLabel = now.toLocaleString('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit',
+      year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
-    // Busca preferências do usuário
+    // Busca dados do usuário (role, branch, preferências)
     const userInfo = await this.prisma.user.findFirst({
       where: { id: userId },
-      select: { nome: true, secretaryName: true, secretaryBotName: true, secretaryGender: true },
+      select: { nome: true, role: true, branchId: true, secretaryName: true, secretaryBotName: true, secretaryGender: true },
     });
     const displayName = userInfo?.secretaryName?.trim() || userInfo?.nome || 'usuário';
     const gender = userInfo?.secretaryGender || 'FEMININO';
     const isMasc = gender === 'MASCULINO';
     const botName = userInfo?.secretaryBotName?.trim() || (isMasc ? 'Assistente' : 'Secretária');
+    const role = userInfo?.role || 'AGENT';
+    const branchId = userInfo?.branchId;
+
+    // Filtro de leads baseado no role
+    const leadWhere: any = { tenantId, deletedAt: null };
+    if (role === 'AGENT') {
+      leadWhere.assignedUserId = userId;
+    } else if (role === 'MANAGER' && branchId) {
+      leadWhere.branchId = branchId;
+    }
+    // OWNER vê todos do tenant
+
+    // Filtro de agenda baseado no role
+    const agendaWhere: any = { tenantId };
+    if (role === 'AGENT') agendaWhere.userId = userId;
+    else if (role === 'MANAGER' && branchId) agendaWhere.branchId = branchId;
 
     const article = isMasc ? 'um assistente' : 'uma assistente';
+    const roleLabel = role === 'OWNER' ? 'Proprietário' : role === 'MANAGER' ? 'Gerente' : 'Corretor';
     const sections: string[] = [
       `CONTEXTO (${nowLabel}):\n` +
         `Você é ${article} pessoal inteligente. Seu nome é ${botName}.\n` +
         `Está atendendo um USUÁRIO INTERNO do CRM — não um cliente ou lead.\n` +
-        `Nome do usuário: ${userInfo?.nome || ''}. Chame-o de "${displayName}".\n` +
+        `Usuário: ${userInfo?.nome || ''} | Perfil: ${roleLabel}. Chame-o de "${displayName}".\n` +
         `Seja eficiente, diret${isMasc ? 'o' : 'a'} e profissional.`,
     ];
 
+    // ── ETAPAS DO FUNIL ────────────────────────────────
+    const stages = await this.prisma.pipelineStage.findMany({
+      where: { tenantId, isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { name: true },
+    });
+    if (stages.length > 0) {
+      sections.push(`ETAPAS DO FUNIL:\n${stages.map(s => `  - ${s.name}`).join('\n')}`);
+    }
+
     // ── LEADS ──────────────────────────────────────────
-    if (has('leads')) {
-      const base = { tenantId, deletedAt: null };
-      const [total, countNovo, countEmContato, countQualificado, countProposta, countFechado, countPerdido, leadsHoje, ultimosLeads] =
-        await Promise.all([
-          this.prisma.lead.count({ where: base }),
-          this.prisma.lead.count({ where: { ...base, status: 'NOVO' } }),
-          this.prisma.lead.count({ where: { ...base, status: 'EM_CONTATO' } }),
-          this.prisma.lead.count({ where: { ...base, status: 'QUALIFICADO' } }),
-          this.prisma.lead.count({ where: { ...base, status: 'PROPOSTA' } }),
-          this.prisma.lead.count({ where: { ...base, status: 'FECHADO' } }),
-          this.prisma.lead.count({ where: { ...base, status: 'PERDIDO' } }),
-          this.prisma.lead.count({ where: { ...base, criadoEm: { gte: startOfToday } } }),
-          this.prisma.lead.findMany({
-            where: base,
-            orderBy: { criadoEm: 'desc' },
-            take: 10,
-            select: { nome: true, telefone: true, status: true, origem: true, criadoEm: true, observacao: true, stage: { select: { name: true } } },
-          }),
-        ]);
+    {
+      const [total, leadsHoje, ultimosLeads] = await Promise.all([
+        this.prisma.lead.count({ where: leadWhere }),
+        this.prisma.lead.count({ where: { ...leadWhere, criadoEm: { gte: startOfToday } } }),
+        this.prisma.lead.findMany({
+          where: leadWhere,
+          orderBy: { criadoEm: 'desc' },
+          take: 15,
+          select: { id: true, nome: true, telefone: true, status: true, origem: true, criadoEm: true, observacao: true, stage: { select: { name: true } } },
+        }),
+      ]);
 
       const ultimosLines = (ultimosLeads as any[]).map((l) => {
         const data = new Date(l.criadoEm).toLocaleDateString('pt-BR');
         const etapa = l.stage?.name || l.status;
-        const partes = [`${l.nome}`, `etapa: ${etapa}`, `entrada: ${data}`];
+        const partes = [`[ID:${l.id}] ${l.nome}`, `etapa: ${etapa}`, `entrada: ${data}`];
         if (l.telefone) partes.push(`tel: ${l.telefone}`);
         if (l.origem) partes.push(`origem: ${l.origem}`);
-        if (l.observacao) partes.push(`resumo: ${l.observacao.slice(0, 150)}`);
+        if (l.observacao) partes.push(`resumo: ${l.observacao.slice(0, 120)}`);
         return `  - ${partes.join(' | ')}`;
       }).join('\n');
 
+      const scopeLabel = role === 'AGENT' ? 'seus leads' : role === 'MANAGER' ? 'leads do time' : 'todos os leads';
       sections.push(
-        `LEADS:\n` +
-          `- Total: ${total} | Novos: ${countNovo} | Em contato: ${countEmContato} | Qualificados: ${countQualificado} | Propostas: ${countProposta} | Fechados: ${countFechado} | Perdidos: ${countPerdido}\n` +
-          `- Criados hoje: ${leadsHoje}\n` +
-          `- Últimos 10 leads:\n${ultimosLines}`,
+        `LEADS (${scopeLabel}):\n` +
+          `- Total: ${total} | Chegaram hoje: ${leadsHoje}\n` +
+          `- Últimos 15:\n${ultimosLines || '  Nenhum lead encontrado.'}`,
       );
     }
 
     // ── AGENDA ─────────────────────────────────────────
-    if (has('calendar')) {
+    {
       const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
       const next7days = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7, 23, 59, 59);
 
       const [eventosHoje, proximosEventos] = await Promise.all([
         this.prisma.calendarEvent.findMany({
-          where: { tenantId, startAt: { gte: startOfToday, lte: endOfToday } },
+          where: { ...agendaWhere, startAt: { gte: startOfToday, lte: endOfToday } },
           orderBy: { startAt: 'asc' },
           select: { id: true, title: true, startAt: true, allDay: true, location: true, status: true },
         }),
         this.prisma.calendarEvent.findMany({
-          where: { tenantId, startAt: { gt: endOfToday, lte: next7days } },
+          where: { ...agendaWhere, startAt: { gt: endOfToday, lte: next7days } },
           orderBy: { startAt: 'asc' },
           select: { id: true, title: true, startAt: true, allDay: true, location: true, status: true },
         }),
@@ -802,9 +797,7 @@ export class SecretaryService {
         const dt = new Date(e.startAt);
         const diaSemana = dt.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long' });
         const dataCurta = dt.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
-        const hora = e.allDay
-          ? 'Dia todo'
-          : dt.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+        const hora = e.allDay ? 'Dia todo' : dt.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
         const partes = [`[ID:${e.id}] ${diaSemana} ${dataCurta} ${hora} — ${e.title}`];
         if (e.location) partes.push(`(${e.location})`);
         if (e.status && e.status !== 'AGENDADO') partes.push(`[${e.status}]`);
@@ -813,12 +806,11 @@ export class SecretaryService {
 
       const hojeBlock = eventosHoje.length === 0 ? '  Nenhum evento hoje.' : eventosHoje.map(formatEvento).join('\n');
       const proximosBlock = proximosEventos.length === 0 ? '  Nenhum evento nos próximos 7 dias.' : proximosEventos.map(formatEvento).join('\n');
-
-      sections.push(`AGENDA:\n- Hoje (${eventosHoje.length} evento${eventosHoje.length !== 1 ? 's' : ''}):\n${hojeBlock}\n- Próximos 7 dias (${proximosEventos.length} evento${proximosEventos.length !== 1 ? 's' : ''}):\n${proximosBlock}`);
+      sections.push(`AGENDA:\n- Hoje (${eventosHoje.length} evento${eventosHoje.length !== 1 ? 's' : ''}):\n${hojeBlock}\n- Próximos 7 dias:\n${proximosBlock}`);
     }
 
     // ── PRODUTOS ───────────────────────────────────────
-    if (has('products')) {
+    {
       const products = await this.prisma.product.findMany({
         where: { tenantId, status: 'ACTIVE' },
         select: {
