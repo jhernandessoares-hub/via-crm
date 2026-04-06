@@ -12,6 +12,7 @@ type CreateAiAgentBody = {
   objective?: string;
   prompt: string;
   exampleOutput?: string;
+  agentType?: string;
   mode?: AiAgentMode;
   audience?: string;
   permissions?: string[];
@@ -31,6 +32,7 @@ type UpdateAiAgentBody = {
   objective?: string | null;
   prompt?: string;
   exampleOutput?: string | null;
+  agentType?: string;
   mode?: AiAgentMode;
   audience?: string | null;
   permissions?: string[];
