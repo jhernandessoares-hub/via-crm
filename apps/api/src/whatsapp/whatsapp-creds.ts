@@ -47,9 +47,9 @@ export async function sendWhatsappText(
   creds: WhatsappCreds,
   to: string,
   text: string,
-): Promise<void> {
+): Promise<any> {
   const phone = to.replace(/\D/g, '');
-  await fetch(`https://graph.facebook.com/${creds.version}/${creds.phoneNumberId}/messages`, {
+  const res = await fetch(`https://graph.facebook.com/${creds.version}/${creds.phoneNumberId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -59,6 +59,7 @@ export async function sendWhatsappText(
       text: { body: text },
     }),
   });
+  return res.json().catch(() => null);
 }
 
 /**

@@ -207,17 +207,17 @@ export class WhatsappService {
     await this.sendMessage(to, text, opts.tenantId);
   }
 
-  async sendMessage(to: string, text: string, tenantId?: string): Promise<void> {
+  async sendMessage(to: string, text: string, tenantId?: string): Promise<any> {
     const creds = await resolveWhatsappCreds(this.prisma, tenantId);
     if (!creds) {
       logger.warn('Credenciais WhatsApp não configuradas (tenant ou env)');
-      return;
+      return null;
     }
     try {
-      const res = await sendWhatsappText(creds, to, text);
-      void res; // sendWhatsappText retorna void
+      return await sendWhatsappText(creds, to, text);
     } catch (err) {
       logger.error('Erro ao enviar mensagem WhatsApp', { error: (err as any)?.message });
+      return null;
     }
   }
 }

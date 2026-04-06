@@ -505,7 +505,10 @@ async function handleInboundAiJob(
         await new Promise((r) => setTimeout(r, remainingMs));
       }
 
-      // Salva o evento ANTES de enviar — garante rastreabilidade mesmo se o envio falhar
+      // Envia primeiro para capturar o wamid da Meta (necessário para exibir reações no chat)
+      const metaResponse = await whatsapp.sendMessage(lead.telefone, suggestion.trim());
+      logger.log(`⚡ AUTOPILOT ENVIOU: leadId=${lead.id}`);
+
       await prisma.leadEvent.create({
         data: {
           tenantId: lead.tenantId,
@@ -520,6 +523,7 @@ async function handleInboundAiJob(
             aiAssistanceLabel: '100% IA',
             aiAssistancePercent: 100,
             sentAt: new Date().toISOString(),
+            metaResponse: metaResponse ?? null,
           },
         },
       });
@@ -531,9 +535,6 @@ async function handleInboundAiJob(
           data: { status: 'EM_CONTATO' },
         });
       }
-
-      await whatsapp.sendMessage(lead.telefone, suggestion.trim());
-      logger.log(`⚡ AUTOPILOT ENVIOU: leadId=${lead.id}`);
     } else {
       // Salva como sugestão para o corretor aprovar
       await registerAiSuggestion(prisma, {
