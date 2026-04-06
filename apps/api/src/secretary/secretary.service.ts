@@ -423,12 +423,13 @@ export class SecretaryService {
   // ─────────────────────────────────────────────────────────────────────
 
   async getAllHistory(params: { tenantId: string; userId: string; limit?: number }) {
+    const limit = Math.min(params.limit ?? 100, 200);
     const messages = await this.prisma.secretaryConversation.findMany({
       where: { tenantId: params.tenantId, userId: params.userId },
-      orderBy: { createdAt: 'asc' },
-      take: Math.min(params.limit ?? 100, 200),
+      orderBy: { createdAt: 'desc' },
+      take: limit,
     });
-    return { messages };
+    return { messages: messages.reverse() };
   }
 
   async getHistory(params: {
@@ -552,11 +553,33 @@ export class SecretaryService {
           orderBy: { criadoEm: 'desc' },
         });
         if (leads.length === 0) return `Nenhum lead encontrado para "${q}".`;
-        return leads.map((l: any) => {
+
+        const results: string[] = [];
+        for (const l of leads as any[]) {
           const partes = [`[ID:${l.id}] ${l.nome}`, `Etapa: ${l.stage?.name || l.status || '—'}`, `Tel: ${l.telefone || '—'}`, `Origem: ${l.origem || '—'}`];
           if (l.observacao) partes.push(`Resumo: ${l.observacao}`);
-          return `• ${partes.join(' | ')}`;
-        }).join('\n');
+
+          // Busca histórico de conversa com a IA (últimas 10 mensagens)
+          const logs = await this.prisma.aiExecutionLog.findMany({
+            where: { tenantId, leadId: l.id },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: { inputText: true, outputText: true, createdAt: true },
+          });
+
+          let entry = `• ${partes.join(' | ')}`;
+          if (logs.length > 0) {
+            const history = logs.reverse().map((log: any) => {
+              const dt = new Date(log.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+              return `  [${dt}] Lead: "${log.inputText.slice(0, 200)}" → IA: "${(log.outputText || '').slice(0, 200)}"`;
+            }).join('\n');
+            entry += `\n  Histórico de conversa (últimas ${logs.length}):\n${history}`;
+          } else {
+            entry += '\n  Histórico de conversa: Nenhuma conversa registrada.';
+          }
+          results.push(entry);
+        }
+        return results.join('\n\n');
       }
 
       if (name === 'criar_lead') {
