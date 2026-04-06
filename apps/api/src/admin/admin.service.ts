@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
+import { QueueService } from '../queue/queue.service';
 
 @Injectable()
 export class AdminService {
@@ -12,6 +13,7 @@ export class AdminService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly queue: QueueService,
   ) {}
 
   async login(email: string, senha: string) {
@@ -558,6 +560,108 @@ export class AdminService {
 
   async deleteTemplateTool(templateId: string, toolId: string) {
     return this.prisma.agentTemplateTool.delete({ where: { id: toolId } });
+  }
+
+  // ── Queue Monitoring ─────────────────────────────────────────────────────
+
+  async getQueueStatus() {
+    return this.queue.getQueuesStatus();
+  }
+
+  async getStuckLeads(windowMinutes = 120) {
+    const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+
+    // Leads que receberam mensagem recente mas não tiveram resposta da IA depois
+    const recentInbound = await this.prisma.leadEvent.findMany({
+      where: {
+        channel: 'whatsapp.in',
+        criadoEm: { gte: since },
+        lead: { deletedAt: null },
+      },
+      select: {
+        leadId: true,
+        criadoEm: true,
+        payloadRaw: true,
+        lead: {
+          select: {
+            id: true,
+            nome: true,
+            telefone: true,
+            botPaused: true,
+            tenantId: true,
+            tenant: { select: { nome: true, slug: true } },
+          },
+        },
+      },
+      orderBy: { criadoEm: 'desc' },
+      distinct: ['leadId'],
+    });
+
+    const stuck: Array<{
+      leadId: string; leadNome: string; telefone: string | null;
+      tenantId: string; tenantNome: string | undefined; tenantSlug: string | undefined;
+      lastMessageAt: Date; lastMessage: string; minutesAgo: number;
+    }> = [];
+
+    for (const ev of recentInbound) {
+      if (ev.lead.botPaused) continue;
+
+      const aiResponse = await this.prisma.leadEvent.findFirst({
+        where: {
+          leadId: ev.leadId,
+          channel: { in: ['whatsapp.out', 'ai.suggestion'] },
+          criadoEm: { gte: ev.criadoEm },
+        },
+        select: { id: true },
+      });
+      if (aiResponse) continue;
+
+      const payload = ev.payloadRaw as any;
+      const lastMessage =
+        payload?.text?.body || payload?.text || payload?.message || payload?.body || '';
+
+      stuck.push({
+        leadId: ev.leadId,
+        leadNome: ev.lead.nome || 'Sem nome',
+        telefone: ev.lead.telefone,
+        tenantId: ev.lead.tenantId,
+        tenantNome: ev.lead.tenant?.nome,
+        tenantSlug: ev.lead.tenant?.slug,
+        lastMessageAt: ev.criadoEm,
+        lastMessage: String(lastMessage).slice(0, 100),
+        minutesAgo: Math.floor((Date.now() - new Date(ev.criadoEm).getTime()) / 60000),
+      });
+    }
+
+    return { total: stuck.length, windowMinutes, leads: stuck };
+  }
+
+  async recoverQueue(tenantId?: string) {
+    const retryResult = await this.queue.retryFailedInboundAiJobs();
+
+    let rescheduleResult = { scheduled: 0, leadIds: [] as string[] };
+    if (tenantId) {
+      rescheduleResult = await this.queue.rescheduleInboundAiForRecentLeads(this.prisma, tenantId, 120);
+    } else {
+      // Todos os tenants com autopilot ativo
+      const tenants = await this.prisma.tenant.findMany({
+        where: { ativo: true, autopilotEnabled: true },
+        select: { id: true },
+      });
+      for (const t of tenants) {
+        const r = await this.queue.rescheduleInboundAiForRecentLeads(this.prisma, t.id, 120);
+        rescheduleResult.scheduled += r.scheduled;
+        rescheduleResult.leadIds.push(...r.leadIds);
+      }
+    }
+
+    this.audit.log({ action: 'PLATFORM_QUEUE_RECOVER', metadata: { tenantId: tenantId || 'all', ...retryResult, ...rescheduleResult } });
+
+    return {
+      retriedFailed: retryResult.retried,
+      rescheduled: rescheduleResult.scheduled,
+      leadIds: rescheduleResult.leadIds,
+    };
   }
 
   async seedTemplatesForTenant(tenantId: string) {

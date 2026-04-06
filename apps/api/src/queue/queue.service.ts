@@ -306,6 +306,51 @@ export class QueueService implements OnModuleDestroy {
     }));
   }
 
+  async getQueuesStatus() {
+    const [sla, inboundAi, whatsappInbound, whatsappMedia, reminder] = await Promise.all([
+      Promise.all([
+        this.slaQueue.getWaitingCount(),
+        this.slaQueue.getActiveCount(),
+        this.slaQueue.getDelayedCount(),
+        this.slaQueue.getFailedCount(),
+      ]),
+      Promise.all([
+        this.inboundAiQueue.getWaitingCount(),
+        this.inboundAiQueue.getActiveCount(),
+        this.inboundAiQueue.getDelayedCount(),
+        this.inboundAiQueue.getFailedCount(),
+      ]),
+      Promise.all([
+        this.whatsappInboundQueue.getWaitingCount(),
+        this.whatsappInboundQueue.getActiveCount(),
+        this.whatsappInboundQueue.getDelayedCount(),
+        this.whatsappInboundQueue.getFailedCount(),
+      ]),
+      Promise.all([
+        this.whatsappMediaQueue.getWaitingCount(),
+        this.whatsappMediaQueue.getActiveCount(),
+        this.whatsappMediaQueue.getDelayedCount(),
+        this.whatsappMediaQueue.getFailedCount(),
+      ]),
+      Promise.all([
+        this.reminderQueue.getWaitingCount(),
+        this.reminderQueue.getActiveCount(),
+        this.reminderQueue.getDelayedCount(),
+        this.reminderQueue.getFailedCount(),
+      ]),
+    ]);
+
+    const toObj = ([waiting, active, delayed, failed]: number[]) => ({ waiting, active, delayed, failed });
+
+    return {
+      sla: toObj(sla),
+      inboundAi: toObj(inboundAi),
+      whatsappInbound: toObj(whatsappInbound),
+      whatsappMedia: toObj(whatsappMedia),
+      reminder: toObj(reminder),
+    };
+  }
+
   async retryFailedInboundAiJobs(): Promise<{ retried: number; leadIds: string[] }> {
     const failedJobs = await this.inboundAiQueue.getFailed(0, 100);
     const leadIds: string[] = [];

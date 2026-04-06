@@ -8,6 +8,7 @@ const navItems = [
   { href: "/admin/clientes", label: "Clientes" },
   { href: "/admin/agent-templates", label: "Agent Templates" },
   { href: "/admin/audit", label: "Audit Log" },
+  { href: "/admin/filas", label: "Filas & IA" },
   { href: "/admin/saude", label: "Saúde do Sistema" },
 ];
 
