@@ -490,6 +490,7 @@ export class SecretaryService {
         const leads = await this.prisma.lead.findMany({
           where: {
             tenantId,
+            deletedAt: null,
             OR: [
               { nome: { contains: q, mode: 'insensitive' } },
               { telefone: { contains: q.replace(/\D/g, '') } },
@@ -689,18 +690,19 @@ export class SecretaryService {
 
     // ── LEADS ──────────────────────────────────────────
     if (has('leads')) {
+      const base = { tenantId, deletedAt: null };
       const [total, countNovo, countEmContato, countQualificado, countProposta, countFechado, countPerdido, leadsHoje, ultimosLeads] =
         await Promise.all([
-          this.prisma.lead.count({ where: { tenantId } }),
-          this.prisma.lead.count({ where: { tenantId, status: 'NOVO' } }),
-          this.prisma.lead.count({ where: { tenantId, status: 'EM_CONTATO' } }),
-          this.prisma.lead.count({ where: { tenantId, status: 'QUALIFICADO' } }),
-          this.prisma.lead.count({ where: { tenantId, status: 'PROPOSTA' } }),
-          this.prisma.lead.count({ where: { tenantId, status: 'FECHADO' } }),
-          this.prisma.lead.count({ where: { tenantId, status: 'PERDIDO' } }),
-          this.prisma.lead.count({ where: { tenantId, criadoEm: { gte: startOfToday } } }),
+          this.prisma.lead.count({ where: base }),
+          this.prisma.lead.count({ where: { ...base, status: 'NOVO' } }),
+          this.prisma.lead.count({ where: { ...base, status: 'EM_CONTATO' } }),
+          this.prisma.lead.count({ where: { ...base, status: 'QUALIFICADO' } }),
+          this.prisma.lead.count({ where: { ...base, status: 'PROPOSTA' } }),
+          this.prisma.lead.count({ where: { ...base, status: 'FECHADO' } }),
+          this.prisma.lead.count({ where: { ...base, status: 'PERDIDO' } }),
+          this.prisma.lead.count({ where: { ...base, criadoEm: { gte: startOfToday } } }),
           this.prisma.lead.findMany({
-            where: { tenantId },
+            where: base,
             orderBy: { criadoEm: 'desc' },
             take: 10,
             select: { nome: true, telefone: true, status: true, origem: true, criadoEm: true },
