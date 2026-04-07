@@ -46,7 +46,7 @@ type OwnerProfile = {
 };
 
 type FormData = {
-  title: string; origin: string; type: ProductType; status: string;
+  title: string; origin: string; type: ProductType; status: string; publicationStatus: string;
   standard: string; referenceCode: string; dealType: string; condition: string;
   zipCode: string; street: string; streetNumber: string; complement: string;
   neighborhood: string; city: string; state: string;
@@ -64,7 +64,7 @@ type FormData = {
 };
 
 const EMPTY_FORM: FormData = {
-  title: "", origin: "THIRD_PARTY", type: "CASA", status: "ACTIVE",
+  title: "", origin: "THIRD_PARTY", type: "CASA", status: "ACTIVE", publicationStatus: "DRAFT",
   standard: "", referenceCode: "", dealType: "SALE", condition: "",
   zipCode: "", street: "", streetNumber: "", complement: "",
   neighborhood: "", city: "", state: "", condominiumName: "", hideAddress: false,
@@ -853,10 +853,20 @@ export default function ProductEditPage() {
   const computedTitle = useMemo(() => {
     if (isEmpreendimento) return form.title;
     const typeLabel = PRODUCT_TYPES.find((t) => t.value === form.type)?.label ?? form.type;
-    const bedroomsPart = form.bedrooms ? ` ${form.bedrooms} quartos` : "";
-    const neighborhoodPart = form.neighborhood ? ` - ${form.neighborhood}` : "";
-    return `${typeLabel}${bedroomsPart}${neighborhoodPart}`;
-  }, [isEmpreendimento, form.type, form.title, form.bedrooms, form.neighborhood]);
+    const parts: string[] = [typeLabel];
+    if (form.bedrooms) parts.push(`${form.bedrooms} quartos`);
+    if (form.condominiumName.trim()) parts.push(`Condomínio ${form.condominiumName.trim()}`);
+    else if (form.neighborhood.trim()) parts.push(form.neighborhood.trim());
+    const priceNum = parseFloat(form.price);
+    if (priceNum && !isNaN(priceNum)) parts.push(`R$ ${priceNum.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`);
+    const dealMap: Record<string, string> = { SALE: 'Venda', RENT: 'Locação', BOTH: 'Venda/Locação' };
+    if (form.dealType && dealMap[form.dealType]) parts.push(dealMap[form.dealType]);
+    if (product?.updatedAt) {
+      const d = new Date(product.updatedAt);
+      parts.push(`Atualizado em: ${d.toLocaleDateString('pt-BR')}`);
+    }
+    return parts.join(' • ');
+  }, [isEmpreendimento, form.type, form.title, form.bedrooms, form.neighborhood, form.condominiumName, form.price, form.dealType, product]);
 
   // ── ViaCEP ──────────────────────────────────────────────────────────────────
   async function fetchCep(cep: string) {
@@ -897,6 +907,7 @@ export default function ProductEditPage() {
         origin: pa.origin ?? "THIRD_PARTY",
         type: pa.type ?? "CASA",
         status: pa.status ?? "ACTIVE",
+        publicationStatus: pa.publicationStatus ?? "DRAFT",
         standard: pa.standard ?? "",
         referenceCode: pa.referenceCode ?? "",
         dealType: pa.dealType ?? "SALE",
@@ -1054,10 +1065,11 @@ export default function ProductEditPage() {
     setSuccess(null);
     try {
       const payload: any = {
-        title: isEmpreendimento ? form.title.trim() : computedTitle,
+        title: form.title.trim() || computedTitle,
         origin: form.origin,
         type: form.type,
         status: form.status,
+        publicationStatus: form.publicationStatus,
         dealType: form.dealType || undefined,
         standard: form.standard || undefined,
         condition: form.condition || undefined,
@@ -1513,15 +1525,18 @@ export default function ProductEditPage() {
             {/* ── S1: Identificação ─────────────────────────────────────── */}
             <Section id="identificacao" title="1. Identificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")}>
               <div className="grid grid-cols-2 gap-4">
-                {isEmpreendimento && (
-                  <div className="col-span-2">
-                    <Field label="Nome do empreendimento *">
-                      <input value={form.title} onChange={(e) => f({ title: e.target.value })}
-                        placeholder="Ex.: Residencial Vista Verde"
-                        className={inp} disabled={loading} />
-                    </Field>
-                  </div>
-                )}
+                <div className="col-span-2">
+                  <Field label={isEmpreendimento ? "Nome do empreendimento *" : "Nome do imóvel"}>
+                    <input value={form.title} onChange={(e) => f({ title: e.target.value })}
+                      placeholder={isEmpreendimento ? "Ex.: Residencial Vista Verde" : computedTitle || "Será gerado automaticamente"}
+                      className={inp} disabled={loading} />
+                    {!isEmpreendimento && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        Título automático: <span className="text-gray-500">{computedTitle || "preencha os dados abaixo"}</span>
+                      </p>
+                    )}
+                  </Field>
+                </div>
                 <Field label="Tipo *">
                   <select
                     value={form.type}
@@ -1544,6 +1559,13 @@ export default function ProductEditPage() {
                     <option value="SOLD">Vendido</option>
                     <option value="SOLD_OUT">Esgotado</option>
                     <option value="ARCHIVED">Arquivado</option>
+                  </select>
+                </Field>
+                <Field label="Publicação">
+                  <select value={form.publicationStatus} onChange={(e) => f({ publicationStatus: e.target.value })} className={sel} disabled={loading}>
+                    <option value="DRAFT">Rascunho</option>
+                    <option value="PUBLISHED">Publicado</option>
+                    <option value="UNPUBLISHED">Despublicado</option>
                   </select>
                 </Field>
                 <Field label="Finalidade">
