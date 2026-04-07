@@ -209,21 +209,8 @@ export class QueueService implements OnModuleDestroy {
   // =============================
 
   async rescheduleSla(leadId: string) {
-    // SLA só é agendado para leads em PRE_ATENDIMENTO
-    const lead = await this.prisma.lead.findUnique({
-      where: { id: leadId },
-      select: { stage: { select: { group: true } } },
-    });
-
-    if (!lead) return;
-
-    if (lead.stage?.group !== 'PRE_ATENDIMENTO') {
-      await this.cancelSlaJobs(leadId); // cancela jobs anteriores se lead saiu do grupo
-      return;
-    }
-
+    // SLA temporariamente desativado — cancela qualquer job existente e não agenda novos
     await this.cancelSlaJobs(leadId);
-    await this.scheduleAllStages(leadId);
   }
 
   // =============================

@@ -199,6 +199,12 @@ async function getLastWhatsappOut(prisma: PrismaService, leadId: string) {
 // ── Main job handler ────────────────────────────────────────────────────────
 
 async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
+  // SLA temporariamente desativado — reativar quando a lógica for revisada
+  if (process.env.SLA_ENABLED !== 'true') {
+    logger.log(`⏸ SLA desativado — job ${job.name} ignorado (leadId=${job.data?.leadId})`);
+    return;
+  }
+
   const leadId = job.data?.leadId as string | undefined;
   if (!leadId) return;
 
