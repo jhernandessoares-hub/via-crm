@@ -80,6 +80,10 @@ function AppShellInner({
             Dashboard
           </Link>
 
+          <Link className={linkClass("/pipeline")} href="/pipeline">
+            Todos os Leads
+          </Link>
+
           {/* Funil de Venda */}
           <div className="pt-1">
             <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
