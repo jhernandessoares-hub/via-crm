@@ -57,8 +57,8 @@ export class QueueService implements OnModuleDestroy {
   private SLA_2H = 2 * 60 * 60 * 1000;
   private SLA_10H = 10 * 60 * 60 * 1000;
 
-  // ✅ ÚLTIMA IA LIVRE (antes do bloqueio de 23h)
-  private SLA_22H45 = (22 * 60 + 45) * 60 * 1000; // 22h45m
+  // ✅ REENGAJAMENTO URGENTE
+  private SLA_22H45 = 18 * 60 * 60 * 1000; // 18h
 
   // ✅ TEMPLATE META (23h)
   private SLA_23H_TEMPLATE = 23 * 60 * 60 * 1000;
@@ -448,7 +448,7 @@ export class QueueService implements OnModuleDestroy {
   private async scheduleAllStages(leadId: string) {
     await this.slaQueue.add(
       'sla-2h',
-      { leadId },
+      { leadId, urgency: 'BAIXA' },
       {
         delay: this.SLA_2H,
         jobId: `sla-${leadId}-2h`,
@@ -459,7 +459,7 @@ export class QueueService implements OnModuleDestroy {
 
     await this.slaQueue.add(
       'sla-10h',
-      { leadId },
+      { leadId, urgency: 'MEDIA' },
       {
         delay: this.SLA_10H,
         jobId: `sla-${leadId}-10h`,
@@ -469,22 +469,22 @@ export class QueueService implements OnModuleDestroy {
     );
 
     await this.slaQueue.add(
-      'sla-22h45',
-      { leadId },
+      'sla-18h',
+      { leadId, urgency: 'ALTA' },
       {
         delay: this.SLA_22H45,
-        jobId: `sla-${leadId}-22h45`,
+        jobId: `sla-${leadId}-18h`,
         removeOnComplete: true,
         removeOnFail: false,
       },
     );
 
     await this.slaQueue.add(
-      'sla-23h-template',
-      { leadId },
+      'sla-23h',
+      { leadId, urgency: 'CRITICA' },
       {
         delay: this.SLA_23H_TEMPLATE,
-        jobId: `sla-${leadId}-23h-template`,
+        jobId: `sla-${leadId}-23h`,
         removeOnComplete: true,
         removeOnFail: false,
       },

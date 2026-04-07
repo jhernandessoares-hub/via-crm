@@ -185,6 +185,7 @@ export class AiService {
     previousSuggestion?: string;
     conversationContext?: string;
     mode?: 'REGENERATE' | 'SHORTEN' | 'IMPROVE' | 'VARIATE';
+    urgency?: 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA';
     onToolCall?: (toolName: string, args: Record<string, any>) => Promise<string>;
   }) {
     let agentTitle = '';
@@ -416,6 +417,15 @@ export class AiService {
     if (knowledgeContext) userParts.push(`Conhecimento disponível:\n${knowledgeContext}`);
     if (productsBlock) userParts.push(productsBlock);
     userParts.push(`Lead: ${params.nome} | Status: ${params.status}`);
+    if (params.urgency) {
+      const urgencyMap: Record<string, string> = {
+        BAIXA:   'O lead recebeu sua última mensagem há cerca de 2 horas. Retome a conversa de forma natural e amigável, sem pressão.',
+        MEDIA:   'O lead está sem resposta há cerca de 10 horas. Pode estar ocupado — retome com uma abordagem diferente, mostre valor ou faça uma pergunta que desperte interesse.',
+        ALTA:    'O lead está sem resposta há 18 horas. Última tentativa de reengajamento antes do encerramento. Seja direto, crie um motivo claro para o lead responder agora.',
+        CRITICA: 'O lead não respondeu em 23 horas. Esta é a mensagem de encerramento do contato — envie uma despedida gentil, deixe a porta aberta para quando o lead quiser retomar, sem pressão nem insistência. Tom: leve, respeitoso, humano.',
+      };
+      userParts.push(`Contexto de urgência (SLA): ${urgencyMap[params.urgency]}`);
+    }
     if (lastLeadMessage) userParts.push(`Última mensagem do lead:\n${lastLeadMessage}`);
     if (conversationContext) userParts.push(`Contexto recente da conversa:\n${conversationContext}`);
     if (isModifyMode && previousSuggestion) userParts.push(`Sugestão anterior da IA (para modificar):\n${previousSuggestion}`);
