@@ -599,8 +599,7 @@ export default function AgentTemplatesPage() {
                 <textarea
                   value={globalRules}
                   onChange={e => setGlobalRules(e.target.value)}
-                  rows={12}
-                  placeholder="Deixe vazio para usar as regras padrão do sistema..."
+                  rows={14}
                   className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-mono outline-none focus:border-amber-500 resize-y"
                 />
                 <div className="flex items-center justify-between mt-2">
@@ -609,23 +608,15 @@ export default function AgentTemplatesPage() {
                       {globalRulesMsg.text}
                     </p>
                   ) : (
-                    <p className="text-xs text-amber-600">Vazio = usa regras padrão de segurança do sistema</p>
+                    <p className="text-xs text-amber-600">O conteúdo deste campo é injetado em todos os agentes. Você controla o que está aqui.</p>
                   )}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setGlobalRules("")}
-                      className="rounded-lg border px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-100"
-                    >
-                      Resetar padrão
-                    </button>
-                    <button
-                      onClick={saveGlobalRules}
-                      disabled={globalRulesSaving}
-                      className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      {globalRulesSaving ? "Salvando..." : "Salvar"}
-                    </button>
-                  </div>
+                  <button
+                    onClick={saveGlobalRules}
+                    disabled={globalRulesSaving}
+                    className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {globalRulesSaving ? "Salvando..." : "Salvar"}
+                  </button>
                 </div>
               </>
             )}
