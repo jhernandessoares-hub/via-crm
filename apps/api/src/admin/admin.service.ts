@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { QueueService } from '../queue/queue.service';
+import { DEFAULT_GLOBAL_SAFETY_RULES } from '../ai/ai.service';
 
 @Injectable()
 export class AdminService {
@@ -725,5 +726,35 @@ export class AdminService {
     }
 
     return { seeded };
+  }
+
+  // ── Platform Config (global AI rules) ──────────────────────────────────────
+
+  readonly PLATFORM_CONFIG_KEYS = ['globalAgentRules'] as const;
+
+  async getPlatformConfig(): Promise<Record<string, string>> {
+    const rows = await this.prisma.platformConfig.findMany();
+    const result: Record<string, string> = {};
+    for (const row of rows) result[row.key] = row.value;
+
+    // Se globalAgentRules ainda não foi configurado, retorna o padrão do sistema
+    // para o admin ver, editar e salvar — a partir daí o banco é a única fonte
+    if (!result['globalAgentRules']) {
+      result['globalAgentRules'] = DEFAULT_GLOBAL_SAFETY_RULES;
+    }
+
+    return result;
+  }
+
+  async updatePlatformConfig(data: Record<string, string>): Promise<Record<string, string>> {
+    for (const [key, value] of Object.entries(data)) {
+      await this.prisma.platformConfig.upsert({
+        where: { key },
+        create: { key, value: String(value) },
+        update: { value: String(value) },
+      });
+    }
+    this.audit.log({ action: 'PLATFORM_UPDATE_CONFIG', metadata: { keys: Object.keys(data) } });
+    return this.getPlatformConfig();
   }
 }

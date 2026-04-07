@@ -54,6 +54,7 @@ import { Readable } from 'stream';
 // ✅ NOVO: Pipeline (ETAPA 2)
 import { PipelineService } from '../pipeline/pipeline.service';
 import { AuditService } from '../audit/audit.service';
+import { QueueService } from '../queue/queue.service';
 
 @Injectable()
 export class LeadsService {
@@ -61,6 +62,7 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly pipelineService: PipelineService,
     private readonly audit: AuditService,
+    private readonly queueService: QueueService,
   ) {}
 
   // =========================================
@@ -516,6 +518,70 @@ export class LeadsService {
       lastInboundAt: last.toISOString(),
       expiresAt: expires.toISOString(),
       remainingMinutes,
+    };
+  }
+
+  // =========================================================
+  // ✅ PAINEL SLA — jobs agendados + histórico + janela
+  // =========================================================
+  async getLeadSla(user: any, leadId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+      select: {
+        id: true,
+        lastInboundAt: true,
+        stage: { select: { group: true, key: true, name: true } },
+      },
+    });
+
+    if (!lead) throw new NotFoundException('Lead não encontrado');
+
+    // Scheduled jobs in BullMQ
+    const scheduledJobs = await this.queueService.getLeadSlaJobs(leadId);
+
+    // 23h WhatsApp window
+    const lastInboundAt = lead.lastInboundAt ? new Date(lead.lastInboundAt) : null;
+    const windowCloseAt = lastInboundAt
+      ? new Date(lastInboundAt.getTime() + 23 * 60 * 60 * 1000)
+      : null;
+    const windowRemainingMs = windowCloseAt
+      ? Math.max(0, windowCloseAt.getTime() - Date.now())
+      : 0;
+    const windowRemainingMinutes = Math.ceil(windowRemainingMs / 60000);
+    const windowExpired = windowCloseAt ? windowCloseAt.getTime() <= Date.now() : true;
+
+    // Recent SLA history (last 20 events)
+    const history = await this.prisma.leadEvent.findMany({
+      where: {
+        leadId,
+        channel: { in: ['sla.due', 'ai.suggestion'] },
+      },
+      orderBy: { criadoEm: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        channel: true,
+        criadoEm: true,
+        payloadRaw: true,
+      },
+    });
+
+    return {
+      leadId,
+      stageGroup: lead.stage?.group ?? null,
+      stageKey: lead.stage?.key ?? null,
+      stageName: lead.stage?.name ?? null,
+      lastInboundAt: lastInboundAt?.toISOString() ?? null,
+      windowCloseAt: windowCloseAt?.toISOString() ?? null,
+      windowRemainingMinutes,
+      windowExpired,
+      scheduledJobs,
+      history: history.map((ev) => ({
+        id: ev.id,
+        channel: ev.channel,
+        criadoEm: ev.criadoEm,
+        payload: ev.payloadRaw,
+      })),
     };
   }
 

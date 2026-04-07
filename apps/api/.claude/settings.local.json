@@ -55,7 +55,15 @@
       "Bash(curl -s -X POST https://via-crm-api-backend-dev.up.railway.app/admin/login -H 'Content-Type: application/json' -d '{\"email\":\"jhernandessoares@gmail.com\",\"senha\":\"20052416081994334Music4\"}')",
       "Bash(curl:*)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('accessToken',''\\)[:50]\\)\")",
-      "Bash(find . -name \"*.ts\" -exec grep -l \"scheduleInitialSla\\\\|rescheduleSla\" {} \\\\;)"
+      "Bash(find . -name \"*.ts\" -exec grep -l \"scheduleInitialSla\\\\|rescheduleSla\" {} \\\\;)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(gh auth:*)",
+      "Bash(npm run:*)",
+      "Bash(npm show:*)",
+      "Bash(find /c/Users/User/documents/via-crm -type f \\\\\\( -name \"*.prisma\" -o -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -l \"enum LeadStatus\\\\|LeadStatus.*=\" {} \\\\;)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(echo \"API EXIT:$?\")"
     ]
   }
 }

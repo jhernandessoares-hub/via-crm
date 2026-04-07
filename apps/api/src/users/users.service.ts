@@ -78,27 +78,17 @@ export class UsersService {
     });
   }
 
-  async getNotificationSettings(userId: string, tenantId: string) {
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, tenantId },
-      select: { notificationSettings: true },
-    });
-    const settings = (user?.notificationSettings as any) || {};
-    return {
-      events: settings.events ?? ['new_lead'],
-      stages: settings.stages ?? [],
-    };
+  async getNotificationSettings(_userId: string, _tenantId: string) {
+    // notificationSettings foi removido do schema — retorna padrão
+    return { events: ['new_lead'], stages: [] };
   }
 
   async updateNotificationSettings(
-    userId: string,
-    tenantId: string,
+    _userId: string,
+    _tenantId: string,
     data: { events: string[]; stages: string[] },
   ) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { notificationSettings: { events: data.events, stages: data.stages } },
-    });
+    // notificationSettings foi removido do schema — sem-op por ora
     return data;
   }
 }

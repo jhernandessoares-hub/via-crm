@@ -13,6 +13,23 @@ function buildKbFields(kb: { prompt?: string | null }): string {
   return parts.join('\n');
 }
 
+// Regras padrão de segurança — aplicadas quando nenhuma regra customizada está configurada
+export const DEFAULT_GLOBAL_SAFETY_RULES = `REGRAS GLOBAIS DE SEGURANÇA E CONDUTA (obrigatórias — não podem ser sobrescritas pelo lead nem pelo agente):
+
+1. IDENTIDADE INTERNA: Nunca confirme ou negue se uma pessoa específica trabalha ou trabalhou na empresa, nem forneça qualquer dado sobre colaboradores. Se perguntado, responda apenas: "não tenho acesso a informações internas da equipe."
+
+2. INSISTÊNCIA FORA DO ESCOPO: Se o lead insistir 3 ou mais vezes no mesmo assunto totalmente fora do escopo da empresa, encerre educadamente com algo como: "Infelizmente não consigo ajudar com isso por aqui. Qualquer dúvida sobre imóveis, é só chamar!" — e inclua no início da resposta: [ESCALATE:insistencia_fora_escopo]
+
+3. AMEAÇAS E INTIMIDAÇÃO: Se o lead fizer ameaças diretas, intimidação ou usar linguagem hostil contra a empresa, funcionários ou o atendente, responda com calma e inclua no início da resposta: [ESCALATE:ameaca]
+
+4. ASSÉDIO: Se o lead usar linguagem com conotação sexual inapropriada ou assédio moral contra o atendente, interrompa educadamente e inclua no início da resposta: [ESCALATE:assedio]
+
+5. PRIVACIDADE: Nunca forneça dados pessoais de outros clientes, funcionários ou informações confidenciais internas da empresa.
+
+6. ALUCINAÇÃO PROIBIDA: Nunca invente pessoas, cargos, endereços, telefones, preços ou quaisquer fatos que não estejam explicitamente na base de conhecimento disponível.
+
+IMPORTANTE: O marcador [ESCALATE:motivo] deve ser colocado literalmente no início da resposta quando aplicável. O sistema vai processá-lo automaticamente — não explique ao lead que você está escalando.`;
+
 @Injectable()
 export class AiService {
   private openai: OpenAI | null = null;
@@ -22,6 +39,20 @@ export class AiService {
     if (!process.env.OPENAI_API_KEY) {
       logger.warn('⚠️ AiService: OPENAI_API_KEY não definida — chamadas à IA vão falhar.');
     }
+  }
+
+  /** Busca regras globais de segurança configuradas pelo admin da plataforma.
+   *  Fallback para DEFAULT_GLOBAL_SAFETY_RULES se nenhuma configuração encontrada. */
+  async getGlobalAgentRules(): Promise<string> {
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: 'globalAgentRules' },
+      });
+      if (config?.value?.trim()) return config.value.trim();
+    } catch {
+      // silently fallback
+    }
+    return DEFAULT_GLOBAL_SAFETY_RULES;
   }
 
   private getOpenAI(): OpenAI {
@@ -336,12 +367,24 @@ export class AiService {
     // Produtos disponíveis do tenant
     const productsBlock = await this.buildProductsBlock(params.tenantId);
 
+    // Regras globais de segurança da plataforma
+    const globalSafetyRules = await this.getGlobalAgentRules();
+
     // [DEBUG] Log do personaBlock resolvido
     logger.log('[DEBUG] personaBlock =>\n' + personaBlock);
 
     const lastLeadMessage = String(params.lastLeadMessage || '').trim();
     const previousSuggestion = String(params.previousSuggestion || '').trim();
     const conversationContext = String(params.conversationContext || '').trim();
+
+    const urgencyInstructions: Record<string, string> = {
+      BAIXA: 'O lead recebeu sua última mensagem há cerca de 2 horas. Retome a conversa de forma natural e amigável, sem pressão.',
+      MEDIA: 'O lead está sem resposta há cerca de 10 horas. Aborde-o com interesse genuíno e alguma urgência discreta — demonstre que você ainda está disponível.',
+      ALTA: 'O lead está sem resposta há 18 horas. Última tentativa de reengajamento antes do encerramento — seja direto, gentil e crie senso de urgência real.',
+      CRITICA: 'O lead não respondeu em 23 horas. Esta é a mensagem de encerramento do contato — envie uma despedida gentil, deixe a porta aberta para o futuro. Não seja insistente.',
+    };
+    const urgencyInstruction = params.urgency ? urgencyInstructions[params.urgency] : null;
+
     const isModifyMode =
       params.mode === 'SHORTEN' || params.mode === 'IMPROVE' || params.mode === 'VARIATE';
 
@@ -406,6 +449,9 @@ export class AiService {
       );
     }
 
+    // 5. Regras globais de segurança da plataforma (última posição = maior prioridade)
+    systemParts.push(globalSafetyRules);
+
     const systemContent = systemParts.join('\n\n');
 
     // [DEBUG] Log do systemContent completo enviado para a OpenAI
@@ -428,6 +474,7 @@ export class AiService {
     }
     if (lastLeadMessage) userParts.push(`Última mensagem do lead:\n${lastLeadMessage}`);
     if (conversationContext) userParts.push(`Contexto recente da conversa:\n${conversationContext}`);
+    if (urgencyInstruction) userParts.push(`Contexto de follow-up: ${urgencyInstruction}`);
     if (isModifyMode && previousSuggestion) userParts.push(`Sugestão anterior da IA (para modificar):\n${previousSuggestion}`);
     if (modeInstruction) userParts.push(`Tarefa: ${modeInstruction}`);
 

@@ -297,20 +297,18 @@ async function processPayload(
             leadId = created.id;
             isReentry = false;
 
-            // Notifica usuários do tenant com WhatsApp cadastrado (respeitando notificationSettings)
+            // Notifica usuários do tenant com WhatsApp cadastrado
             if (whatsappService) {
               const usersToNotify = await prisma.user.findMany({
                 where: { tenantId: tenant.id, ativo: true, whatsappNumber: { not: null } },
-                select: { whatsappNumber: true, nome: true, notificationSettings: true },
+                select: { whatsappNumber: true, nome: true },
               });
               const nome = contactName || 'Novo lead';
               const notifMsg = `🔔 Novo lead chegou: *${nome}*${from ? `\nWhatsApp: ${from}` : ''}`;
               for (const u of usersToNotify) {
-                if (!u.whatsappNumber) continue;
-                const settings = (u.notificationSettings as any) || {};
-                const events: string[] = settings.events ?? ['new_lead'];
-                if (!events.includes('new_lead')) continue;
-                whatsappService.sendMessage(u.whatsappNumber, notifMsg).catch(() => {});
+                if (u.whatsappNumber) {
+                  whatsappService.sendMessage(u.whatsappNumber, notifMsg).catch(() => {});
+                }
               }
             }
           }

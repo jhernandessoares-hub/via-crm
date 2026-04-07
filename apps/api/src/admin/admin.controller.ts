@@ -242,4 +242,18 @@ export class AdminController {
   recoverQueue(@Query('tenantId') tenantId?: string) {
     return this.adminService.recoverQueue(tenantId);
   }
+
+  // ── Platform Config (global AI rules) ──────────────────────────────────────
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('platform-config')
+  getPlatformConfig() {
+    return this.adminService.getPlatformConfig();
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Patch('platform-config')
+  updatePlatformConfig(@Body() body: Record<string, string>) {
+    return this.adminService.updatePlatformConfig(body);
+  }
 }

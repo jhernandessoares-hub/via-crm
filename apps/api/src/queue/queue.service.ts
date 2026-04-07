@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class QueueService implements OnModuleDestroy {
@@ -10,7 +11,7 @@ export class QueueService implements OnModuleDestroy {
   private whatsappInboundQueue: Queue;
   reminderQueue: Queue;
 
-  constructor() {
+  constructor(private readonly prisma: PrismaService) {
     const host = process.env.REDIS_HOST || '127.0.0.1';
     const port = Number(process.env.REDIS_PORT || 6379);
     const password = process.env.REDIS_PASSWORD || undefined;
@@ -56,11 +57,11 @@ export class QueueService implements OnModuleDestroy {
 
   private SLA_2H = 2 * 60 * 60 * 1000;
   private SLA_10H = 10 * 60 * 60 * 1000;
+  private SLA_18H = 18 * 60 * 60 * 1000;
+  private SLA_23H = 23 * 60 * 60 * 1000;
 
-  // ✅ REENGAJAMENTO URGENTE
-  private SLA_22H45 = 18 * 60 * 60 * 1000; // 18h
-
-  // ✅ TEMPLATE META (23h)
+  // ✅ LEGACY (mantidos para cancelSlaJobs cancela jobs antigos em fila)
+  private SLA_22H45 = (22 * 60 + 45) * 60 * 1000;
   private SLA_23H_TEMPLATE = 23 * 60 * 60 * 1000;
 
   // =============================
@@ -208,6 +209,19 @@ export class QueueService implements OnModuleDestroy {
   // =============================
 
   async rescheduleSla(leadId: string) {
+    // SLA só é agendado para leads em PRE_ATENDIMENTO
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { stage: { select: { group: true } } },
+    });
+
+    if (!lead) return;
+
+    if (lead.stage?.group !== 'PRE_ATENDIMENTO') {
+      await this.cancelSlaJobs(leadId); // cancela jobs anteriores se lead saiu do grupo
+      return;
+    }
+
     await this.cancelSlaJobs(leadId);
     await this.scheduleAllStages(leadId);
   }
@@ -260,14 +274,15 @@ export class QueueService implements OnModuleDestroy {
 
   async cancelSlaJobs(leadId: string) {
     const ids = [
-      // ✅ NOVOS
+      // ✅ ATIVOS
       `sla-${leadId}-2h`,
       `sla-${leadId}-10h`,
+      `sla-${leadId}-18h`,
+      `sla-${leadId}-23h`,
+
+      // ✅ LEGACY (cancela jobs antigos ainda em fila)
       `sla-${leadId}-22h45`,
       `sla-${leadId}-23h-template`,
-
-      // ✅ LEGACY
-      `sla-${leadId}-23h`,
 
       // testes
       `sla-${leadId}-test`,
@@ -472,7 +487,7 @@ export class QueueService implements OnModuleDestroy {
       'sla-18h',
       { leadId, urgency: 'ALTA' },
       {
-        delay: this.SLA_22H45,
+        delay: this.SLA_18H,
         jobId: `sla-${leadId}-18h`,
         removeOnComplete: true,
         removeOnFail: false,
@@ -483,12 +498,48 @@ export class QueueService implements OnModuleDestroy {
       'sla-23h',
       { leadId, urgency: 'CRITICA' },
       {
-        delay: this.SLA_23H_TEMPLATE,
+        delay: this.SLA_23H,
         jobId: `sla-${leadId}-23h`,
         removeOnComplete: true,
         removeOnFail: false,
       },
     );
+  }
+
+  // Retorna os jobs SLA ativos/agendados para um lead (para painel em tempo real)
+  async getLeadSlaJobs(leadId: string) {
+    const ids = [
+      `sla-${leadId}-2h`,
+      `sla-${leadId}-10h`,
+      `sla-${leadId}-18h`,
+      `sla-${leadId}-23h`,
+    ];
+
+    const result: Array<{
+      jobId: string | undefined;
+      name: string;
+      urgency: string | null;
+      scheduledFor: Date;
+      state: string;
+      delayMs: number;
+    }> = [];
+
+    for (const id of ids) {
+      const job = await this.slaQueue.getJob(id);
+      if (!job) continue;
+      const state = await job.getState();
+      const scheduledFor = new Date(job.timestamp + (job.opts.delay || 0));
+      result.push({
+        jobId: job.id,
+        name: job.name,
+        urgency: job.data.urgency ?? null,
+        scheduledFor,
+        state,
+        delayMs: job.opts.delay || 0,
+      });
+    }
+
+    return result;
   }
 
   async redisHealthCheck(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
