@@ -1197,3 +1197,13 @@ model PersonalNote {
   @@index([tenantId, userId])
   @@map("personal_notes")
 }
+
+
+model PlatformConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_configs")
+}

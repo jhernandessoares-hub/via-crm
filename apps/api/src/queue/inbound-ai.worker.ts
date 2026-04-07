@@ -215,6 +215,95 @@ async function sendOutsideHoursMessage(
   logger.log(`🕐 BOT FORA DE HORÁRIO: leadId=${leadId}`);
 }
 
+// ── Escalation handler ────────────────────────────────────────────────────────
+
+const ESCALATE_PATTERN = /^\[ESCALATE:([^\]]+)\]\s*/;
+
+/**
+ * Verifica se a resposta contém um marcador [ESCALATE:motivo].
+ * Se sim: remove o marcador do texto, pausa o bot, notifica responsável via WhatsApp
+ * e registra um evento lead.escalated.
+ *
+ * Retorna o texto limpo (sem o marcador).
+ */
+async function handleEscalation(
+  prisma: PrismaService,
+  whatsapp: WhatsappService | undefined,
+  lead: { id: string; tenantId: string; nome: string | null; telefone: string | null; assignedUserId?: string | null },
+  rawText: string,
+): Promise<{ text: string; escalated: boolean; reason: string | null }> {
+  const match = rawText.match(ESCALATE_PATTERN);
+  if (!match) return { text: rawText, escalated: false, reason: null };
+
+  const reason = match[1].trim();
+  const cleanText = rawText.replace(ESCALATE_PATTERN, '').trim();
+
+  logger.log(`🚨 ESCALAÇÃO DETECTADA: leadId=${lead.id} reason=${reason}`);
+
+  try {
+    // Pausa o bot para este lead
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { botPaused: true },
+    });
+
+    // Registra evento de escalação
+    await prisma.leadEvent.create({
+      data: {
+        tenantId: lead.tenantId,
+        leadId: lead.id,
+        channel: 'lead.escalated',
+        payloadRaw: {
+          reason,
+          autoEscalated: true,
+          escalatedAt: new Date().toISOString(),
+          botPaused: true,
+        },
+      },
+    });
+
+    // Notifica responsável pelo lead + owners/managers do tenant via WhatsApp
+    if (whatsapp) {
+      const reasonLabels: Record<string, string> = {
+        insistencia_fora_escopo: 'insistência em assunto fora do escopo',
+        ameaca: 'ameaça ou intimidação',
+        assedio: 'assédio moral ou sexual',
+      };
+      const reasonLabel = reasonLabels[reason] ?? reason;
+      const leadNome = lead.nome?.trim() || 'Lead sem nome';
+      const urgencyMsg =
+        `⚠️ *ATENÇÃO URGENTE — ${leadNome}*\n\n` +
+        `O lead gerou um alerta de *${reasonLabel}* durante o atendimento.\n\n` +
+        `O bot foi pausado automaticamente. Acesse o CRM para revisar a conversa e retomar o atendimento manualmente.`;
+
+      // Busca usuários notificáveis: assignedUser prioritário + owners/managers com whatsappNumber
+      const usersToNotify = await prisma.user.findMany({
+        where: {
+          tenantId: lead.tenantId,
+          ativo: true,
+          whatsappNumber: { not: null },
+          OR: [
+            { id: lead.assignedUserId ?? '' },
+            { role: { in: ['OWNER', 'MANAGER'] } },
+          ],
+        },
+        select: { whatsappNumber: true, nome: true },
+        distinct: ['whatsappNumber'],
+      });
+
+      for (const u of usersToNotify) {
+        if (u.whatsappNumber) {
+          whatsapp.sendMessage(u.whatsappNumber, urgencyMsg).catch(() => {});
+        }
+      }
+    }
+  } catch (err: any) {
+    logger.warn(`⚠️ Erro ao processar escalação leadId=${lead.id}: ${err?.message}`);
+  }
+
+  return { text: cleanText, escalated: true, reason };
+}
+
 function pickEventText(payloadRaw: any): string {
   const p = payloadRaw || {};
 
@@ -494,6 +583,15 @@ async function handleInboundAiJob(
       return;
     }
 
+    // ── Escalation check — deve acontecer antes de enviar ─────────────────────
+    const escalation = await handleEscalation(prisma, whatsapp, lead, suggestion.trim());
+    const finalText = escalation.text;
+
+    if (!finalText) {
+      // Escalação consumiu todo o texto — não envia mensagem vazia
+      return;
+    }
+
     if (agentMode === 'AUTOPILOT' && whatsapp && lead.telefone) {
       // Delay humanizado: descontamos o tempo já gasto desde o início do job
       const elapsedMs = Date.now() - jobStartAt;
@@ -506,8 +604,8 @@ async function handleInboundAiJob(
       }
 
       // Envia primeiro para capturar o wamid da Meta (necessário para exibir reações no chat)
-      const metaResponse = await whatsapp.sendMessage(lead.telefone, suggestion.trim());
-      logger.log(`⚡ AUTOPILOT ENVIOU: leadId=${lead.id}`);
+      const metaResponse = await whatsapp.sendMessage(lead.telefone, finalText);
+      logger.log(`⚡ AUTOPILOT ENVIOU: leadId=${lead.id}${escalation.escalated ? ' [ESCALATED]' : ''}`);
 
       await prisma.leadEvent.create({
         data: {
@@ -515,13 +613,15 @@ async function handleInboundAiJob(
           leadId: lead.id,
           channel: 'whatsapp.out',
           payloadRaw: {
-            text: suggestion.trim(),
+            text: finalText,
             source: 'inbound-ai.worker',
             mode: 'AUTOPILOT',
             agentId: selectedAgent.id,
             agentTitle: selectedAgent.title,
             aiAssistanceLabel: '100% IA',
             aiAssistancePercent: 100,
+            escalated: escalation.escalated,
+            escalationReason: escalation.reason ?? null,
             sentAt: new Date().toISOString(),
             metaResponse: metaResponse ?? null,
           },
@@ -542,7 +642,7 @@ async function handleInboundAiJob(
         leadId: lead.id,
         agentId: selectedAgent.id,
         agentTitle: selectedAgent.title,
-        text: suggestion.trim(),
+        text: finalText,
         source: 'inbound-ai.worker',
         mode: 'COPILOT',
         responseFormat: 'TEXT',

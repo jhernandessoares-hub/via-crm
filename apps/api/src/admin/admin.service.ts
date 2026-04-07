@@ -726,4 +726,27 @@ export class AdminService {
 
     return { seeded };
   }
+
+  // ── Platform Config (global AI rules) ──────────────────────────────────────
+
+  readonly PLATFORM_CONFIG_KEYS = ['globalAgentRules'] as const;
+
+  async getPlatformConfig(): Promise<Record<string, string>> {
+    const rows = await this.prisma.platformConfig.findMany();
+    const result: Record<string, string> = {};
+    for (const row of rows) result[row.key] = row.value;
+    return result;
+  }
+
+  async updatePlatformConfig(data: Record<string, string>): Promise<Record<string, string>> {
+    for (const [key, value] of Object.entries(data)) {
+      await this.prisma.platformConfig.upsert({
+        where: { key },
+        create: { key, value: String(value) },
+        update: { value: String(value) },
+      });
+    }
+    this.audit.log({ action: 'PLATFORM_UPDATE_CONFIG', metadata: { keys: Object.keys(data) } });
+    return this.getPlatformConfig();
+  }
 }
