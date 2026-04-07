@@ -1206,12 +1206,37 @@ export default function LeadDetailChatPage() {
 
   const [qualOpen, setQualOpen] = useState(false);
 
+  // SLA panel
+  const [slaData, setSlaData] = useState<any>(null);
+  const [slaLoading, setSlaLoading] = useState(false);
+
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // SLA polling (30s)
+  useEffect(() => {
+    if (!id) return;
+
+    const fetchSla = async () => {
+      setSlaLoading(true);
+      try {
+        const data = await apiFetch(`/leads/${id}/sla`);
+        setSlaData(data);
+      } catch {
+        // silently ignore errors
+      } finally {
+        setSlaLoading(false);
+      }
+    };
+
+    fetchSla();
+    const t = setInterval(fetchSla, 30000);
+    return () => clearInterval(t);
+  }, [id]);
 
   useEffect(() => {
     try {
@@ -2501,6 +2526,119 @@ async function requestAiPanelSuggestion(
                 </div>
               );
             })()}
+
+            {/* Painel SLA */}
+            {slaData && (
+              <div className="rounded-xl border bg-white p-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="text-sm font-semibold text-gray-900">SLA</div>
+                  {slaLoading && <span className="text-xs text-gray-400">atualizando...</span>}
+                </div>
+
+                {/* Stage group badge */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    slaData.stageGroup === 'PRE_ATENDIMENTO'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
+                  </span>
+                  {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
+                    <span className="text-xs text-gray-500">SLA inativo nesta etapa</span>
+                  )}
+                </div>
+
+                {/* 23h window */}
+                {slaData.lastInboundAt && (
+                  <div className={`rounded-md border p-2 mb-3 text-xs ${
+                    slaData.windowExpired
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : slaData.windowRemainingMinutes < 120
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}>
+                    <div className="font-medium mb-0.5">Janela WhatsApp (23h)</div>
+                    {slaData.windowExpired ? (
+                      <div>Janela expirada</div>
+                    ) : (
+                      <div>
+                        Fecha em{' '}
+                        {slaData.windowRemainingMinutes >= 60
+                          ? `${Math.floor(slaData.windowRemainingMinutes / 60)}h ${slaData.windowRemainingMinutes % 60}min`
+                          : `${slaData.windowRemainingMinutes}min`}
+                        {' '}· {new Date(slaData.windowCloseAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Scheduled jobs */}
+                {slaData.scheduledJobs?.length > 0 ? (
+                  <div className="mb-3">
+                    <div className="text-xs font-medium text-gray-500 mb-1">Agendados</div>
+                    <div className="space-y-1">
+                      {slaData.scheduledJobs.map((job: any) => {
+                        const urgencyColor: Record<string, string> = {
+                          BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                          MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
+                          ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
+                          CRITICA: 'text-red-700 bg-red-50 border-red-200',
+                        };
+                        const color = urgencyColor[job.urgency] ?? 'text-gray-600 bg-gray-50 border-gray-200';
+                        return (
+                          <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
+                            <span className="font-medium">{job.name}</span>
+                            <span>
+                              {new Date(job.scheduledFor).toLocaleString('pt-BR', {
+                                day: '2-digit', month: '2-digit',
+                                hour: '2-digit', minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
+                  <div className="text-xs text-gray-400 mb-3">Nenhum SLA agendado</div>
+                ) : null}
+
+                {/* Recent history */}
+                {slaData.history?.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-gray-500 mb-1">Histórico recente</div>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {slaData.history.slice(0, 8).map((ev: any) => {
+                        const p = ev.payload || {};
+                        const isBlocked = p.outcome === 'BLOCKED';
+                        const isDue = p.outcome === 'DUE';
+                        const isSuggestion = ev.channel === 'ai.suggestion';
+                        return (
+                          <div key={ev.id} className="flex items-start gap-1.5 text-xs text-gray-600">
+                            <span className="mt-0.5 shrink-0">
+                              {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="font-medium">
+                                {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
+                              </span>
+                              {' · '}
+                              <span className="text-gray-400">
+                                {new Date(ev.criadoEm).toLocaleString('pt-BR', {
+                                  day: '2-digit', month: '2-digit',
+                                  hour: '2-digit', minute: '2-digit',
+                                })}
+                              </span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Produtos Disponíveis */}
             <div className="rounded-xl border bg-white p-4">

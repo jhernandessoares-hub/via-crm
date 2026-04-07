@@ -185,6 +185,7 @@ export class AiService {
     previousSuggestion?: string;
     conversationContext?: string;
     mode?: 'REGENERATE' | 'SHORTEN' | 'IMPROVE' | 'VARIATE';
+    urgency?: 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA';
     onToolCall?: (toolName: string, args: Record<string, any>) => Promise<string>;
   }) {
     let agentTitle = '';
@@ -341,6 +342,15 @@ export class AiService {
     const lastLeadMessage = String(params.lastLeadMessage || '').trim();
     const previousSuggestion = String(params.previousSuggestion || '').trim();
     const conversationContext = String(params.conversationContext || '').trim();
+
+    const urgencyInstructions: Record<string, string> = {
+      BAIXA: 'O lead recebeu sua última mensagem há cerca de 2 horas. Retome a conversa de forma natural e amigável, sem pressão.',
+      MEDIA: 'O lead está sem resposta há cerca de 10 horas. Aborde-o com interesse genuíno e alguma urgência discreta — demonstre que você ainda está disponível.',
+      ALTA: 'O lead está sem resposta há 18 horas. Última tentativa de reengajamento antes do encerramento — seja direto, gentil e crie senso de urgência real.',
+      CRITICA: 'O lead não respondeu em 23 horas. Esta é a mensagem de encerramento do contato — envie uma despedida gentil, deixe a porta aberta para o futuro. Não seja insistente.',
+    };
+    const urgencyInstruction = params.urgency ? urgencyInstructions[params.urgency] : null;
+
     const isModifyMode =
       params.mode === 'SHORTEN' || params.mode === 'IMPROVE' || params.mode === 'VARIATE';
 
@@ -418,6 +428,7 @@ export class AiService {
     userParts.push(`Lead: ${params.nome} | Status: ${params.status}`);
     if (lastLeadMessage) userParts.push(`Última mensagem do lead:\n${lastLeadMessage}`);
     if (conversationContext) userParts.push(`Contexto recente da conversa:\n${conversationContext}`);
+    if (urgencyInstruction) userParts.push(`Contexto de follow-up: ${urgencyInstruction}`);
     if (isModifyMode && previousSuggestion) userParts.push(`Sugestão anterior da IA (para modificar):\n${previousSuggestion}`);
     if (modeInstruction) userParts.push(`Tarefa: ${modeInstruction}`);
 

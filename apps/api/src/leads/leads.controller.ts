@@ -93,6 +93,15 @@ export class LeadsController {
     return this.leadsService.getWhatsappWindow(req.user, id);
   }
 
+  /**
+   * ✅ PAINEL SLA — jobs agendados + histórico + janela restante
+   * GET /leads/:id/sla
+   */
+  @Get(':id/sla')
+  async getLeadSla(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.getLeadSla(req.user, id);
+  }
+
   @Get(':id')
   async getById(@Req() req: any, @Param('id') id: string) {
     return this.leadsService.getById(req.user, id);

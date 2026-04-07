@@ -2,8 +2,11 @@ import { Worker, Job } from 'bullmq';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Logger } from '../logger';
+import { resolveWhatsappCreds, sendWhatsappText } from '../whatsapp/whatsapp-creds';
 
 const logger = new Logger('SlaWorker');
+
+type Urgency = 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA';
 
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -20,13 +23,7 @@ function getInboundChannels(): string[] {
 
   return raw.length
     ? raw
-    : [
-        'whatsapp.in',
-        'whatsapp.inbound',
-        'inbound',
-        'message.in',
-        'lead.inbound',
-      ];
+    : ['whatsapp.in', 'whatsapp.inbound', 'inbound', 'message.in', 'lead.inbound'];
 }
 
 function getActiveConversationMinutes(): number {
@@ -34,103 +31,68 @@ function getActiveConversationMinutes(): number {
   return Number.isFinite(n) && n > 0 ? n : 30;
 }
 
-function getWhatsappSafetyWindowHours(): number {
-  const n = Number(process.env.SLA_WHATSAPP_WINDOW_HOURS || 23);
-  return Number.isFinite(n) && n > 0 ? n : 23;
-}
+// ── Business Hours ────────────────────────────────────────────────────────────
 
-function checkWhatsappWindow(lastInboundAt: Date | null) {
-  if (!lastInboundAt) {
-    return {
-      allowed: false as const,
-      reason: 'WHATSAPP_WINDOW_EXPIRED' as const,
-      details: {
-        lastInboundAt: null,
-        windowHours: getWhatsappSafetyWindowHours(),
-      },
+function isWithinBusinessHours(businessHours: any, timezone: string): boolean {
+  if (!businessHours) return true;
+
+  const ALL_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const hasAnyDayEnabled = ALL_DAYS.some((k) => businessHours[k] != null);
+  if (!hasAnyDayEnabled) return true;
+
+  const tz = timezone || 'America/Sao_Paulo';
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(new Date());
+    const weekdayShort = parts.find((p) => p.type === 'weekday')?.value?.toLowerCase();
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+
+    const shortToFull: Record<string, string> = {
+      sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday',
+      thu: 'thursday', fri: 'friday', sat: 'saturday',
     };
+    const dayKey = weekdayShort ? shortToFull[weekdayShort] : null;
+    if (!dayKey) return true;
+
+    const schedule = businessHours[dayKey];
+    if (!schedule) return false;
+
+    const [openH, openM] = String(schedule.open || '00:00').split(':').map(Number);
+    const [closeH, closeM] = String(schedule.close || '23:59').split(':').map(Number);
+
+    const currentMinutes = hour * 60 + minute;
+    const openMinutes = openH * 60 + openM;
+    const closeMinutes = closeH * 60 + closeM;
+
+    return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+  } catch {
+    return true;
   }
-
-  const now = new Date();
-  const diffMs = now.getTime() - lastInboundAt.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
-
-  const windowHours = getWhatsappSafetyWindowHours();
-
-  if (diffHours > windowHours) {
-    return {
-      allowed: false as const,
-      reason: 'WHATSAPP_WINDOW_EXPIRED' as const,
-      details: {
-        lastInboundAt: lastInboundAt.toISOString(),
-        now: now.toISOString(),
-        diffHours,
-        windowHours,
-      },
-    };
-  }
-
-  return { allowed: true as const, reason: null, details: null };
 }
 
-function getMetaConfig() {
-  const version =
-    process.env.WHATSAPP_API_VERSION ||
-    process.env.WHATSAPP_VERSION ||
-    process.env.META_GRAPH_VERSION ||
-    'v20.0';
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-  const phoneNumberId =
-    process.env.WHATSAPP_PHONE_NUMBER_ID ||
-    process.env.WHATSAPP_PHONE_ID ||
-    process.env.META_PHONE_NUMBER_ID ||
-    process.env.PHONE_NUMBER_ID;
-
-  const token =
-    process.env.WHATSAPP_TOKEN ||
-    process.env.WHATSAPP_ACCESS_TOKEN ||
-    process.env.META_ACCESS_TOKEN ||
-    process.env.ACCESS_TOKEN;
-
-  return { version, phoneNumberId, token };
-}
-
-function getWhatsappTemplateConfig() {
-  const templateName =
-    process.env.WHATSAPP_TEMPLATE_NAME || process.env.META_TEMPLATE_NAME;
-
-  const language =
-    process.env.WHATSAPP_TEMPLATE_LANG ||
-    process.env.META_TEMPLATE_LANG ||
-    'pt_BR';
-
-  return { templateName, language };
-}
-
-function sanitizeTemplateParamText(input: string) {
-  const s = (input || '').toString().replace(/\s+/g, ' ').trim();
-  if (s.length <= 60) return s;
-  // Truncate at last word boundary before the limit to avoid cutting mid-word
-  const cut = s.slice(0, 60);
-  const lastSpace = cut.lastIndexOf(' ');
-  return lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
-}
-
-/**
- * REGRA ATUAL:
- * - SLA continua sem enviar WhatsApp automático
- * - agora o SLA pode gerar SUGESTÃO de IA (copilot)
- * - a sugestão fica registrada em LeadEvent
- */
-async function registerSlaDue(prisma: PrismaService, params: {
-  tenantId: string;
-  leadId: string;
-  jobName: string;
-  outcome: 'DUE' | 'BLOCKED';
-  reason: string;
-  details?: any;
-  context?: any;
-}) {
+async function registerSlaDue(
+  prisma: PrismaService,
+  params: {
+    tenantId: string;
+    leadId: string;
+    jobName: string;
+    outcome: 'DUE' | 'BLOCKED';
+    reason: string;
+    details?: any;
+    context?: any;
+  },
+) {
   await prisma.leadEvent.create({
     data: {
       tenantId: params.tenantId,
@@ -152,13 +114,16 @@ async function registerSlaDue(prisma: PrismaService, params: {
   );
 }
 
-async function registerBlocked(prisma: PrismaService, params: {
-  tenantId: string;
-  leadId: string;
-  jobName: string;
-  reason: string;
-  details?: any;
-}) {
+async function registerBlocked(
+  prisma: PrismaService,
+  params: {
+    tenantId: string;
+    leadId: string;
+    jobName: string;
+    reason: string;
+    details?: any;
+  },
+) {
   await registerSlaDue(prisma, {
     tenantId: params.tenantId,
     leadId: params.leadId,
@@ -169,14 +134,18 @@ async function registerBlocked(prisma: PrismaService, params: {
   });
 }
 
-async function registerAiSuggestion(prisma: PrismaService, params: {
-  tenantId: string;
-  leadId: string;
-  jobName: string;
-  agentId?: string | null;
-  agentTitle?: string | null;
-  text: string;
-}) {
+async function registerAiSuggestion(
+  prisma: PrismaService,
+  params: {
+    tenantId: string;
+    leadId: string;
+    jobName: string;
+    agentId?: string | null;
+    agentTitle?: string | null;
+    urgency?: Urgency | null;
+    text: string;
+  },
+) {
   await prisma.leadEvent.create({
     data: {
       tenantId: params.tenantId,
@@ -188,6 +157,7 @@ async function registerAiSuggestion(prisma: PrismaService, params: {
         jobName: params.jobName,
         agentId: params.agentId ?? null,
         agentTitle: params.agentTitle ?? null,
+        urgency: params.urgency ?? null,
         text: params.text,
         createdAt: new Date().toISOString(),
       },
@@ -195,30 +165,19 @@ async function registerAiSuggestion(prisma: PrismaService, params: {
   });
 
   logger.log(
-    `🤖 AI SUGGESTION: ${params.jobName} leadId=${params.leadId} agentId=${params.agentId || 'none'}`,
+    `🤖 SLA SUGGESTION [COPILOT]: ${params.jobName} leadId=${params.leadId} urgency=${params.urgency || 'none'}`,
   );
 }
 
 async function hasInboundAfterDate(prisma: PrismaService, leadId: string, afterDate: Date) {
   const inboundChannels = getInboundChannels();
 
-  const hitByList = await prisma.leadEvent.findFirst({
-    where: {
-      leadId,
-      criadoEm: { gt: afterDate },
-      channel: { in: inboundChannels },
-    },
-    select: { id: true, channel: true, criadoEm: true },
-  });
-
-  if (hitByList)
-    return { ok: true as const, event: hitByList, mode: 'list' as const };
-
-  const hitByContains = await prisma.leadEvent.findFirst({
+  const hit = await prisma.leadEvent.findFirst({
     where: {
       leadId,
       criadoEm: { gt: afterDate },
       OR: [
+        { channel: { in: inboundChannels } },
         { channel: { contains: 'inbound', mode: 'insensitive' } },
         { channel: { endsWith: '.in', mode: 'insensitive' } },
       ],
@@ -226,14 +185,7 @@ async function hasInboundAfterDate(prisma: PrismaService, leadId: string, afterD
     select: { id: true, channel: true, criadoEm: true },
   });
 
-  if (hitByContains)
-    return {
-      ok: true as const,
-      event: hitByContains,
-      mode: 'fallback' as const,
-    };
-
-  return { ok: false as const };
+  return hit ? { ok: true as const, event: hit } : { ok: false as const };
 }
 
 async function getLastWhatsappOut(prisma: PrismaService, leadId: string) {
@@ -244,26 +196,23 @@ async function getLastWhatsappOut(prisma: PrismaService, leadId: string) {
   });
 }
 
-
-function isTemplateJob(jobName: string) {
-  return jobName === 'sla-23h-template';
-}
+// ── Main job handler ────────────────────────────────────────────────────────
 
 async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
   const leadId = job.data?.leadId as string | undefined;
   if (!leadId) return;
+
+  const urgency: Urgency = job.data?.urgency ?? 'BAIXA';
+  const isCritica = urgency === 'CRITICA';
 
   const jobCreatedAtMs =
     Number.isFinite(Number(job.timestamp)) && Number(job.timestamp) > 0
       ? Number(job.timestamp)
       : Date.now();
 
-  logger.log('🧪 SLA JOB START', {
-    jobId: job.id,
-    jobName: job.name,
-    leadId,
-  });
+  logger.log('🧪 SLA JOB START', { jobId: job.id, jobName: job.name, leadId, urgency });
 
+  // ── Fetch lead ──────────────────────────────────────────────────────────────
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     select: {
@@ -273,121 +222,183 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
       nome: true,
       telefone: true,
       lastInboundAt: true,
+      stageId: true,
+      stage: { select: { group: true, key: true } },
     },
   });
 
   if (!lead) return;
 
+  // ── leadSla checks ──────────────────────────────────────────────────────────
   const leadSla = await prisma.leadSla.findUnique({
     where: { leadId: lead.id },
-    select: {
-      isActive: true,
-      frozenUntil: true,
-    },
+    select: { isActive: true, frozenUntil: true },
   });
 
   if (leadSla && leadSla.isActive === false) {
-    await registerBlocked(prisma, {
-      tenantId: lead.tenantId,
-      leadId: lead.id,
-      jobName: job.name,
-      reason: 'SLA_INACTIVE',
-    });
+    await registerBlocked(prisma, { tenantId: lead.tenantId, leadId: lead.id, jobName: job.name, reason: 'SLA_INACTIVE' });
     return;
   }
 
-  if (
-    leadSla?.frozenUntil &&
-    new Date(leadSla.frozenUntil).getTime() > Date.now()
-  ) {
-    await registerBlocked(prisma, {
-      tenantId: lead.tenantId,
-      leadId: lead.id,
-      jobName: job.name,
-      reason: 'FROZEN_UNTIL_ACTIVE',
-    });
+  if (leadSla?.frozenUntil && new Date(leadSla.frozenUntil).getTime() > Date.now()) {
+    await registerBlocked(prisma, { tenantId: lead.tenantId, leadId: lead.id, jobName: job.name, reason: 'FROZEN_UNTIL_ACTIVE' });
     return;
   }
 
+  // ── Lead status final ───────────────────────────────────────────────────────
   if (lead.status === 'FECHADO' || lead.status === 'PERDIDO') {
+    await registerBlocked(prisma, { tenantId: lead.tenantId, leadId: lead.id, jobName: job.name, reason: 'LEAD_STATUS_FINAL' });
+    return;
+  }
+
+  // ── PRE_ATENDIMENTO check ──────────────────────────────────────────────────
+  if (lead.stage?.group !== 'PRE_ATENDIMENTO') {
     await registerBlocked(prisma, {
-      tenantId: lead.tenantId,
-      leadId: lead.id,
-      jobName: job.name,
-      reason: 'LEAD_STATUS_FINAL',
+      tenantId: lead.tenantId, leadId: lead.id, jobName: job.name,
+      reason: 'NOT_PRE_ATENDIMENTO',
+      details: { group: lead.stage?.group ?? null, stageKey: lead.stage?.key ?? null },
     });
     return;
   }
 
+  // ── Active conversation check ───────────────────────────────────────────────
   const lastOut = await getLastWhatsappOut(prisma, lead.id);
-  let inboundAfterOutResult: any = null;
-
   logger.log('🧪 LAST OUT', { lastOut: lastOut ?? null });
 
   if (lastOut) {
     const minutes = getActiveConversationMinutes();
     const windowMs = minutes * 60 * 1000;
-
     const lastOutMs = new Date(lastOut.criadoEm).getTime();
     const ageMs = Date.now() - lastOutMs;
 
     if (ageMs >= 0 && ageMs <= windowMs) {
-      inboundAfterOutResult = await hasInboundAfterDate(
-        prisma,
-        lead.id,
-        new Date(lastOut.criadoEm),
-      );
+      const inboundCheck = await hasInboundAfterDate(prisma, lead.id, new Date(lastOut.criadoEm));
+      logger.log('🧪 INBOUND_AFTER_LAST_OUT?', inboundCheck);
 
-      logger.log('🧪 INBOUND_AFTER_LAST_OUT?', inboundAfterOutResult);
-
-      if (inboundAfterOutResult.ok) {
+      if (inboundCheck.ok) {
         await registerBlocked(prisma, {
-          tenantId: lead.tenantId,
-          leadId: lead.id,
-          jobName: job.name,
+          tenantId: lead.tenantId, leadId: lead.id, jobName: job.name,
           reason: 'ACTIVE_CONVERSATION',
-          details: {
-            windowMinutes: minutes,
-            lastWhatsappOutAt: lastOut.criadoEm,
-            inboundEvent: inboundAfterOutResult.event,
-          },
+          details: { windowMinutes: minutes, lastWhatsappOutAt: lastOut.criadoEm, inboundEvent: inboundCheck.event },
         });
         return;
       }
     }
   }
 
-  const windowCheck = checkWhatsappWindow(lead.lastInboundAt ?? null);
+  // ── 23h window check ───────────────────────────────────────────────────────
+  const lastInboundAt = lead.lastInboundAt ?? null;
+  const diffHours = lastInboundAt
+    ? (Date.now() - new Date(lastInboundAt).getTime()) / (1000 * 60 * 60)
+    : null;
 
+  // ── CRITICA: auto-move to ATENDIMENTO_ENCERRADO when 23h window expires ─────
+  if (isCritica) {
+    const windowExpired = !lastInboundAt || (diffHours !== null && diffHours >= 22);
+
+    if (windowExpired) {
+      const encerradoStage = await prisma.pipelineStage.findFirst({
+        where: { tenantId: lead.tenantId, key: 'ATENDIMENTO_ENCERRADO', isActive: true },
+        select: { id: true, key: true },
+      });
+
+      if (encerradoStage) {
+        await prisma.$transaction(async (tx) => {
+          await tx.lead.update({
+            where: { id: lead.id },
+            data: { stageId: encerradoStage.id },
+          });
+          await tx.leadTransitionLog.create({
+            data: {
+              tenantId: lead.tenantId,
+              leadId: lead.id,
+              fromStage: lead.stage?.key ?? null,
+              toStage: 'ATENDIMENTO_ENCERRADO',
+              changedBy: 'SLA_AUTO',
+            },
+          });
+        });
+
+        logger.log(
+          `🚫 SLA CRITICA: lead movido para ATENDIMENTO_ENCERRADO leadId=${lead.id} diffHours=${diffHours?.toFixed(1)}`,
+        );
+
+        await registerSlaDue(prisma, {
+          tenantId: lead.tenantId,
+          leadId: lead.id,
+          jobName: job.name,
+          outcome: 'DUE',
+          reason: 'ATENDIMENTO_ENCERRADO_AUTO',
+          details: { diffHours, lastInboundAt: lastInboundAt?.toISOString() ?? null },
+        });
+      } else {
+        logger.warn(`⚠️ SLA CRITICA: stage ATENDIMENTO_ENCERRADO não encontrado para tenant=${lead.tenantId}`);
+      }
+    }
+  }
+
+  // ── Fetch tenant for business hours ───────────────────────────────────────
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: lead.tenantId },
+    select: { businessHours: true },
+  });
+
+  const bh = tenant?.businessHours as any;
+  const tz = bh?.timezone || 'America/Sao_Paulo';
+  const withinHours = isWithinBusinessHours(bh, tz);
+
+  // Non-CRITICA: skip if outside business hours
+  if (!withinHours && !isCritica) {
+    await registerBlocked(prisma, {
+      tenantId: lead.tenantId, leadId: lead.id, jobName: job.name,
+      reason: 'OUTSIDE_BUSINESS_HOURS',
+      details: { timezone: tz, urgency },
+    });
+    return;
+  }
+
+  // ── Register SLA due ───────────────────────────────────────────────────────
   await registerSlaDue(prisma, {
     tenantId: lead.tenantId,
     leadId: lead.id,
     jobName: job.name,
     outcome: 'DUE',
-    reason: isTemplateJob(job.name) ? 'TEMPLATE_JOB_DUE' : 'SLA_JOB_DUE',
-    details: {
-      jobCreatedAt: new Date(jobCreatedAtMs).toISOString(),
-    },
+    reason: 'SLA_JOB_DUE',
+    details: { jobCreatedAt: new Date(jobCreatedAtMs).toISOString(), urgency },
     context: {
       leadStatus: lead.status,
-      lastInboundAt: lead.lastInboundAt ?? null,
-      hadRecentWhatsappOut: !!lastOut,
-      lastWhatsappOutAt: lastOut?.criadoEm ?? null,
-      inboundAfterLastOut: inboundAfterOutResult?.ok ?? false,
-      whatsappWindow: windowCheck,
-      note: 'COPILOT_SUGGESTION_ONLY',
+      stageKey: lead.stage?.key ?? null,
+      lastInboundAt: lastInboundAt?.toISOString() ?? null,
+      diffHours,
+      withinBusinessHours: withinHours,
+      urgency,
     },
   });
 
+  // ── Find agent and check mode ──────────────────────────────────────────────
   try {
     const defaultAgent = await ai.findDefaultAgentForTenant(lead.tenantId);
 
     if (!defaultAgent?.id) {
-      logger.log(
-        `⚠️ Nenhum agent ativo encontrado para tenant=${lead.tenantId}. Sugestão de IA não gerada.`,
-      );
+      logger.log(`⚠️ Nenhum agent ativo para tenant=${lead.tenantId}. Sem mensagem SLA.`);
       return;
     }
+
+    const agentMode: string = (defaultAgent as any).mode ?? 'COPILOT';
+
+    // Build recent conversation context
+    const recentEvents = await prisma.leadEvent.findMany({
+      where: { leadId: lead.id, channel: { in: ['whatsapp.in', 'whatsapp.out'] } },
+      orderBy: { criadoEm: 'desc' },
+      take: 6,
+      select: { channel: true, payloadRaw: true },
+    });
+    const conversationLines = [...recentEvents].reverse().map((ev) => {
+      const p = ev.payloadRaw as any;
+      const text = typeof p?.text === 'string' ? p.text.trim() : (typeof p?.transcription === 'string' ? p.transcription.trim() : '');
+      if (!text) return null;
+      return ev.channel === 'whatsapp.in' ? `Lead: ${text}` : `Agente: ${text}`;
+    }).filter(Boolean).join('\n');
 
     const suggestion = await ai.generateFollowUp({
       nome: String(lead.nome || 'Cliente').trim() || 'Cliente',
@@ -395,43 +406,76 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
       tenantId: lead.tenantId,
       agentId: defaultAgent.id,
       leadId: lead.id,
+      conversationContext: conversationLines || undefined,
+      urgency,
     });
 
-    if (suggestion && suggestion.trim()) {
+    if (!suggestion || !suggestion.trim()) return;
+
+    const text = suggestion.trim();
+
+    if (agentMode === 'AUTOPILOT') {
+      // Send via WhatsApp
+      if (!lead.telefone) {
+        logger.warn(`⚠️ SLA AUTOPILOT: lead sem telefone leadId=${lead.id}`);
+        return;
+      }
+
+      const creds = await resolveWhatsappCreds(prisma, lead.tenantId);
+      if (!creds) {
+        logger.warn(`⚠️ SLA AUTOPILOT: credenciais WhatsApp não resolvidas para tenant=${lead.tenantId}`);
+        return;
+      }
+
+      await sendWhatsappText(creds, lead.telefone, text);
+
+      await prisma.leadEvent.create({
+        data: {
+          tenantId: lead.tenantId,
+          leadId: lead.id,
+          channel: 'whatsapp.out',
+          payloadRaw: {
+            text,
+            type: 'text',
+            source: 'sla.worker.autopilot',
+            urgency,
+            agentId: defaultAgent.id,
+            agentTitle: (defaultAgent as any).title ?? null,
+            aiAssistanceLabel: '100% IA',
+            aiAssistancePercent: 100,
+            at: new Date().toISOString(),
+          },
+        },
+      });
+
+      logger.log(`📤 SLA AUTOPILOT SENT: leadId=${lead.id} urgency=${urgency}`);
+    } else {
+      // COPILOT — save suggestion only
       await registerAiSuggestion(prisma, {
         tenantId: lead.tenantId,
         leadId: lead.id,
         jobName: job.name,
         agentId: defaultAgent.id,
-        agentTitle: defaultAgent.title,
-        text: suggestion.trim(),
+        agentTitle: (defaultAgent as any).title ?? null,
+        urgency,
+        text,
       });
     }
   } catch (err: any) {
     logger.log(
-      `⚠️ Erro ao gerar sugestão de IA no SLA worker leadId=${lead.id}: ${err?.message || err}`,
+      `⚠️ Erro ao gerar sugestão SLA leadId=${lead.id}: ${err?.message || err}`,
     );
   }
 
-  logger.log(`⏰ SLA DUE registrado leadId=${lead.id}`);
+  logger.log(`⏰ SLA processado leadId=${lead.id} urgency=${urgency}`);
 }
 
 export function startSlaWorker(prisma: PrismaService, ai: AiService) {
-  const templateConfig = getWhatsappTemplateConfig();
-  if (!templateConfig.templateName) {
-    logger.warn(
-      '⚠️ SLA Worker: WHATSAPP_TEMPLATE_NAME (ou META_TEMPLATE_NAME) não definido — ' +
-      'jobs sla-23h-template vão falhar ao tentar enviar o template.',
-    );
-  }
-
-  logger.log('🧪 SLA Worker boot', {
+  logger.log('🚀 SLA Worker boot', {
     inboundChannels: getInboundChannels(),
     activeConversationMinutes: getActiveConversationMinutes(),
-    whatsappWindowHours: getWhatsappSafetyWindowHours(),
-    template: templateConfig,
     redis: getRedisConnection(),
-    mode: 'COPILOT_SUGGESTION_ONLY',
+    mode: 'AUTOPILOT_OR_COPILOT_PER_AGENT',
   });
 
   const worker = new Worker(
