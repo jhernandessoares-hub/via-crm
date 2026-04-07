@@ -74,7 +74,7 @@ export class QueueService implements OnModuleDestroy {
   }
 
   private getInboundFollowupReplyDelayMs() {
-    const seconds = Number(process.env.AI_INBOUND_REPLY_SECONDS || 10); // 10s
+    const seconds = Number(process.env.AI_INBOUND_REPLY_SECONDS || 15); // 15s
     return Math.max(3, seconds) * 1000;
   }
 
