@@ -496,6 +496,37 @@ async function handleInboundAiJob(
     return;
   }
 
+  // ── Nível 5: Cooldown — evita spam se bot já respondeu recentemente ────────
+  const cooldownMinutes = Number(process.env.AI_INBOUND_COOLDOWN_MINUTES || 10);
+  const cooldownMs = cooldownMinutes * 60 * 1000;
+  const recentOut = await prisma.leadEvent.findFirst({
+    where: {
+      leadId: lead.id,
+      channel: 'whatsapp.out',
+      criadoEm: { gte: new Date(Date.now() - cooldownMs) },
+    },
+    select: { id: true, criadoEm: true },
+  });
+
+  if (recentOut) {
+    // Só bloqueia se não houve inbound APÓS o último outbound
+    const inboundAfterOut = await prisma.leadEvent.findFirst({
+      where: {
+        leadId: lead.id,
+        channel: 'whatsapp.in',
+        criadoEm: { gt: recentOut.criadoEm },
+      },
+      select: { id: true },
+    });
+
+    if (!inboundAfterOut) {
+      logger.log(
+        `⏸ COOLDOWN: bot já respondeu há menos de ${cooldownMinutes}min, sem nova msg do lead (leadId=${lead.id})`,
+      );
+      return;
+    }
+  }
+
   // ── Busca agente ──────────────────────────────────────────────────────────
   const lastInbound = await getLastInboundEvent(prisma, lead.id);
   if (!lastInbound) {
