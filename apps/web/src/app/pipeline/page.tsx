@@ -199,8 +199,8 @@ export default function PipelinePage() {
           <div className="grid grid-cols-12 gap-2 border-b bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
             <div className="col-span-4">Lead</div>
             <div className="col-span-3">Telefone</div>
-            <div className="col-span-2">Grupo</div>
-            <div className="col-span-3">Etapa Atual</div>
+            <div className="col-span-2">Etapa</div>
+            <div className="col-span-3">Status</div>
           </div>
 
           {filtered.length === 0 ? (
