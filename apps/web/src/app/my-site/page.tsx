@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
-import { cloneSiteContent, writeSiteContentToStorage } from "@/lib/site-content";
+import { writeSiteContentToStorage } from "@/lib/site-content";
 
 type SiteType = "LANDING_PAGE" | "INSTITUCIONAL" | "SITE_IMOBILIARIO" | "PORTAL";
-type SiteStatus = "DRAFT" | "PUBLISHED";
+type SiteStatus = "DRAFT" | "PUBLISHED" | "INATIVO";
 
 type TenantSite = {
   id: string;
@@ -25,6 +25,7 @@ type Template = {
   name: string;
   siteType: SiteType;
   scope: string;
+  contentJson: any;
 };
 
 const TYPE_LABELS: Record<SiteType, string> = {
@@ -41,10 +42,12 @@ const TYPE_DESCRIPTIONS: Record<SiteType, string> = {
   PORTAL: "Portal completo com mapa interativo, grade de corretores e busca avançada.",
 };
 
-function statusBadge(status: SiteStatus) {
-  if (status === "PUBLISHED") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  return "bg-amber-50 text-amber-800 border-amber-200";
-}
+const TYPE_ICONS: Record<SiteType, string> = {
+  LANDING_PAGE: "🚀",
+  INSTITUCIONAL: "🏢",
+  SITE_IMOBILIARIO: "🏠",
+  PORTAL: "🌐",
+};
 
 function typeBadge(type: SiteType) {
   if (type === "SITE_IMOBILIARIO") return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -54,19 +57,18 @@ function typeBadge(type: SiteType) {
 }
 
 export default function MySitePage() {
-  const [sites, setSites] = useState<TenantSite[]>([]);
+  const [activeSite, setActiveSite] = useState<TenantSite | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    slug: "",
-    siteType: "SITE_IMOBILIARIO" as SiteType,
-    templateId: "",
-  });
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [deactivateConfirm, setDeactivateConfirm] = useState(false);
+  const [unpublishConfirm, setUnpublishConfirm] = useState(false);
+  const [customDomain, setCustomDomain] = useState("");
+  const [savingDomain, setSavingDomain] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [openingEditor, setOpeningEditor] = useState(false);
 
   useEffect(() => {
     load();
@@ -80,7 +82,10 @@ export default function MySitePage() {
         apiFetch("/sites"),
         apiFetch("/sites/templates"),
       ]);
-      setSites(Array.isArray(sitesData) ? sitesData : []);
+      const sites: TenantSite[] = Array.isArray(sitesData) ? sitesData : [];
+      const active = sites.find((s) => s.status !== "INATIVO") ?? null;
+      setActiveSite(active);
+      setCustomDomain(active?.customDomain ?? "");
       setTemplates(Array.isArray(tplData) ? tplData : []);
     } catch (e: any) {
       setError(e.message || "Erro ao carregar.");
@@ -89,58 +94,34 @@ export default function MySitePage() {
     }
   }
 
-  const availableTemplates = useMemo(
-    () => templates.filter((t) => t.siteType === form.siteType),
-    [templates, form.siteType]
-  );
-
-  const slugifiedName = form.name.trim()
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-");
-
-  const canCreate = form.name.trim() && form.slug.trim();
-
-  function setField<K extends keyof typeof form>(key: K, value: typeof form[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleCreate() {
-    if (!canCreate || creating) return;
+  async function handleUseTemplate(tpl: Template) {
+    if (creating) return;
     setCreating(true);
     setError(null);
     try {
-      let contentJson: any = cloneSiteContent();
-      if (form.templateId) {
-        // Load template content from API
-        try {
-          const tplFull = await apiFetch(`/sites/templates`);
-          const found = (Array.isArray(tplFull) ? tplFull : []).find((t: any) => t.id === form.templateId);
-          if (found?.contentJson) contentJson = found.contentJson;
-        } catch {
-          // fallback to empty seed
-        }
-      }
+      const slug = tpl.name
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        + "-" + Math.random().toString(36).slice(2, 6);
+
+      const contentJson = tpl.contentJson;
 
       const site: TenantSite = await apiFetch("/sites", {
         method: "POST",
         body: JSON.stringify({
-          name: form.name.trim(),
-          slug: form.slug.trim(),
-          siteType: form.siteType,
-          templateId: form.templateId || undefined,
+          name: tpl.name,
+          slug,
+          siteType: tpl.siteType,
+          templateId: tpl.id,
           contentJson,
         }),
       });
 
-      // Save to localStorage so editor can load it immediately
       writeSiteContentToStorage(contentJson, site.id);
-
-      setSites((prev) => [site, ...prev]);
-      setIsCreateOpen(false);
-      setForm({ name: "", slug: "", siteType: "SITE_IMOBILIARIO", templateId: "" });
-      window.open(`/?editor=1&site=${site.id}&siteApiId=${site.id}`, "_blank", "noopener,noreferrer");
+      setActiveSite(site);
+      setCustomDomain("");
     } catch (e: any) {
       setError(e.message || "Erro ao criar site.");
     } finally {
@@ -148,43 +129,93 @@ export default function MySitePage() {
     }
   }
 
-  async function handlePublish(id: string) {
+  async function handleOpenEditor() {
+    if (!activeSite || openingEditor) return;
+    setOpeningEditor(true);
     try {
-      await apiFetch(`/sites/${id}/publish`, { method: "POST" });
-      setSites((prev) => prev.map((s) => s.id === id ? { ...s, status: "PUBLISHED" } : s));
-    } catch (e: any) {
-      setError(e.message || "Erro ao publicar.");
+      const site = await apiFetch(`/sites/${activeSite.id}`);
+      if (site?.contentJson) {
+        writeSiteContentToStorage(site.contentJson, activeSite.id);
+      }
+    } catch {
+      // fallback — abre mesmo sem sincronizar
+    } finally {
+      setOpeningEditor(false);
+      window.open(`/?editor=1&site=${activeSite.id}&siteApiId=${activeSite.id}`, "_blank", "noopener,noreferrer");
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handlePublish() {
+    if (!activeSite || publishing) return;
+    setPublishing(true);
     try {
-      await apiFetch(`/sites/${id}`, { method: "DELETE" });
-      setSites((prev) => prev.filter((s) => s.id !== id));
-      setDeleteConfirm(null);
+      await apiFetch(`/sites/${activeSite.id}/publish`, { method: "POST" });
+      setActiveSite((s) => s ? { ...s, status: "PUBLISHED" } : s);
     } catch (e: any) {
-      setError(e.message || "Erro ao excluir.");
+      setError(e.message || "Erro ao publicar.");
+    } finally {
+      setPublishing(false);
     }
+  }
+
+  async function handleUnpublish() {
+    if (!activeSite) return;
+    try {
+      await apiFetch(`/sites/${activeSite.id}/unpublish`, { method: "POST" });
+      setActiveSite((s) => s ? { ...s, status: "DRAFT" } : s);
+      setUnpublishConfirm(false);
+    } catch (e: any) {
+      setError(e.message || "Erro ao tirar do ar.");
+    }
+  }
+
+  async function handleSaveDomain() {
+    if (!activeSite) return;
+    setSavingDomain(true);
+    try {
+      await apiFetch(`/sites/${activeSite.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ customDomain: customDomain.trim() || null }),
+      });
+      setActiveSite((s) => s ? { ...s, customDomain: customDomain.trim() || null } : s);
+    } catch (e: any) {
+      setError(e.message || "Erro ao salvar domínio.");
+    } finally {
+      setSavingDomain(false);
+    }
+  }
+
+  async function handleDeactivate() {
+    if (!activeSite) return;
+    try {
+      await apiFetch(`/sites/${activeSite.id}/deactivate`, { method: "POST" });
+      setActiveSite(null);
+      setDeactivateConfirm(false);
+      setShowConfig(false);
+      await load();
+    } catch (e: any) {
+      setError(e.message || "Erro ao desativar.");
+    }
+  }
+
+  if (loading) {
+    return (
+      <AppShell title="Meu Site">
+        <div className="rounded-2xl border bg-white p-12 text-center text-sm text-slate-500">Carregando...</div>
+      </AppShell>
+    );
   }
 
   return (
     <AppShell title="Meu Site">
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Meu Site</div>
-            <h1 className="mt-2 text-3xl font-bold text-slate-950">Gerenciador de sites</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Crie e publique sites imobiliários integrados ao seu CRM. Cada site é independente — você edita, publica e controla o domínio.
-            </p>
-          </div>
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="self-start rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            Novo site
-          </button>
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Meu Site</div>
+          <h1 className="mt-2 text-3xl font-bold text-slate-950">Gerenciador de sites</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Crie e publique seu site imobiliário integrado ao CRM.
+          </p>
         </div>
 
         {error && (
@@ -194,203 +225,223 @@ export default function MySitePage() {
           </div>
         )}
 
-        {/* Sites list */}
-        {loading ? (
-          <div className="rounded-2xl border bg-white p-12 text-center text-sm text-slate-500">Carregando...</div>
-        ) : sites.length === 0 ? (
-          <div className="rounded-2xl border bg-white p-12 text-center">
-            <div className="text-4xl">🌐</div>
-            <div className="mt-4 text-sm font-semibold text-slate-950">Você ainda não tem nenhum site</div>
-            <p className="mt-2 text-sm text-slate-500">Crie agora um site integrado ao seu catálogo de imóveis.</p>
-            <button
-              onClick={() => setIsCreateOpen(true)}
-              className="mt-4 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Criar meu primeiro site
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {sites.map((site) => (
-              <div key={site.id} className="rounded-2xl border bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold text-slate-950">{site.name}</div>
-                    <div className="mt-1 text-xs text-slate-400">{site.slug}</div>
-                  </div>
-                  <span className={`inline-flex shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusBadge(site.status)}`}>
-                    {site.status === "PUBLISHED" ? "Publicado" : "Rascunho"}
-                  </span>
-                </div>
-
-                <div className="mt-3">
-                  <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${typeBadge(site.siteType)}`}>
-                    {TYPE_LABELS[site.siteType]}
-                  </span>
-                </div>
-
-                {site.customDomain && (
-                  <div className="mt-2 text-xs text-slate-500">
-                    🌐 {site.customDomain}
-                  </div>
-                )}
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link
-                    href={`/?editor=1&site=${site.id}&siteApiId=${site.id}`}
-                    target="_blank"
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-950"
-                  >
-                    Editar
-                  </Link>
-                  <Link
-                    href={`/s/${site.slug}`}
-                    target="_blank"
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-950"
-                  >
-                    Visualizar
-                  </Link>
-                  {site.status === "DRAFT" && (
-                    <button
-                      onClick={() => handlePublish(site.id)}
-                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                    >
-                      Publicar
-                    </button>
-                  )}
-                  {deleteConfirm === site.id ? (
-                    <>
-                      <button
-                        onClick={() => handleDelete(site.id)}
-                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700"
-                      >
-                        Confirmar exclusão
-                      </button>
-                      <button
-                        onClick={() => setDeleteConfirm(null)}
-                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"
-                      >
-                        Cancelar
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => setDeleteConfirm(site.id)}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:border-red-200 hover:text-red-600"
-                    >
-                      Excluir
-                    </button>
-                  )}
-                </div>
-
-                <div className="mt-3 text-[11px] text-slate-400">
-                  Atualizado {new Date(site.updatedAt).toLocaleString("pt-BR")}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Modal criar site */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6">
-          <div className="w-full max-w-2xl rounded-[2rem] bg-white p-6 shadow-2xl">
+        {/* ── Estado 2: Site ativo ─────────────────────────────────────────── */}
+        {activeSite ? (
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            {/* Header */}
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Novo site</div>
-                <h2 className="mt-1 text-2xl font-semibold text-slate-950">Criar site</h2>
-              </div>
-              <button
-                onClick={() => setIsCreateOpen(false)}
-                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600"
-              >
-                Fechar
-              </button>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {/* Tipo do site */}
-              <div>
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo de site</div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {(["LANDING_PAGE", "INSTITUCIONAL", "SITE_IMOBILIARIO", "PORTAL"] as SiteType[]).map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => { setField("siteType", type); setField("templateId", ""); }}
-                      className={`rounded-xl border p-3 text-left transition ${form.siteType === type ? "border-slate-950 bg-slate-50" : "border-slate-200 hover:border-slate-400"}`}
-                    >
-                      <div className="text-sm font-semibold text-slate-950">{TYPE_LABELS[type]}</div>
-                      <div className="mt-0.5 text-xs text-slate-500">{TYPE_DESCRIPTIONS[type]}</div>
-                    </button>
-                  ))}
+                <div className="text-lg font-semibold text-slate-950">{activeSite.name}</div>
+                <div className="mt-1 text-sm text-slate-400">
+                  {activeSite.customDomain ? `🌐 ${activeSite.customDomain}` : `/s/${activeSite.slug}`}
                 </div>
               </div>
-
-              <label className="block">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Nome do site</div>
-                <input
-                  value={form.name}
-                  onChange={(e) => {
-                    setField("name", e.target.value);
-                    if (!form.slug) {
-                      setField("slug", e.target.value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-"));
-                    }
-                  }}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
-                  placeholder="Ex.: Imobiliária Solaris"
-                />
-              </label>
-
-              <label className="block">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Slug do site (URL)</div>
-                <div className="flex items-center rounded-xl border border-slate-200 focus-within:border-slate-950">
-                  <span className="pl-3 text-xs text-slate-400">/s/</span>
-                  <input
-                    value={form.slug}
-                    onChange={(e) => setField("slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                    className="flex-1 px-1 py-2 text-sm outline-none bg-transparent"
-                    placeholder={slugifiedName || "minha-imobiliaria"}
-                  />
-                </div>
-              </label>
-
-              {availableTemplates.length > 0 && (
-                <label className="block">
-                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Usar template (opcional)</div>
-                  <select
-                    value={form.templateId}
-                    onChange={(e) => setField("templateId", e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-950"
-                  >
-                    <option value="">Começar do zero (estrutura padrão)</option>
-                    {availableTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </label>
+              {activeSite.status === "PUBLISHED" ? (
+                <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  No ar
+                </span>
+              ) : (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                  Rascunho
+                </span>
               )}
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-3">
+              <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${typeBadge(activeSite.siteType)}`}>
+                {TYPE_LABELS[activeSite.siteType]}
+              </span>
+            </div>
+
+            {/* Ações principais — apenas Editar e Configurações */}
+            <div className="mt-6 flex flex-wrap gap-3">
               <button
-                onClick={() => setIsCreateOpen(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700"
+                onClick={handleOpenEditor}
+                disabled={openingEditor}
+                className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
               >
-                Cancelar
+                {openingEditor ? "Abrindo..." : "Editar site"}
               </button>
+
               <button
-                onClick={handleCreate}
-                disabled={!canCreate || creating}
-                className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                onClick={() => { setShowConfig(!showConfig); setDeactivateConfirm(false); setUnpublishConfirm(false); }}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950"
               >
-                {creating ? "Criando..." : "Criar e editar"}
+                Configurações
               </button>
             </div>
+
+            {/* Painel de configurações */}
+            {showConfig && (
+              <div className="mt-6 rounded-2xl border bg-slate-50 p-5 space-y-5">
+
+                {/* Domínio personalizado */}
+                <div>
+                  <div className="text-sm font-semibold text-slate-950">Domínio personalizado</div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Configure o apontamento CNAME no seu provedor de domínio antes de salvar.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      value={customDomain}
+                      onChange={(e) => setCustomDomain(e.target.value)}
+                      placeholder="meusite.com.br"
+                      className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-950"
+                    />
+                    <button
+                      onClick={handleSaveDomain}
+                      disabled={savingDomain}
+                      className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {savingDomain ? "Salvando..." : "Salvar"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Visualizar */}
+                {activeSite.status === "PUBLISHED" && (
+                  <div className="border-t pt-4">
+                    <div className="text-sm font-semibold text-slate-950">Visualizar site</div>
+                    <p className="mt-1 text-xs text-slate-500">Veja como seu site está aparecendo para os visitantes.</p>
+                    <a
+                      href={activeSite.customDomain ? `https://${activeSite.customDomain}` : `/s/${activeSite.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-block rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950"
+                    >
+                      Abrir site
+                    </a>
+                  </div>
+                )}
+
+                {/* Publicar — só aparece se for rascunho e tiver domínio configurado */}
+                {activeSite.status === "DRAFT" && (
+                  <div className="border-t pt-4">
+                    <div className="text-sm font-semibold text-slate-950">Publicar site</div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Configure o domínio acima antes de publicar. Ao publicar, o site ficará acessível ao público.
+                    </p>
+                    <button
+                      onClick={handlePublish}
+                      disabled={publishing}
+                      className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      {publishing ? "Publicando..." : "Publicar agora"}
+                    </button>
+                  </div>
+                )}
+
+                {/* Tirar do ar — só se publicado */}
+                {activeSite.status === "PUBLISHED" && (
+                  <div className="border-t pt-4">
+                    <div className="text-sm font-semibold text-slate-950">Tirar do ar</div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      O site volta para rascunho e sai do ar. Você pode republicar a qualquer momento.
+                    </p>
+                    <div className="mt-3">
+                      {unpublishConfirm ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-amber-700">O site ficará inacessível para visitantes.</p>
+                          <div className="flex gap-2">
+                            <button onClick={handleUnpublish} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700">
+                              Confirmar
+                            </button>
+                            <button onClick={() => setUnpublishConfirm(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600">
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => setUnpublishConfirm(true)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-amber-600 transition hover:border-amber-200 hover:bg-amber-50">
+                          Tirar do ar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Desativar site */}
+                <div className="border-t pt-4">
+                  <div className="text-sm font-semibold text-slate-950">Desativar site</div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Remove este site e libera para você escolher outro template. O conteúdo não é apagado permanentemente.
+                  </p>
+                  <div className="mt-3">
+                    {deactivateConfirm ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-red-600">Confirma? O site sairá do ar imediatamente.</p>
+                        <div className="flex gap-2">
+                          <button onClick={handleDeactivate} className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700">
+                            Sim, desativar
+                          </button>
+                          <button onClick={() => setDeactivateConfirm(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setDeactivateConfirm(true)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-red-500 transition hover:border-red-200 hover:bg-red-50">
+                        Desativar site
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        ) : (
+          /* ── Estado 1: Sem site ativo ──────────────────────────────────── */
+          <div className="space-y-6">
+            <div className="rounded-2xl border bg-white p-8 text-center">
+              <div className="text-4xl">🌐</div>
+              <div className="mt-3 text-lg font-semibold text-slate-950">Você ainda não tem um site ativo</div>
+              <p className="mt-2 text-sm text-slate-500">
+                Escolha um dos templates abaixo para começar. Você poderá personalizar tudo no editor.
+              </p>
+            </div>
+
+            {templates.length === 0 ? (
+              <div className="rounded-2xl border bg-white p-8 text-center text-sm text-slate-500">
+                Nenhum template disponível no momento. Fale com seu administrador.
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {templates.map((tpl) => (
+                  <div key={tpl.id} className="rounded-2xl border bg-white p-5 shadow-sm flex flex-col gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="text-2xl">{TYPE_ICONS[tpl.siteType]}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-950">{tpl.name}</div>
+                        <div className="mt-0.5 text-xs text-slate-500">{TYPE_DESCRIPTIONS[tpl.siteType]}</div>
+                      </div>
+                      {tpl.scope === "EXCLUSIVO" && (
+                        <span className="shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
+                          ★ Exclusivo
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${typeBadge(tpl.siteType)}`}>
+                        {TYPE_LABELS[tpl.siteType]}
+                      </span>
+                      <button
+                        onClick={() => handleUseTemplate(tpl)}
+                        disabled={creating}
+                        className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {creating ? "Criando..." : "Usar este template"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }

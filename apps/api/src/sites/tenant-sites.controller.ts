@@ -63,4 +63,20 @@ export class TenantSitesController {
     }
     return this.sitesService.deleteTenantSite(req.user.tenantId, id);
   }
+
+  @Post(':id/unpublish')
+  unpublishSite(@Req() req: any, @Param('id') id: string) {
+    if (req.user.role !== 'OWNER') {
+      return { ok: false, error: 'Apenas OWNERs podem tirar sites do ar.' };
+    }
+    return this.sitesService.unpublishTenantSite(req.user.tenantId, id);
+  }
+
+  @Post(':id/deactivate')
+  deactivateSite(@Req() req: any, @Param('id') id: string) {
+    if (req.user.role !== 'OWNER') {
+      return { ok: false, error: 'Apenas OWNERs podem desativar sites.' };
+    }
+    return this.sitesService.deactivateTenantSite(req.user.tenantId, id);
+  }
 }

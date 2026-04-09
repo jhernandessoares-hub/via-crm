@@ -38,7 +38,7 @@ export class AdminSitesController {
 
   @Delete('templates/:id')
   deleteTemplate(@Param('id') id: string) {
-    return this.sitesService.deleteTemplate(id);
+    return this.sitesService.deleteTemplateIfSafe(id);
   }
 
   @Post('templates/:id/publish')
@@ -46,10 +46,20 @@ export class AdminSitesController {
     return this.sitesService.publishTemplate(id);
   }
 
-  // ── All tenant sites (read-only) ─────────────────────────────────────────────
+  // ── All tenant sites ────────────────────────────────────────────────────────
 
   @Get('tenant-sites')
   listAllTenantSites(@Query('tenantId') tenantId?: string) {
     return this.sitesService.listAllTenantSites(tenantId);
+  }
+
+  @Patch('tenant-sites/:id')
+  adminUpdateTenantSite(@Param('id') id: string, @Body() body: Partial<{ name: string; contentJson: object; customDomain: string }>) {
+    return this.sitesService.adminUpdateTenantSite(id, body);
+  }
+
+  @Post('tenant-sites/:id/publish')
+  adminPublishTenantSite(@Param('id') id: string) {
+    return this.sitesService.adminPublishTenantSite(id);
   }
 }

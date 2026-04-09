@@ -115,6 +115,7 @@ export default function SitePage() {
   const searchParams = useSearchParams();
   const siteId = searchParams.get("site") || DEFAULT_SITE_ID;
   const templateId = searchParams.get("templateId") || null;
+  const siteApiId = searchParams.get("siteApiId") || null;
 
   const [draft, setDraft] = useState<SiteContent>(cloneSiteContent());
   const [history, setHistory] = useState<SiteContent[]>([]);
@@ -240,6 +241,16 @@ export default function SitePage() {
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ contentJson: draft }),
       }).catch(() => null);
+    } else if (siteApiId) {
+      const token = localStorage.getItem("accessToken");
+      const API = process.env.NEXT_PUBLIC_API_URL || "";
+      fetch(`${API}/sites/${siteApiId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ contentJson: draft }),
+      })
+        .then(() => setStatus("Rascunho salvo no servidor."))
+        .catch(() => setStatus("Erro ao salvar no servidor."));
     }
   }
 
@@ -260,6 +271,20 @@ export default function SitePage() {
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         }),
       ]).catch(() => null).then(() => setStatus("Template publicado e salvo no servidor."));
+    } else if (siteApiId) {
+      const token = localStorage.getItem("accessToken");
+      const API = process.env.NEXT_PUBLIC_API_URL || "";
+      Promise.all([
+        fetch(`${API}/sites/${siteApiId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ contentJson: draft }),
+        }),
+        fetch(`${API}/sites/${siteApiId}/publish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        }),
+      ]).catch(() => null).then(() => setStatus("Site publicado e salvo no servidor."));
     } else {
       setStatus("Site publicado! (local)");
     }

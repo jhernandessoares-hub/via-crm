@@ -1,4 +1,5 @@
 import { Worker, Job } from 'bullmq';
+import { LeadStatus } from '@prisma/client';
 import { Logger } from '../logger';
 
 const logger = new Logger('InboundAiWorker');
@@ -21,6 +22,8 @@ async function sendImageViaWhatsapp(
 
 // ── Notification helpers ───────────────────────────────────────────────────
 
+const NOTIFY_EVENT_KEYS = new Set(['new_lead', 'lead_qualified']);
+
 async function notifyUsersForEvent(
   prisma: PrismaService,
   whatsapp: WhatsappService,
@@ -28,6 +31,8 @@ async function notifyUsersForEvent(
   eventKey: string,
   message: string,
 ) {
+  if (!NOTIFY_EVENT_KEYS.has(eventKey)) return;
+
   const users = await prisma.user.findMany({
     where: { tenantId, ativo: true, whatsappNumber: { not: null } },
     select: { whatsappNumber: true },
@@ -35,7 +40,6 @@ async function notifyUsersForEvent(
 
   for (const u of users) {
     if (!u.whatsappNumber) continue;
-    if (eventKey !== 'new_lead') continue; // sem notificationSettings, notifica só new_lead
     whatsapp.sendMessage(u.whatsappNumber, message, tenantId).catch(() => {});
   }
 }
@@ -44,11 +48,22 @@ async function notifyUsersForStage(
   prisma: PrismaService,
   whatsapp: WhatsappService,
   tenantId: string,
-  _stageKey: string,
-  _message: string,
+  stageKey: string,
+  message: string,
 ) {
-  // notificationSettings foi removido — função mantida para compatibilidade, sem envio
-  void prisma; void whatsapp; void tenantId;
+  // Notifica apenas para etapas relevantes ao corretor
+  const STAGE_NOTIFY_KEYS = new Set(['INTERESSE_QUALIFICACAO_CONFIRMADOS', 'NAO_QUALIFICADO', 'AGENDAMENTO_VISITA']);
+  if (!STAGE_NOTIFY_KEYS.has(stageKey)) return;
+
+  const users = await prisma.user.findMany({
+    where: { tenantId, ativo: true, whatsappNumber: { not: null } },
+    select: { whatsappNumber: true },
+  });
+
+  for (const u of users) {
+    if (!u.whatsappNumber) continue;
+    whatsapp.sendMessage(u.whatsappNumber, message, tenantId).catch(() => {});
+  }
 }
 
 function getRedisConnection() {
@@ -810,13 +825,29 @@ async function handleInboundAiJob(
       );
     }
 
+    // Mapeamento stageKey → status do lead
+    const STAGE_TO_STATUS: Record<string, LeadStatus> = {
+      NOVO_LEAD: LeadStatus.NOVO,
+      PRIMEIRO_CONTATO: LeadStatus.EM_CONTATO,
+      INTERESSE_QUALIFICACAO_CONFIRMADOS: LeadStatus.QUALIFICADO,
+      PROPOSTA: LeadStatus.PROPOSTA,
+      APROVACAO_CREDITO_PROPOSTA: LeadStatus.PROPOSTA,
+      CONTRATO: LeadStatus.FECHADO,
+      ASSINATURA_CONTRATO: LeadStatus.FECHADO,
+      ENTREGA_CONTRATO_REGISTRADO: LeadStatus.FECHADO,
+    };
+
     // Move de etapa se identificado
     if (analysis.stageKey) {
       const targetStage = stages.find((s) => s.key === analysis.stageKey);
       if (targetStage && targetStage.id !== leadWithQual?.stageId) {
+        const newStatus = STAGE_TO_STATUS[analysis.stageKey];
         await prisma.lead.update({
           where: { id: lead.id, tenantId: lead.tenantId },
-          data: { stageId: targetStage.id },
+          data: {
+            stageId: targetStage.id,
+            ...(newStatus ? { status: newStatus } : {}),
+          },
         });
         await prisma.leadEvent.create({
           data: {

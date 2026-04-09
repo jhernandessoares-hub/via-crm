@@ -1216,7 +1216,7 @@ model SiteTemplate {
   id          String   @id @default(uuid())
   name        String
   siteType    String   // LANDING_PAGE | INSTITUCIONAL | SITE_IMOBILIARIO | PORTAL
-  scope       String   @default("PADRAO") // PADRAO | EXCLUSIVO
+  scope       String   @default("PADRAO") // PADRAO | EXCLUSIVO | INTERNO
   tenantId    String?  // null = disponível para todos; preenchido = exclusivo do tenant
   contentJson Json     // estrutura completa do site (SiteContent)
   status      String   @default("DRAFT") // DRAFT | PUBLISHED

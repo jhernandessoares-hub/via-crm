@@ -12,13 +12,31 @@ export class SitesService {
   // ── Admin: SiteTemplates ────────────────────────────────────────────────────
 
   async listTemplates(scope?: string, siteType?: string) {
-    return this.prisma.siteTemplate.findMany({
+    const templates = await this.prisma.siteTemplate.findMany({
       where: {
         ...(scope ? { scope } : {}),
         ...(siteType ? { siteType } : {}),
       },
       orderBy: [{ scope: 'asc' }, { createdAt: 'desc' }],
     });
+
+    const exclusivoIds = [...new Set(
+      templates.filter(t => t.scope === 'EXCLUSIVO' && t.tenantId).map(t => t.tenantId as string),
+    )];
+
+    let tenantMap: Record<string, string> = {};
+    if (exclusivoIds.length > 0) {
+      const tenants = await this.prisma.tenant.findMany({
+        where: { id: { in: exclusivoIds } },
+        select: { id: true, nome: true },
+      });
+      tenantMap = Object.fromEntries(tenants.map(t => [t.id, t.nome]));
+    }
+
+    return templates.map(t => ({
+      ...t,
+      tenantName: t.tenantId ? (tenantMap[t.tenantId] ?? null) : null,
+    }));
   }
 
   async createTemplate(data: {
@@ -66,10 +84,39 @@ export class SitesService {
   // ── Admin: TenantSites list ─────────────────────────────────────────────────
 
   async listAllTenantSites(tenantId?: string) {
-    return this.prisma.tenantSite.findMany({
+    const sites = await this.prisma.tenantSite.findMany({
       where: tenantId ? { tenantId } : undefined,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, tenantId: true, name: true, slug: true, siteType: true, status: true, createdAt: true },
+      select: { id: true, tenantId: true, name: true, slug: true, siteType: true, status: true, templateId: true, createdAt: true },
+    });
+
+    const tenantIds = [...new Set(sites.map(s => s.tenantId))];
+    let tenantMap: Record<string, string> = {};
+    if (tenantIds.length > 0) {
+      const tenants = await this.prisma.tenant.findMany({
+        where: { id: { in: tenantIds } },
+        select: { id: true, nome: true },
+      });
+      tenantMap = Object.fromEntries(tenants.map(t => [t.id, t.nome]));
+    }
+
+    return sites.map(s => ({ ...s, tenantName: tenantMap[s.tenantId] ?? null }));
+  }
+
+  // ── Admin: update any tenant site ──────────────────────────────────────────
+
+  async adminUpdateTenantSite(id: string, data: Partial<{ name: string; contentJson: object; customDomain: string }>) {
+    const site = await this.prisma.tenantSite.findUnique({ where: { id } });
+    if (!site) throw new NotFoundException('Site não encontrado.');
+    return this.prisma.tenantSite.update({ where: { id }, data });
+  }
+
+  async adminPublishTenantSite(id: string) {
+    const site = await this.prisma.tenantSite.findUnique({ where: { id } });
+    if (!site) throw new NotFoundException('Site não encontrado.');
+    return this.prisma.tenantSite.update({
+      where: { id },
+      data: { publishedJson: site.contentJson as Prisma.InputJsonValue, status: 'PUBLISHED' },
     });
   }
 
@@ -80,8 +127,10 @@ export class SitesService {
       where: {
         status: 'PUBLISHED',
         OR: [{ scope: 'PADRAO' }, { scope: 'EXCLUSIVO', tenantId }],
+        NOT: { scope: 'INTERNO' },
       },
-      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, siteType: true, scope: true, contentJson: true },
+      orderBy: [{ scope: 'asc' }, { createdAt: 'desc' }],
     });
   }
 
@@ -157,6 +206,40 @@ export class SitesService {
   async deleteTenantSite(tenantId: string, id: string) {
     await this.getTenantSite(tenantId, id);
     await this.prisma.tenantSite.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  // ── Tenant: unpublish (back to draft) ──────────────────────────────────────
+
+  async unpublishTenantSite(tenantId: string, id: string) {
+    await this.getTenantSite(tenantId, id);
+    return this.prisma.tenantSite.update({
+      where: { id },
+      data: { status: 'DRAFT', publishedJson: Prisma.JsonNull },
+    });
+  }
+
+  // ── Tenant: deactivate own site (archive) ───────────────────────────────────
+
+  async deactivateTenantSite(tenantId: string, id: string) {
+    await this.getTenantSite(tenantId, id);
+    return this.prisma.tenantSite.update({
+      where: { id },
+      data: { status: 'INATIVO', publishedJson: Prisma.JsonNull },
+    });
+  }
+
+  // ── Admin: delete template (blocked if tenants have active sites) ────────────
+
+  async deleteTemplateIfSafe(id: string) {
+    await this.getTemplate(id);
+    const activeSites = await this.prisma.tenantSite.count({
+      where: { templateId: id, status: { in: ['DRAFT', 'PUBLISHED'] } },
+    });
+    if (activeSites > 0) {
+      throw new BadRequestException(`Não é possível excluir: ${activeSites} tenant(s) com site ativo usando este template.`);
+    }
+    await this.prisma.siteTemplate.delete({ where: { id } });
     return { ok: true };
   }
 
