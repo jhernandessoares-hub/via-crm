@@ -26,6 +26,7 @@ import { CalendarModule } from './calendar/calendar.module';
 import { DevModule } from './dev/dev.module';
 import { OwnersModule } from './owners/owners.module';
 import { AdminModule } from './admin/admin.module';
+import { SitesModule } from './sites/sites.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { AdminModule } from './admin/admin.module';
     DevModule,
     OwnersModule,
     AdminModule,
+    SitesModule,
   ],
   controllers: [AppController],
   providers: [

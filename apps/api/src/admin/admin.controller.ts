@@ -121,19 +121,6 @@ export class AdminController {
     return this.adminService.deleteUser(id, userId);
   }
 
-  // ── TEMP: migração de agents prd → dev (remover após uso) ───────────────
-  @UseGuards(PlatformAdminGuard)
-  @Get('tenants/:id/export-agents')
-  exportTenantAgents(@Param('id') id: string) {
-    return this.adminService.exportTenantAgents(id);
-  }
-
-  @UseGuards(PlatformAdminGuard)
-  @Post('agent-templates/import')
-  importAgentTemplates(@Body() body: { agents: any[] }) {
-    return this.adminService.importAgentTemplates(body.agents);
-  }
-
   // ── Agent Templates ─────────────────────────────────────────────────────
   @UseGuards(PlatformAdminGuard)
   @Get('agent-templates')

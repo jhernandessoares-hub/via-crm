@@ -130,6 +130,12 @@ function AppShellInner({
             Configurações
           </Link>
 
+          {user?.role === "OWNER" && (
+            <Link className={linkClass("/my-site")} href="/my-site">
+              Meu Site
+            </Link>
+          )}
+
         </nav>
 
         <div className="mt-auto p-3 border-t border-slate-800">

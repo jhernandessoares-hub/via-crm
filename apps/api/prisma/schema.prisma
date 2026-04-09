@@ -101,6 +101,7 @@ model Tenant {
   slaRules               SlaRule[]
   users                  User[]
   channels               Channel[]
+  tenantSites            TenantSite[]
 
   @@map("tenants")
 }
@@ -1207,4 +1208,44 @@ model PlatformConfig {
   updatedAt DateTime @updatedAt
 
   @@map("platform_configs")
+}
+
+// ─── Site Builder ─────────────────────────────────────────────────────────────
+
+model SiteTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  siteType    String   // LANDING_PAGE | INSTITUCIONAL | SITE_IMOBILIARIO | PORTAL
+  scope       String   @default("PADRAO") // PADRAO | EXCLUSIVO
+  tenantId    String?  // null = disponível para todos; preenchido = exclusivo do tenant
+  contentJson Json     // estrutura completa do site (SiteContent)
+  status      String   @default("DRAFT") // DRAFT | PUBLISHED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sites TenantSite[]
+
+  @@index([scope, status])
+  @@map("site_templates")
+}
+
+model TenantSite {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String
+  slug          String   @unique
+  siteType      String   // LANDING_PAGE | INSTITUCIONAL | SITE_IMOBILIARIO | PORTAL
+  templateId    String?  // referência ao template de origem (somente para rastreio)
+  contentJson   Json     // fork independente — nunca alterado pelo admin
+  publishedJson Json?    // snapshot publicado (null = não publicado)
+  status        String   @default("DRAFT") // DRAFT | PUBLISHED
+  customDomain  String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template SiteTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@map("tenant_sites")
 }

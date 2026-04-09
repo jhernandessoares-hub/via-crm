@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(rm:*)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(mkdir -p \"C:/Users/User/documents/via-crm/apps/web/src/app/s/[slug]\")",
+      "Bash(mkdir -p \"C:/Users/User/documents/via-crm/apps/web/src/app/s/[slug]/imovel/[id]\")",
+      "Bash(node:*)"
+    ]
+  }
+}

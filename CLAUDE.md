@@ -59,6 +59,7 @@ via-crm/
 | `audit/` | AuditService global — log de ações sensíveis (LGPD) |
 | `config/` | Configurações globais |
 | `dev/` | Endpoints de desenvolvimento/teste |
+| `sites/` | Gerenciador de Sites — templates admin, sites dos tenants, rotas públicas |
 | `prisma/` | PrismaService (@Global) |
 
 ---
@@ -69,7 +70,7 @@ Todos inicializados em `main.ts` após health check do Redis.
 
 | Worker | Fila | Função |
 |--------|------|--------|
-| `SlaWorker` | `sla-queue` | SLA automático: 2h, 10h, 22h45, 23h-template Meta |
+| `SlaWorker` | `sla-queue` | SLA automático: 2h (BAIXA), 10h (MEDIA), 18h (ALTA), 23h (CRITICA) — **somente** leads em grupo `PRE_ATENDIMENTO` e status `EM_CONTATO` |
 | `InboundAiWorker` | `inbound-ai-queue` | Resposta IA ao lead em tempo real (delay 90s/10s) |
 | `WhatsappInboundWorker` | `whatsapp-inbound-queue` | Processa payloads de webhook (3 tentativas, exponential backoff) |
 | `WhatsappMediaWorker` | `whatsapp-media-queue` | Download e resolução de mídia (áudio/imagem) via Cloudinary |
@@ -114,6 +115,9 @@ Channel           → 12 tipos de fonte de lead com webhookToken e webhookTokenH
 CalendarEvent     → com reminderSentAt para controle de deduplicação
 SecretaryConversation → histórico de conversa da secretária (10 msgs de contexto)
 AuditLog          → rastreabilidade LGPD — inclui platformAdminId para ações admin
+SiteTemplate      → template de site (scope: PADRAO/EXCLUSIVO, siteType, contentJson, status DRAFT/PUBLISHED)
+TenantSite        → site do tenant — fork independente do template (contentJson ≠ template após customização)
+                    slug único, publishedJson separado do contentJson (rascunho vs publicado)
 ```
 
 ---
@@ -293,6 +297,22 @@ NEXT_PUBLIC_API_URL=
 - `/settings/whatsapp` → configuração do número WhatsApp do tenant.
 - `/forgot-password` e `/reset-password` → recuperação de senha.
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
+- `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
+- `/my-site` → Gerenciador de Sites do tenant (OWNER only) — lista/cria/edita/publica TenantSites.
+- `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
+- `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
+
+### Arquitetura do Site Builder
+
+| Conceito | Detalhe |
+|----------|---------|
+| Editor | `app/(site)/page.tsx` — editor visual drag-resize. Parâmetros: `?editor=1&site=<id>&templateId=<id?>&siteApiId=<id?>` |
+| Persistência do editor | localStorage (chave = siteId). Se `templateId` presente, também sincroniza com `PATCH /admin/sites/templates/:id` ao salvar/publicar |
+| Fork de template | Quando tenant escolhe template, `contentJson` é copiado para `TenantSite` — independente do original |
+| Publicação | `contentJson` (rascunho) → `publishedJson` (público) via `POST /sites/:id/publish` |
+| Tipos de site | LANDING_PAGE, INSTITUCIONAL, SITE_IMOBILIARIO, PORTAL — cada um com seed de seções/blocos específico |
+| Blocos imobiliários | property-search, property-grid, property-card, property-map, broker-grid, whatsapp-button, team-card, contact-form |
+| Rotas públicas (sem auth) | `GET /sites/public/:slug`, `GET /sites/public/:slug/products`, `GET /sites/public/:slug/imovel/:id`, `POST /sites/public/:slug/lead` |
 
 ---
 

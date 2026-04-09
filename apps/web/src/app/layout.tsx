@@ -4,7 +4,15 @@ import ClientProviders from "@/components/ClientProviders";
 
 export const metadata: Metadata = {
   title: "VIA CRM",
-  description: "CRM imobiliário",
+  description: "CRM imobiliario para atendimento, operacao e gestao",
+  icons: {
+    icon: [
+      { url: "/favicon-via.svg", type: "image/svg+xml" },
+      { url: "/favicon-via.png", type: "image/png", sizes: "256x256" },
+    ],
+    shortcut: "/favicon-via.png",
+    apple: "/favicon-via.png",
+  },
 };
 
 export default function RootLayout({
