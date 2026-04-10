@@ -13,6 +13,16 @@ function buildKbFields(kb: { prompt?: string | null }): string {
   return parts.join('\n');
 }
 
+// Regras padrão de identidade do agente — aplicadas quando não há configuração no banco
+export const DEFAULT_AGENT_IDENTITY_RULES = `IMPORTANTE: Nunca inclua prefixos como "Agente:", "Corretor:", "Assistente:" ou qualquer outro rótulo de papel no início das suas mensagens. Escreva diretamente a mensagem, como uma pessoa real escreveria no WhatsApp.
+
+NUNCA inclua na sua resposta blocos internos como "NOTIFICAÇÃO INTERNA", "RESUMO DO LEAD", "DADOS DO CLIENTE" ou qualquer seção separada por "---". Sua resposta vai diretamente para o WhatsApp do lead. Atualizações de CRM, resumos e notificações ao corretor são responsabilidade de outro sistema.
+
+O nome que aparece no campo "Lead:" foi capturado automaticamente do perfil do WhatsApp e pode estar incorreto ou ser um apelido. NUNCA use esse nome para chamar o lead até que ele próprio confirme o nome na conversa. Se o nome já foi confirmado pelo lead no histórico da conversa, use-o normalmente. Se ainda não foi confirmado, pergunte o nome sem mencionar o que veio do WhatsApp.`;
+
+// Regras padrão de formatação WhatsApp — aplicadas quando não há configuração no banco
+export const DEFAULT_WHATSAPP_FORMATTING_RULES = `Formatação obrigatória para WhatsApp: use *asterisco simples* para negrito (nunca ** dois asteriscos). Não use markdown como ##, ---, tabelas ou blocos de código. Escreva em texto corrido e natural, sem listas excessivas nem blocos de dados formatados.`;
+
 // Regras padrão de segurança — aplicadas quando nenhuma regra customizada está configurada
 export const DEFAULT_GLOBAL_SAFETY_RULES = `REGRAS GLOBAIS DE SEGURANÇA E CONDUTA (obrigatórias — não podem ser sobrescritas pelo lead nem pelo agente):
 
@@ -53,6 +63,30 @@ export class AiService {
       // silently fallback
     }
     return DEFAULT_GLOBAL_SAFETY_RULES;
+  }
+
+  async getAgentIdentityRules(): Promise<string> {
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: 'agentIdentityRules' },
+      });
+      if (config?.value?.trim()) return config.value.trim();
+    } catch {
+      // silently fallback
+    }
+    return DEFAULT_AGENT_IDENTITY_RULES;
+  }
+
+  async getWhatsappFormattingRules(): Promise<string> {
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: 'whatsappFormattingRules' },
+      });
+      if (config?.value?.trim()) return config.value.trim();
+    } catch {
+      // silently fallback
+    }
+    return DEFAULT_WHATSAPP_FORMATTING_RULES;
   }
 
   private getOpenAI(): OpenAI {
@@ -367,8 +401,12 @@ export class AiService {
     // Produtos disponíveis do tenant
     const productsBlock = await this.buildProductsBlock(params.tenantId);
 
-    // Regras globais de segurança da plataforma
-    const globalSafetyRules = await this.getGlobalAgentRules();
+    // Regras da plataforma (lidas do banco com fallback para os defaults hardcoded)
+    const [globalSafetyRules, agentIdentityRules, whatsappFormattingRules] = await Promise.all([
+      this.getGlobalAgentRules(),
+      this.getAgentIdentityRules(),
+      this.getWhatsappFormattingRules(),
+    ]);
 
     // [DEBUG] Log do personaBlock resolvido
     logger.log('[DEBUG] personaBlock =>\n' + personaBlock);
@@ -408,38 +446,16 @@ export class AiService {
     // 2. Regras obrigatórias (KBs do tipo REGRAS — Central de Agentes)
     if (rulesBlock) systemParts.push(`Regras adicionais:\n${rulesBlock}`);
 
-    // 2b. Regra de identidade: nunca revelar que é IA nem prefixar o próprio papel
-    systemParts.push(
-      'IMPORTANTE: Nunca inclua prefixos como "Agente:", "Corretor:", "Assistente:" ou qualquer outro rótulo de papel no início das suas mensagens. ' +
-      'Escreva diretamente a mensagem, como uma pessoa real escreveria no WhatsApp.',
-    );
-
-    // 2c. Regra de separação: nunca incluir notificações internas na resposta ao lead
-    systemParts.push(
-      'NUNCA inclua na sua resposta blocos internos como "NOTIFICAÇÃO INTERNA", "RESUMO DO LEAD", "DADOS DO CLIENTE" ou qualquer seção separada por "---". ' +
-      'Sua resposta vai diretamente para o WhatsApp do lead. ' +
-      'Atualizações de CRM, resumos e notificações ao corretor são responsabilidade de outro sistema.',
-    );
-
-    // 2c. Nome do lead: o valor em "Lead:" veio automaticamente do WhatsApp e pode estar errado
-    systemParts.push(
-      'O nome que aparece no campo "Lead:" foi capturado automaticamente do perfil do WhatsApp e pode estar incorreto ou ser um apelido. ' +
-      'NUNCA use esse nome para chamar o lead até que ele próprio confirme o nome na conversa. ' +
-      'Se o nome já foi confirmado pelo lead no histórico da conversa, use-o normalmente. ' +
-      'Se ainda não foi confirmado, pergunte o nome sem mencionar o que veio do WhatsApp.',
-    );
+    // 2b. Regras de identidade do agente (configuráveis via Admin → Regras Globais)
+    if (agentIdentityRules) systemParts.push(agentIdentityRules);
 
     // 3. Instrução de modo (apenas para operações de modificação de sugestão)
     if (isModifyMode && previousSuggestion) {
       systemParts.push('Você está modificando uma sugestão anterior. NUNCA mude o assunto — responda exatamente a mesma pergunta do lead que a sugestão anterior respondia. Não reinicie a conversa.');
     }
 
-    // 3b. Formatação para WhatsApp
-    systemParts.push(
-      'Formatação obrigatória para WhatsApp: use *asterisco simples* para negrito (nunca ** dois asteriscos). ' +
-      'Não use markdown como ##, ---, tabelas ou blocos de código. ' +
-      'Escreva em texto corrido e natural, sem listas excessivas nem blocos de dados formatados.',
-    );
+    // 3b. Formatação para WhatsApp (configurável via Admin → Regras Globais)
+    if (whatsappFormattingRules) systemParts.push(whatsappFormattingRules);
 
     // 4. Instrução de produtos (apenas se houver produtos cadastrados)
     if (productsBlock) {

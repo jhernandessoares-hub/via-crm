@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { QueueService } from '../queue/queue.service';
-import { DEFAULT_GLOBAL_SAFETY_RULES } from '../ai/ai.service';
+import { DEFAULT_GLOBAL_SAFETY_RULES, DEFAULT_AGENT_IDENTITY_RULES, DEFAULT_WHATSAPP_FORMATTING_RULES } from '../ai/ai.service';
 
 @Injectable()
 export class AdminService {
@@ -730,31 +730,46 @@ export class AdminService {
 
   // ── Platform Config (global AI rules) ──────────────────────────────────────
 
-  readonly PLATFORM_CONFIG_KEYS = ['globalAgentRules'] as const;
+  readonly PLATFORM_CONFIG_KEYS = ['globalAgentRules', 'agentIdentityRules', 'whatsappFormattingRules'] as const;
 
   async getPlatformConfig(): Promise<Record<string, string>> {
     const rows = await this.prisma.platformConfig.findMany();
     const result: Record<string, string> = {};
     for (const row of rows) result[row.key] = row.value;
 
-    // Se globalAgentRules ainda não foi configurado, retorna o padrão do sistema
-    // para o admin ver, editar e salvar — a partir daí o banco é a única fonte
-    if (!result['globalAgentRules']) {
-      result['globalAgentRules'] = DEFAULT_GLOBAL_SAFETY_RULES;
-    }
+    // Retorna o padrão hardcoded quando a chave ainda não foi configurada no banco
+    // Assim o admin vê o valor atual e pode editá-lo a partir daí
+    if (!result['globalAgentRules']) result['globalAgentRules'] = DEFAULT_GLOBAL_SAFETY_RULES;
+    if (!result['agentIdentityRules']) result['agentIdentityRules'] = DEFAULT_AGENT_IDENTITY_RULES;
+    if (!result['whatsappFormattingRules']) result['whatsappFormattingRules'] = DEFAULT_WHATSAPP_FORMATTING_RULES;
 
     return result;
   }
 
   async updatePlatformConfig(data: Record<string, string>): Promise<Record<string, string>> {
     for (const [key, value] of Object.entries(data)) {
+      const current = await this.prisma.platformConfig.findUnique({ where: { key } });
+      const previousValue = current?.value ?? '';
+
       await this.prisma.platformConfig.upsert({
         where: { key },
         create: { key, value: String(value) },
         update: { value: String(value) },
       });
+
+      await this.prisma.platformConfigHistory.create({
+        data: { key, previousValue, newValue: String(value) },
+      });
     }
     this.audit.log({ action: 'PLATFORM_UPDATE_CONFIG', metadata: { keys: Object.keys(data) } });
     return this.getPlatformConfig();
+  }
+
+  async getPlatformConfigHistory(key: string) {
+    return this.prisma.platformConfigHistory.findMany({
+      where: { key },
+      orderBy: { changedAt: 'desc' },
+      take: 20,
+    });
   }
 }

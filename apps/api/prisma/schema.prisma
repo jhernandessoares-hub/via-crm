@@ -1210,6 +1210,17 @@ model PlatformConfig {
   @@map("platform_configs")
 }
 
+model PlatformConfigHistory {
+  id            String   @id @default(uuid())
+  key           String
+  previousValue String   @db.Text
+  newValue      String   @db.Text
+  changedAt     DateTime @default(now())
+
+  @@index([key, changedAt])
+  @@map("platform_config_history")
+}
+
 // ─── Site Builder ─────────────────────────────────────────────────────────────
 
 model SiteTemplate {

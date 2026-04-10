@@ -16,6 +16,7 @@ const navItems = [
   { href: "/admin/audit", label: "Audit Log" },
   { href: "/admin/filas", label: "Filas & IA" },
   { href: "/admin/saude", label: "Saúde do Sistema" },
+  { href: "/admin/regras-globais", label: "🛡️ Regras Globais" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {

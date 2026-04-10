@@ -243,4 +243,10 @@ export class AdminController {
   updatePlatformConfig(@Body() body: Record<string, string>) {
     return this.adminService.updatePlatformConfig(body);
   }
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('platform-config/:key/history')
+  getPlatformConfigHistory(@Param('key') key: string) {
+    return this.adminService.getPlatformConfigHistory(key);
+  }
 }

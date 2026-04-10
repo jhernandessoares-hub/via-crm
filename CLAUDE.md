@@ -115,9 +115,11 @@ Channel           → 12 tipos de fonte de lead com webhookToken e webhookTokenH
 CalendarEvent     → com reminderSentAt para controle de deduplicação
 SecretaryConversation → histórico de conversa da secretária (10 msgs de contexto)
 AuditLog          → rastreabilidade LGPD — inclui platformAdminId para ações admin
-SiteTemplate      → template de site (scope: PADRAO/EXCLUSIVO, siteType, contentJson, status DRAFT/PUBLISHED)
+SiteTemplate      → template de site (scope: PADRAO/EXCLUSIVO/INTERNO, siteType, contentJson, status DRAFT/PUBLISHED)
 TenantSite        → site do tenant — fork independente do template (contentJson ≠ template após customização)
                     slug único, publishedJson separado do contentJson (rascunho vs publicado)
+PlatformConfig    → configurações globais da plataforma (key/value). Chaves: globalAgentRules, agentIdentityRules, whatsappFormattingRules
+PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
 ```
 
 ---
@@ -258,6 +260,7 @@ NEXT_PUBLIC_API_URL=
 - Prefixo `claude-` no model name → usa Anthropic SDK
 - Qualquer outro → usa OpenAI
 - **Atenção:** `SecretaryService` usa OpenAI diretamente (hardcoded), não passa pelo `AiService`
+- **Regras configuráveis via banco:** `generateFollowUp()` lê `agentIdentityRules` e `whatsappFormattingRules` do `PlatformConfig` com fallback para constantes hardcoded (`DEFAULT_AGENT_IDENTITY_RULES`, `DEFAULT_WHATSAPP_FORMATTING_RULES`). Editáveis em `/admin/regras-globais` sem deploy.
 
 ---
 
@@ -298,6 +301,7 @@ NEXT_PUBLIC_API_URL=
 - `/forgot-password` e `/reset-password` → recuperação de senha.
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
+- `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
 - `/my-site` → Gerenciador de Sites do tenant (OWNER only) — lista/cria/edita/publica TenantSites.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
