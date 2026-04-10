@@ -901,7 +901,42 @@ async function handleInboundAiJob(
 
         // Envia WhatsApp para usuários que querem notificação de lead qualificado
         if (whatsapp) {
-          const qualMsg = `🎯 *Lead qualificado: ${lead.nome}*\n${analysis.notifyMessage}`;
+          // Mescla dados já salvos com os atualizados agora
+          const mergedQual = { ...currentQualification, ...updateData };
+
+          const fmt = (v: any) => (v !== null && v !== undefined ? String(v) : null);
+          const fmtBool = (v: any) => (v === true ? 'Sim' : v === false ? 'Não' : null);
+          const fmtMoney = (v: any) => (v != null ? `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null);
+          const fmtDate = (v: any) => {
+            if (!v) return null;
+            try { return new Date(v).toLocaleDateString('pt-BR'); } catch { return null; }
+          };
+          const produtoNome = mergedQual.produtoInteresseId
+            ? (products.find((p) => p.id === mergedQual.produtoInteresseId)?.title ?? mergedQual.produtoInteresseId)
+            : null;
+
+          const linhas: string[] = [
+            `🎯 *Lead qualificado: ${lead.nome}*`,
+            `📱 WhatsApp: ${lead.telefone || '—'}`,
+            '',
+          ];
+
+          if (mergedQual.rendaBrutaFamiliar != null) linhas.push(`💰 Renda bruta: ${fmtMoney(mergedQual.rendaBrutaFamiliar)}`);
+          if (mergedQual.fgts != null) linhas.push(`🏦 FGTS: ${fmtMoney(mergedQual.fgts)}`);
+          if (mergedQual.valorEntrada != null) linhas.push(`💵 Entrada: ${fmtMoney(mergedQual.valorEntrada)}`);
+          if (mergedQual.perfilImovel) linhas.push(`🏠 Perfil: ${fmt(mergedQual.perfilImovel)}`);
+          if (produtoNome) linhas.push(`📋 Interesse: ${produtoNome}`);
+          if (mergedQual.estadoCivil) linhas.push(`💍 Estado civil: ${fmt(mergedQual.estadoCivil)}`);
+          if (mergedQual.dataNascimento) linhas.push(`🎂 Nascimento: ${fmtDate(mergedQual.dataNascimento)}`);
+          if (mergedQual.tempoProcurandoImovel) linhas.push(`⏱ Procurando há: ${fmt(mergedQual.tempoProcurandoImovel)}`);
+          if (mergedQual.conversouComCorretor != null) linhas.push(`🤝 Conversou c/ corretor: ${fmtBool(mergedQual.conversouComCorretor)}`);
+          if (mergedQual.qualCorretorImobiliaria) linhas.push(`🏢 Corretor anterior: ${fmt(mergedQual.qualCorretorImobiliaria)}`);
+
+          if (mergedQual.resumoLead) {
+            linhas.push('', `📝 *Resumo IA:*`, mergedQual.resumoLead);
+          }
+
+          const qualMsg = linhas.join('\n');
           await notifyUsersForEvent(prisma, whatsapp, lead.tenantId, 'lead_qualified', qualMsg);
         }
 
