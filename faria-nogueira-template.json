@@ -1,0 +1,109 @@
+{
+  "theme": {
+    "pageBg": "#FFFFFF",
+    "primaryColor": "#1B4F72",
+    "accentColor": "#48C9B0",
+    "fontFamily": "sans"
+  },
+  "dynamicSections": [
+    { "id": "sec-header",   "name": "Cabeçalho",              "kind": "header",  "bgColor": "#FFFFFF" },
+    { "id": "sec-hero",     "name": "Hero Principal",          "kind": "hero",    "bgColor": "#EAF4FB" },
+    { "id": "sec-venda",    "name": "Destaques à Venda",       "kind": "content", "bgColor": "#FFFFFF" },
+    { "id": "sec-aluguel",  "name": "Destaques para Alugar",   "kind": "content", "bgColor": "#F4F8FB" },
+    { "id": "sec-lanc",     "name": "Lançamentos",             "kind": "content", "bgColor": "#FFFFFF" },
+    { "id": "sec-cat",      "name": "Categorias",              "kind": "content", "bgColor": "#EAF4FB" },
+    { "id": "sec-sobre",    "name": "Sobre Nós",               "kind": "content", "bgColor": "#FFFFFF" },
+    { "id": "sec-news",     "name": "Newsletter",              "kind": "cta",     "bgColor": "#1B4F72" },
+    { "id": "sec-footer",   "name": "Rodapé",                  "kind": "footer",  "bgColor": "#0E2F47" }
+  ],
+  "dynamicBlocks": [
+    { "id": "blk-h-logo",   "sectionId": "sec-header",  "type": "title",          "text": "Faria & Nogueira Imóveis" },
+    { "id": "blk-h-nav",    "sectionId": "sec-header",  "type": "text",           "text": "Comprar   Alugar   Lançamentos   Corretores   Contato" },
+    { "id": "blk-h-cta",    "sectionId": "sec-header",  "type": "button",         "text": "Falar com Corretor" },
+
+    { "id": "blk-hero-t",   "sectionId": "sec-hero",    "type": "title",          "text": "Você sonha e a Faria & Nogueira realiza" },
+    { "id": "blk-hero-d",   "sectionId": "sec-hero",    "type": "text",           "text": "Encontre o imóvel ideal para comprar ou alugar. Mais de 20 anos conectando famílias aos seus lares em todo o Estado de São Paulo." },
+    { "id": "blk-hero-s",   "sectionId": "sec-hero",    "type": "property-search" },
+
+    { "id": "blk-v-title",  "sectionId": "sec-venda",   "type": "title",          "text": "Destaques à Venda" },
+    { "id": "blk-v-sub",    "sectionId": "sec-venda",   "type": "text",           "text": "Imóveis selecionados com as melhores condições de compra." },
+    { "id": "blk-v-grid",   "sectionId": "sec-venda",   "type": "property-grid" },
+    { "id": "blk-v-btn",    "sectionId": "sec-venda",   "type": "button",         "text": "Ver todos os imóveis à venda" },
+
+    { "id": "blk-a-title",  "sectionId": "sec-aluguel", "type": "title",          "text": "Destaques para Alugar" },
+    { "id": "blk-a-sub",    "sectionId": "sec-aluguel", "type": "text",           "text": "As melhores opções de locação residencial e comercial da região." },
+    { "id": "blk-a-grid",   "sectionId": "sec-aluguel", "type": "property-grid" },
+    { "id": "blk-a-btn",    "sectionId": "sec-aluguel", "type": "button",         "text": "Ver todos para alugar" },
+
+    { "id": "blk-l-title",  "sectionId": "sec-lanc",    "type": "title",          "text": "Lançamentos" },
+    { "id": "blk-l-badge",  "sectionId": "sec-lanc",    "type": "card",           "text": "🆕  Novidades exclusivas" },
+    { "id": "blk-l-grid",   "sectionId": "sec-lanc",    "type": "property-grid" },
+
+    { "id": "blk-c-title",  "sectionId": "sec-cat",     "type": "title",          "text": "Buscar por Categoria" },
+    { "id": "blk-c-apto",   "sectionId": "sec-cat",     "type": "card",           "text": "🏢\nApartamentos\nMais de 200 opções" },
+    { "id": "blk-c-casa",   "sectionId": "sec-cat",     "type": "card",           "text": "🏡\nCasas\nConforto e espaço" },
+    { "id": "blk-c-com",    "sectionId": "sec-cat",     "type": "card",           "text": "🏬\nComercial\nSalas e lojas" },
+    { "id": "blk-c-terr",   "sectionId": "sec-cat",     "type": "card",           "text": "🌿\nTerrenos\nInvista agora" },
+
+    { "id": "blk-s-title",  "sectionId": "sec-sobre",   "type": "title",          "text": "Sobre a Faria & Nogueira" },
+    { "id": "blk-s-text",   "sectionId": "sec-sobre",   "type": "text",           "text": "Há mais de 20 anos no mercado imobiliário, a Faria & Nogueira Imóveis atua com excelência na intermediação de compra, venda e locação de imóveis residenciais e comerciais.\n\nNossa equipe de corretores especializados oferece atendimento personalizado, ajudando você a encontrar a melhor oportunidade com segurança e transparência." },
+    { "id": "blk-s-stats",  "sectionId": "sec-sobre",   "type": "list",           "text": "✅  +2.000 imóveis negociados\n✅  +20 anos de experiência\n✅  Equipe especializada\n✅  Atendimento humanizado" },
+    { "id": "blk-s-broker", "sectionId": "sec-sobre",   "type": "broker-grid" },
+
+    { "id": "blk-n-title",  "sectionId": "sec-news",    "type": "title",          "text": "Receba as melhores ofertas" },
+    { "id": "blk-n-sub",    "sectionId": "sec-news",    "type": "text",           "text": "Cadastre-se e seja o primeiro a saber sobre novos imóveis e lançamentos exclusivos." },
+    { "id": "blk-n-form",   "sectionId": "sec-news",    "type": "contact-form",   "text": "Quero receber novidades" },
+
+    { "id": "blk-f-nome",   "sectionId": "sec-footer",  "type": "title",          "text": "Faria & Nogueira Imóveis" },
+    { "id": "blk-f-creci",  "sectionId": "sec-footer",  "type": "text",           "text": "CRECI-SP 000000-J" },
+    { "id": "blk-f-links",  "sectionId": "sec-footer",  "type": "list",           "text": "Comprar\nAlugar\nLançamentos\nCorretores\nContato" },
+    { "id": "blk-f-cont",   "sectionId": "sec-footer",  "type": "list",           "text": "📍  São Paulo, SP\n📞  (11) 9 9999-9999\n✉  contato@farianogueira.com.br\n🕐  Seg–Sex 9h–18h" },
+    { "id": "blk-f-zap",    "sectionId": "sec-footer",  "type": "whatsapp-button","text": "Falar no WhatsApp", "phone": "11999999999" },
+    { "id": "blk-f-copy",   "sectionId": "sec-footer",  "type": "text",           "text": "© 2024 Faria & Nogueira Imóveis. Todos os direitos reservados." }
+  ],
+  "editorStyles": {
+    "dynamicBlocks.blk-h-logo.text":   { "fontSize": 22, "fontWeight": "bold", "color": "#1B4F72", "width": 280, "height": 48 },
+    "dynamicBlocks.blk-h-nav.text":    { "fontSize": 14, "color": "#2C3E50",   "width": 480, "height": 36 },
+    "dynamicBlocks.blk-h-cta.text":    { "width": 200, "height": 44 },
+
+    "dynamicBlocks.blk-hero-t.text":   { "fontSize": 38, "fontWeight": "bold", "color": "#1B4F72", "width": 680, "height": 110 },
+    "dynamicBlocks.blk-hero-d.text":   { "fontSize": 16, "color": "#4A6278",   "width": 620, "height": 72 },
+    "dynamicBlocks.blk-hero-s.text":   { "width": 780, "height": 80 },
+
+    "dynamicBlocks.blk-v-title.text":  { "fontSize": 28, "fontWeight": "bold", "color": "#1B4F72", "width": 420, "height": 52 },
+    "dynamicBlocks.blk-v-sub.text":    { "fontSize": 15, "color": "#5D7685",   "width": 520, "height": 36 },
+    "dynamicBlocks.blk-v-grid.text":   { "width": 920, "height": 280 },
+    "dynamicBlocks.blk-v-btn.text":    { "width": 280, "height": 48 },
+
+    "dynamicBlocks.blk-a-title.text":  { "fontSize": 28, "fontWeight": "bold", "color": "#1B4F72", "width": 420, "height": 52 },
+    "dynamicBlocks.blk-a-sub.text":    { "fontSize": 15, "color": "#5D7685",   "width": 520, "height": 36 },
+    "dynamicBlocks.blk-a-grid.text":   { "width": 920, "height": 280 },
+    "dynamicBlocks.blk-a-btn.text":    { "width": 260, "height": 48 },
+
+    "dynamicBlocks.blk-l-title.text":  { "fontSize": 28, "fontWeight": "bold", "color": "#1B4F72", "width": 380, "height": 52 },
+    "dynamicBlocks.blk-l-badge.text":  { "fontSize": 13, "color": "#48C9B0",   "width": 220, "height": 48 },
+    "dynamicBlocks.blk-l-grid.text":   { "width": 920, "height": 280 },
+
+    "dynamicBlocks.blk-c-title.text":  { "fontSize": 28, "fontWeight": "bold", "color": "#1B4F72", "width": 440, "height": 52 },
+    "dynamicBlocks.blk-c-apto.text":   { "fontSize": 15, "color": "#1B4F72",   "width": 210, "height": 150 },
+    "dynamicBlocks.blk-c-casa.text":   { "fontSize": 15, "color": "#1B4F72",   "width": 210, "height": 150 },
+    "dynamicBlocks.blk-c-com.text":    { "fontSize": 15, "color": "#1B4F72",   "width": 210, "height": 150 },
+    "dynamicBlocks.blk-c-terr.text":   { "fontSize": 15, "color": "#1B4F72",   "width": 210, "height": 150 },
+
+    "dynamicBlocks.blk-s-title.text":  { "fontSize": 28, "fontWeight": "bold", "color": "#1B4F72", "width": 460, "height": 52 },
+    "dynamicBlocks.blk-s-text.text":   { "fontSize": 15, "color": "#4A6278",   "width": 560, "height": 180 },
+    "dynamicBlocks.blk-s-stats.text":  { "fontSize": 15, "color": "#1B4F72",   "width": 320, "height": 160 },
+    "dynamicBlocks.blk-s-broker.text": { "width": 920, "height": 220 },
+
+    "dynamicBlocks.blk-n-title.text":  { "fontSize": 28, "fontWeight": "bold", "color": "#FFFFFF", "width": 580, "height": 52 },
+    "dynamicBlocks.blk-n-sub.text":    { "fontSize": 15, "color": "#A8D8EA",   "width": 560, "height": 44 },
+    "dynamicBlocks.blk-n-form.text":   { "width": 380, "height": 200 },
+
+    "dynamicBlocks.blk-f-nome.text":   { "fontSize": 18, "fontWeight": "bold", "color": "#FFFFFF", "width": 320, "height": 44 },
+    "dynamicBlocks.blk-f-creci.text":  { "fontSize": 13, "color": "#A8C8D8",   "width": 220, "height": 28 },
+    "dynamicBlocks.blk-f-links.text":  { "fontSize": 14, "color": "#A8C8D8",   "width": 200, "height": 140 },
+    "dynamicBlocks.blk-f-cont.text":   { "fontSize": 14, "color": "#A8C8D8",   "width": 320, "height": 130 },
+    "dynamicBlocks.blk-f-zap.text":    { "width": 240, "height": 48 },
+    "dynamicBlocks.blk-f-copy.text":   { "fontSize": 12, "color": "#6A8FA0",   "width": 620, "height": 32 }
+  }
+}

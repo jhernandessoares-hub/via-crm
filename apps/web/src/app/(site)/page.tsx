@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -20,7 +20,7 @@ import EditableLogo from "@/components/site-editor/EditableLogo";
 import BlockRenderer from "@/components/site-editor/BlockRenderer";
 import EditorSidebar, { PreviewMode, FIELD_LABELS } from "@/components/site-editor/EditorSidebar";
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tipos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type SelectedField =
   | keyof typeof FIELD_LABELS
@@ -29,14 +29,14 @@ type SelectedField =
 type SelectedVisual = SelectedField | "branding.headerLogo" | "branding.panelLogo";
 type SectionKey = SiteCustomField["section"];
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const PANEL_STEPS = [
   ["Primeiro contato", "42 clientes", "bg-slate-950"],
   ["Retorno agendado", "18 clientes", "bg-sky-500"],
   ["Visita em andamento", "11 clientes", "bg-amber-500"],
-  ["Documentação", "7 clientes", "bg-violet-500"],
-  ["Pós-atendimento", "6 clientes", "bg-emerald-500"],
+  ["DocumentaÃ§Ã£o", "7 clientes", "bg-violet-500"],
+  ["PÃ³s-atendimento", "6 clientes", "bg-emerald-500"],
 ] as const;
 
 const MAX_HISTORY = 20;
@@ -47,7 +47,7 @@ const PREVIEW_WIDTHS: Record<PreviewMode, string | undefined> = {
   mobile: "375px",
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cloneContent(c: SiteContent): SiteContent {
   return JSON.parse(JSON.stringify(c)) as SiteContent;
@@ -101,7 +101,7 @@ async function resizeImage(file: File): Promise<string> {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/jpeg", 0.9));
       };
-      img.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+      img.onerror = () => reject(new Error("NÃ£o foi possÃ­vel ler a imagem."));
       img.src = String(reader.result);
     };
     reader.onerror = () => reject(new Error("Falha ao carregar o arquivo."));
@@ -109,7 +109,7 @@ async function resizeImage(file: File): Promise<string> {
   });
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function SitePage() {
   const searchParams = useSearchParams();
@@ -125,11 +125,11 @@ export default function SitePage() {
   const [isEditorMinimized, setIsEditorMinimized] = useState(false);
   const [isEditing, setIsEditing] = useState(true);
   const [selectedField, setSelectedField] = useState<SelectedVisual>("hero.titleLine1");
-  const [status, setStatus] = useState("Modo de edição local ativo.");
+  const [status, setStatus] = useState("Modo de ediÃ§Ã£o local ativo.");
   const [isSaveConfirming, setIsSaveConfirming] = useState(false);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("desktop");
-  const [newSectionName, setNewSectionName] = useState("Nova faixa");
-  const [newSectionKind, setNewSectionKind] = useState<SiteSectionKind>("content");
+  const [newSectionName, setNewSectionName] = useState("");
+  const [newSectionKind, setNewSectionKind] = useState<SiteSectionKind>("hero");
   const [newBlockSectionId, setNewBlockSectionId] = useState("");
   const [newBlockType, setNewBlockType] = useState<SiteBlockType>("text");
   const [alignmentGuide, setAlignmentGuide] = useState<{ section: SectionKey; x?: number; y?: number } | null>(null);
@@ -182,7 +182,7 @@ export default function SitePage() {
     }
   }, [draft.dynamicSections, newBlockSectionId]);
 
-  // ─── Draft mutations ─────────────────────────────────────────────────────
+  // â”€â”€â”€ Draft mutations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const pushHistory = useCallback((prev: SiteContent) => {
     setHistory((h) => [...h.slice(-MAX_HISTORY + 1), cloneContent(prev)]);
@@ -225,7 +225,7 @@ export default function SitePage() {
     });
   }
 
-  // ─── Save / Publish ──────────────────────────────────────────────────────
+  // â”€â”€â”€ Save / Publish â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function saveDraft() {
     if (!isSaveConfirming) { setIsSaveConfirming(true); setStatus("Clique novamente para confirmar."); return; }
@@ -293,10 +293,10 @@ export default function SitePage() {
   function restoreDraft() {
     setDraft(cloneContent(readSiteContentById(siteId)));
     setIsSaveConfirming(false);
-    setStatus("Restaurado para o último rascunho salvo.");
+    setStatus("Restaurado para o Ãºltimo rascunho salvo.");
   }
 
-  // ─── Image uploads ───────────────────────────────────────────────────────
+  // â”€â”€â”€ Image uploads â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function handleHeroImageChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -329,13 +329,13 @@ export default function SitePage() {
     setStatus("Imagem do bloco atualizada. Clique em salvar.");
   }
 
-  // ─── Sections & Blocks ───────────────────────────────────────────────────
+  // â”€â”€â”€ Sections & Blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function createSection() {
     const id = `section-${Date.now()}`;
-    updateDraft((next) => { next.dynamicSections.push({ id, name: newSectionName.trim() || "Nova faixa", kind: newSectionKind }); });
+    updateDraft((next) => { next.dynamicSections.push({ id, name: newSectionName.trim() || "Nova seção", kind: newSectionKind }); });
     setNewBlockSectionId(id);
-    setStatus("Nova faixa criada.");
+    setStatus("Nova seção criada.");
   }
 
   function moveSectionUp(id: string) {
@@ -355,24 +355,24 @@ export default function SitePage() {
   }
 
   function createBlock() {
-    if (!newBlockSectionId) { setStatus("Crie uma faixa antes de adicionar um bloco."); return; }
+    if (!newBlockSectionId) { setStatus("Crie uma seção antes de adicionar um elemento."); return; }
     const id = `block-${Date.now()}`;
     const defaults: Record<SiteBlockType, Partial<SiteBlock> & EditorElementStyle> = {
       text: { text: "Novo texto", width: 320, height: 60, fontSize: 16 },
-      title: { text: "Novo título", width: 420, height: 88, fontSize: 36, fontWeight: "bold" },
-      button: { text: "Novo botão", width: 220, height: 52, fontSize: 16, fontWeight: "bold", clickable: true },
+      title: { text: "Novo tÃ­tulo", width: 420, height: 88, fontSize: 36, fontWeight: "bold" },
+      button: { text: "Novo botÃ£o", width: 220, height: 52, fontSize: 16, fontWeight: "bold", clickable: true },
       image: { src: null, alt: "Nova imagem", width: 280, height: 180 },
       card: { text: "Novo card", width: 280, height: 180, fontSize: 18, fontWeight: "bold" },
       list: { text: "Nova lista", items: ["Item 1", "Item 2", "Item 3"], width: 320, height: 120, fontSize: 16 },
-      icon: { text: "★", width: 72, height: 72, fontSize: 36 },
+      icon: { text: "â˜…", width: 72, height: 72, fontSize: 36 },
       video: { embedUrl: "", width: 360, height: 220 },
-      form: { text: "Formulário", width: 340, height: 240 },
+      form: { text: "FormulÃ¡rio", width: 340, height: 240 },
       "contact-form": { text: "Fale conosco", width: 360, height: 260 },
       divider: { width: 360, height: 24 },
-      "property-search": { text: "Busca de Imóveis", width: 560, height: 80 },
-      "property-grid": { text: "Grid de Imóveis", width: 600, height: 240 },
-      "property-card": { text: "Card de Imóvel", width: 280, height: 200 },
-      "property-map": { text: "Mapa de Imóveis", width: 600, height: 360 },
+      "property-search": { text: "Busca de ImÃ³veis", width: 560, height: 80 },
+      "property-grid": { text: "Grid de ImÃ³veis", width: 600, height: 240 },
+      "property-card": { text: "Card de ImÃ³vel", width: 280, height: 200 },
+      "property-map": { text: "Mapa de ImÃ³veis", width: 600, height: 360 },
       "broker-grid": { text: "Grid de Corretores", width: 560, height: 200 },
       "whatsapp-button": { text: "Falar no WhatsApp", phone: "", width: 260, height: 60 },
       "team-card": { text: "Nome do Corretor\nCRECI 000000\n(00) 00000-0000", src: null, alt: "Foto", width: 200, height: 240 },
@@ -415,7 +415,7 @@ export default function SitePage() {
     setStatus("Campo removido.");
   }
 
-  // ─── Snapping ────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Snapping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const fieldsBySection = useCallback(
     (section: SectionKey) => draft.customFields.filter((f) => f.section === section),
@@ -477,7 +477,7 @@ export default function SitePage() {
     return () => { window.removeEventListener("pointermove", onPointerMove); window.removeEventListener("pointerup", stopDrag); };
   }, [interactiveEditing, snapPosition, updateElementStyle]);
 
-  // ─── Custom field canvas ─────────────────────────────────────────────────
+  // â”€â”€â”€ Custom field canvas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function renderCustomFieldCanvas(section: SectionKey, toneClass: string) {
     const items = fieldsBySection(section);
@@ -524,6 +524,7 @@ export default function SitePage() {
                 styleBox={s} minWidth={item.variant === "title" ? 260 : 220}
                 minHeight={item.variant === "button" ? 52 : 52} allowMove={false}
                 onResize={(ns) => updateElementStyle(fieldId, ns)}
+                onTextChange={(v) => updateDraft((next) => setFieldValue(next, fieldId, v))}
               />
             </div>
           );
@@ -532,12 +533,36 @@ export default function SitePage() {
     );
   }
 
-  // ─── Dynamic sections ─────────────────────────────────────────────────────
+  // â”€â”€â”€ Dynamic sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function renderDynamicSections() {
     return draft.dynamicSections.map((section) => {
       const blocks = draft.dynamicBlocks.filter((b) => b.sectionId === section.id);
+
+      // ── Cabeçalho VIA padrão — só quando não há blocos próprios ───────────
+      if (section.kind === "header" && blocks.length === 0) {
+        return (
+          <div key={section.id} id={section.id} className="px-6 pt-6 lg:px-8">
+            {interactiveEditing && <div className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{section.name}</div>}
+            <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
+              <EditableLogo active={interactiveEditing} selected={selectedField === "branding.headerLogo"} label="Logo principal" src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt} height={view.branding.headerLogo.height} styleBox={getElementStyle("branding.headerLogo")} minWidth={160} minHeight={40} onMove={(ns) => updateElementStyle("branding.headerLogo", ns)} onResize={(ns) => updateElementStyle("branding.headerLogo", ns)} onClick={() => setSelectedField("branding.headerLogo")} />
+              <div className="flex items-center gap-5">
+                <nav className="flex items-center gap-5 text-sm font-medium text-slate-600">
+                  <EditableText active={interactiveEditing} selected={selectedField === "nav.problem"} label="Menu Problema" value={view.nav.problem} onClick={() => setSelectedField("nav.problem")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.problem", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.problem")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.problem", ns)} onResize={(ns) => updateElementStyle("nav.problem", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "nav.solution"} label="Menu Solução" value={view.nav.solution} onClick={() => setSelectedField("nav.solution")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.solution", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.solution")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.solution", ns)} onResize={(ns) => updateElementStyle("nav.solution", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "nav.plans"} label="Menu Planos" value={view.nav.plans} onClick={() => setSelectedField("nav.plans")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.plans", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.plans")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.plans", ns)} onResize={(ns) => updateElementStyle("nav.plans", ns)} />
+                </nav>
+                <EditableText active={interactiveEditing} selected={selectedField === "header.loginLabel"} label="Botão Entrar" value={view.header.loginLabel} onClick={() => setSelectedField("header.loginLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.loginLabel", v))} className="hidden text-sm font-medium text-slate-600 sm:inline-flex" styleBox={getElementStyle("header.loginLabel")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("header.loginLabel", ns)} onResize={(ns) => updateElementStyle("header.loginLabel", ns)} />
+                <EditableText active={interactiveEditing} selected={selectedField === "header.ctaLabel"} label="Botão CTA header" value={view.header.ctaLabel} onClick={() => setSelectedField("header.ctaLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.ctaLabel", v))} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white" styleBox={getElementStyle("header.ctaLabel")} minWidth={150} minHeight={44} onMove={(ns) => updateElementStyle("header.ctaLabel", ns)} onResize={(ns) => updateElementStyle("header.ctaLabel", ns)} />
+              </div>
+            </header>
+          </div>
+        );
+      }
+
+      const sectionStyle: React.CSSProperties = section.bgColor ? { backgroundColor: section.bgColor } : {};
       const defaultBg =
+        section.bgColor ? "" :
         section.kind === "hero" ? "bg-gradient-to-b from-slate-50 to-slate-100" :
         section.kind === "cta" ? "bg-slate-950 text-white" :
         section.kind === "footer" ? "bg-slate-100" :
@@ -546,13 +571,11 @@ export default function SitePage() {
         section.kind === "contact" ? "bg-slate-50" :
         "bg-white";
 
-      const sectionStyle: React.CSSProperties = section.bgColor ? { backgroundColor: section.bgColor } : {};
-
       return (
-        <section key={section.id} id={section.id} className={`border-t border-slate-200 ${section.bgColor ? "" : defaultBg}`} style={sectionStyle}>
+        <section key={section.id} id={section.id} className={`${!section.bgColor ? "border-t border-slate-200" : ""} ${defaultBg}`} style={sectionStyle}>
           <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
-            {editorMode && <div className="mb-4 text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{section.name}</div>}
-            <div className={`relative min-h-[120px] ${editorMode ? "rounded-[2rem] border border-dashed border-slate-200/80 bg-white/40 p-6" : ""}`}>
+            {interactiveEditing && <div className="mb-4 text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{section.name}</div>}
+            <div className={`relative min-h-[120px] ${editorMode ? "rounded-[2rem] border border-dashed border-slate-200/60 p-6" : ""}`}>
               {blocks.length ? (
                 <div className="flex flex-wrap gap-6">
                   {blocks.map((block) => {
@@ -569,13 +592,14 @@ export default function SitePage() {
                           onResize={(ns) => updateElementStyle(fieldId, ns)}
                           onClick={() => setSelectedField(fieldId)}
                           onImageUpload={(src) => handleBlockImageUpload(block.id, src)}
+                          onTextChange={(v) => updateDraft((next) => { const b = next.dynamicBlocks.find((x) => x.id === block.id); if (b) b.text = v; })}
                         />
                       </div>
                     );
                   })}
                 </div>
               ) : editorMode ? (
-                <div className="text-sm text-slate-400">Esta faixa ainda não tem blocos. Adicione pelo painel lateral.</div>
+                <div className="text-sm text-slate-400">Esta seção ainda não tem elementos. Adicione pelo painel lateral.</div>
               ) : null}
             </div>
           </div>
@@ -584,49 +608,61 @@ export default function SitePage() {
     });
   }
 
-  // ─── View ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const view = draft;
   const showEditorSidebar = editorMode && !isEditorMinimized;
   const previewWidth = PREVIEW_WIDTHS[previewMode];
 
   return (
-    <div className={`min-h-screen ${showEditorSidebar ? "lg:flex" : ""}`}>
+    <div className={`${showEditorSidebar ? "lg:flex lg:h-screen lg:overflow-hidden" : "min-h-screen"}`}>
       {/* Canvas */}
-      <div className="flex-1 min-w-0">
+      <div className={`flex-1 min-w-0 ${showEditorSidebar ? "lg:overflow-y-auto" : ""}`}>
         <div
           className="mx-auto transition-all duration-300"
           style={previewWidth ? { maxWidth: previewWidth, border: "1px solid #e2e8f0", borderRadius: "1rem", overflow: "hidden", margin: "1rem auto" } : undefined}
         >
-          <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_35%),linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] text-slate-950">
-            {/* Seção hero padrão VIA */}
-            <section className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 pb-16 pt-6 lg:px-8">
+          <main
+            className={`min-h-screen text-slate-950 ${!view.theme?.pageBg ? "bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_35%),linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)]" : ""}`}
+            style={{
+              backgroundColor: view.theme?.pageBg,
+              fontFamily: view.theme?.fontFamily === "serif" ? "Georgia, 'Times New Roman', serif" : view.theme?.fontFamily === "mono" ? "'Courier New', monospace" : undefined,
+              "--site-primary": view.theme?.primaryColor ?? "#0f172a",
+              "--site-accent": view.theme?.accentColor ?? "#10b981",
+            } as React.CSSProperties}
+          >
+            {/* Cabeçalho — fallback quando não há seção de tipo "header" nas seções dinâmicas */}
+            {!draft.dynamicSections.some((s) => s.kind === "header") && <div className="px-6 pt-6 lg:px-8">
               <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
                 <EditableLogo active={interactiveEditing} selected={selectedField === "branding.headerLogo"} label="Logo principal" src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt} height={view.branding.headerLogo.height} styleBox={getElementStyle("branding.headerLogo")} minWidth={160} minHeight={40} onMove={(ns) => updateElementStyle("branding.headerLogo", ns)} onResize={(ns) => updateElementStyle("branding.headerLogo", ns)} onClick={() => setSelectedField("branding.headerLogo")} />
                 <div className="flex items-center gap-5">
                   <nav className="flex items-center gap-5 text-sm font-medium text-slate-600">
-                    <EditableText active={interactiveEditing} selected={selectedField === "nav.problem"} label="Menu Problema" value={view.nav.problem} onClick={() => setSelectedField("nav.problem")} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.problem")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.problem", ns)} onResize={(ns) => updateElementStyle("nav.problem", ns)} />
-                    <EditableText active={interactiveEditing} selected={selectedField === "nav.solution"} label="Menu Solução" value={view.nav.solution} onClick={() => setSelectedField("nav.solution")} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.solution")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.solution", ns)} onResize={(ns) => updateElementStyle("nav.solution", ns)} />
-                    <EditableText active={interactiveEditing} selected={selectedField === "nav.plans"} label="Menu Planos" value={view.nav.plans} onClick={() => setSelectedField("nav.plans")} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.plans")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.plans", ns)} onResize={(ns) => updateElementStyle("nav.plans", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "nav.problem"} label="Menu Problema" value={view.nav.problem} onClick={() => setSelectedField("nav.problem")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.problem", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.problem")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.problem", ns)} onResize={(ns) => updateElementStyle("nav.problem", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "nav.solution"} label="Menu Solução" value={view.nav.solution} onClick={() => setSelectedField("nav.solution")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.solution", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.solution")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.solution", ns)} onResize={(ns) => updateElementStyle("nav.solution", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "nav.plans"} label="Menu Planos" value={view.nav.plans} onClick={() => setSelectedField("nav.plans")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.plans", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.plans")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.plans", ns)} onResize={(ns) => updateElementStyle("nav.plans", ns)} />
                   </nav>
-                  <EditableText active={interactiveEditing} selected={selectedField === "header.loginLabel"} label="Botão Entrar" value={view.header.loginLabel} onClick={() => setSelectedField("header.loginLabel")} className="hidden text-sm font-medium text-slate-600 sm:inline-flex" styleBox={getElementStyle("header.loginLabel")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("header.loginLabel", ns)} onResize={(ns) => updateElementStyle("header.loginLabel", ns)} />
-                  <EditableText active={interactiveEditing} selected={selectedField === "header.ctaLabel"} label="Botão CTA header" value={view.header.ctaLabel} onClick={() => setSelectedField("header.ctaLabel")} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white" styleBox={getElementStyle("header.ctaLabel")} minWidth={150} minHeight={44} onMove={(ns) => updateElementStyle("header.ctaLabel", ns)} onResize={(ns) => updateElementStyle("header.ctaLabel", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "header.loginLabel"} label="Botão Entrar" value={view.header.loginLabel} onClick={() => setSelectedField("header.loginLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.loginLabel", v))} className="hidden text-sm font-medium text-slate-600 sm:inline-flex" styleBox={getElementStyle("header.loginLabel")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("header.loginLabel", ns)} onResize={(ns) => updateElementStyle("header.loginLabel", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "header.ctaLabel"} label="Botão CTA header" value={view.header.ctaLabel} onClick={() => setSelectedField("header.ctaLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.ctaLabel", v))} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white" styleBox={getElementStyle("header.ctaLabel")} minWidth={150} minHeight={44} onMove={(ns) => updateElementStyle("header.ctaLabel", ns)} onResize={(ns) => updateElementStyle("header.ctaLabel", ns)} />
                 </div>
               </header>
+            </div>}
 
+            {/* Seções do template base — só aparecem quando não há seções personalizadas */}
+            {draft.dynamicSections.length === 0 && <>
+            <section className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 pb-16 pt-6 lg:px-8">
               <div className="grid flex-1 items-center gap-14 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:py-20">
                 <div className="max-w-3xl">
-                  <EditableText active={interactiveEditing} selected={selectedField === "hero.badge"} label="Badge hero" value={view.hero.badge} onClick={() => setSelectedField("hero.badge")} className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1 text-sm font-medium text-emerald-700" styleBox={getElementStyle("hero.badge")} minWidth={180} minHeight={38} onMove={(ns) => updateElementStyle("hero.badge", ns)} onResize={(ns) => updateElementStyle("hero.badge", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "hero.badge"} label="Badge hero" value={view.hero.badge} onClick={() => setSelectedField("hero.badge")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.badge", v))} className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1 text-sm font-medium text-emerald-700" styleBox={getElementStyle("hero.badge")} minWidth={180} minHeight={38} onMove={(ns) => updateElementStyle("hero.badge", ns)} onResize={(ns) => updateElementStyle("hero.badge", ns)} />
                   <div className="mt-6 space-y-3">
-                    <EditableText active={interactiveEditing} selected={selectedField === "hero.titleLine1"} label="Título hero linha 1" value={view.hero.titleLine1} onClick={() => setSelectedField("hero.titleLine1")} className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl" styleBox={getElementStyle("hero.titleLine1")} minWidth={280} minHeight={72} onMove={(ns) => updateElementStyle("hero.titleLine1", ns)} onResize={(ns) => updateElementStyle("hero.titleLine1", ns)} />
-                    <EditableText active={interactiveEditing} selected={selectedField === "hero.titleLine2"} label="Título hero linha 2" value={view.hero.titleLine2} onClick={() => setSelectedField("hero.titleLine2")} className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl" styleBox={getElementStyle("hero.titleLine2")} minWidth={280} minHeight={72} onMove={(ns) => updateElementStyle("hero.titleLine2", ns)} onResize={(ns) => updateElementStyle("hero.titleLine2", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "hero.titleLine1"} label="TÃ­tulo hero linha 1" value={view.hero.titleLine1} onClick={() => setSelectedField("hero.titleLine1")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.titleLine1", v))} className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl" styleBox={getElementStyle("hero.titleLine1")} minWidth={280} minHeight={72} onMove={(ns) => updateElementStyle("hero.titleLine1", ns)} onResize={(ns) => updateElementStyle("hero.titleLine1", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "hero.titleLine2"} label="TÃ­tulo hero linha 2" value={view.hero.titleLine2} onClick={() => setSelectedField("hero.titleLine2")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.titleLine2", v))} className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl" styleBox={getElementStyle("hero.titleLine2")} minWidth={280} minHeight={72} onMove={(ns) => updateElementStyle("hero.titleLine2", ns)} onResize={(ns) => updateElementStyle("hero.titleLine2", ns)} />
                   </div>
                   <div className="mt-6 max-w-2xl">
-                    <EditableText active={interactiveEditing} selected={selectedField === "hero.description"} label="Descrição hero" value={view.hero.description} onClick={() => setSelectedField("hero.description")} multiline className="text-lg leading-8 text-slate-600" styleBox={getElementStyle("hero.description")} minWidth={320} minHeight={120} onMove={(ns) => updateElementStyle("hero.description", ns)} onResize={(ns) => updateElementStyle("hero.description", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "hero.description"} label="DescriÃ§Ã£o hero" value={view.hero.description} onClick={() => setSelectedField("hero.description")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.description", v))} multiline className="text-lg leading-8 text-slate-600" styleBox={getElementStyle("hero.description")} minWidth={320} minHeight={120} onMove={(ns) => updateElementStyle("hero.description", ns)} onResize={(ns) => updateElementStyle("hero.description", ns)} />
                   </div>
                   <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                    <EditableText active={interactiveEditing} selected={selectedField === "hero.primaryCta"} label="Botão principal hero" value={view.hero.primaryCta} onClick={() => setSelectedField("hero.primaryCta")} className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white" styleBox={getElementStyle("hero.primaryCta")} minWidth={180} minHeight={48} onMove={(ns) => updateElementStyle("hero.primaryCta", ns)} onResize={(ns) => updateElementStyle("hero.primaryCta", ns)} />
-                    <EditableText active={interactiveEditing} selected={selectedField === "hero.secondaryCta"} label="Botão secundário hero" value={view.hero.secondaryCta} onClick={() => setSelectedField("hero.secondaryCta")} className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700" styleBox={getElementStyle("hero.secondaryCta")} minWidth={160} minHeight={48} onMove={(ns) => updateElementStyle("hero.secondaryCta", ns)} onResize={(ns) => updateElementStyle("hero.secondaryCta", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "hero.primaryCta"} label="BotÃ£o principal hero" value={view.hero.primaryCta} onClick={() => setSelectedField("hero.primaryCta")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.primaryCta", v))} className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white" styleBox={getElementStyle("hero.primaryCta")} minWidth={180} minHeight={48} onMove={(ns) => updateElementStyle("hero.primaryCta", ns)} onResize={(ns) => updateElementStyle("hero.primaryCta", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "hero.secondaryCta"} label="BotÃ£o secundÃ¡rio hero" value={view.hero.secondaryCta} onClick={() => setSelectedField("hero.secondaryCta")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.secondaryCta", v))} className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700" styleBox={getElementStyle("hero.secondaryCta")} minWidth={160} minHeight={48} onMove={(ns) => updateElementStyle("hero.secondaryCta", ns)} onResize={(ns) => updateElementStyle("hero.secondaryCta", ns)} />
                   </div>
                   {renderCustomFieldCanvas("hero", "border-slate-200 bg-white/40")}
                   <div className="mt-10 grid gap-4 sm:grid-cols-3">
@@ -647,13 +683,13 @@ export default function SitePage() {
                       <div>
                         <EditableLogo active={interactiveEditing} selected={selectedField === "branding.panelLogo"} label="Logo painel" src={view.branding.panelLogo.src} alt={view.branding.panelLogo.alt} height={view.branding.panelLogo.height} styleBox={getElementStyle("branding.panelLogo")} minWidth={150} minHeight={40} onMove={(ns) => updateElementStyle("branding.panelLogo", ns)} onResize={(ns) => updateElementStyle("branding.panelLogo", ns)} dark onClick={() => setSelectedField("branding.panelLogo")} />
                         <div className="mt-3 max-w-60">
-                          <EditableText active={interactiveEditing} selected={selectedField === "hero.panelEyebrow"} label="Eyebrow painel" value={view.hero.panelEyebrow} onClick={() => setSelectedField("hero.panelEyebrow")} className="text-xs uppercase tracking-[0.28em] text-slate-400" styleBox={getElementStyle("hero.panelEyebrow")} minWidth={160} minHeight={36} onMove={(ns) => updateElementStyle("hero.panelEyebrow", ns)} onResize={(ns) => updateElementStyle("hero.panelEyebrow", ns)} />
+                          <EditableText active={interactiveEditing} selected={selectedField === "hero.panelEyebrow"} label="Eyebrow painel" value={view.hero.panelEyebrow} onClick={() => setSelectedField("hero.panelEyebrow")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.panelEyebrow", v))} className="text-xs uppercase tracking-[0.28em] text-slate-400" styleBox={getElementStyle("hero.panelEyebrow")} minWidth={160} minHeight={36} onMove={(ns) => updateElementStyle("hero.panelEyebrow", ns)} onResize={(ns) => updateElementStyle("hero.panelEyebrow", ns)} />
                         </div>
                         <div className="mt-2">
-                          <EditableText active={interactiveEditing} selected={selectedField === "hero.panelTitle"} label="Título painel" value={view.hero.panelTitle} onClick={() => setSelectedField("hero.panelTitle")} className="text-2xl font-semibold text-white" styleBox={getElementStyle("hero.panelTitle")} minWidth={220} minHeight={56} onMove={(ns) => updateElementStyle("hero.panelTitle", ns)} onResize={(ns) => updateElementStyle("hero.panelTitle", ns)} />
+                          <EditableText active={interactiveEditing} selected={selectedField === "hero.panelTitle"} label="TÃ­tulo painel" value={view.hero.panelTitle} onClick={() => setSelectedField("hero.panelTitle")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.panelTitle", v))} className="text-2xl font-semibold text-white" styleBox={getElementStyle("hero.panelTitle")} minWidth={220} minHeight={56} onMove={(ns) => updateElementStyle("hero.panelTitle", ns)} onResize={(ns) => updateElementStyle("hero.panelTitle", ns)} />
                         </div>
                       </div>
-                      <EditableText active={interactiveEditing} selected={selectedField === "hero.panelStatus"} label="Status painel" value={view.hero.panelStatus} onClick={() => setSelectedField("hero.panelStatus")} className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300" styleBox={getElementStyle("hero.panelStatus")} minWidth={90} minHeight={34} onMove={(ns) => updateElementStyle("hero.panelStatus", ns)} onResize={(ns) => updateElementStyle("hero.panelStatus", ns)} />
+                      <EditableText active={interactiveEditing} selected={selectedField === "hero.panelStatus"} label="Status painel" value={view.hero.panelStatus} onClick={() => setSelectedField("hero.panelStatus")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.panelStatus", v))} className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300" styleBox={getElementStyle("hero.panelStatus")} minWidth={90} minHeight={34} onMove={(ns) => updateElementStyle("hero.panelStatus", ns)} onResize={(ns) => updateElementStyle("hero.panelStatus", ns)} />
                     </div>
 
                     {view.hero.image.src ? (
@@ -682,7 +718,7 @@ export default function SitePage() {
                         {PANEL_STEPS.map(([step, amount, color]) => (
                           <div key={step} className="space-y-1">
                             <div className="flex items-center justify-between text-sm"><span className="font-medium text-slate-700">{step}</span><span className="text-slate-500">{amount}</span></div>
-                            <div className="h-2 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${color}`} style={{ width: step === "Primeiro contato" ? "88%" : step === "Retorno agendado" ? "66%" : step === "Visita em andamento" ? "52%" : step === "Documentação" ? "41%" : "34%" }} /></div>
+                            <div className="h-2 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${color}`} style={{ width: step === "Primeiro contato" ? "88%" : step === "Retorno agendado" ? "66%" : step === "Visita em andamento" ? "52%" : step === "DocumentaÃ§Ã£o" ? "41%" : "34%" }} /></div>
                           </div>
                         ))}
                       </div>
@@ -693,12 +729,12 @@ export default function SitePage() {
               </div>
             </section>
 
-            {/* Seções fixas legadas */}
+            {/* SeÃ§Ãµes fixas legadas */}
             <section id="problema" className="scroll-mt-24 border-y border-slate-200 bg-white/70">
               <div className="mx-auto grid max-w-7xl gap-8 px-6 py-16 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{view.problem.eyebrow}</div>
-                  <EditableText active={interactiveEditing} selected={selectedField === "problem.title"} label="Título Problema" value={view.problem.title} onClick={() => setSelectedField("problem.title")} multiline className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl" styleBox={getElementStyle("problem.title")} minWidth={260} minHeight={110} onResize={(ns) => updateElementStyle("problem.title", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "problem.title"} label="TÃ­tulo Problema" value={view.problem.title} onClick={() => setSelectedField("problem.title")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "problem.title", v))} multiline className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl" styleBox={getElementStyle("problem.title")} minWidth={260} minHeight={110} onResize={(ns) => updateElementStyle("problem.title", ns)} />
                   {renderCustomFieldCanvas("problem", "border-slate-200 bg-white/40")}
                 </div>
                 <div className="grid gap-4">
@@ -712,8 +748,8 @@ export default function SitePage() {
             <section id="solucao" className="scroll-mt-24 mx-auto max-w-7xl px-6 py-16 lg:px-8">
               <div className="max-w-3xl">
                 <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{view.solution.eyebrow}</div>
-                <EditableText active={interactiveEditing} selected={selectedField === "solution.title"} label="Título Solução" value={view.solution.title} onClick={() => setSelectedField("solution.title")} multiline className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl" styleBox={getElementStyle("solution.title")} minWidth={320} minHeight={96} onResize={(ns) => updateElementStyle("solution.title", ns)} />
-                <EditableText active={interactiveEditing} selected={selectedField === "solution.description"} label="Descrição Solução" value={view.solution.description} onClick={() => setSelectedField("solution.description")} multiline className="mt-4 text-lg leading-8 text-slate-600" styleBox={getElementStyle("solution.description")} minWidth={320} minHeight={120} onResize={(ns) => updateElementStyle("solution.description", ns)} />
+                <EditableText active={interactiveEditing} selected={selectedField === "solution.title"} label="TÃ­tulo SoluÃ§Ã£o" value={view.solution.title} onClick={() => setSelectedField("solution.title")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "solution.title", v))} multiline className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl" styleBox={getElementStyle("solution.title")} minWidth={320} minHeight={96} onResize={(ns) => updateElementStyle("solution.title", ns)} />
+                <EditableText active={interactiveEditing} selected={selectedField === "solution.description"} label="DescriÃ§Ã£o SoluÃ§Ã£o" value={view.solution.description} onClick={() => setSelectedField("solution.description")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "solution.description", v))} multiline className="mt-4 text-lg leading-8 text-slate-600" styleBox={getElementStyle("solution.description")} minWidth={320} minHeight={120} onResize={(ns) => updateElementStyle("solution.description", ns)} />
                 {renderCustomFieldCanvas("solution", "border-slate-200 bg-white/40")}
               </div>
               <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -731,8 +767,8 @@ export default function SitePage() {
               <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
                 <div className="max-w-3xl">
                   <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{view.plansSection.eyebrow}</div>
-                  <EditableText active={interactiveEditing} selected={selectedField === "plansSection.title"} label="Título Planos" value={view.plansSection.title} onClick={() => setSelectedField("plansSection.title")} multiline className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl" styleBox={getElementStyle("plansSection.title")} minWidth={320} minHeight={100} onResize={(ns) => updateElementStyle("plansSection.title", ns)} />
-                  <EditableText active={interactiveEditing} selected={selectedField === "plansSection.description"} label="Descrição Planos" value={view.plansSection.description} onClick={() => setSelectedField("plansSection.description")} multiline className="mt-4 text-lg leading-8 text-slate-300" styleBox={getElementStyle("plansSection.description")} minWidth={320} minHeight={110} onResize={(ns) => updateElementStyle("plansSection.description", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "plansSection.title"} label="TÃ­tulo Planos" value={view.plansSection.title} onClick={() => setSelectedField("plansSection.title")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "plansSection.title", v))} multiline className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl" styleBox={getElementStyle("plansSection.title")} minWidth={320} minHeight={100} onResize={(ns) => updateElementStyle("plansSection.title", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "plansSection.description"} label="DescriÃ§Ã£o Planos" value={view.plansSection.description} onClick={() => setSelectedField("plansSection.description")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "plansSection.description", v))} multiline className="mt-4 text-lg leading-8 text-slate-300" styleBox={getElementStyle("plansSection.description")} minWidth={320} minHeight={110} onResize={(ns) => updateElementStyle("plansSection.description", ns)} />
                   {renderCustomFieldCanvas("plans", "border-white/20 bg-white/5")}
                 </div>
                 <div className="mt-10 grid gap-5 lg:grid-cols-3">
@@ -765,17 +801,19 @@ export default function SitePage() {
                 <div className="grid gap-8 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-12">
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{view.finalCta.eyebrow}</div>
-                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.title"} label="Título CTA Final" value={view.finalCta.title} onClick={() => setSelectedField("finalCta.title")} multiline className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl" styleBox={getElementStyle("finalCta.title")} minWidth={320} minHeight={100} onResize={(ns) => updateElementStyle("finalCta.title", ns)} />
-                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.description"} label="Descrição CTA Final" value={view.finalCta.description} onClick={() => setSelectedField("finalCta.description")} multiline className="mt-4 text-lg leading-8 text-slate-600" styleBox={getElementStyle("finalCta.description")} minWidth={320} minHeight={120} onResize={(ns) => updateElementStyle("finalCta.description", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.title"} label="TÃ­tulo CTA Final" value={view.finalCta.title} onClick={() => setSelectedField("finalCta.title")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "finalCta.title", v))} multiline className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl" styleBox={getElementStyle("finalCta.title")} minWidth={320} minHeight={100} onResize={(ns) => updateElementStyle("finalCta.title", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.description"} label="DescriÃ§Ã£o CTA Final" value={view.finalCta.description} onClick={() => setSelectedField("finalCta.description")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "finalCta.description", v))} multiline className="mt-4 text-lg leading-8 text-slate-600" styleBox={getElementStyle("finalCta.description")} minWidth={320} minHeight={120} onResize={(ns) => updateElementStyle("finalCta.description", ns)} />
                     {renderCustomFieldCanvas("finalCta", "border-slate-200 bg-slate-50")}
                   </div>
                   <div className="flex flex-col justify-center gap-4 rounded-[1.5rem] bg-slate-950 p-6 text-white">
-                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.sideText"} label="Texto lateral CTA" value={view.finalCta.sideText} onClick={() => setSelectedField("finalCta.sideText")} multiline className="text-sm leading-7 text-slate-300" styleBox={getElementStyle("finalCta.sideText")} minWidth={260} minHeight={120} onResize={(ns) => updateElementStyle("finalCta.sideText", ns)} />
-                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.buttonLabel"} label="Botão CTA Final" value={view.finalCta.buttonLabel} onClick={() => setSelectedField("finalCta.buttonLabel")} className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950" styleBox={getElementStyle("finalCta.buttonLabel")} minWidth={180} minHeight={48} onResize={(ns) => updateElementStyle("finalCta.buttonLabel", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.sideText"} label="Texto lateral CTA" value={view.finalCta.sideText} onClick={() => setSelectedField("finalCta.sideText")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "finalCta.sideText", v))} multiline className="text-sm leading-7 text-slate-300" styleBox={getElementStyle("finalCta.sideText")} minWidth={260} minHeight={120} onResize={(ns) => updateElementStyle("finalCta.sideText", ns)} />
+                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.buttonLabel"} label="BotÃ£o CTA Final" value={view.finalCta.buttonLabel} onClick={() => setSelectedField("finalCta.buttonLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "finalCta.buttonLabel", v))} className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950" styleBox={getElementStyle("finalCta.buttonLabel")} minWidth={180} minHeight={48} onResize={(ns) => updateElementStyle("finalCta.buttonLabel", ns)} />
                   </div>
                 </div>
               </div>
             </section>
+
+            </>}
 
             {renderDynamicSections()}
           </main>

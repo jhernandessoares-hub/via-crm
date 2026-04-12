@@ -1,11 +1,12 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   SiteBlockType,
   SiteContent,
   cloneSiteContent,
+  normalizeSiteContent,
   writeSiteContentToStorage,
 } from "@/lib/site-content";
 import { adminFetch } from "@/lib/admin-api";
@@ -56,7 +57,7 @@ type SeedBlockInfo = {
   description: string;
 };
 
-// ─── Seed por tipo ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Seed por tipo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildSeedLandingPage(name: string): SiteContent {
   const base = cloneSiteContent();
@@ -73,6 +74,7 @@ function buildSeedLandingPage(name: string): SiteContent {
   base.hero.secondaryCta = "Ver planos";
 
   base.dynamicSections = [
+    { id: "sec-header", name: "Cabeçalho", kind: "header" },
     { id: heroId, name: "Hero", kind: "hero" },
     { id: beneficiosId, name: "Benefícios", kind: "content" },
     { id: planosId, name: "Planos", kind: "content", bgColor: "#0f172a" },
@@ -118,6 +120,7 @@ function buildSeedInstitucional(name: string): SiteContent {
   base.hero.secondaryCta = "Conheça nossa equipe";
 
   base.dynamicSections = [
+    { id: "sec-header", name: "Cabeçalho", kind: "header" },
     { id: heroId, name: "Hero", kind: "hero" },
     { id: sobreId, name: "Sobre nós", kind: "content" },
     { id: servicosId, name: "Serviços", kind: "content" },
@@ -168,6 +171,7 @@ function buildSeedSiteImobiliario(name: string): SiteContent {
   base.hero.secondaryCta = "Falar com corretor";
 
   base.dynamicSections = [
+    { id: "sec-header", name: "Cabeçalho", kind: "header" },
     { id: heroId, name: "Hero com busca", kind: "hero" },
     { id: destaquesId, name: "Imóveis em destaque", kind: "properties" },
     { id: categoriasId, name: "Categorias", kind: "content" },
@@ -216,6 +220,7 @@ function buildSeedPortal(name: string): SiteContent {
   base.hero.secondaryCta = "Anunciar imóvel";
 
   base.dynamicSections = [
+    { id: "sec-header", name: "Cabeçalho", kind: "header" },
     { id: heroId, name: "Hero com busca avançada", kind: "hero" },
     { id: destaquesId, name: "Imóveis em destaque", kind: "properties" },
     { id: mapaId, name: "Mapa de imóveis", kind: "properties" },
@@ -254,7 +259,7 @@ function buildSeedContent(form: NewSiteForm): SiteContent {
   return buildSeedLandingPage(name);
 }
 
-// ─── Helpers de seed por tipo para preview ───────────────────────────────────
+// â”€â”€â”€ Helpers de seed por tipo para preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SEED_PREVIEW: Record<SiteType, { sections: string[]; blocks: SeedBlockInfo[] }> = {
   "Landing Page": {
@@ -303,7 +308,7 @@ const SEED_PREVIEW: Record<SiteType, { sections: string[]; blocks: SeedBlockInfo
   },
 };
 
-// ─── Badges ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Badges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const TYPE_LABELS: Record<string, string> = {
   LANDING_PAGE: "Landing Page",
@@ -350,7 +355,7 @@ const SITE_TYPE_TO_API: Record<SiteType, string> = {
   "Portal": "PORTAL",
 };
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function AdminSitePage() {
   const [templates, setTemplates] = useState<ApiTemplate[]>([]);
@@ -365,6 +370,12 @@ export default function AdminSitePage() {
     scope: "PADRAO",
     tenantId: "",
   });
+  const [importedContent, setImportedContent] = useState<SiteContent | null>(null);
+  const [importFileName, setImportFileName] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [manageTemplate, setManageTemplate] = useState<ApiTemplate | null>(null);
   const [manageSites, setManageSites] = useState<TenantSiteRow[]>([]);
@@ -412,13 +423,38 @@ export default function AdminSitePage() {
 
   function resetForm() {
     setForm({ name: "", type: "Landing Page", scope: "PADRAO", tenantId: "" });
+    setImportedContent(null);
+    setImportFileName("");
+    setImportError(null);
+    setCreateError(null);
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string);
+        setImportedContent(normalizeSiteContent(parsed));
+      } catch {
+        setImportError("Arquivo inválido. Verifique se é um JSON no formato VIA CRM Site Builder.");
+        setImportedContent(null);
+        setImportFileName("");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   }
 
   async function handleCreateSite() {
     if (!canCreate || creating) return;
     setCreating(true);
+    setCreateError(null);
     try {
-      const seed = buildSeedContent(form);
+      const seed = importedContent ?? buildSeedContent(form);
       const tpl = await adminFetch("/admin/sites/templates", {
         method: "POST",
         body: JSON.stringify({
@@ -438,7 +474,7 @@ export default function AdminSitePage() {
       resetForm();
       window.open(`/?editor=1&site=${tpl.id}&templateId=${tpl.id}`, "_blank", "noopener,noreferrer");
     } catch (e: any) {
-      setError(e.message || "Erro ao criar template.");
+      setCreateError(e.message || "Erro ao criar template. Verifique sua conexão e tente novamente.");
     } finally {
       setCreating(false);
     }
@@ -934,41 +970,134 @@ export default function AdminSitePage() {
               </label>
             </div>
 
-            {/* Preview da estrutura do tipo selecionado */}
-            <section className="mt-6 rounded-2xl border bg-slate-50 p-5">
-              <div className="text-sm font-semibold text-slate-950">
-                Estrutura gerada para{" "}
-                <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${typeBadgeByLocal(form.type)}`}>
-                  {form.type}
-                </span>
+            {/* Upload de estrutura (opcional) */}
+            <div className="mt-5">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                Estrutura do site — importar JSON <span className="normal-case text-slate-400">(opcional)</span>
               </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border bg-white p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Seções</div>
-                  <div className="mt-3 space-y-1">
-                    {preview.sections.map((s, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm text-slate-700">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                        {s}
+              {importedContent ? (
+                <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-emerald-600">✓</span>
+                    <div>
+                      <div className="text-sm font-medium text-emerald-800">{importFileName}</div>
+                      <div className="text-xs text-emerald-600">
+                        {importedContent.dynamicSections.length} seções · {importedContent.dynamicBlocks.length} blocos importados
                       </div>
-                    ))}
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => { setImportedContent(null); setImportFileName(""); setImportError(null); }}
+                    className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Remover
+                  </button>
                 </div>
-                <div className="rounded-xl border bg-white p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocos incluídos</div>
-                  <div className="mt-3 space-y-2">
-                    {preview.blocks.map((b) => (
-                      <div key={b.type} className="text-sm">
-                        <span className="font-medium text-slate-950">{b.label}</span>
-                        <span className="text-slate-500"> — {b.description}</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => importInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-500 transition hover:border-slate-400 hover:bg-slate-100"
+                >
+                  <span className="text-base">↑</span>
+                  Selecionar arquivo .json gerado pelo Claude AI
+                </button>
+              )}
+              {importError && (
+                <div className="mt-2 text-xs text-red-600">{importError}</div>
+              )}
+              <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportFile} />
+            </div>
+
+            {/* Preview da estrutura */}
+            <section className="mt-5 rounded-2xl border bg-slate-50 p-5">
+              {importedContent ? (
+                <>
+                  <div className="text-sm font-semibold text-slate-950">
+                    Estrutura importada do arquivo
+                    <span className="ml-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">JSON</span>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Seções</div>
+                      <div className="mt-3 space-y-1">
+                        {importedContent.dynamicSections.length ? importedContent.dynamicSections.map((s) => (
+                          <div key={s.id} className="flex items-center gap-2 text-sm text-slate-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                            {s.name}
+                          </div>
+                        )) : <div className="text-sm text-slate-400">Nenhuma seção dinâmica</div>}
                       </div>
-                    ))}
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocos</div>
+                      <div className="mt-3 space-y-1">
+                        {importedContent.dynamicBlocks.length ? (
+                          Object.entries(
+                            importedContent.dynamicBlocks.reduce<Record<string, number>>((acc, b) => {
+                              acc[b.type] = (acc[b.type] ?? 0) + 1;
+                              return acc;
+                            }, {})
+                          ).map(([type, count]) => (
+                            <div key={type} className="text-sm text-slate-700">
+                              <span className="font-medium">{type}</span>
+                              <span className="text-slate-400"> × {count}</span>
+                            </div>
+                          ))
+                        ) : <div className="text-sm text-slate-400">Nenhum bloco</div>}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-semibold text-slate-950">
+                    Estrutura gerada para{" "}
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${typeBadgeByLocal(form.type)}`}>
+                      {form.type}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Seções</div>
+                      <div className="mt-3 space-y-1">
+                        {preview.sections.map((s, i) => (
+                          <div key={i} className="flex items-center gap-2 text-sm text-slate-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                            {s}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocos incluídos</div>
+                      <div className="mt-3 space-y-2">
+                        {preview.blocks.map((b) => (
+                          <div key={b.type} className="text-sm">
+                            <span className="font-medium text-slate-950">{b.label}</span>
+                            <span className="text-slate-500"> — {b.description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </section>
 
-            <div className="mt-6 flex justify-end gap-3">
+            {createError && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {createError}
+              </div>
+            )}
+            {!form.name.trim() && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
+                Preencha o nome do template para continuar.
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end gap-3">
               <button
                 onClick={() => { setIsCreateOpen(false); resetForm(); }}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700"

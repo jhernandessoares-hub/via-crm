@@ -63,6 +63,7 @@ export default function BlockRenderer({
   onResize,
   onClick,
   onImageUpload,
+  onTextChange,
 }: {
   block: SiteBlock;
   active: boolean;
@@ -72,10 +73,11 @@ export default function BlockRenderer({
   onResize: (next: EditorElementStyle) => void;
   onClick: () => void;
   onImageUpload?: (src: string) => void;
+  onTextChange?: (value: string) => void;
 }) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
-  const commonProps = { active, selected, styleBox, onMove, onResize, onClick };
+  const commonProps = { active, selected, styleBox, onMove, onResize, onClick, onTextChange };
 
   async function handleImageFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -103,11 +105,11 @@ export default function BlockRenderer({
   // ── Tipos base ──────────────────────────────────────────────────────────────
 
   if (block.type === "title") {
-    return <EditableText {...commonProps} value={block.text ?? ""} label="Título" className="text-4xl font-semibold tracking-tight text-slate-950" minWidth={280} minHeight={80} />;
+    return <EditableText {...commonProps} value={block.text ?? ""} label="Título" className="text-4xl font-semibold tracking-tight" style={{ color: "var(--site-primary, #0f172a)" }} minWidth={280} minHeight={80} />;
   }
 
   if (block.type === "button") {
-    return <EditableText {...commonProps} value={block.text ?? ""} label="Botão" className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white" minWidth={180} minHeight={52} />;
+    return <EditableText {...commonProps} value={block.text ?? ""} label="Botão" className="inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: "var(--site-primary, #0f172a)" }} minWidth={180} minHeight={52} />;
   }
 
   if (block.type === "text") {
@@ -115,7 +117,7 @@ export default function BlockRenderer({
   }
 
   if (block.type === "card") {
-    return <EditableText {...commonProps} value={block.text ?? ""} label="Card" className="rounded-[1.5rem] border border-slate-200 bg-white p-6 text-lg font-semibold text-slate-950 shadow-sm" minWidth={220} minHeight={160} />;
+    return <EditableText {...commonProps} value={block.text ?? ""} label="Card" className="rounded-[1.5rem] border border-slate-200 bg-white p-6 text-lg font-semibold shadow-sm" style={{ color: "var(--site-primary, #0f172a)" }} minWidth={220} minHeight={160} />;
   }
 
   if (block.type === "list") {

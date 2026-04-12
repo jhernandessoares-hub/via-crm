@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import EnvBanner from "@/components/EnvBanner";
 
 type AdminUser = {
   nome?: string;
@@ -44,7 +45,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   if (isLoginRoute) return <>{children}</>;
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50">
+      <EnvBanner />
+      <div className="flex flex-1">
       <aside className="flex w-56 flex-col bg-slate-900 text-white">
         <div className="border-b border-slate-700 px-4 py-5">
           <div className="text-xs uppercase tracking-widest text-slate-400">VIA CRM</div>
@@ -79,6 +82,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </div>
       </aside>
       <main className="flex-1 overflow-auto">{children}</main>
+      </div>
     </div>
   );
 }

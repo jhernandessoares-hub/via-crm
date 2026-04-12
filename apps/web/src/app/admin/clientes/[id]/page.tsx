@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { adminFetch } from "@/lib/admin-api";
 import Link from "next/link";
@@ -349,10 +349,10 @@ export default function AdminClienteDetailPage() {
               { label: "Tel. proprietário", value: tenant.proprietarioTelefone },
               { label: "WhatsApp Phone ID", value: tenant.whatsappPhoneNumberId },
             ].map(({ label, value }) => (
-              <>
-                <span key={label + "_l"} className="text-gray-500">{label}</span>
-                <span key={label + "_v"}>{value || <em className="text-gray-300">—</em>}</span>
-              </>
+              <React.Fragment key={label}>
+                <span className="text-gray-500">{label}</span>
+                <span>{value || <em className="text-gray-300">—</em>}</span>
+              </React.Fragment>
             ))}
           </div>
         )}
