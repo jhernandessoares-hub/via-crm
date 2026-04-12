@@ -57,13 +57,15 @@ export type SiteCustomField = {
 };
 
 export type SiteSectionKind =
+  | "header"
   | "content"
   | "hero"
   | "cta"
   | "footer"
   | "properties"
   | "team"
-  | "contact";
+  | "contact"
+  | "other";
 
 export type SiteBlockType =
   | "text"
@@ -104,7 +106,15 @@ export type SiteBlock = {
   phone?: string;
 };
 
+export type SiteTheme = {
+  pageBg?: string;
+  primaryColor?: string;
+  accentColor?: string;
+  fontFamily?: "sans" | "serif" | "mono";
+};
+
 export type SiteContent = {
+  theme?: SiteTheme;
   branding: {
     headerLogo: SiteLogo;
     panelLogo: SiteLogo;
@@ -162,6 +172,7 @@ export type SiteContent = {
 };
 
 export const defaultSiteContent: SiteContent = {
+  theme: undefined,
   branding: {
     headerLogo: {
       src: "/logo-via.svg",
@@ -310,7 +321,15 @@ export function normalizeSiteContent(input: unknown): SiteContent {
       ? (data.branding as { logo?: Partial<SiteLogo> }).logo
       : undefined;
 
+  const rawTheme = data.theme && typeof data.theme === "object" ? data.theme as Partial<SiteTheme> : undefined;
+
   return {
+    theme: rawTheme ? {
+      pageBg: typeof rawTheme.pageBg === "string" ? rawTheme.pageBg : undefined,
+      primaryColor: typeof rawTheme.primaryColor === "string" ? rawTheme.primaryColor : undefined,
+      accentColor: typeof rawTheme.accentColor === "string" ? rawTheme.accentColor : undefined,
+      fontFamily: rawTheme.fontFamily === "serif" || rawTheme.fontFamily === "mono" ? rawTheme.fontFamily : rawTheme.fontFamily === "sans" ? "sans" : undefined,
+    } : undefined,
     branding: {
       headerLogo: {
         ...base.branding.headerLogo,
@@ -353,10 +372,11 @@ export function normalizeSiteContent(input: unknown): SiteContent {
             .filter((item): item is Partial<SiteSection> => Boolean(item && typeof item === "object"))
             .map((item, index) => ({
               id: typeof item.id === "string" && item.id ? item.id : `section-${index + 1}`,
-              name: typeof item.name === "string" && item.name ? item.name : `Nova faixa ${index + 1}`,
+              name: typeof item.name === "string" && item.name ? item.name : `Nova seção ${index + 1}`,
               kind:
-                item.kind === "hero" || item.kind === "cta" || item.kind === "footer" ||
-                item.kind === "properties" || item.kind === "team" || item.kind === "contact"
+                item.kind === "header" || item.kind === "hero" || item.kind === "cta" ||
+                item.kind === "footer" || item.kind === "properties" || item.kind === "team" ||
+                item.kind === "contact" || item.kind === "other"
                   ? item.kind
                   : "content",
               bgColor: typeof item.bgColor === "string" ? item.bgColor : undefined,

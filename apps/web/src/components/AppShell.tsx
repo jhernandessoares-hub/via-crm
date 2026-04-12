@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import EnvBanner from "@/components/EnvBanner";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -67,7 +68,9 @@ function AppShellInner({
   ];
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <EnvBanner />
+      <div className="flex flex-1">
       {/* Sidebar escura */}
       <aside className="w-64 bg-slate-950 text-slate-100 flex flex-col">
         <div className="px-5 py-4 border-b border-slate-800">
@@ -170,6 +173,7 @@ function AppShellInner({
         </header>
 
         <main className="p-6">{children}</main>
+      </div>
       </div>
     </div>
   );
