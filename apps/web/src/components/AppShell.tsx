@@ -293,6 +293,28 @@ function AppShellInner({
   const [modalOpen, setModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Contagens de leads
+  const [counts, setCounts] = useState<{
+    total: number;
+    mine: number;
+    groups: Record<string, number>;
+  } | null>(null);
+
+  // Funil colapsável — persiste no localStorage
+  const [funnelOpen, setFunnelOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const saved = localStorage.getItem("sidebar_funnel_open");
+    return saved === null ? false : saved === "true";
+  });
+
+  function toggleFunnel() {
+    setFunnelOpen((v) => {
+      const next = !v;
+      localStorage.setItem("sidebar_funnel_open", String(next));
+      return next;
+    });
+  }
+
   // Carregar usuário do localStorage
   useEffect(() => {
     try {
@@ -309,11 +331,22 @@ function AppShellInner({
       .then((data) => {
         const p = data as FullProfile;
         setProfile(p);
-        // Aplicar tema salvo
         const theme = p?.preferences?.theme ?? "light";
         applyTheme(theme);
       })
       .catch(() => null);
+  }, []);
+
+  // Buscar contagens de leads (mount + a cada 60s)
+  useEffect(() => {
+    function fetchCounts() {
+      apiFetch("/leads/counts")
+        .then((data) => setCounts(data))
+        .catch(() => null);
+    }
+    fetchCounts();
+    const t = setInterval(fetchCounts, 60_000);
+    return () => clearInterval(t);
   }, []);
 
   // Fechar dropdown ao clicar fora
@@ -341,16 +374,25 @@ function AppShellInner({
   const initials = getInitials(profile?.nome ?? user?.nome ?? "?");
 
   const linkClass = (href: string) =>
-    `block rounded-md px-3 py-2 text-sm hover:bg-slate-900 ${
+    `flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-slate-900 ${
       pathname === href && !currentGroup ? "bg-slate-900" : ""
     }`;
 
   const groupLinkClass = (group: string) =>
-    `block rounded-md px-3 py-1.5 text-[13px] text-slate-300 hover:bg-slate-900 hover:text-slate-100 ${
+    `flex items-center justify-between rounded-md px-3 py-1.5 text-[13px] text-slate-300 hover:bg-slate-900 hover:text-slate-100 ${
       pathname === "/leads" && currentGroup === group
         ? "bg-slate-900 text-slate-100"
         : ""
     }`;
+
+  function Badge({ n }: { n: number | undefined }) {
+    if (n === undefined || n === null) return null;
+    return (
+      <span className="ml-auto text-[10px] font-semibold bg-slate-800 text-slate-400 rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+        {n > 999 ? "999+" : n}
+      </span>
+    );
+  }
 
   const FUNNEL_GROUPS = [
     { label: "Pré-atendimento",     group: "PRE_ATENDIMENTO" },
@@ -360,6 +402,10 @@ function AppShellInner({
     { label: "Negócio Fechado",     group: "NEGOCIO_FECHADO" },
     { label: "Pós Venda",           group: "POS_VENDA" },
   ];
+
+  const funnelTotal = counts
+    ? Object.values(counts.groups).reduce((a, b) => a + b, 0)
+    : undefined;
 
   return (
     <div
@@ -383,88 +429,111 @@ function AppShellInner({
 
           <nav className="p-3 space-y-1 text-sm">
             <Link className={linkClass("/dashboard")} href="/dashboard">
-              Dashboard
+              <span>Dashboard</span>
             </Link>
 
             <Link className={linkClass("/meus-leads")} href="/meus-leads">
-              Meus Leads
+              <span>Meus Leads</span>
+              <Badge n={counts?.mine} />
             </Link>
 
             {role !== "AGENT" && (
               <Link className={linkClass("/pipeline")} href="/pipeline">
-                Todos os Leads
+                <span>Todos os Leads</span>
+                <Badge n={counts?.total} />
               </Link>
             )}
 
-            {/* Funil de Venda */}
+            {/* Funil de Venda — colapsável */}
             <div className="pt-1">
-              <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                Funil de Venda
-              </div>
-              <div className="space-y-0.5">
-                {FUNNEL_GROUPS.map(({ label, group }) => (
-                  <Link
-                    key={group}
-                    href={`/leads?group=${group}`}
-                    className={groupLinkClass(group)}
+              <button
+                type="button"
+                onClick={toggleFunnel}
+                className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-900 hover:text-slate-400 transition-colors"
+              >
+                <span>Funil de Venda</span>
+                <div className="flex items-center gap-1.5">
+                  {funnelTotal !== undefined && (
+                    <span className="text-[10px] font-semibold bg-slate-800 text-slate-400 rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none normal-case">
+                      {funnelTotal > 999 ? "999+" : funnelTotal}
+                    </span>
+                  )}
+                  <svg
+                    className={`h-3 w-3 transition-transform ${funnelOpen ? "rotate-180" : ""}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
                   >
-                    {label}
-                  </Link>
-                ))}
-              </div>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {funnelOpen && (
+                <div className="space-y-0.5 mt-0.5">
+                  {FUNNEL_GROUPS.map(({ label, group }) => (
+                    <Link
+                      key={group}
+                      href={`/leads?group=${group}`}
+                      className={groupLinkClass(group)}
+                    >
+                      <span>{label}</span>
+                      <Badge n={counts?.groups[group]} />
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
 
             <Link className={linkClass("/products")} href="/products">
-              Produtos
+              <span>Produtos</span>
             </Link>
 
             {role === "OWNER" && (
               <Link className={linkClass("/central-agentes")} href="/central-agentes">
-                Central de Agentes
+                <span>Central de Agentes</span>
               </Link>
             )}
 
             {role === "OWNER" && (
               <Link className={linkClass("/equipe")} href="/equipe">
-                Equipe
+                <span>Equipe</span>
               </Link>
             )}
 
             <Link className={linkClass("/secretary")} href="/secretary">
-              Secretaria
+              <span>Secretaria</span>
             </Link>
 
             <Link className={linkClass("/calendar")} href="/calendar">
-              Agenda
+              <span>Agenda</span>
             </Link>
 
             {role === "OWNER" && (
               <Link className={linkClass("/channels")} href="/channels">
-                Canais
+                <span>Canais</span>
               </Link>
             )}
 
             {role === "OWNER" && (
               <Link className={linkClass("/settings/bot")} href="/settings/bot">
-                Config. IA
+                <span>Config. IA</span>
               </Link>
             )}
 
             {role === "OWNER" && (
               <Link className={linkClass("/settings")} href="/settings">
-                Configurações
+                <span>Configurações</span>
               </Link>
             )}
 
             {role === "OWNER" && (
               <Link className={linkClass("/settings/permissions")} href="/settings/permissions">
-                Permissões
+                <span>Permissões</span>
               </Link>
             )}
 
             {role === "OWNER" && (
               <Link className={linkClass("/my-site")} href="/my-site">
-                Meu Site
+                <span>Meu Site</span>
               </Link>
             )}
           </nav>

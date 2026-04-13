@@ -1460,6 +1460,66 @@ export class LeadsService {
     return lead;
   }
 
+  async counts(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
+    const { id, tenantId, role, branchId } = user;
+
+    let extraFilter: Record<string, unknown> = {};
+    if (role === 'AGENT') {
+      extraFilter = { assignedUserId: id };
+    } else if (role === 'MANAGER' && branchId) {
+      extraFilter = { branchId };
+    }
+
+    const baseWhere = { tenantId, ...extraFilter, deletedAt: null };
+
+    // Total visível para este usuário
+    const total = await this.prisma.lead.count({ where: baseWhere });
+
+    // Meus leads (atribuídos a mim)
+    const mine = await this.prisma.lead.count({ where: { ...baseWhere, assignedUserId: id } });
+
+    // Por grupo de funil — busca leads com stage e agrupa pelo group da stage
+    const leadsWithStage = await this.prisma.lead.findMany({
+      where: { ...baseWhere, stageId: { not: null } },
+      select: { stageId: true },
+    });
+
+    const stageIds = [...new Set(leadsWithStage.map((l) => l.stageId).filter(Boolean))] as string[];
+
+    const stages = stageIds.length > 0
+      ? await this.prisma.pipelineStage.findMany({
+          where: { id: { in: stageIds } },
+          select: { id: true, group: true },
+        })
+      : [];
+
+    const stageGroupMap: Record<string, string> = {};
+    for (const s of stages) {
+      if (s.group) stageGroupMap[s.id] = s.group;
+    }
+
+    const groups: Record<string, number> = {
+      PRE_ATENDIMENTO: 0,
+      AGENDAMENTO: 0,
+      NEGOCIACOES: 0,
+      CREDITO_IMOBILIARIO: 0,
+      NEGOCIO_FECHADO: 0,
+      POS_VENDA: 0,
+    };
+
+    for (const l of leadsWithStage) {
+      const g = l.stageId ? stageGroupMap[l.stageId] : null;
+      if (g && g in groups) groups[g]++;
+      else if (!g) groups['PRE_ATENDIMENTO']++; // sem stage → pré-atendimento
+    }
+
+    // Leads sem stage também vão para pré-atendimento
+    const noStage = await this.prisma.lead.count({ where: { ...baseWhere, stageId: null } });
+    groups['PRE_ATENDIMENTO'] += noStage;
+
+    return { total, mine, groups };
+  }
+
   async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
     const { id, tenantId, role, branchId } = user;
 

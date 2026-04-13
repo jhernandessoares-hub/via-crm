@@ -61,6 +61,11 @@ export class LeadsController {
     return this.leadsService.getBranchLeads(req.user, branchId);
   }
 
+  @Get('counts')
+  async counts(@Req() req: any) {
+    return this.leadsService.counts(req.user);
+  }
+
   @Get()
   async list(@Req() req: any) {
     return this.leadsService.list(req.user);
