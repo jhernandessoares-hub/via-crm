@@ -73,17 +73,21 @@ export default function EquipePage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [membersData, branchesData, rrData] = await Promise.all([
+      const [membersData, branchesData] = await Promise.all([
         apiFetch("/users"),
         apiFetch("/users/branches"),
-        apiFetch("/users/round-robin"),
       ]);
-      setMembers(membersData);
-      setBranches(branchesData);
-      setRrConfig(rrData);
+      setMembers(Array.isArray(membersData) ? membersData : []);
+      setBranches(Array.isArray(branchesData) ? branchesData : []);
     } finally {
       setLoading(false);
     }
+
+    // Config da roleta separada — falha não impede a lista de membros
+    try {
+      const rrData = await apiFetch("/users/round-robin");
+      setRrConfig(rrData);
+    } catch { /* silently ignore */ }
   }
 
   // ── Round-robin config ────────────────────────────────────────────
