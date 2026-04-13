@@ -85,18 +85,12 @@ export default function LeadsPage() {
     setLoading(true);
 
     try {
-      const data = await apiFetch("/leads/branch", { method: "GET" });
+      const data = await apiFetch("/leads", { method: "GET" });
       const list = Array.isArray(data) ? data : data?.items ?? [];
       setLeads(list);
-    } catch {
-      try {
-        const data = await apiFetch("/leads/my", { method: "GET" });
-        const list = Array.isArray(data) ? data : data?.items ?? [];
-        setLeads(list);
-      } catch (e: any) {
-        setErro(e?.message || "Erro ao carregar leads");
-        setLeads([]);
-      }
+    } catch (e: any) {
+      setErro(e?.message || "Erro ao carregar leads");
+      setLeads([]);
     } finally {
       setLoading(false);
     }

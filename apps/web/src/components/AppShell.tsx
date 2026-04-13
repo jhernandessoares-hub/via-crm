@@ -386,9 +386,15 @@ function AppShellInner({
               Dashboard
             </Link>
 
-            <Link className={linkClass("/pipeline")} href="/pipeline">
-              Todos os Leads
+            <Link className={linkClass("/meus-leads")} href="/meus-leads">
+              Meus Leads
             </Link>
+
+            {role !== "AGENT" && (
+              <Link className={linkClass("/pipeline")} href="/pipeline">
+                Todos os Leads
+              </Link>
+            )}
 
             {/* Funil de Venda */}
             <div className="pt-1">

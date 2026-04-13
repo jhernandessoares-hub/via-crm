@@ -39,7 +39,7 @@ const BADGE_COLOR: Record<string, string> = {
   POS_VENDA:       "bg-purple-100 text-purple-700",
 };
 
-export default function PipelinePage() {
+export default function MeusLeadsPage() {
   const [view, setView] = useState<"KANBAN" | "LISTA">("KANBAN");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -51,7 +51,7 @@ export default function PipelinePage() {
     try {
       const [stagesData, leadsData] = await Promise.all([
         apiFetch("/pipeline/active/stages"),
-        apiFetch("/leads"),
+        apiFetch("/leads/my"),
       ]);
       setStages(Array.isArray(stagesData) ? stagesData : []);
       const list = Array.isArray(leadsData) ? leadsData : leadsData?.items ?? [];
@@ -63,7 +63,6 @@ export default function PipelinePage() {
 
   useEffect(() => { load(); }, []);
 
-  // Mapa stageId → { stageName, group }
   const stageMap = useMemo(() => {
     const m: Record<string, { name: string; group: string | null }> = {};
     for (const s of stages) m[s.id] = { name: s.name, group: s.group ?? null };
@@ -78,33 +77,27 @@ export default function PipelinePage() {
     );
   }, [leads, q]);
 
-  // Agrupa leads pelo group da etapa atual
   const groupedLeads = useMemo(() => {
     const map: Record<string, Lead[]> = {};
     for (const g of GROUPS) map[g.key] = [];
-
     for (const l of filtered) {
       const group = l.stageId ? stageMap[l.stageId]?.group : null;
       if (group && map[group]) {
         map[group].push(l);
       } else {
-        // Lead sem etapa ou grupo desconhecido → Pré-Atendimento
         map["PRE_ATENDIMENTO"].push(l);
       }
     }
     return map;
   }, [filtered, stageMap]);
 
-  const totalVisible = filtered.length;
-
   return (
-    <AppShell title="Todos os Leads">
-      {/* Header */}
+    <AppShell title="Meus Leads">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Todos os Leads</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Meus Leads</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Visão geral por grupo do funil · {totalVisible} leads
+            Leads atribuídos a você · {filtered.length} leads
           </p>
         </div>
 
@@ -126,7 +119,6 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      {/* Barra de filtro */}
       <div className="mt-4 flex items-center gap-3">
         <button
           onClick={load}
@@ -143,7 +135,7 @@ export default function PipelinePage() {
         />
       </div>
 
-      {/* ── KANBAN ── */}
+      {/* KANBAN */}
       {view === "KANBAN" && (
         <div className="mt-5 overflow-x-auto pb-4">
           <div className="flex min-w-max items-start gap-4">
@@ -151,13 +143,10 @@ export default function PipelinePage() {
               const items = groupedLeads[g.key] ?? [];
               return (
                 <div key={g.key} className="w-[260px] shrink-0 flex flex-col rounded-xl border bg-white overflow-hidden">
-                  {/* Cabeçalho da coluna */}
                   <div className={`border-b px-3 py-2.5 ${g.color}`}>
                     <div className="text-sm font-semibold">{g.label}</div>
                     <div className="text-xs opacity-70 mt-0.5">{items.length} leads</div>
                   </div>
-
-                  {/* Cards */}
                   <div className="max-h-[72vh] overflow-y-auto space-y-2 p-2">
                     {items.length === 0 ? (
                       <p className="p-2 text-xs text-gray-400">Nenhum lead</p>
@@ -193,18 +182,18 @@ export default function PipelinePage() {
         </div>
       )}
 
-      {/* ── LISTA ── */}
+      {/* LISTA */}
       {view === "LISTA" && (
         <div className="mt-5 overflow-hidden rounded-xl border bg-white">
           <div className="grid grid-cols-12 gap-2 border-b bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
             <div className="col-span-4">Lead</div>
             <div className="col-span-3">Telefone</div>
-            <div className="col-span-2">Etapa</div>
-            <div className="col-span-3">Status</div>
+            <div className="col-span-2">Grupo</div>
+            <div className="col-span-3">Etapa</div>
           </div>
 
           {filtered.length === 0 ? (
-            <div className="p-6 text-sm text-gray-500">Nenhum lead encontrado.</div>
+            <div className="p-6 text-sm text-gray-500">Nenhum lead atribuído a você.</div>
           ) : (
             filtered.map((l) => {
               const stageInfo = l.stageId ? stageMap[l.stageId] : null;
@@ -218,24 +207,18 @@ export default function PipelinePage() {
                   className="grid grid-cols-12 items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-gray-50 transition-colors"
                 >
                   <div className="col-span-4">
-                    <Link
-                      href={`/leads/${l.id}`}
-                      className="font-medium text-gray-900 hover:underline"
-                    >
+                    <Link href={`/leads/${l.id}`} className="font-medium text-gray-900 hover:underline">
                       {l.nome || "Sem nome"}
                     </Link>
                   </div>
-
                   <div className="col-span-3 text-sm text-gray-600">
                     {l.telefone || l.whatsapp || "—"}
                   </div>
-
                   <div className="col-span-2">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE_COLOR[groupKey]}`}>
                       {groupLabel}
                     </span>
                   </div>
-
                   <div className="col-span-3 text-sm text-gray-700">
                     {stageName}
                   </div>

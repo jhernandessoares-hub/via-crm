@@ -1460,14 +1460,22 @@ export class LeadsService {
     return lead;
   }
 
-  async list(user: { tenantId: string; role: string; branchId?: string | null }) {
-    const { tenantId, role, branchId } = user;
+  async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
+    const { id, tenantId, role, branchId } = user;
 
-    // AGENT só vê leads da própria filial (isolamento LGPD por função)
-    const branchFilter = role === 'AGENT' && branchId ? { branchId } : {};
+    let extraFilter: Record<string, unknown> = {};
+
+    if (role === 'AGENT') {
+      // AGENT: apenas leads atribuídos a ele
+      extraFilter = { assignedUserId: id };
+    } else if (role === 'MANAGER' && branchId) {
+      // MANAGER: todos os leads da filial dele
+      extraFilter = { branchId };
+    }
+    // OWNER: sem filtro extra — vê todos do tenant
 
     const leads = await this.prisma.lead.findMany({
-      where: { tenantId, ...branchFilter, deletedAt: null },
+      where: { tenantId, ...extraFilter, deletedAt: null },
       orderBy: { criadoEm: 'desc' },
     });
 
