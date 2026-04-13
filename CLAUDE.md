@@ -40,8 +40,8 @@ via-crm/
 | `auth/` | Login, registro de master, refresh token, JWT Strategy, recuperação de senha |
 | `admin/` | Platform Admin — CRUD tenants, impersonation, audit, health |
 | `tenants/` | CRUD de tenants, configurações WhatsApp, bot-config e permissões por role (`permissionsConfig`) |
-| `users/` | CRUD de usuários, perfis, configurações de secretária; gestão de equipe (OWNER: POST/PATCH/DELETE /users/team) |
-| `leads/` | CRUD de leads, qualificação, SLA, eventos, soft delete, exportação CSV |
+| `users/` | CRUD de usuários, perfis, configurações de secretária; gestão de equipe (OWNER: POST/PATCH/DELETE /users/team); round-robin config (OWNER: GET/PATCH /users/round-robin) |
+| `leads/` | CRUD de leads, qualificação, SLA, eventos, soft delete, exportação CSV; `GET /leads/my` (assignados ao usuário); `GET /leads/counts` (contagem por role para sidebar) |
 | `pipeline/` | Funil customizável com etapas e transições |
 | `products/` | Catálogo imobiliário (EMPREENDIMENTO / IMOVEL), extração IA de PDFs |
 | `ingest/` | Normalização e deduplicação de leads de qualquer origem |
@@ -72,7 +72,7 @@ Todos inicializados em `main.ts` após health check do Redis.
 | Worker | Fila | Função |
 |--------|------|--------|
 | `SlaWorker` | `sla-queue` | SLA automático: 2h (BAIXA), 10h (MEDIA), 18h (ALTA), 23h (CRITICA) — **somente** leads em grupo `PRE_ATENDIMENTO` e status `EM_CONTATO` |
-| `InboundAiWorker` | `inbound-ai-queue` | Resposta IA ao lead em tempo real (delay 90s/15s) — cooldown para evitar spam; notifica corretor via WhatsApp ao mover etapa (`notifyUsersForStage`) e ao qualificar lead (dados completos: renda, FGTS, entrada, perfil, produto, etc.) |
+| `InboundAiWorker` | `inbound-ai-queue` | Resposta IA ao lead em tempo real (delay 90s/15s) — cooldown para evitar spam; notifica **somente o usuário assignado** (`assignedUserId`) via WhatsApp ao mover etapa (`notifyUsersForStage`) e ao qualificar lead (dados completos: renda, FGTS, entrada, perfil, produto, etc.) |
 | `WhatsappInboundWorker` | `whatsapp-inbound-queue` | Processa payloads de webhook (3 tentativas, exponential backoff) |
 | `WhatsappMediaWorker` | `whatsapp-media-queue` | Download e resolução de mídia (áudio/imagem) via Cloudinary |
 | `ReminderWorker` | `reminder-queue` | Lembretes de eventos do calendário 30min antes (cron `*/5 * * * *`) |
@@ -101,6 +101,7 @@ User              → role: OWNER | MANAGER | AGENT
                     passwordResetToken, passwordResetExpiry (recuperação de senha)
                     apelido String? — nome de exibição (mostrado no header em vez do nome completo se preenchido)
                     preferences Json? — preferências do usuário: { theme: 'light' | 'dark' }
+                    recebeLeads Boolean @default(true) — participa da roleta de distribuição de leads
 Branch            → filial/equipe dentro do tenant
 Lead              → com soft delete (deletedAt/deletedBy/deletionReason)
 LeadEvent         → histórico de interações
@@ -125,6 +126,7 @@ PlatformConfig    → configurações globais da plataforma (key/value). Chaves:
 PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
 AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION, modelName). Chaves de API ficam no .env.
 Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
+Tenant.roundRobinConfig → Json? — configuração da roleta de distribuição de leads: { incluirGerentes: bool, incluirOwner: bool }
 ```
 
 ---
@@ -291,6 +293,11 @@ NEXT_PUBLIC_API_URL=
 ## Frontend (`apps/web/src/`)
 
 - `lib/api.ts` → função `apiFetch()` centraliza todas as chamadas tenant. Renova token automaticamente (refresh token) antes de redirecionar para login.
+- **Dark mode:** toggled via classe `dark` no `<html>`. Preferência salva em `user.preferences.theme` (`PATCH /users/me`). `applyTheme()` em AppShell sincroniza na inicialização e na troca.
+- **AppShell sidebar:** exibe nome do tenant abaixo do logo; avatar com dropdown ("Meus Dados", "Sair"); badges de contagem de leads (`GET /leads/counts`, atualizado a cada 60s) ao lado de "Meus Leads" e "Todos os Leads"; seção "Funil de Vendas" colapsável (estado em `localStorage` key `sidebar_funnel_open`).
+- **Modal "Meus Dados":** nome, email, apelido, trocar senha (validação `senhaAtual` no backend), toggle tema Claro/Escuro. Usa `style={{ backgroundColor: "rgba(0,0,0,0.55)" }}` no overlay (Tailwind v4 não suporta `bg-black/40` de forma confiável).
+- **Visibilidade de leads por role:** AGENT vê apenas leads com `assignedUserId = me`; MANAGER vê todos da filial (`branchId`); OWNER vê todos. Implementado em `LeadsService.list()`.
+- **Atribuição manual:** campo "Responsável" no detalhe do lead — OWNER/MANAGER veem `<select>` com membros da equipe (chama `POST /leads/:id/assign`); AGENT vê nome somente-leitura.
 - `lib/admin-api.ts` → função `adminFetch()` para chamadas do Platform Admin (usa `adminToken`).
 - Tokens tenant em `localStorage`: `accessToken` (15min), `refreshToken` (7d), `user` (objeto do usuário).
 - Tokens admin em `localStorage`: `adminToken` (8h), `adminUser`.
@@ -306,7 +313,8 @@ NEXT_PUBLIC_API_URL=
 | `app/products/[id]/empreendimento/page.tsx` | `/products/:id/empreendimento` | Empreendimento (condomínio, lançamento) |
 
 **Regra:** qualquer mudança visual ou funcional na tela de produto deve ser replicada nas **duas** páginas.
-- `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha.
+- `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
+- `/meus-leads` → leads atribuídos ao usuário logado (todos os roles) — usa `GET /leads/my`.
 - `/settings/permissions` → permissões por role (OWNER only) — toggles ver/criar/editar/excluir por módulo para MANAGER e AGENT. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
 - `/settings/whatsapp` → configuração do número WhatsApp do tenant.
 - `/forgot-password` e `/reset-password` → recuperação de senha.
@@ -353,6 +361,21 @@ NEXT_PUBLIC_API_URL=
 | Permissões por JSON no Tenant | Sem tabela extra — `permissionsConfig Json?` no Tenant; `resolvePermissions()` mescla com defaults para novos módulos aparecerem automaticamente |
 | Produtos: delete hierárquico | AGENT não exclui, MANAGER só exclui de AGENT, OWNER exclui tudo — verificação assíncrona do role do dono no `remove()` |
 | Canais/Config.IA/Settings OWNER-only | Configurações de tenant não devem ser visíveis/editáveis por operadores — protegido em frontend (sidebar) e backend (requireOwner) |
+| Round-robin por "último recebeu" ASC | Sem contador dedicado — ordena candidatos elegíveis por data do último lead assignado ASC; auto-corretivo, eficiente |
+| InboundAiWorker notifica só assignedUser | Evita spam de notificações para toda equipe — apenas o responsável pelo lead recebe o WhatsApp de lead qualificado/etapa movida |
+| Tailwind v4 sem opacidade em bg-black/40 | Modificador de opacidade não funciona de forma confiável — usar `style={{ backgroundColor: "rgba(...)" }}` para overlays e valores hex para fundos de modal |
+
+---
+
+## Distribuição de Leads (Round-Robin)
+
+- **Automática na entrada:** `IngestService.roundRobinAssign(tenantId, branchId)` chamado ao criar um lead novo (não em re-entrada de lead existente)
+- **Algoritmo:** busca usuários com `ativo=true, recebeLeads=true, role in eligibleRoles, branchId match`; ordena por data do último lead assignado ASC → atribui ao que esperou mais tempo
+- **Roles elegíveis:** sempre inclui AGENT; inclui MANAGER se `roundRobinConfig.incluirGerentes=true`; inclui OWNER se `roundRobinConfig.incluirOwner=true`
+- **Fallback:** se nenhum elegível encontrado, lead fica sem responsável (`assignedUserId = null`)
+- **Manual:** OWNER/MANAGER podem reatribuir lead via `<select>` no detalhe do lead → `POST /leads/:id/assign`
+- **Configuração:** `GET /users/round-robin` e `PATCH /users/round-robin` (OWNER only) — persiste em `Tenant.roundRobinConfig`
+- **Elegibilidade individual:** `recebeLeads Boolean @default(true)` no User — toggle na tela `/equipe`
 
 ---
 
