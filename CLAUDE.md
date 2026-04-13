@@ -39,15 +39,15 @@ via-crm/
 |--------|-----------------|
 | `auth/` | Login, registro de master, refresh token, JWT Strategy, recuperação de senha |
 | `admin/` | Platform Admin — CRUD tenants, impersonation, audit, health |
-| `tenants/` | CRUD de tenants, configurações WhatsApp por tenant |
-| `users/` | CRUD de usuários, perfis, configurações de secretária |
+| `tenants/` | CRUD de tenants, configurações WhatsApp, bot-config e permissões por role (`permissionsConfig`) |
+| `users/` | CRUD de usuários, perfis, configurações de secretária; gestão de equipe (OWNER: POST/PATCH/DELETE /users/team) |
 | `leads/` | CRUD de leads, qualificação, SLA, eventos, soft delete, exportação CSV |
 | `pipeline/` | Funil customizável com etapas e transições |
 | `products/` | Catálogo imobiliário (EMPREENDIMENTO / IMOVEL), extração IA de PDFs |
 | `ingest/` | Normalização e deduplicação de leads de qualquer origem |
 | `channels/` | 12 fontes de lead via webhook (Meta Ads, ZAP, OLX, etc.) |
 | `ai/` | Serviço unificado de LLM (OpenAI + Anthropic dual-provider) |
-| `ai-agents/` | CRUD de agentes IA — bloqueado para plano STARTER (PlanGuard) |
+| `ai-agents/` | CRUD de agentes IA — restrito a OWNER do tenant |
 | `knowledge-base/` | Bases de conhecimento (docs, vídeos, links, Q&A) |
 | `secretary/` | Assistente pessoal IA por WhatsApp (voz + texto) |
 | `calendar/` | Eventos com lembretes automáticos por WhatsApp |
@@ -121,7 +121,8 @@ TenantSite        → site do tenant — fork independente do template (contentJ
                     slug único, publishedJson separado do contentJson (rascunho vs publicado)
 PlatformConfig    → configurações globais da plataforma (key/value). Chaves: globalAgentRules, agentIdentityRules, whatsappFormattingRules
 PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
-AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|SECRETARY|PDF_EXTRACTION|TRANSCRIPTION, modelName). Chaves de API ficam no .env.
+AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION, modelName). Chaves de API ficam no .env.
+Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
 ```
 
 ---
@@ -135,7 +136,7 @@ AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLL
 - **Recuperação de senha:** `POST /auth/forgot-password` → email com token 1h; `POST /auth/reset-password`
 - **Frontend (`api.ts`):** renova token automaticamente no 401 sem logout
 - **JWT Strategy:** valida `sub` no banco a cada request (usuário ativo)
-- **PlanGuard:** `@RequiresPlan('PREMIUM')` bloqueia rotas para plano STARTER — aplicado em `ai-agents/`
+- **PlanGuard:** existe no código mas **não está aplicado** — lógica de planos removida, todos os tenants têm acesso total
 - **PlatformAdminGuard:** valida `isPlatformAdmin: true` no JWT — rotas `/admin/*`
 - **Rate limiting:** 120 req/min global; 10 tent./15min em `/auth/login`; 5 tent./15min em `/auth/register-master` e `/auth/forgot-password`
 - **Helmet:** headers de segurança ativos (CSP, HSTS, X-Frame-Options, etc.)
@@ -173,9 +174,10 @@ AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLL
 
 ## Planos (STARTER / PREMIUM)
 
-- Campo `plan String @default("STARTER")` no Tenant — mantido no banco para uso futuro, mas **sem lógica de bloqueio ativa**
-- Todos os tenants têm acesso completo a todas as funcionalidades incluindo Central de Agentes
+- Campo `plan String @default("PREMIUM")` no Tenant — mantido no banco para uso futuro, sem lógica de bloqueio ativa
+- Todos os tenants têm acesso completo a todas as funcionalidades
 - `PlanGuard` e `@RequiresPlan` existem no código mas não estão aplicados — modelo de cobrança a definir futuramente
+- Novos tenants criados via admin recebem `plan: "PREMIUM"` por padrão
 
 ---
 
@@ -277,7 +279,8 @@ NEXT_PUBLIC_API_URL=
 - **Audit:** usar `AuditService.log()` em ações sensíveis (deleção, login, exportação). O serviço é `@Global()` — injetar direto no constructor.
 - **Branch resolver:** usar `IngestService.resolveDefaultBranchId(tenantId)` para obter a branch padrão — nunca hardcodar IDs.
 - **WhatsApp creds:** sempre usar `resolveWhatsappCreds(prisma, tenantId)` de `whatsapp/whatsapp-creds.ts` — nunca ler `process.env.WHATSAPP_TOKEN` diretamente.
-- **Plan guard:** usar `@RequiresPlan('PREMIUM')` + `@UseGuards(JwtAuthGuard, PlanGuard)` para features premium.
+- **Role guard (tenant):** usar `requireOwner(req)` inline nos controllers para restringir a OWNER — padrão adotado em ai-agents, channels, tenants, users/team.
+- **Permissões configuráveis:** usar `GET /tenants/permissions-public` + hook `usePermissions()` do frontend para verificar permissões de MANAGER/AGENT. Nunca hardcodar restrições que deveriam ser configuráveis.
 - **Platform Admin:** rotas `/admin/*` protegidas por `PlatformAdminGuard` — token separado, nunca misturar com JWT de tenant.
 - **Email:** `EmailService` é `@Global()` — injetar direto. Sempre envolto em try/catch para não quebrar fluxo.
 
@@ -301,12 +304,14 @@ NEXT_PUBLIC_API_URL=
 | `app/products/[id]/empreendimento/page.tsx` | `/products/:id/empreendimento` | Empreendimento (condomínio, lançamento) |
 
 **Regra:** qualquer mudança visual ou funcional na tela de produto deve ser replicada nas **duas** páginas.
+- `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha.
+- `/settings/permissions` → permissões por role (OWNER only) — toggles ver/criar/editar/excluir por módulo para MANAGER e AGENT. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
 - `/settings/whatsapp` → configuração do número WhatsApp do tenant.
 - `/forgot-password` e `/reset-password` → recuperação de senha.
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
 - `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
-- `/admin/ia/provedores` → Provedores de IA — cadastro de chaves (OpenAI/Anthropic/Google), saldo OpenAI, configuração de modelo por função do sistema.
+- `/admin/ia/provedores` → Provedores de IA — configuração de modelo por função do sistema (DEFAULT, FOLLOW_UP, PDF_EXTRACTION, TRANSCRIPTION) sem deploy.
 - `/my-site` → Gerenciador de Sites do tenant (OWNER only) — 1 site por tenant, fluxo adaptado com/sem site ativo; Publicar/Tirar do ar ficam em Configurações.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
@@ -341,8 +346,11 @@ NEXT_PUBLIC_API_URL=
 | `resolveDefaultBranchId()` dinâmico | Compatibilidade multi-tenant real — sem IDs hardcoded |
 | AuditLog nunca quebra o fluxo | try/catch silencioso no `AuditService.log()` |
 | WhatsApp por phone_number_id | Cada tenant tem seu próprio número Meta; inbound worker resolve tenant pelo `phone_number_id` do payload |
-| PlanGuard no controller (não service) | Guard NestJS = interceptado antes do método; mais seguro e menos invasivo que checar no service |
 | EmailService graceful degradation | Se `RESEND_API_KEY` não configurado, loga warning e continua sem quebrar o fluxo |
+| `resolveAiModel(prisma, fn)` centralizado | Todos os serviços usam o mesmo helper — modelo configurável via banco sem deploy, sem divergência |
+| Permissões por JSON no Tenant | Sem tabela extra — `permissionsConfig Json?` no Tenant; `resolvePermissions()` mescla com defaults para novos módulos aparecerem automaticamente |
+| Produtos: delete hierárquico | AGENT não exclui, MANAGER só exclui de AGENT, OWNER exclui tudo — verificação assíncrona do role do dono no `remove()` |
+| Canais/Config.IA/Settings OWNER-only | Configurações de tenant não devem ser visíveis/editáveis por operadores — protegido em frontend (sidebar) e backend (requireOwner) |
 
 ---
 
@@ -356,6 +364,8 @@ NEXT_PUBLIC_API_URL=
 - White-label básico (logo/cor por tenant)
 - Dashboard de uso por tenant (leads este mês, mensagens, canais)
 - Monitoramento de erros por tenant (token WhatsApp expirado, etc.)
+- Permissões configuráveis ainda não são aplicadas nas páginas do frontend além de produtos — `usePermissions()` existe mas falta integrar em leads, agenda, KB, etc.
+- Convite de membro por e-mail (atualmente cria com senha inicial definida pelo OWNER)
 
 ---
 
