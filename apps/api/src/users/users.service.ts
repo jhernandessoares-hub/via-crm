@@ -131,6 +131,8 @@ export class UsersService {
         id: true,
         nome: true,
         email: true,
+        apelido: true,
+        preferences: true,
         role: true,
         whatsappNumber: true,
         secretaryName: true,
@@ -139,6 +141,9 @@ export class UsersService {
         branchId: true,
         ativo: true,
         criadoEm: true,
+        tenant: {
+          select: { nome: true },
+        },
       },
     });
   }
@@ -147,32 +152,56 @@ export class UsersService {
     userId: string,
     tenantId: string,
     data: {
+      nome?: string;
+      email?: string;
+      apelido?: string | null;
+      preferences?: Record<string, unknown>;
+      senhaAtual?: string;
+      novaSenha?: string;
       whatsappNumber?: string | null;
       secretaryName?: string | null;
       secretaryBotName?: string | null;
       secretaryGender?: string;
     },
   ) {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('Usuário não encontrado.');
+
+    // Troca de senha: exige senha atual
+    if (data.novaSenha) {
+      if (!data.senhaAtual) throw new BadRequestException('Informe a senha atual para trocar a senha.');
+      const ok = await bcrypt.compare(data.senhaAtual, user.senhaHash);
+      if (!ok) throw new BadRequestException('Senha atual incorreta.');
+    }
+
+    // Validar email único no tenant
+    if (data.email && data.email.trim().toLowerCase() !== user.email) {
+      const conflict = await this.prisma.user.findFirst({
+        where: { tenantId, email: data.email.trim().toLowerCase(), id: { not: userId } },
+      });
+      if (conflict) throw new BadRequestException('E-mail já utilizado por outro usuário.');
+    }
+
+    const updateData: any = {};
+    if (data.nome !== undefined) updateData.nome = data.nome.trim();
+    if (data.email !== undefined) updateData.email = data.email.trim().toLowerCase();
+    if (data.apelido !== undefined) updateData.apelido = data.apelido?.trim() || null;
+    if (data.preferences !== undefined) updateData.preferences = data.preferences;
+    if (data.novaSenha) updateData.senhaHash = await bcrypt.hash(data.novaSenha, 10);
+    if (data.whatsappNumber !== undefined) updateData.whatsappNumber = data.whatsappNumber?.trim() || null;
+    if (data.secretaryName !== undefined) updateData.secretaryName = data.secretaryName?.trim() || null;
+    if (data.secretaryBotName !== undefined) updateData.secretaryBotName = data.secretaryBotName?.trim() || null;
+    if (data.secretaryGender !== undefined) updateData.secretaryGender = data.secretaryGender;
+
     return this.prisma.user.update({
       where: { id: userId },
-      data: {
-        ...(data.whatsappNumber !== undefined && {
-          whatsappNumber: data.whatsappNumber?.trim() || null,
-        }),
-        ...(data.secretaryName !== undefined && {
-          secretaryName: data.secretaryName?.trim() || null,
-        }),
-        ...(data.secretaryBotName !== undefined && {
-          secretaryBotName: data.secretaryBotName?.trim() || null,
-        }),
-        ...(data.secretaryGender !== undefined && {
-          secretaryGender: data.secretaryGender,
-        }),
-      },
+      data: updateData,
       select: {
         id: true,
         nome: true,
         email: true,
+        apelido: true,
+        preferences: true,
         role: true,
         whatsappNumber: true,
         secretaryName: true,

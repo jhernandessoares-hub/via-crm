@@ -3,6 +3,22 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --shell-bg: #f9fafb;
+  --shell-header-bg: #ffffff;
+  --shell-header-border: #e5e7eb;
+  --shell-text: #111827;
+  --shell-subtext: #6b7280;
+}
+
+/* Dark mode ativado por classe .dark no <html> (preferência do usuário) */
+html.dark {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --shell-bg: #0f172a;
+  --shell-header-bg: #1e293b;
+  --shell-header-border: #334155;
+  --shell-text: #f1f5f9;
+  --shell-subtext: #94a3b8;
 }
 
 @theme inline {
@@ -12,15 +28,8 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--shell-bg);
+  color: var(--shell-text);
   font-family: Arial, Helvetica, sans-serif;
 }

@@ -70,6 +70,12 @@ export class UsersController {
   async updateMe(
     @Req() req: any,
     @Body() body: {
+      nome?: string;
+      email?: string;
+      apelido?: string | null;
+      preferences?: Record<string, unknown>;
+      senhaAtual?: string;
+      novaSenha?: string;
       whatsappNumber?: string | null;
       secretaryName?: string | null;
       secretaryBotName?: string | null;

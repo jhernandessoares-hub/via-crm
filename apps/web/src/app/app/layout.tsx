@@ -44,12 +44,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             Área de trabalho — <span className="text-gray-900">VIA CRM</span>
           </div>
 
-          <div className="ml-auto">
-            <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-gray-700">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Online
-            </span>
-          </div>
+          <div className="ml-auto" />
         </header>
 
         <main className="p-6">{children}</main>

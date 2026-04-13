@@ -159,6 +159,8 @@ model User {
   whatsappNumber           String?
   passwordResetToken       String?   @unique
   passwordResetExpiry      DateTime?
+  apelido                  String?
+  preferences              Json?             // { theme: 'light' | 'dark' }
   secretaryName            String?
   secretaryBotName         String?
   secretaryGender          String            @default("FEMININO")

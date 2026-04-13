@@ -99,6 +99,8 @@ Tenant            → raiz multi-tenant (plan: STARTER | PREMIUM)
                     whatsappPhoneNumberId, whatsappToken, whatsappVerifyToken (por tenant)
 User              → role: OWNER | MANAGER | AGENT
                     passwordResetToken, passwordResetExpiry (recuperação de senha)
+                    apelido String? — nome de exibição (mostrado no header em vez do nome completo se preenchido)
+                    preferences Json? — preferências do usuário: { theme: 'light' | 'dark' }
 Branch            → filial/equipe dentro do tenant
 Lead              → com soft delete (deletedAt/deletedBy/deletionReason)
 LeadEvent         → histórico de interações
