@@ -105,18 +105,28 @@ function MeusDadosModal({
     }
   }
 
+  const isDark = theme === "dark";
+  const modalBg = isDark ? "#1e293b" : "#ffffff";
+  const modalBorder = isDark ? "#334155" : "#e5e7eb";
+  const modalText = isDark ? "#f1f5f9" : "#111827";
+  const modalSubtext = isDark ? "#94a3b8" : "#6b7280";
+  const inputBg = isDark ? "#0f172a" : "#f9fafb";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto"
+      style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+    >
       <div
-        className="w-full max-w-md rounded-xl border shadow-xl"
-        style={{ background: "var(--shell-header-bg)", color: "var(--shell-text)", borderColor: "var(--shell-header-border)" }}
+        className="w-full max-w-md rounded-xl border shadow-2xl my-8 mx-4"
+        style={{ background: modalBg, color: modalText, borderColor: modalBorder }}
       >
-        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-header-border)" }}>
+        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: modalBorder }}>
           <h2 className="text-base font-semibold">Meus Dados</h2>
           <button
             onClick={onClose}
             className="rounded p-1 text-lg leading-none hover:opacity-70"
-            style={{ color: "var(--shell-subtext)" }}
+            style={{ color: modalSubtext }}
           >
             ✕
           </button>
@@ -125,10 +135,10 @@ function MeusDadosModal({
         <form onSubmit={handleSave} className="p-5 space-y-4">
           {/* Nome */}
           <div>
-            <label className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>Nome completo</label>
+            <label className="text-xs font-medium" style={{ color: modalSubtext }}>Nome completo</label>
             <input
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              style={{ background: "var(--shell-bg)", color: "var(--shell-text)", borderColor: "var(--shell-header-border)" }}
+              className="mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+              style={{ background: inputBg, color: modalText, borderColor: modalBorder }}
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               required
@@ -137,12 +147,12 @@ function MeusDadosModal({
 
           {/* Apelido */}
           <div>
-            <label className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-              Apelido <span className="font-normal opacity-70">(exibido no topo — opcional)</span>
+            <label className="text-xs font-medium" style={{ color: modalSubtext }}>
+              Apelido <span className="font-normal opacity-60">(exibido no topo — opcional)</span>
             </label>
             <input
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              style={{ background: "var(--shell-bg)", color: "var(--shell-text)", borderColor: "var(--shell-header-border)" }}
+              className="mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+              style={{ background: inputBg, color: modalText, borderColor: modalBorder }}
               value={apelido}
               onChange={(e) => setApelido(e.target.value)}
               placeholder="Ex: João"
@@ -151,11 +161,11 @@ function MeusDadosModal({
 
           {/* Email */}
           <div>
-            <label className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>E-mail</label>
+            <label className="text-xs font-medium" style={{ color: modalSubtext }}>E-mail</label>
             <input
               type="email"
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              style={{ background: "var(--shell-bg)", color: "var(--shell-text)", borderColor: "var(--shell-header-border)" }}
+              className="mt-1 w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+              style={{ background: inputBg, color: modalText, borderColor: modalBorder }}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -163,14 +173,14 @@ function MeusDadosModal({
           </div>
 
           {/* Troca de senha */}
-          <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: "var(--shell-header-border)" }}>
-            <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-              Trocar senha <span className="font-normal opacity-70">(deixe em branco para manter)</span>
+          <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: modalBorder }}>
+            <p className="text-xs font-medium" style={{ color: modalSubtext }}>
+              Trocar senha <span className="font-normal opacity-60">(deixe em branco para manter)</span>
             </p>
             <input
               type="password"
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              style={{ background: "var(--shell-bg)", color: "var(--shell-text)", borderColor: "var(--shell-header-border)" }}
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+              style={{ background: inputBg, color: modalText, borderColor: modalBorder }}
               placeholder="Senha atual"
               value={senhaAtual}
               onChange={(e) => setSenhaAtual(e.target.value)}
@@ -178,8 +188,8 @@ function MeusDadosModal({
             />
             <input
               type="password"
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              style={{ background: "var(--shell-bg)", color: "var(--shell-text)", borderColor: "var(--shell-header-border)" }}
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+              style={{ background: inputBg, color: modalText, borderColor: modalBorder }}
               placeholder="Nova senha (mín. 6 caracteres)"
               value={novaSenha}
               onChange={(e) => setNovaSenha(e.target.value)}
@@ -187,8 +197,8 @@ function MeusDadosModal({
             />
             <input
               type="password"
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              style={{ background: "var(--shell-bg)", color: "var(--shell-text)", borderColor: "var(--shell-header-border)" }}
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+              style={{ background: inputBg, color: modalText, borderColor: modalBorder }}
               placeholder="Confirmar nova senha"
               value={confirmarSenha}
               onChange={(e) => setConfirmarSenha(e.target.value)}
@@ -198,25 +208,29 @@ function MeusDadosModal({
 
           {/* Tema */}
           <div>
-            <label className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>Tema do sistema</label>
+            <label className="text-xs font-medium" style={{ color: modalSubtext }}>Tema do sistema</label>
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
                 onClick={() => setTheme("light")}
-                className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors ${
-                  theme === "light" ? "bg-slate-950 text-white border-slate-950" : ""
-                }`}
-                style={theme !== "light" ? { borderColor: "var(--shell-header-border)", color: "var(--shell-text)" } : {}}
+                className="flex-1 rounded-md border py-2 text-sm font-medium transition-colors"
+                style={
+                  theme === "light"
+                    ? { background: "#0f172a", color: "#ffffff", borderColor: "#0f172a" }
+                    : { background: inputBg, color: modalText, borderColor: modalBorder }
+                }
               >
                 Claro
               </button>
               <button
                 type="button"
                 onClick={() => setTheme("dark")}
-                className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors ${
-                  theme === "dark" ? "bg-slate-950 text-white border-slate-950" : ""
-                }`}
-                style={theme !== "dark" ? { borderColor: "var(--shell-header-border)", color: "var(--shell-text)" } : {}}
+                className="flex-1 rounded-md border py-2 text-sm font-medium transition-colors"
+                style={
+                  theme === "dark"
+                    ? { background: "#0f172a", color: "#ffffff", borderColor: "#0f172a" }
+                    : { background: inputBg, color: modalText, borderColor: modalBorder }
+                }
               >
                 Escuro
               </button>
@@ -231,14 +245,15 @@ function MeusDadosModal({
               type="button"
               onClick={onClose}
               className="flex-1 rounded-md border py-2 text-sm"
-              style={{ borderColor: "var(--shell-header-border)", color: "var(--shell-subtext)" }}
+              style={{ background: inputBg, borderColor: modalBorder, color: modalSubtext }}
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 rounded-md bg-slate-950 py-2 text-sm text-white hover:bg-slate-900 disabled:opacity-60"
+              className="flex-1 rounded-md py-2 text-sm text-white disabled:opacity-60"
+              style={{ background: "#0f172a" }}
             >
               {loading ? "Salvando..." : "Salvar"}
             </button>
