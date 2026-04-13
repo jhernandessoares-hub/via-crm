@@ -61,6 +61,7 @@ via-crm/
 | `dev/` | Endpoints de desenvolvimento/teste |
 | `sites/` | Gerenciador de Sites — templates admin, sites dos tenants, rotas públicas |
 | `prisma/` | PrismaService (@Global) |
+| `admin/ai-providers.service.ts` | Provedores de IA — CRUD de provedores, configuração de modelo por função, saldo OpenAI |
 
 ---
 
@@ -71,7 +72,7 @@ Todos inicializados em `main.ts` após health check do Redis.
 | Worker | Fila | Função |
 |--------|------|--------|
 | `SlaWorker` | `sla-queue` | SLA automático: 2h (BAIXA), 10h (MEDIA), 18h (ALTA), 23h (CRITICA) — **somente** leads em grupo `PRE_ATENDIMENTO` e status `EM_CONTATO` |
-| `InboundAiWorker` | `inbound-ai-queue` | Resposta IA ao lead em tempo real (delay 90s/10s) |
+| `InboundAiWorker` | `inbound-ai-queue` | Resposta IA ao lead em tempo real (delay 90s/15s) — cooldown para evitar spam; notifica corretor via WhatsApp ao mover etapa (`notifyUsersForStage`) e ao qualificar lead (dados completos: renda, FGTS, entrada, perfil, produto, etc.) |
 | `WhatsappInboundWorker` | `whatsapp-inbound-queue` | Processa payloads de webhook (3 tentativas, exponential backoff) |
 | `WhatsappMediaWorker` | `whatsapp-media-queue` | Download e resolução de mídia (áudio/imagem) via Cloudinary |
 | `ReminderWorker` | `reminder-queue` | Lembretes de eventos do calendário 30min antes (cron `*/5 * * * *`) |
@@ -81,7 +82,7 @@ Todos inicializados em `main.ts` após health check do Redis.
 ## Filas e seus jobs
 
 ```
-sla-queue              → sla-2h | sla-10h | sla-22h45 | sla-23h-template | sla-test
+sla-queue              → sla-2h | sla-10h | sla-18h | sla-23h | sla-23h-template | sla-test
 inbound-ai-queue       → inbound-ai
 whatsapp-inbound-queue → whatsapp-inbound
 whatsapp-media-queue   → whatsapp-media.resolve
@@ -120,6 +121,7 @@ TenantSite        → site do tenant — fork independente do template (contentJ
                     slug único, publishedJson separado do contentJson (rascunho vs publicado)
 PlatformConfig    → configurações globais da plataforma (key/value). Chaves: globalAgentRules, agentIdentityRules, whatsappFormattingRules
 PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
+AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|SECRETARY|PDF_EXTRACTION|TRANSCRIPTION, modelName). Chaves de API ficam no .env.
 ```
 
 ---
@@ -164,17 +166,16 @@ PlatformConfigHistory → histórico de alterações de PlatformConfig (key, pre
 - Bootstrap do primeiro admin: `POST /admin/bootstrap` com `PLATFORM_ADMIN_SECRET`
 - Endpoints: `/admin/tenants` (CRUD), `/admin/tenants/:id/suspend|activate|plan|impersonate|export`
 - Impersonation: gera token temporário (2h) como OWNER do tenant — registrado no AuditLog
-- Frontend: `/admin/*` com shell separado (sidebar escuro), 7 telas
+- Frontend: `/admin/*` com shell separado (sidebar escuro). Sidebar agrupa "IA" com subitens: Provedores, Agent Templates, Regras Globais
+- Endpoints IA: `GET /admin/ai/models` (catálogo), `GET /admin/ai/model-configs`, `PATCH /admin/ai/model-configs/:function`, `DELETE /admin/ai/model-configs/:function`
 
 ---
 
 ## Planos (STARTER / PREMIUM)
 
-- Campo `plan String @default("STARTER")` no Tenant
-- **STARTER:** acesso completo exceto Central de Agentes — usa agente padrão VIA
-- **PREMIUM:** acesso completo incluindo Central de Agentes (criar/editar agentes, skills, KBs próprias)
-- Guard: `PlanGuard` + `@RequiresPlan('PREMIUM')` no controller
-- Frontend: tela com cadeado + CTA de upgrade para Starters tentando acessar Central de Agentes
+- Campo `plan String @default("STARTER")` no Tenant — mantido no banco para uso futuro, mas **sem lógica de bloqueio ativa**
+- Todos os tenants têm acesso completo a todas as funcionalidades incluindo Central de Agentes
+- `PlanGuard` e `@RequiresPlan` existem no código mas não estão aplicados — modelo de cobrança a definir futuramente
 
 ---
 
@@ -260,7 +261,9 @@ NEXT_PUBLIC_API_URL=
 - Prefixo `claude-` no model name → usa Anthropic SDK
 - Qualquer outro → usa OpenAI
 - **Atenção:** `SecretaryService` usa OpenAI diretamente (hardcoded), não passa pelo `AiService`
-- **Regras configuráveis via banco:** `generateFollowUp()` lê `agentIdentityRules` e `whatsappFormattingRules` do `PlatformConfig` com fallback para constantes hardcoded (`DEFAULT_AGENT_IDENTITY_RULES`, `DEFAULT_WHATSAPP_FORMATTING_RULES`). Editáveis em `/admin/regras-globais` sem deploy.
+- **Regras configuráveis via banco:** `generateFollowUp()` lê `agentIdentityRules` e `whatsappFormattingRules` do `PlatformConfig` com fallback para constantes hardcoded. Editáveis em `/admin/regras-globais` sem deploy.
+- **Modelo configurável via banco:** `resolveAiModel(prisma, fn)` em `ai/resolve-ai-model.ts` — consultado por TODOS os serviços que usam IA (AiService, SecretaryService, ProductsService, WhatsappMediaWorker). Cascata: AiModelConfig do banco → DEFAULT → padrão hardcoded. Configurável em `/admin/ia/provedores` sem deploy. Chaves ficam no `.env`.
+- **Seed automático:** `seedAiModelDefaults()` roda no startup da API (main.ts) — popula AiModelConfig com padrões se ainda não existirem. Idempotente, nunca sobrescreve configurações existentes.
 
 ---
 
@@ -288,6 +291,7 @@ NEXT_PUBLIC_API_URL=
 - Tokens admin em `localStorage`: `adminToken` (8h), `adminUser`.
 - Logout tenant: remove `accessToken`, `refreshToken`, `user` → redireciona `/login`.
 - Logout admin: remove `adminToken`, `adminUser` → redireciona `/admin/login`.
+- **EnvBanner** (`components/EnvBanner.tsx`): faixa de aviso de ambiente — laranja em local, âmbar em dev, invisível em produção. Incluída no `AppShell` e no shell admin.
 
 ### Páginas de detalhe de produto — DUAS páginas, sempre atualizar ambas
 
@@ -302,7 +306,8 @@ NEXT_PUBLIC_API_URL=
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
 - `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
-- `/my-site` → Gerenciador de Sites do tenant (OWNER only) — lista/cria/edita/publica TenantSites.
+- `/admin/ia/provedores` → Provedores de IA — cadastro de chaves (OpenAI/Anthropic/Google), saldo OpenAI, configuração de modelo por função do sistema.
+- `/my-site` → Gerenciador de Sites do tenant (OWNER only) — 1 site por tenant, fluxo adaptado com/sem site ativo; Publicar/Tirar do ar ficam em Configurações.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
 
@@ -314,7 +319,10 @@ NEXT_PUBLIC_API_URL=
 | Persistência do editor | localStorage (chave = siteId). Se `templateId` presente, também sincroniza com `PATCH /admin/sites/templates/:id` ao salvar/publicar |
 | Fork de template | Quando tenant escolhe template, `contentJson` é copiado para `TenantSite` — independente do original |
 | Publicação | `contentJson` (rascunho) → `publishedJson` (público) via `POST /sites/:id/publish` |
-| Tipos de site | LANDING_PAGE, INSTITUCIONAL, SITE_IMOBILIARIO, PORTAL — cada um com seed de seções/blocos específico |
+| Despublicar/Desativar | `POST /sites/:id/unpublish` (volta a rascunho) e `POST /sites/:id/deactivate` (arquiva) |
+| Editor sidebar | Abas structure (seções) / element (bloco selecionado); confirmação dupla ao publicar |
+| Editor sincronização | Antes de abrir o editor, `contentJson` é carregado do servidor (não só localStorage) |
+| Tipos de site | LANDING_PAGE, INSTITUCIONAL, SITE_IMOBILIARIO, PORTAL — cada um com seed de seções/blocos específico (todas incluem seção header por padrão) |
 | Blocos imobiliários | property-search, property-grid, property-card, property-map, broker-grid, whatsapp-button, team-card, contact-form |
 | Rotas públicas (sem auth) | `GET /sites/public/:slug`, `GET /sites/public/:slug/products`, `GET /sites/public/:slug/imovel/:id`, `POST /sites/public/:slug/lead` |
 

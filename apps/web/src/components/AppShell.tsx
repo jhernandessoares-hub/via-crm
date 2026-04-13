@@ -109,9 +109,17 @@ function AppShellInner({
             Produtos
           </Link>
 
-          <Link className={linkClass("/central-agentes")} href="/central-agentes">
-            Central de Agentes
-          </Link>
+          {user?.role === "OWNER" && (
+            <Link className={linkClass("/central-agentes")} href="/central-agentes">
+              Central de Agentes
+            </Link>
+          )}
+
+          {user?.role === "OWNER" && (
+            <Link className={linkClass("/equipe")} href="/equipe">
+              Equipe
+            </Link>
+          )}
 
           <Link className={linkClass("/secretary")} href="/secretary">
             Secretaria
@@ -121,17 +129,29 @@ function AppShellInner({
             Agenda
           </Link>
 
-          <Link className={linkClass("/channels")} href="/channels">
-            Canais
-          </Link>
+          {user?.role === "OWNER" && (
+            <Link className={linkClass("/channels")} href="/channels">
+              Canais
+            </Link>
+          )}
 
-          <Link className={linkClass("/settings/bot")} href="/settings/bot">
-            Config. IA
-          </Link>
+          {user?.role === "OWNER" && (
+            <Link className={linkClass("/settings/bot")} href="/settings/bot">
+              Config. IA
+            </Link>
+          )}
 
-          <Link className={linkClass("/settings")} href="/settings">
-            Configurações
-          </Link>
+          {user?.role === "OWNER" && (
+            <Link className={linkClass("/settings")} href="/settings">
+              Configurações
+            </Link>
+          )}
+
+          {user?.role === "OWNER" && (
+            <Link className={linkClass("/settings/permissions")} href="/settings/permissions">
+              Permissões
+            </Link>
+          )}
 
           {user?.role === "OWNER" && (
             <Link className={linkClass("/my-site")} href="/my-site">

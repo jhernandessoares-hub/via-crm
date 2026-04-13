@@ -6,7 +6,7 @@ import Link from "next/link";
 
 export default function AdminNovoClientePage() {
   const router = useRouter();
-  const [form, setForm] = useState({ nome: "", slug: "", ownerNome: "", ownerEmail: "", ownerSenha: "", plan: "STARTER" });
+  const [form, setForm] = useState({ nome: "", slug: "", ownerNome: "", ownerEmail: "", ownerSenha: "", plan: "PREMIUM" });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -56,14 +56,7 @@ export default function AdminNovoClientePage() {
             />
           </div>
         ))}
-        <div>
-          <label className="text-sm font-medium text-gray-700">Plano</label>
-          <select className="mt-1 w-full border rounded-md px-3 py-2 text-sm" value={form.plan} onChange={set("plan")}>
-            <option value="STARTER">Starter</option>
-            <option value="PREMIUM">Premium</option>
-          </select>
-        </div>
-        {err && <div className="text-sm text-red-600">{err}</div>}
+        {err &&<div className="text-sm text-red-600">{err}</div>}
         <button type="submit" disabled={loading} className="w-full rounded-md bg-slate-950 text-white py-2 text-sm hover:bg-slate-900 disabled:opacity-60">
           {loading ? "Criando..." : "Criar cliente"}
         </button>

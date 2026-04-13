@@ -1,10 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { PlatformAdminGuard } from './admin-auth.guard';
 import { AdminService } from './admin.service';
+import { AiProvidersService } from './ai-providers.service';
 
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly aiProvidersService: AiProvidersService,
+  ) {}
 
   // ── Auth ────────────────────────────────────────────────────────────────
   @Post('login')
@@ -248,5 +252,34 @@ export class AdminController {
   @Get('platform-config/:key/history')
   getPlatformConfigHistory(@Param('key') key: string) {
     return this.adminService.getPlatformConfigHistory(key);
+  }
+
+  // ── Provedores de IA ────────────────────────────────────────────────────────
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('ai/models')
+  getAvailableModels() {
+    return this.aiProvidersService.getAvailableModels();
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Get('ai/model-configs')
+  listAiModelConfigs() {
+    return this.aiProvidersService.listModelConfigs();
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Patch('ai/model-configs/:function')
+  setAiModelConfig(
+    @Param('function') fn: string,
+    @Body() body: { modelName: string },
+  ) {
+    return this.aiProvidersService.setModelConfig(fn, body.modelName);
+  }
+
+  @UseGuards(PlatformAdminGuard)
+  @Delete('ai/model-configs/:function')
+  clearAiModelConfig(@Param('function') fn: string) {
+    return this.aiProvidersService.clearModelConfig(fn);
   }
 }

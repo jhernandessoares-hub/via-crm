@@ -1,6 +1,10 @@
-import { Body, Controller, Get, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
+function requireOwner(req: any) {
+  if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER.');
+}
 
 @Controller('tenants')
 export class TenantsController {
@@ -26,6 +30,7 @@ export class TenantsController {
   @UseGuards(JwtAuthGuard)
   @Get('bot-config')
   async getBotConfig(@Req() req: any) {
+    requireOwner(req);
     return this.tenantsService.getBotConfig(req.user.tenantId);
   }
 
@@ -35,12 +40,14 @@ export class TenantsController {
     @Req() req: any,
     @Body() body: { whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string },
   ) {
+    requireOwner(req);
     return this.tenantsService.updateWhatsappSettings(req.user.tenantId, body);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('whatsapp-settings')
   getWhatsappSettings(@Req() req: any) {
+    requireOwner(req);
     return this.tenantsService.getWhatsappSettings(req.user.tenantId);
   }
 
@@ -55,6 +62,29 @@ export class TenantsController {
     aiTypingEnabled?: boolean;
     aiHistoryLimit?: number;
   }) {
+    requireOwner(req);
     return this.tenantsService.updateBotConfig(req.user.tenantId, body);
+  }
+
+  // Qualquer usuário autenticado pode buscar as permissões do seu tenant
+  @UseGuards(JwtAuthGuard)
+  @Get('permissions-public')
+  async getPermissionsPublic(@Req() req: any) {
+    return this.tenantsService.getPermissions(req.user.tenantId);
+  }
+
+  // Somente OWNER pode ver e editar
+  @UseGuards(JwtAuthGuard)
+  @Get('permissions')
+  async getPermissions(@Req() req: any) {
+    requireOwner(req);
+    return this.tenantsService.getPermissions(req.user.tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('permissions')
+  async updatePermissions(@Req() req: any, @Body() body: Record<string, any>) {
+    requireOwner(req);
+    return this.tenantsService.updatePermissions(req.user.tenantId, body);
   }
 }

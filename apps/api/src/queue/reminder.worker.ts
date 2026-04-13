@@ -17,7 +17,7 @@ async function checkReminders(prisma: PrismaService, whatsapp: WhatsappService) 
       reminderSentAt: null,
       status: { notIn: ['CANCELADO', 'NO_SHOW'] as any },
     },
-    select: { id: true, title: true, startAt: true, location: true, userId: true },
+    select: { id: true, title: true, startAt: true, location: true, userId: true, tenantId: true },
   });
 
   for (const event of events) {
@@ -27,19 +27,22 @@ async function checkReminders(prisma: PrismaService, whatsapp: WhatsappService) 
         select: { whatsappNumber: true, secretaryName: true, nome: true },
       });
 
-      if (user?.whatsappNumber) {
-        const hora = new Date(event.startAt).toLocaleTimeString('pt-BR', {
-          timeZone: 'America/Sao_Paulo',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        const nome = user.secretaryName?.trim() || user.nome || '';
-        let msg = `🔔 ${nome ? nome + ', lembrete' : 'Lembrete'}: *${event.title}* começa em 30 minutos (${hora}).`;
-        if (event.location) msg += `\n📍 ${event.location}`;
-
-        await whatsapp.sendMessage(user.whatsappNumber, msg);
-        logger.log(`Lembrete enviado: evento "${event.title}" para ${user.whatsappNumber}`);
+      if (!user?.whatsappNumber) {
+        logger.warn(`Lembrete ignorado: usuário sem whatsappNumber (evento ${event.id})`);
+        continue; // não marca reminderSentAt — se o usuário cadastrar o número, tenta de novo
       }
+
+      const hora = new Date(event.startAt).toLocaleTimeString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const nome = user.secretaryName?.trim() || user.nome || '';
+      let msg = `🔔 ${nome ? nome + ', lembrete' : 'Lembrete'}: *${event.title}* começa em 30 minutos (${hora}).`;
+      if (event.location) msg += `\n📍 ${event.location}`;
+
+      await whatsapp.sendMessage(user.whatsappNumber, msg, event.tenantId);
+      logger.log(`Lembrete enviado: evento "${event.title}" para ${user.whatsappNumber}`);
 
       await prisma.calendarEvent.update({
         where: { id: event.id },

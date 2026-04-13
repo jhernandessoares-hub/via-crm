@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import EnvBanner from "@/components/EnvBanner";
 
@@ -9,16 +9,46 @@ type AdminUser = {
   nome?: string;
 };
 
-const navItems = [
+type NavLeaf = { href: string; label: string; exact?: boolean };
+type NavGroup2 = { group: string; items: NavLeaf[] };
+type NavItem = NavLeaf | NavGroup2;
+
+function isNavGroup(item: NavItem): item is NavGroup2 {
+  return "group" in item;
+}
+
+const navItems: NavItem[] = [
   { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/site", label: "Gerenciador de Sites" },
   { href: "/admin/clientes", label: "Clientes" },
-  { href: "/admin/agent-templates", label: "Agent Templates" },
+  {
+    group: "IA",
+    items: [
+      { href: "/admin/ia/provedores", label: "Provedores" },
+      { href: "/admin/agent-templates", label: "Agent Templates" },
+      { href: "/admin/regras-globais", label: "🛡️ Regras Globais" },
+    ],
+  },
   { href: "/admin/audit", label: "Audit Log" },
   { href: "/admin/filas", label: "Filas & IA" },
   { href: "/admin/saude", label: "Saúde do Sistema" },
-  { href: "/admin/regras-globais", label: "🛡️ Regras Globais" },
 ];
+
+function NavGroup({ label, defaultOpen, children }: { label: string; defaultOpen: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-400 hover:bg-slate-800"
+      >
+        {label}
+        <span className="text-slate-500">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && <div className="ml-2 mt-0.5 space-y-0.5">{children}</div>}
+    </div>
+  );
+}
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -55,6 +85,25 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </div>
         <nav className="flex-1 space-y-0.5 px-2 py-4">
           {navItems.map((item) => {
+            if (isNavGroup(item)) {
+              const groupActive = item.items.some((i) => pathname.startsWith(i.href));
+              return (
+                <NavGroup key={item.group} label={item.group} defaultOpen={groupActive}>
+                  {item.items.map((sub) => {
+                    const active = pathname.startsWith(sub.href);
+                    return (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        className={`block rounded-md px-3 py-1.5 text-sm ${active ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"}`}
+                      >
+                        {sub.label}
+                      </Link>
+                    );
+                  })}
+                </NavGroup>
+              );
+            }
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href) && item.href !== "/admin";
             return (
               <Link

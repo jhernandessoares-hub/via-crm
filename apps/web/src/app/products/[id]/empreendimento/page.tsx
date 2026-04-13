@@ -403,6 +403,15 @@ export default function EmpreendimentoEditPage() {
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Role
+  const [userRole, setUserRole] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) { const u = JSON.parse(raw); setUserRole(u.role ?? null); }
+    } catch {}
+  }, []);
+
   // Sections
   const [open, setOpen] = useState<Set<string>>(new Set(["identificacao", "documentacao", "informacoes", "especificacoes"]));
   function toggle(s: string) {
@@ -885,10 +894,19 @@ export default function EmpreendimentoEditPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button type="button" onClick={() => setShowDeleteConfirm(true)}
-                className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
-                Excluir
-              </button>
+              {userRole === "AGENT" ? (
+                <span
+                  title="Corretores não podem excluir produtos. Solicite ao gerente ou proprietário."
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-300 cursor-not-allowed"
+                >
+                  Excluir
+                </span>
+              ) : (
+                <button type="button" onClick={() => setShowDeleteConfirm(true)}
+                  className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+                  Excluir
+                </button>
+              )}
               <Link href="/products" className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50">
                 Voltar
               </Link>

@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveAiModel } from '../ai/resolve-ai-model';
 import { Logger } from '../logger';
 
 const logger = new Logger('ProductsService');
@@ -101,6 +102,7 @@ export class ProductsService {
       data: {
         tenantId: user.tenantId,
         branchId: body.branchId || null,
+        capturedByUserId: user.id || user.sub || null,
 
         title: body.title,
         type: body.type || ProductType.OUTRO,
@@ -215,8 +217,33 @@ export class ProductsService {
     return product;
   }
 
+  private assertCanEditProduct(user: any, product: any) {
+    if (user.role === 'OWNER') return;
+    const userId = user.id || user.sub;
+    if (user.role === 'MANAGER') return; // MANAGER edita qualquer produto do tenant
+    // AGENT só edita o próprio
+    if (product.capturedByUserId && product.capturedByUserId !== userId) {
+      throw new ForbiddenException('Você só pode editar produtos que você mesmo cadastrou.');
+    }
+  }
+
+  private assertCanDeleteProduct(user: any, product: any) {
+    if (user.role === 'OWNER') return;
+    if (user.role === 'AGENT') {
+      throw new ForbiddenException(
+        'Corretores não podem excluir produtos. Solicite ao gerente ou proprietário.',
+      );
+    }
+    // MANAGER pode excluir apenas produtos de AGENTs, não de outros MANAGERs ou do OWNER
+    if (user.role === 'MANAGER' && product.capturedByUserId) {
+      // Precisamos checar o role do dono do produto
+      return; // verificação assíncrona feita no remove()
+    }
+  }
+
   async update(user: any, id: string, body: any) {
-    await this.getById(user, id);
+    const product = await this.getById(user, id);
+    this.assertCanEditProduct(user, product);
 
     const data: any = {};
 
@@ -325,12 +352,28 @@ export class ProductsService {
   }
 
   async remove(user: any, id: string) {
-    await this.getById(user, id);
+    const product = await this.getById(user, id);
 
-    await this.prisma.product.delete({
-      where: { id },
-    });
+    if (user.role === 'AGENT') {
+      throw new ForbiddenException(
+        'Corretores não podem excluir produtos. Solicite ao gerente ou proprietário.',
+      );
+    }
 
+    if (user.role === 'MANAGER' && product.capturedByUserId) {
+      // MANAGER não pode excluir produto de outro MANAGER ou do OWNER
+      const owner = await this.prisma.user.findFirst({
+        where: { id: product.capturedByUserId, tenantId: user.tenantId },
+        select: { role: true },
+      });
+      if (owner && owner.role !== 'AGENT') {
+        throw new ForbiddenException(
+          'Gerentes só podem excluir produtos cadastrados por corretores.',
+        );
+      }
+    }
+
+    await this.prisma.product.delete({ where: { id } });
     return { ok: true };
   }
 
@@ -1177,7 +1220,7 @@ Responda SOMENTE com o JSON válido, sem markdown, sem explicações adicionais.
     contentBlocks.push({ type: 'text', text: prompt });
 
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: await resolveAiModel(this.prisma, 'PDF_EXTRACTION'),
       max_tokens: 2048,
       messages: [{ role: 'user', content: contentBlocks }],
     });

@@ -8,7 +8,11 @@
       "Bash(npx prisma:*)",
       "Bash(mkdir -p \"C:/Users/User/documents/via-crm/apps/web/src/app/s/[slug]\")",
       "Bash(mkdir -p \"C:/Users/User/documents/via-crm/apps/web/src/app/s/[slug]/imovel/[id]\")",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(ls C:/Users/User/documents/via-crm/apps/web/.env*)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(curl -s --max-time 3 http://localhost:3000/health)",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }

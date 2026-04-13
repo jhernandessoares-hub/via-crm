@@ -107,7 +107,10 @@ export class CalendarService {
     const data: any = {};
     if (body.title !== undefined) data.title = body.title.trim();
     if (body.description !== undefined) data.description = body.description?.trim() || null;
-    if (body.startAt !== undefined) data.startAt = new Date(body.startAt);
+    if (body.startAt !== undefined) {
+      data.startAt = new Date(body.startAt);
+      data.reminderSentAt = null; // reseta para nova data ser notificada
+    }
     if (body.endAt !== undefined) data.endAt = new Date(body.endAt);
     if (body.allDay !== undefined) data.allDay = body.allDay;
     if (body.color !== undefined) data.color = body.color;

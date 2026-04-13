@@ -928,15 +928,9 @@ export default function CentralAgentesPage() {
   const [selected, setSelected] = useState<Agent | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [tenantId, setTenantId] = useState("");
-  const [plan, setPlan] = useState<string | null>(null);
-
   useEffect(() => {
     const u = getUser();
     if (u?.tenantId) setTenantId(u.tenantId);
-
-    apiFetch("/tenants")
-      .then((d: any) => setPlan(d?.plan || "STARTER"))
-      .catch(() => setPlan("STARTER"));
   }, []);
 
   useEffect(() => { if (tenantId) load(); }, [tenantId]);
@@ -967,31 +961,6 @@ export default function CentralAgentesPage() {
   function closePanel() { setSelected(null); setIsNew(false); }
 
   const panelOpen = isNew || selected !== null;
-
-  if (plan === null) return null;
-
-  if (plan === "STARTER") {
-    return (
-      <AppShell title="Central de Agentes">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center space-y-4">
-          <div className="text-5xl">🔒</div>
-          <h2 className="text-xl font-semibold">Central de Agentes</h2>
-          <p className="text-gray-600 max-w-sm text-sm">
-            A Central de Agentes é uma funcionalidade exclusiva do plano{" "}
-            <strong>Premium</strong>. Neste plano você cria e customiza seus
-            próprios agentes de IA, skills e bases de conhecimento.
-          </p>
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-800 max-w-sm">
-            <p className="font-medium">Plano atual: Starter</p>
-            <p className="mt-1">
-              Entre em contato com o suporte para fazer upgrade para o plano
-              Premium.
-            </p>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
 
   return (
     <AppShell title="Central de Agentes">

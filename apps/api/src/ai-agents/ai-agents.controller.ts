@@ -1,8 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AiAgentMode } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PlanGuard, RequiresPlan } from '../auth/plan.guard';
 import { AiAgentsService } from './ai-agents.service';
+
+function requireOwner(req: any) {
+  if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER do tenant.');
+}
 
 type CreateAiAgentBody = {
   tenantId: string;
@@ -45,14 +48,14 @@ type UpdateAiAgentBody = {
   routingKeywords?: string[];
 };
 
-@UseGuards(JwtAuthGuard, PlanGuard)
-@RequiresPlan('PREMIUM')
+@UseGuards(JwtAuthGuard)
 @Controller('ai-agents')
 export class AiAgentsController {
   constructor(private readonly aiAgentsService: AiAgentsService) {}
 
   @Post()
-  create(@Body() body: CreateAiAgentBody) {
+  create(@Req() req: any, @Body() body: CreateAiAgentBody) {
+    requireOwner(req);
     return this.aiAgentsService.create(body);
   }
 
@@ -78,63 +81,76 @@ export class AiAgentsController {
 
   @Patch(':tenantId/:id')
   update(
+    @Req() req: any,
     @Param('tenantId') tenantId: string,
     @Param('id') id: string,
     @Body() body: UpdateAiAgentBody,
   ) {
+    requireOwner(req);
     return this.aiAgentsService.update(tenantId, id, body);
   }
 
   @Delete(':tenantId/:id')
-  remove(@Param('tenantId') tenantId: string, @Param('id') id: string) {
+  remove(@Req() req: any, @Param('tenantId') tenantId: string, @Param('id') id: string) {
+    requireOwner(req);
     return this.aiAgentsService.remove(tenantId, id);
   }
 
   // ── KB linking ────────────────────────────────────────────────
   @Post(':tenantId/:id/kb/:kbId')
   linkKb(
+    @Req() req: any,
     @Param('tenantId') tenantId: string,
     @Param('id') id: string,
     @Param('kbId') kbId: string,
   ) {
+    requireOwner(req);
     return this.aiAgentsService.linkKb(tenantId, id, kbId);
   }
 
   @Delete(':tenantId/:id/kb/:kbId')
   unlinkKb(
+    @Req() req: any,
     @Param('tenantId') tenantId: string,
     @Param('id') id: string,
     @Param('kbId') kbId: string,
   ) {
+    requireOwner(req);
     return this.aiAgentsService.unlinkKb(tenantId, id, kbId);
   }
 
   // ── Tools ─────────────────────────────────────────────────────
   @Post(':tenantId/:id/tools')
   createTool(
+    @Req() req: any,
     @Param('tenantId') tenantId: string,
     @Param('id') id: string,
     @Body() body: { name: string; label: string; description: string; webhookUrl?: string; webhookMethod?: string },
   ) {
+    requireOwner(req);
     return this.aiAgentsService.createTool(tenantId, id, body);
   }
 
   @Patch(':tenantId/:id/tools/:toolId')
   updateTool(
+    @Req() req: any,
     @Param('tenantId') tenantId: string,
     @Param('id') id: string,
     @Param('toolId') toolId: string,
     @Body() body: { label?: string; description?: string; webhookUrl?: string; webhookMethod?: string; active?: boolean },
   ) {
+    requireOwner(req);
     return this.aiAgentsService.updateTool(tenantId, id, toolId, body);
   }
 
   @Delete(':tenantId/:id/tools/:toolId')
   deleteTool(
+    @Req() req: any,
     @Param('tenantId') tenantId: string,
     @Param('id') id: string,
     @Param('toolId') toolId: string,
   ) {
+    requireOwner(req);
     return this.aiAgentsService.deleteTool(tenantId, id, toolId);
   }
 }

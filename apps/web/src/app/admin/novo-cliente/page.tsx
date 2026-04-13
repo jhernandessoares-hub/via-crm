@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { adminFetch } from "@/lib/admin-api";
 import Link from "next/link";
 
-const STEPS = ["Imobiliária", "Proprietário", "WhatsApp", "Plano", "Revisão"];
+const STEPS = ["Imobiliária", "Proprietário", "WhatsApp", "Revisão"];
 
 function slugify(str: string) {
   return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -21,8 +21,7 @@ const emptyForm = {
   ownerNome: "", ownerEmail: "", ownerSenha: "",
   // Step 3
   whatsappPhoneNumberId: "", whatsappToken: "", whatsappVerifyToken: "",
-  // Step 4
-  plan: "STARTER",
+  plan: "PREMIUM",
 };
 
 export default function NovoClientePage() {
@@ -213,27 +212,8 @@ export default function NovoClientePage() {
           </>
         )}
 
-        {/* Step 3: Plano */}
+        {/* Step 3: Revisão */}
         {step === 3 && (
-          <>
-            <h2 className="font-semibold text-gray-700">Plano</h2>
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              {[
-                { value: "STARTER", label: "Starter", desc: "Leads, funil, WhatsApp com agente padrão VIA. Sem Central de Agentes." },
-                { value: "PREMIUM", label: "Premium", desc: "Tudo do Starter + Central de Agentes, KBs personalizadas e agentes próprios." },
-              ].map((p) => (
-                <button key={p.value} onClick={() => set("plan", p.value)}
-                  className={`border-2 rounded-xl p-4 text-left transition-all ${form.plan === p.value ? "border-blue-600 bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
-                  <div className={`font-semibold text-sm ${p.value === "PREMIUM" ? "text-amber-700" : "text-gray-700"}`}>{p.label}</div>
-                  <div className="text-xs text-gray-500 mt-1">{p.desc}</div>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Step 4: Revisão */}
-        {step === 4 && (
           <>
             <h2 className="font-semibold text-gray-700">Revisão</h2>
             <div className="space-y-3 text-sm">
@@ -251,9 +231,6 @@ export default function NovoClientePage() {
                 ]},
                 { section: "WhatsApp", items: [
                   { label: "Phone Number ID", value: form.whatsappPhoneNumberId || "Não configurado" },
-                ]},
-                { section: "Plano", items: [
-                  { label: "Plano", value: form.plan },
                 ]},
               ].map(({ section, items }) => (
                 <div key={section} className="border rounded-lg overflow-hidden">

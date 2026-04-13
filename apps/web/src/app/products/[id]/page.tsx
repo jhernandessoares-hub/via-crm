@@ -792,6 +792,20 @@ export default function ProductEditPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Role
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) {
+        const u = JSON.parse(raw);
+        setUserRole(u.role ?? null);
+        setUserId(u.id ?? null);
+      }
+    } catch {}
+  }, []);
+
   // Copy from similar
   const [copyProducts, setCopyProducts] = useState<any[]>([]);
   const [copyLoadedType, setCopyLoadedType] = useState<string | null>(null);
@@ -1464,14 +1478,23 @@ export default function ProductEditPage() {
               <p className="text-xs text-gray-400 mt-0.5">ID: {id}</p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={loading || deleting}
-                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
-              >
-                Excluir produto
-              </button>
+              {userRole === "AGENT" ? (
+                <span
+                  title="Corretores não podem excluir produtos. Solicite ao gerente ou proprietário."
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-300 cursor-not-allowed"
+                >
+                  Excluir produto
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={loading || deleting}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                >
+                  Excluir produto
+                </button>
+              )}
               <Link
                 href="/products"
                 className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"

@@ -28,6 +28,7 @@ import { AiService } from "./ai/ai.service";
 import { QueueService } from "./queue/queue.service";
 import { WhatsappService } from "./secretary/whatsapp.service";
 import { NestLogger, Logger } from "./logger";
+import { seedAiModelDefaults } from "./ai/resolve-ai-model";
 
 const logger = new Logger('Bootstrap');
 
@@ -72,6 +73,10 @@ async function bootstrap() {
   );
 
   await app.listen(3000);
+
+  // 🤖 Seed de modelos de IA padrão (idempotente — não sobrescreve configurações existentes)
+  await seedAiModelDefaults(app.get(PrismaService));
+  logger.log('Modelos de IA padrão verificados/aplicados');
 
   // 🔍 Verificar Redis antes de iniciar os workers
   const queueService = app.get(QueueService);

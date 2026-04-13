@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolvePermissions } from './permissions.config';
 
 @Injectable()
 export class TenantsService {
@@ -96,5 +97,30 @@ export class TenantsService {
         aiHistoryLimit: true,
       },
     });
+  }
+
+  async getPermissions(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    return resolvePermissions(tenant?.permissionsConfig as any);
+  }
+
+  async updatePermissions(tenantId: string, config: Record<string, any>) {
+    const current = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    // Mescla com o atual para não perder módulos não enviados
+    const merged = {
+      ...((current?.permissionsConfig as any) ?? {}),
+      ...config,
+    };
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { permissionsConfig: merged },
+    });
+    return resolvePermissions(merged);
   }
 }

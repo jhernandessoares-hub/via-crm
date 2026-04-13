@@ -5,6 +5,7 @@ const logger = new Logger('AiService');
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveAiModel } from './resolve-ai-model';
 
 /** Extrai os campos textuais de uma KB de forma uniforme para todos os tipos. */
 function buildKbFields(kb: { prompt?: string | null }): string {
@@ -109,6 +110,15 @@ export class AiService {
 
   private isClaude(model: string): boolean {
     return model.toLowerCase().startsWith('claude-');
+  }
+
+  /**
+   * Resolve modelo consultando AiModelConfig no banco.
+   * Cascata: config da função → config DEFAULT → OPENAI_MODEL env → gpt-4o-mini.
+   * Nunca lança exceção — produção continua idêntica se banco estiver vazio.
+   */
+  resolveModelFromDb(fn: string): Promise<string> {
+    return resolveAiModel(this.prisma, fn);
   }
 
   /** Chamada unificada: detecta o provider pelo nome do modelo e executa com suporte a tools. */
@@ -496,10 +506,10 @@ export class AiService {
 
     const prompt = userParts.join('\n\n');
 
-    // Model e temperature: agente > env > padrão
+    // Model e temperature: agente (campo DB) > AiModelConfig (banco admin) > OPENAI_MODEL env > padrão
     const agentModel = (params as any).agentModel as string | undefined;
     const agentTemperature = (params as any).agentTemperature as number | undefined;
-    const model = agentModel || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const model = agentModel || await this.resolveModelFromDb('FOLLOW_UP');
     const temperature = agentTemperature ?? 0.7;
 
     logger.log(`🤖 Modelo em uso: ${model} (provider: ${this.isClaude(model) ? 'Anthropic' : 'OpenAI'})`);
@@ -700,7 +710,7 @@ export class AiService {
 
     try {
       const completion = await this.getOpenAI().chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: await resolveAiModel(this.prisma, 'DEFAULT'),
         messages: [
           {
             role: 'user',
@@ -721,7 +731,7 @@ export class AiService {
     if (!content) return '';
 
     const completion = await this.getOpenAI().chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      model: await resolveAiModel(this.prisma, 'DEFAULT'),
       messages: [
         {
           role: 'user',
@@ -853,7 +863,7 @@ Analise e retorne JSON com as informações identificadas.`;
 
     try {
       const completion = await this.getOpenAI().chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        model: await resolveAiModel(this.prisma, 'FOLLOW_UP'),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -910,7 +920,7 @@ ${params.conversation}`;
 
     try {
       const completion = await this.getOpenAI().chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: await resolveAiModel(this.prisma, 'FOLLOW_UP'),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMsg },

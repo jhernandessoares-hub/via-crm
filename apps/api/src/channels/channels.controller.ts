@@ -1,6 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Put, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Put, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ChannelsService } from './channels.service';
+
+function requireOwner(req: any) {
+  if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER.');
+}
 
 @UseGuards(JwtAuthGuard)
 @Controller('channels')
@@ -9,11 +13,13 @@ export class ChannelsController {
 
   @Get()
   list(@Req() req: any) {
+    requireOwner(req);
     return this.service.list(req.user.tenantId);
   }
 
   @Get('stats')
   getStats(@Req() req: any) {
+    requireOwner(req);
     return this.service.getStats(req.user.tenantId);
   }
 
@@ -23,11 +29,13 @@ export class ChannelsController {
     @Param('type') type: string,
     @Body() body: { active?: boolean; config?: any; monthlyBudget?: number | null },
   ) {
+    requireOwner(req);
     return this.service.upsert(req.user.tenantId, type, body);
   }
 
   @Post(':type/fetch-cost')
   async fetchCost(@Req() req: any, @Param('type') type: string) {
+    requireOwner(req);
     const channels = await this.service.list(req.user.tenantId);
     const ch = channels.find((c) => c.type === type);
     if (!ch?.id) return { cost: null };
@@ -41,6 +49,7 @@ export class ChannelsController {
 
   @Delete(':type')
   remove(@Req() req: any, @Param('type') type: string) {
+    requireOwner(req);
     return this.service.remove(req.user.tenantId, type);
   }
 }

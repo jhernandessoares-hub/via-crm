@@ -3,6 +3,7 @@ import { Logger } from '../logger';
 
 const logger = new Logger('WhatsappMediaWorker');
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveAiModel } from '../ai/resolve-ai-model';
 import { v2 as cloudinary } from 'cloudinary';
 import OpenAI, { toFile } from 'openai';
 import ffmpeg from 'fluent-ffmpeg';
@@ -130,7 +131,7 @@ async function convertToMp3(buffer: Buffer): Promise<Buffer> {
   });
 }
 
-async function transcribeAudio(buffer: Buffer, mimeType: string | undefined): Promise<string | null> {
+async function transcribeAudio(buffer: Buffer, mimeType: string | undefined, prisma: PrismaService): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     logger.warn('⚠️ OPENAI_API_KEY não definido — transcrição desativada');
@@ -171,7 +172,7 @@ async function transcribeAudio(buffer: Buffer, mimeType: string | undefined): Pr
     const file = await toFile(audioBuffer, audioName, { type: audioType });
     const result = await openai.audio.transcriptions.create({
       file,
-      model: 'whisper-1',
+      model: await resolveAiModel(prisma, 'TRANSCRIPTION'),
       language: 'pt',
     });
     return result.text?.trim() || null;
@@ -291,7 +292,7 @@ async function resolveEventMedia(prisma: PrismaService, eventId: string) {
   const mediaKind = String(payload?.media?.kind || type).toLowerCase();
   let transcription: string | null = null;
   if (mediaKind === 'audio' || mediaKind === 'voice') {
-    transcription = await transcribeAudio(buf, info.mimeType);
+    transcription = await transcribeAudio(buf, info.mimeType, prisma);
     if (transcription) {
       logger.log(`🎙️ Áudio transcrito (leadEvent=${eventId}): "${transcription.slice(0, 80)}..."`);
     }

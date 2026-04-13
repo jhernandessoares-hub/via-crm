@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { resolveAiModel } from '../ai/resolve-ai-model';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -224,7 +225,7 @@ export class SecretaryService {
     // 2. Consultas reais de dados do sistema (filtradas pelas permissões do agente)
     logger.log(`agent found: ${agent ? agent.slug : 'NULL - agente não encontrado'}`);
     const agentPermissions: string[] = (agent as any)?.permissions ?? [];
-    const agentModel: string = (agent as any)?.model?.trim() || 'gpt-4o-mini';
+    const agentModel: string = (agent as any)?.model?.trim() || await resolveAiModel(this.prisma, 'SECRETARY');
     const agentTemperature: number = (agent as any)?.temperature ?? 0.7;
     const { block: realDataBlock, gender } = await this.buildRealDataBlock(params.tenantId, params.userId, agentPermissions, params.text);
 
@@ -366,7 +367,7 @@ export class SecretaryService {
 
     const result = await this.getOpenAI().audio.transcriptions.create({
       file: audioFile,
-      model: 'whisper-1',
+      model: await resolveAiModel(this.prisma, 'TRANSCRIPTION'),
       language: 'pt',
     });
 

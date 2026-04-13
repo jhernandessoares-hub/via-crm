@@ -73,6 +73,8 @@ model Tenant {
   whatsappPhoneNumberId String?
   whatsappToken         String?
   whatsappVerifyToken   String?
+  // Permissões configuráveis por role
+  permissionsConfig     Json?
   criadoEm            DateTime                @default(now())
   agentKnowledgeBases    AgentKnowledgeBase[]
   agentTools             AgentTool[]
@@ -1085,6 +1087,14 @@ model AgentTool {
 enum AgentToolType {
   SYSTEM
   WEBHOOK
+}
+
+model AiModelConfig {
+  function  String   @id // DEFAULT | FOLLOW_UP | SECRETARY | PDF_EXTRACTION | TRANSCRIPTION
+  modelName String
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_model_configs")
 }
 
 model SecretaryConversation {

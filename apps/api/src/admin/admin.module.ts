@@ -4,6 +4,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 import { PlatformAdminGuard } from './admin-auth.guard';
+import { AiProvidersService } from './ai-providers.service';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PlatformAdminGuard } from './admin-auth.guard';
     }),
   ],
   controllers: [AdminController],
-  providers: [AdminService, PlatformAdminGuard],
+  providers: [AdminService, PlatformAdminGuard, AiProvidersService],
+  exports: [AiProvidersService],
 })
 export class AdminModule {}
