@@ -1206,6 +1206,10 @@ export default function LeadDetailChatPage() {
 
   const [qualOpen, setQualOpen] = useState(false);
 
+  // Atribuição manual
+  const [teamMembers, setTeamMembers] = useState<{ id: string; nome: string; role: string }[]>([]);
+  const [assignLoading, setAssignLoading] = useState(false);
+
   // SLA panel
   const [slaData, setSlaData] = useState<any>(null);
   const [slaLoading, setSlaLoading] = useState(false);
@@ -1337,12 +1341,19 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  async function loadTeamMembers() {
+    try {
+      const data = await apiFetch("/users");
+      setTeamMembers(Array.isArray(data) ? data.map((m: any) => ({ id: m.id, nome: m.nome, role: m.role })) : []);
+    } catch { /* silently ignore */ }
+  }
+
   async function loadAll() {
     setErr(null);
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true })]);
+      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers()]);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -2299,6 +2310,43 @@ async function requestAiPanelSuggestion(
                       <div className="text-gray-900">{lead.origem}</div>
                     </div>
                   )}
+
+                  {/* Responsável — select para OWNER/MANAGER */}
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Responsável</div>
+                    {user?.role !== "AGENT" ? (
+                      <select
+                        className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-60"
+                        value={lead.assignedUserId ?? ""}
+                        disabled={assignLoading}
+                        onChange={async (e) => {
+                          const val = e.target.value || null;
+                          if (!val) return;
+                          setAssignLoading(true);
+                          try {
+                            await apiFetch(`/leads/${lead.id}/assign`, {
+                              method: "POST",
+                              body: JSON.stringify({ assignedUserId: val }),
+                            });
+                            setLead((prev) => prev ? { ...prev, assignedUserId: val } : prev);
+                          } catch (err: any) {
+                            alert(err?.message || "Erro ao atribuir.");
+                          } finally {
+                            setAssignLoading(false);
+                          }
+                        }}
+                      >
+                        <option value="">— Sem responsável —</option>
+                        {teamMembers.map((m) => (
+                          <option key={m.id} value={m.id}>{m.nome}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-gray-900">
+                        {teamMembers.find((m) => m.id === lead.assignedUserId)?.nome ?? "—"}
+                      </div>
+                    )}
+                  </div>
 
                 </div>
               ) : (

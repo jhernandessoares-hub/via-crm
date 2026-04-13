@@ -75,6 +75,7 @@ model Tenant {
   whatsappVerifyToken   String?
   // Permissões configuráveis por role
   permissionsConfig     Json?
+  roundRobinConfig      Json?             // { incluirGerentes: bool, incluirOwner: bool }
   criadoEm            DateTime                @default(now())
   agentKnowledgeBases    AgentKnowledgeBase[]
   agentTools             AgentTool[]
@@ -161,6 +162,7 @@ model User {
   passwordResetExpiry      DateTime?
   apelido                  String?
   preferences              Json?             // { theme: 'light' | 'dark' }
+  recebeLeads              Boolean           @default(true)
   secretaryName            String?
   secretaryBotName         String?
   secretaryGender          String            @default("FEMININO")

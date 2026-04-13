@@ -24,24 +24,37 @@ async function sendImageViaWhatsapp(
 
 const NOTIFY_EVENT_KEYS = new Set(['new_lead', 'lead_qualified']);
 
+// Notifica apenas o responsável atribuído ao lead (assignedUserId)
+async function notifyAssignedUser(
+  prisma: PrismaService,
+  whatsapp: WhatsappService,
+  tenantId: string,
+  assignedUserId: string | null | undefined,
+  message: string,
+) {
+  if (!assignedUserId) return;
+
+  const user = await prisma.user.findFirst({
+    where: { id: assignedUserId, tenantId, ativo: true, whatsappNumber: { not: null } },
+    select: { whatsappNumber: true },
+  });
+
+  if (user?.whatsappNumber) {
+    whatsapp.sendMessage(user.whatsappNumber, message, tenantId).catch(() => {});
+  }
+}
+
 async function notifyUsersForEvent(
   prisma: PrismaService,
   whatsapp: WhatsappService,
   tenantId: string,
   eventKey: string,
   message: string,
+  assignedUserId?: string | null,
 ) {
   if (!NOTIFY_EVENT_KEYS.has(eventKey)) return;
-
-  const users = await prisma.user.findMany({
-    where: { tenantId, ativo: true, whatsappNumber: { not: null } },
-    select: { whatsappNumber: true },
-  });
-
-  for (const u of users) {
-    if (!u.whatsappNumber) continue;
-    whatsapp.sendMessage(u.whatsappNumber, message, tenantId).catch(() => {});
-  }
+  // Notifica apenas o responsável; se não houver, não envia
+  await notifyAssignedUser(prisma, whatsapp, tenantId, assignedUserId, message);
 }
 
 async function notifyUsersForStage(
@@ -50,20 +63,11 @@ async function notifyUsersForStage(
   tenantId: string,
   stageKey: string,
   message: string,
+  assignedUserId?: string | null,
 ) {
-  // Notifica apenas para etapas relevantes ao corretor
   const STAGE_NOTIFY_KEYS = new Set(['INTERESSE_QUALIFICACAO_CONFIRMADOS', 'NAO_QUALIFICADO', 'AGENDAMENTO_VISITA']);
   if (!STAGE_NOTIFY_KEYS.has(stageKey)) return;
-
-  const users = await prisma.user.findMany({
-    where: { tenantId, ativo: true, whatsappNumber: { not: null } },
-    select: { whatsappNumber: true },
-  });
-
-  for (const u of users) {
-    if (!u.whatsappNumber) continue;
-    whatsapp.sendMessage(u.whatsappNumber, message, tenantId).catch(() => {});
-  }
+  await notifyAssignedUser(prisma, whatsapp, tenantId, assignedUserId, message);
 }
 
 function getRedisConnection() {
@@ -467,6 +471,7 @@ async function handleInboundAiJob(
       status: true,
       botPaused: true,
       lastInboundAt: true,
+      assignedUserId: true,
     },
   });
   if (!lead) return;
@@ -868,7 +873,7 @@ async function handleInboundAiJob(
         // Notifica usuários que querem saber desta etapa
         if (whatsapp) {
           const stageMsg = `📍 *${lead.nome}* avançou para *${targetStage.name}*\nWhatsApp: ${lead.telefone || '—'}`;
-          await notifyUsersForStage(prisma, whatsapp, lead.tenantId, analysis.stageKey, stageMsg);
+          await notifyUsersForStage(prisma, whatsapp, lead.tenantId, analysis.stageKey, stageMsg, lead.assignedUserId);
         }
       }
     }
@@ -937,7 +942,7 @@ async function handleInboundAiJob(
           }
 
           const qualMsg = linhas.join('\n');
-          await notifyUsersForEvent(prisma, whatsapp, lead.tenantId, 'lead_qualified', qualMsg);
+          await notifyUsersForEvent(prisma, whatsapp, lead.tenantId, 'lead_qualified', qualMsg, lead.assignedUserId);
         }
 
         logger.log(`📢 ASSISTENTE OPERACIONAL: notificou corretor leadId=${lead.id}`);

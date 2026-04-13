@@ -32,6 +32,59 @@ export class IngestService {
     return branch?.id ?? null;
   }
 
+  // Roleta: retorna o userId do próximo responsável pelo lead
+  async roundRobinAssign(tenantId: string, branchId: string | null): Promise<string | null> {
+    try {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { roundRobinConfig: true },
+      });
+
+      const cfg = (tenant?.roundRobinConfig ?? {}) as any;
+      const incluirGerentes: boolean = cfg.incluirGerentes ?? false;
+      const incluirOwner: boolean    = cfg.incluirOwner    ?? false;
+
+      // Roles elegíveis
+      const roles: string[] = ['AGENT'];
+      if (incluirGerentes) roles.push('MANAGER');
+      if (incluirOwner)    roles.push('OWNER');
+
+      // Candidatos: ativos, recebeLeads=true, role elegível, mesma filial (se houver)
+      const candidates = await this.prisma.user.findMany({
+        where: {
+          tenantId,
+          ativo: true,
+          recebeLeads: true,
+          role: { in: roles as any[] },
+          ...(branchId ? { branchId } : {}),
+        },
+        select: { id: true },
+      });
+
+      if (candidates.length === 0) return null;
+
+      // Para cada candidato, buscar a data do último lead atribuído
+      const withLastLead = await Promise.all(
+        candidates.map(async (c) => {
+          const last = await this.prisma.lead.findFirst({
+            where: { tenantId, assignedUserId: c.id, deletedAt: null },
+            orderBy: { criadoEm: 'desc' },
+            select: { criadoEm: true },
+          });
+          return { id: c.id, lastAt: last?.criadoEm ?? new Date(0) };
+        }),
+      );
+
+      // Ordena por quem recebeu lead há mais tempo (ou nunca recebeu)
+      withLastLead.sort((a, b) => a.lastAt.getTime() - b.lastAt.getTime());
+
+      return withLastLead[0].id;
+    } catch (err) {
+      logger.log(`roundRobinAssign erro: ${err?.message ?? err}`);
+      return null;
+    }
+  }
+
   async ingestLead(data: { tenantId: string; channel: string; payload: any }) {
     const { tenantId, channel, payload } = data;
 
@@ -73,17 +126,21 @@ export class IngestService {
             branchId: existingLead.branchId ?? branchId,
           },
         })
-      : await this.prisma.lead.create({
-          data: {
-            tenantId,
-            branchId,
-            nome,
-            telefone: telefoneRaw,
-            telefoneKey,
-            email,
-            origem: channel,
+      : await (async () => {
+          const assignedUserId = await this.roundRobinAssign(tenantId, branchId);
+          return this.prisma.lead.create({
+            data: {
+              tenantId,
+              branchId,
+              nome,
+              telefone: telefoneRaw,
+              telefoneKey,
+              email,
+              origem: channel,
+              ...(assignedUserId ? { assignedUserId } : {}),
             },
-        });
+          });
+        })();
 
     // 3) SEMPRE cria um evento (histórico)
     const event = await this.prisma.leadEvent.create({

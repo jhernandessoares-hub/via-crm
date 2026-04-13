@@ -37,7 +37,7 @@ export class UsersController {
   async updateMember(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { nome?: string; role?: string; ativo?: boolean; branchId?: string | null; senha?: string },
+    @Body() body: { nome?: string; role?: string; ativo?: boolean; branchId?: string | null; senha?: string; recebeLeads?: boolean },
   ) {
     requireOwner(req);
     return this.usersService.updateTeamMember(req.user.tenantId, req.user.sub || req.user.id, id, body);
@@ -87,6 +87,23 @@ export class UsersController {
       req.user.tenantId,
       body,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('round-robin')
+  async getRoundRobin(@Req() req: any) {
+    requireOwner(req);
+    return this.usersService.getRoundRobinConfig(req.user.tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('round-robin')
+  async updateRoundRobin(
+    @Req() req: any,
+    @Body() body: { incluirGerentes: boolean; incluirOwner: boolean },
+  ) {
+    requireOwner(req);
+    return this.usersService.updateRoundRobinConfig(req.user.tenantId, body);
   }
 
   @UseGuards(JwtAuthGuard)

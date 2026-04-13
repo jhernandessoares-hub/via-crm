@@ -17,6 +17,7 @@ export class UsersService {
         role: true,
         ativo: true,
         branchId: true,
+        recebeLeads: true,
         criadoEm: true,
       },
       orderBy: { criadoEm: "desc" },
@@ -85,6 +86,7 @@ export class UsersService {
     ativo?: boolean;
     branchId?: string | null;
     senha?: string;
+    recebeLeads?: boolean;
   }) {
     const member = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!member) throw new NotFoundException('Usuário não encontrado.');
@@ -105,12 +107,13 @@ export class UsersService {
     if (data.role !== undefined) updateData.role = data.role;
     if (data.ativo !== undefined) updateData.ativo = data.ativo;
     if (data.branchId !== undefined) updateData.branchId = data.branchId;
+    if (data.recebeLeads !== undefined) updateData.recebeLeads = data.recebeLeads;
     if (data.senha) updateData.senhaHash = await bcrypt.hash(data.senha, 10);
 
     return this.prisma.user.update({
       where: { id: userId },
       data: updateData,
-      select: { id: true, nome: true, email: true, role: true, ativo: true, branchId: true, criadoEm: true },
+      select: { id: true, nome: true, email: true, role: true, ativo: true, branchId: true, recebeLeads: true, criadoEm: true },
     });
   }
 
@@ -209,6 +212,26 @@ export class UsersService {
         secretaryGender: true,
       },
     });
+  }
+
+  async getRoundRobinConfig(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { roundRobinConfig: true },
+    });
+    const cfg = (tenant?.roundRobinConfig ?? {}) as any;
+    return {
+      incluirGerentes: cfg.incluirGerentes ?? false,
+      incluirOwner:    cfg.incluirOwner    ?? false,
+    };
+  }
+
+  async updateRoundRobinConfig(tenantId: string, data: { incluirGerentes: boolean; incluirOwner: boolean }) {
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { roundRobinConfig: data },
+    });
+    return data;
   }
 
   async getNotificationSettings(_userId: string, _tenantId: string) {
