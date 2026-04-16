@@ -559,18 +559,16 @@ function FieldDocModal({ leadId, fieldLabel, fieldName, currentValue, inputType,
 
         {/* ── Coluna esquerda: preview do documento ── */}
         <div className="flex-1 bg-gray-900 flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
-          {/* Seletor de documento (se mais de um) */}
-          {relevantDocs.length > 1 && (
-            <div className="flex flex-wrap gap-1 p-2 bg-gray-800 shrink-0">
-              {relevantDocs.map(d => (
-                <button key={d.id}
-                  className={`px-2 py-1 rounded text-xs transition-colors ${selectedDocId === d.id ? "bg-white text-gray-900 font-medium" : "text-gray-300 hover:bg-gray-700"}`}
-                  onClick={() => setSelectedDocId(d.id)}>
-                  {tipoLabel(d.tipo)}{d.observacao ? ` — ${d.observacao}` : ""}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Seletor de documento — sempre visível */}
+          <div className="flex flex-wrap gap-1 p-2 bg-gray-800 shrink-0">
+            {relevantDocs.map(d => (
+              <button key={d.id}
+                className={`px-2 py-1 rounded text-xs transition-colors ${selectedDocId === d.id ? "bg-white text-gray-900 font-medium" : "text-gray-300 hover:bg-gray-700"}`}
+                onClick={() => setSelectedDocId(d.id)}>
+                {tipoLabel(d.tipo)}{d.observacao ? ` — ${d.observacao}` : ""}{d.filename ? ` (${d.filename})` : ""}
+              </button>
+            ))}
+          </div>
           {/* Preview */}
           {selectedDoc
             ? <DocPreviewInline leadId={leadId} doc={selectedDoc} />
@@ -1266,17 +1264,22 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     return (current === null || current === undefined || current === "") && suggestion?.value !== null && suggestion?.value !== undefined && suggestion?.value !== "";
   });
 
-  // Retorna docs enviados para este participante que são relevantes para o campo
+  // Retorna TODOS os docs com arquivo enviado para este participante.
+  // Os tipos mapeados para o campo vêm primeiro (para abertura padrão no modal).
   function getRelevantDocs(fieldName: string): DocItem[] {
     if (!docs) return [];
-    const types = FIELD_DOC_MAP[fieldName] ?? [];
-    return docs.filter(d =>
+    const preferredTypes = FIELD_DOC_MAP[fieldName] ?? [];
+    const all = docs.filter(d =>
       d.participanteNome === (participanteNome ?? null) &&
-      types.includes(d.tipo) &&
       !d.naoAplicavel &&
       !d.pendingReview &&
       !!d.url,
     );
+    // Ordena: preferred types primeiro, depois o resto
+    return [
+      ...all.filter(d => preferredTypes.includes(d.tipo)),
+      ...all.filter(d => !preferredTypes.includes(d.tipo)),
+    ];
   }
 
   const Field = ({ label, name, type = "text", options, span2 }: {
