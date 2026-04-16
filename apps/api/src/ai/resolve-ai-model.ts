@@ -5,22 +5,33 @@ import { PrismaService } from '../prisma/prisma.service';
  * Alterar aqui só afeta ambientes sem nenhuma configuração no banco.
  */
 export const AI_MODEL_DEFAULTS: Record<string, string> = {
-  DEFAULT:        'gpt-4o-mini',
-  FOLLOW_UP:      'gpt-4o-mini',
-  PDF_EXTRACTION: 'claude-haiku-4-5-20251001',
-  TRANSCRIPTION:  'whisper-1',
+  DEFAULT:            'gpt-4o-mini',
+  FOLLOW_UP:          'gpt-4o-mini',
+  PDF_EXTRACTION:     'claude-haiku-4-5-20251001',
+  TRANSCRIPTION:      'whisper-1',
+  DOC_CLASSIFICATION: 'claude-haiku-4-5-20251001',
 };
 
 /**
  * Resolve o modelo para uma função consultando o banco (AiModelConfig).
- * Cascata: config da função → config DEFAULT → padrão hardcoded.
+ * Cascata: config da função → config DEFAULT (se allowDefaultFallback=true) → padrão hardcoded.
  * Nunca lança exceção.
+ *
+ * @param allowDefaultFallback - se false, não cai no DEFAULT do banco (útil para funções com
+ *   provider fixo, ex: DOC_CLASSIFICATION que exige Anthropic — não pode receber gpt-4o-mini)
  */
-export async function resolveAiModel(prisma: PrismaService, fn: string): Promise<string> {
+export async function resolveAiModel(
+  prisma: PrismaService,
+  fn: string,
+  { allowDefaultFallback = true }: { allowDefaultFallback?: boolean } = {},
+): Promise<string> {
   try {
-    for (const key of [fn, 'DEFAULT']) {
-      const config = await prisma.aiModelConfig.findUnique({ where: { function: key } });
-      if (config?.modelName) return config.modelName;
+    const config = await prisma.aiModelConfig.findUnique({ where: { function: fn } });
+    if (config?.modelName) return config.modelName;
+
+    if (allowDefaultFallback) {
+      const def = await prisma.aiModelConfig.findUnique({ where: { function: 'DEFAULT' } });
+      if (def?.modelName) return def.modelName;
     }
   } catch {
     // silently fallback

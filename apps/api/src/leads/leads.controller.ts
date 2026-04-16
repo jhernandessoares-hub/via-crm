@@ -12,12 +12,13 @@ import {
   ForbiddenException,
   UseInterceptors,
   UploadedFile,
+  UploadedFiles,
   BadRequestException,
   Res,
 } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 
 @UseGuards(JwtAuthGuard)
@@ -335,5 +336,132 @@ export class LeadsController {
     }
 
     return this.leadsService.sendWhatsappAttachment(req.user, id, file);
+  }
+
+  // ─── Participantes do lead ───────────────────────────────────────────────────
+
+  @Get(':id/participantes')
+  async listParticipantes(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.listParticipantes(req.user.tenantId, id);
+  }
+
+  @Post(':id/participantes')
+  async createParticipante(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { nome: string; classificacao?: string },
+  ) {
+    return this.leadsService.createParticipante(req.user.tenantId, id, body);
+  }
+
+  @Patch(':id/participantes/:partId')
+  async updateParticipante(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('partId') partId: string,
+    @Body() body: Record<string, any>,
+  ) {
+    return this.leadsService.updateParticipante(req.user.tenantId, id, partId, body);
+  }
+
+  @Delete(':id/participantes/:partId')
+  async deleteParticipante(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('partId') partId: string,
+  ) {
+    return this.leadsService.deleteParticipante(req.user.tenantId, id, partId);
+  }
+
+  // ─── Documentos do lead ──────────────────────────────────────────────────────
+
+  // ─── Classificação bulk + AI cadastro ───────────────────────────────────────
+
+  @Post(':id/documents/classify-bulk')
+  @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 100 * 1024 * 1024, files: 20, fields: 30 } }))
+  async classifyBulk(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFiles() files: any[],
+  ) {
+    if (!files || files.length === 0) throw new BadRequestException('Nenhum arquivo enviado');
+    return this.leadsService.classifyBulkDocuments(req.user.tenantId, id, files, req.user.sub);
+  }
+
+  @Post(':id/ai-cadastro')
+  async aiCadastro(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { participanteNome: string | null },
+  ) {
+    return this.leadsService.aiCadastroFill(req.user.tenantId, id, body.participanteNome ?? null);
+  }
+
+  @Patch(':id/documents/:docId')
+  async updateDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @Body() body: { tipo?: string; nome?: string; participanteNome?: string | null; observacao?: string | null; pendingReview?: boolean },
+  ) {
+    return this.leadsService.updateDocument(req.user.tenantId, id, docId, body);
+  }
+
+  @Get(':id/documents')
+  async listDocuments(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.listDocuments(req.user.tenantId, id);
+  }
+
+  @Post(':id/documents')
+  async createDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { tipo: string; nome: string; participanteNome?: string; participanteClassificacao?: string; observacao?: string },
+  ) {
+    return this.leadsService.createDocument(req.user.tenantId, id, body, req.user.sub);
+  }
+
+  @Post(':id/documents/toggle-na')
+  async toggleNaoAplicavel(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { tipo: string; naoAplicavel: boolean; participanteNome?: string | null },
+  ) {
+    return this.leadsService.toggleNaoAplicavel(req.user.tenantId, id, body.tipo, body.naoAplicavel, body.participanteNome ?? null);
+  }
+
+  @Post(':id/documents/:docId/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @UploadedFile() file?: any,
+  ) {
+    if (!file) throw new BadRequestException('Arquivo não enviado');
+    return this.leadsService.uploadDocument(req.user.tenantId, id, docId, file);
+  }
+
+  @Get(':id/documents/:docId/view')
+  async viewDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @Res() res: any,
+  ) {
+    const out = await this.leadsService.viewDocument(req.user.tenantId, id, docId);
+    res.setHeader('Content-Type', out.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${out.filename}"`);
+    if (out.contentLength) res.setHeader('Content-Length', String(out.contentLength));
+    out.stream.pipe(res);
+  }
+
+  @Delete(':id/documents/:docId')
+  async deleteDocument(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+  ) {
+    return this.leadsService.deleteDocument(req.user.tenantId, id, docId);
   }
 }

@@ -280,7 +280,7 @@ const ESCALATE_PATTERN = /^\[ESCALATE:([^\]]+)\]\s*/;
 async function handleEscalation(
   prisma: PrismaService,
   whatsapp: WhatsappService | undefined,
-  lead: { id: string; tenantId: string; nome: string | null; telefone: string | null; assignedUserId?: string | null },
+  lead: { id: string; tenantId: string; nome: string | null; nomeCorreto?: string | null; telefone: string | null; assignedUserId?: string | null },
   rawText: string,
 ): Promise<{ text: string; escalated: boolean; reason: string | null }> {
   const match = rawText.match(ESCALATE_PATTERN);
@@ -321,7 +321,7 @@ async function handleEscalation(
         assedio: 'assédio moral ou sexual',
       };
       const reasonLabel = reasonLabels[reason] ?? reason;
-      const leadNome = lead.nome?.trim() || 'Lead sem nome';
+      const leadNome = (lead.nomeCorreto ?? lead.nome)?.trim() || 'Lead sem nome';
       const urgencyMsg =
         `⚠️ *ATENÇÃO URGENTE — ${leadNome}*\n\n` +
         `O lead gerou um alerta de *${reasonLabel}* durante o atendimento.\n\n` +
@@ -467,6 +467,7 @@ async function handleInboundAiJob(
       id: true,
       tenantId: true,
       nome: true,
+      nomeCorreto: true,
       telefone: true,
       status: true,
       botPaused: true,
@@ -603,7 +604,7 @@ async function handleInboundAiJob(
       const routing = await ai.runOrchestrator({
         orchestratorPrompt: orchestrator.prompt,
         conversation: recentConversation,
-        leadNome: lead.nome || 'Lead',
+        leadNome: (lead.nomeCorreto ?? lead.nome) || 'Lead',
         leadStatus: lead.status || 'NOVO',
         currentStageKey: stageKey,
         qualification: qual,
@@ -637,7 +638,7 @@ async function handleInboundAiJob(
 
   try {
     const suggestion = await ai.generateFollowUp({
-      nome: String(lead.nome || 'Cliente').trim() || 'Cliente',
+      nome: String((lead.nomeCorreto ?? lead.nome) || 'Cliente').trim() || 'Cliente',
       status: String(lead.status || 'NOVO'),
       tenantId: lead.tenantId,
       agentId: selectedAgent.id,
@@ -786,7 +787,7 @@ async function handleInboundAiJob(
     const analysis = await ai.runOperationalAnalysis({
       tenantId: lead.tenantId,
       leadId: lead.id,
-      leadNome: lead.nome || 'Lead',
+      leadNome: (lead.nomeCorreto ?? lead.nome) || 'Lead',
       leadStatus: lead.status || 'NOVO',
       currentStageKey,
       conversation: recentConversation,
@@ -804,7 +805,7 @@ async function handleInboundAiJob(
     const updateData: any = {};
     if (u.nomeCorreto !== undefined) {
       updateData.nomeCorreto = u.nomeCorreto;
-      if (u.nomeCorreto) updateData.nome = u.nomeCorreto;
+      updateData.nomeCorretoOrigem = u.nomeCorreto ? 'IA' : null;
     }
     if (u.rendaBrutaFamiliar !== undefined) updateData.rendaBrutaFamiliar = u.rendaBrutaFamiliar;
     if (u.fgts !== undefined) updateData.fgts = u.fgts;
@@ -872,7 +873,7 @@ async function handleInboundAiJob(
 
         // Notifica usuários que querem saber desta etapa
         if (whatsapp) {
-          const stageMsg = `📍 *${lead.nome}* avançou para *${targetStage.name}*\nWhatsApp: ${lead.telefone || '—'}`;
+          const stageMsg = `📍 *${lead.nomeCorreto ?? lead.nome}* avançou para *${targetStage.name}*\nWhatsApp: ${lead.telefone || '—'}`;
           await notifyUsersForStage(prisma, whatsapp, lead.tenantId, analysis.stageKey, stageMsg, lead.assignedUserId);
         }
       }
@@ -921,7 +922,7 @@ async function handleInboundAiJob(
             : null;
 
           const linhas: string[] = [
-            `🎯 *Lead qualificado: ${lead.nome}*`,
+            `🎯 *Lead qualificado: ${lead.nomeCorreto ?? lead.nome}*`,
             `📱 WhatsApp: ${lead.telefone || '—'}`,
             '',
           ];

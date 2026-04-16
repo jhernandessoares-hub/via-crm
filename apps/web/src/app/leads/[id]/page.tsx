@@ -41,6 +41,7 @@ type Lead = {
   avatarUrl?: string | null;
   // Qualificação IA
   nomeCorreto?: string | null;
+  nomeCorretoOrigem?: string | null; // "IA" | "MANUAL"
   rendaBrutaFamiliar?: number | null;
   fgts?: number | null;
   valorEntrada?: number | null;
@@ -52,6 +53,31 @@ type Lead = {
   perfilImovel?: string | null;
   produtoInteresseId?: string | null;
   resumoLead?: string | null;
+};
+
+const TIPOS_DOCUMENTO = [
+  { value: "RG", label: "RG" },
+  { value: "CNH", label: "CNH" },
+  { value: "CPF", label: "CPF" },
+  { value: "COMP_RENDA", label: "Comprovante de renda" },
+  { value: "COMP_ENDERECO", label: "Comprovante de endereço" },
+  { value: "FGTS", label: "Extrato FGTS" },
+  { value: "DECL_IR", label: "Declaração de IR" },
+  { value: "CERT_ESTADO_CIVIL", label: "Certidão (nasc./casamento)" },
+  { value: "CONTRATO_TRABALHO", label: "Contrato de trabalho" },
+  { value: "OUTRO", label: "Outro" },
+];
+
+type LeadDocumentItem = {
+  id: string;
+  tipo: string;
+  nome: string;
+  status: string;
+  url?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  tamanho?: number | null;
+  criadoEm: string;
 };
 
 type LeadEvent = {
@@ -1210,6 +1236,21 @@ export default function LeadDetailChatPage() {
   const [teamMembers, setTeamMembers] = useState<{ id: string; nome: string; role: string }[]>([]);
   const [assignLoading, setAssignLoading] = useState(false);
 
+  // Documentos do lead
+  const [documents, setDocuments] = useState<LeadDocumentItem[]>([]);
+  const [docsOpen, setDocsOpen] = useState(true);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [addingDoc, setAddingDoc] = useState(false);
+  const [newDocTipo, setNewDocTipo] = useState("RG");
+  const [newDocNome, setNewDocNome] = useState("");
+  const [savingDoc, setSavingDoc] = useState(false);
+  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
+
+  // Nome confirmado — modal
+  const [nomeModalOpen, setNomeModalOpen] = useState(false);
+  const [nomeConfirmadoEdit, setNomeConfirmadoEdit] = useState<string>("");
+  const [savingNomeConfirmado, setSavingNomeConfirmado] = useState(false);
+
   // SLA panel
   const [slaData, setSlaData] = useState<any>(null);
   const [slaLoading, setSlaLoading] = useState(false);
@@ -1293,9 +1334,23 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  async function loadDocuments() {
+    if (!id) return;
+    setLoadingDocs(true);
+    try {
+      const data = await apiFetch(`/leads/${id}/documents`);
+      setDocuments(Array.isArray(data) ? data : []);
+    } catch {
+      setDocuments([]);
+    } finally {
+      setLoadingDocs(false);
+    }
+  }
+
   async function loadLead() {
     const l = await apiFetch("/leads/" + id, { method: "GET" });
     setLead(l);
+    setNomeConfirmadoEdit(l?.nomeCorreto ?? "");
     await loadAllowedStages(id);
   }
 
@@ -1353,7 +1408,7 @@ export default function LeadDetailChatPage() {
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers()]);
+      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments()]);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -1672,7 +1727,72 @@ function discardAiSuggestion() {
     }
   }
 
-async function requestAiPanelSuggestion(
+  async function saveNomeConfirmado() {
+    if (!lead) return;
+    setSavingNomeConfirmado(true);
+    try {
+      const nome = nomeConfirmadoEdit.trim() || null;
+      await apiFetch(`/leads/${lead.id}/qualification`, {
+        method: "PATCH",
+        body: JSON.stringify({ nomeCorreto: nome }),
+      });
+      setLead((prev) => prev ? { ...prev, nomeCorreto: nome, nomeCorretoOrigem: nome ? "MANUAL" : null } : prev);
+      setNomeModalOpen(false);
+    } catch (err: any) {
+      alert(err?.message || "Erro ao salvar nome confirmado.");
+    } finally {
+      setSavingNomeConfirmado(false);
+    }
+  }
+
+  async function handleAddDocument() {
+    if (!lead || !newDocNome.trim()) return;
+    setSavingDoc(true);
+    try {
+      const doc = await apiFetch(`/leads/${lead.id}/documents`, {
+        method: "POST",
+        body: JSON.stringify({ tipo: newDocTipo, nome: newDocNome.trim() }),
+      });
+      setDocuments((prev) => [...prev, doc]);
+      setNewDocNome("");
+      setNewDocTipo("RG");
+      setAddingDoc(false);
+    } catch (err: any) {
+      alert(err?.message || "Erro ao adicionar documento.");
+    } finally {
+      setSavingDoc(false);
+    }
+  }
+
+  async function handleUploadDocument(docId: string, file: File) {
+    if (!lead) return;
+    setUploadingDocId(docId);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const updated = await apiFetch(`/leads/${lead.id}/documents/${docId}/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      setDocuments((prev) => prev.map((d) => (d.id === docId ? updated : d)));
+    } catch (err: any) {
+      alert(err?.message || "Erro ao fazer upload.");
+    } finally {
+      setUploadingDocId(null);
+    }
+  }
+
+  async function handleDeleteDocument(docId: string) {
+    if (!lead || !confirm("Remover este documento?")) return;
+    try {
+      await apiFetch(`/leads/${lead.id}/documents/${docId}`, { method: "DELETE" });
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+    } catch (err: any) {
+      alert(err?.message || "Erro ao remover documento.");
+    }
+  }
+
+  async function requestAiPanelSuggestion(
   mode: "REGENERATE" | "SHORTEN" | "IMPROVE" | "VARIATE",
 ) {
   if (!user?.tenantId || !lead?.nome || !lead?.status) {
@@ -1711,7 +1831,7 @@ async function requestAiPanelSuggestion(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        nome: lead.nome,
+        nome: lead.nomeCorreto ?? lead.nome,
         status: lead.status,
         tenantId: user.tenantId,
         leadId: id,
@@ -2290,8 +2410,32 @@ async function requestAiPanelSuggestion(
               ) : lead ? (
                 <div className="mt-3 space-y-2 text-sm">
                   <div>
-                    <div className="text-xs text-gray-500">Nome</div>
-                    <div className="font-medium text-gray-900">{lead.nome || "�"}</div>
+                    <div className="text-xs text-gray-500">Nome da fonte</div>
+                    <div className="font-medium text-gray-900">{lead.nome || "—"}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Nome confirmado</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900">
+                        {lead.nomeCorreto || <span className="text-gray-400 italic text-xs">não confirmado</span>}
+                      </span>
+                      {lead.nomeCorretoOrigem === "IA" && (
+                        <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700">IA</span>
+                      )}
+                      {lead.nomeCorretoOrigem === "MANUAL" && (
+                        <span className="inline-flex items-center rounded-full bg-gray-100 border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-600">Manual</span>
+                      )}
+                      <button
+                        className="ml-auto text-gray-400 hover:text-gray-700"
+                        title="Editar nome confirmado"
+                        onClick={() => { setNomeConfirmadoEdit(lead.nomeCorreto ?? ""); setNomeModalOpen(true); }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
                   <div>
@@ -2440,7 +2584,7 @@ async function requestAiPanelSuggestion(
             {/* Qualificação IA */}
             {lead && (() => {
               const hasAnyQual = !!(
-                lead.nomeCorreto || lead.rendaBrutaFamiliar != null || lead.fgts != null ||
+                lead.rendaBrutaFamiliar != null || lead.fgts != null ||
                 lead.valorEntrada != null || lead.estadoCivil || lead.dataNascimento ||
                 lead.tempoProcurandoImovel || lead.conversouComCorretor != null ||
                 lead.qualCorretorImobiliaria || lead.perfilImovel || lead.resumoLead
@@ -2488,13 +2632,6 @@ async function requestAiPanelSuggestion(
                       {!hasAnyQual && (
                         <div className="text-xs text-gray-400 italic">
                           Nenhum dado coletado ainda. A IA preenche automaticamente durante a conversa.
-                        </div>
-                      )}
-
-                      {lead.nomeCorreto && (
-                        <div>
-                          <div className="text-xs text-gray-500">Nome identificado</div>
-                          <div className="font-medium text-gray-900">{lead.nomeCorreto}</div>
                         </div>
                       )}
 
@@ -2575,6 +2712,19 @@ async function requestAiPanelSuggestion(
               );
             })()}
 
+            {/* Documentos */}
+            {lead && (
+              <a
+                href={`/leads/${lead.id}/documentos`}
+                className="mt-4 flex w-full items-center justify-between rounded-xl border bg-white px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                <span className="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Cadastro e Documentos
+                </span>
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+              </a>
+            )}
             {/* Painel SLA */}
             {slaData && (
               <div className="rounded-xl border bg-white p-4">
@@ -3049,7 +3199,7 @@ async function requestAiPanelSuggestion(
                     <img src={lead.avatarUrl} alt="avatar" className="h-9 w-9 object-cover" />
                   ) : (
                     <span className="text-xs font-semibold text-gray-700">
-                      {String(lead?.nome || "HC")
+                      {String((lead?.nomeCorreto ?? lead?.nome) || "HC")
                         .split(" ")
                         .slice(0, 2)
                         .map((s) => s[0])
@@ -3061,7 +3211,7 @@ async function requestAiPanelSuggestion(
 
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
-                    <span>{lead?.nome ? lead.nome : "Chat"}</span>
+                    <span>{lead?.nomeCorreto ?? lead?.nome ?? "Chat"}</span>
                     {hasNewInbound ? (
                       <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
                         Nova mensagem
@@ -3821,6 +3971,48 @@ async function requestAiPanelSuggestion(
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {/* Modal — Nome confirmado */}
+      {nomeModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+          onClick={() => setNomeModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Nome confirmado</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              O nome original é <span className="font-medium">{lead?.nome}</span>. Informe o nome real confirmado na conversa.
+            </p>
+            <input
+              type="text"
+              autoFocus
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
+              placeholder="Nome real do lead..."
+              value={nomeConfirmadoEdit}
+              onChange={(e) => setNomeConfirmadoEdit(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") saveNomeConfirmado(); if (e.key === "Escape") setNomeModalOpen(false); }}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                onClick={() => setNomeModalOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                onClick={saveNomeConfirmado}
+                disabled={savingNomeConfirmado}
+              >
+                {savingNomeConfirmado ? "Salvando..." : "Confirmar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

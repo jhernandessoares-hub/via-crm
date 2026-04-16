@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
@@ -27,7 +27,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const token = localStorage.getItem("accessToken");
     if (!token) {
       setAuthorized(false);
-      router.replace("/login");
+      startTransition(() => {
+        router.replace("/login");
+      });
     } else {
       setAuthorized(true);
     }

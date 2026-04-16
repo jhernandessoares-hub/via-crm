@@ -54,19 +54,23 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const pathname = usePathname();
   const isLoginRoute = pathname === "/admin/login";
-  const adminToken = typeof window !== "undefined" ? localStorage.getItem("adminToken") : null;
 
-  let admin: AdminUser | null = null;
-  if (typeof window !== "undefined") {
-    try {
-      const raw = localStorage.getItem("adminUser");
-      admin = raw ? (JSON.parse(raw) as AdminUser) : null;
-    } catch {
-      admin = null;
-    }
-  }
+  // Lê localStorage apenas no cliente (useEffect), evitando disparo do router antes da inicialização
+  const [adminToken, setAdminToken] = useState<string | null | undefined>(undefined);
+  const [admin, setAdmin] = useState<AdminUser | null>(null);
 
   useEffect(() => {
+    setAdminToken(localStorage.getItem("adminToken"));
+    try {
+      const raw = localStorage.getItem("adminUser");
+      setAdmin(raw ? (JSON.parse(raw) as AdminUser) : null);
+    } catch {
+      setAdmin(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (adminToken === undefined) return; // ainda carregando
     if (!isLoginRoute && !adminToken) {
       router.push("/admin/login");
     }

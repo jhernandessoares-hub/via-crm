@@ -105,6 +105,8 @@ model Tenant {
   users                  User[]
   channels               Channel[]
   tenantSites            TenantSite[]
+  leadDocuments          LeadDocument[]
+  leadParticipantes      LeadParticipante[]
 
   @@map("tenants")
 }
@@ -197,11 +199,25 @@ model Lead {
   deletionReason      String?
   // Qualificação — preenchido pelo Assistente Operacional
   nomeCorreto              String?
+  nomeCorretoOrigem        String?   // "IA" | "MANUAL"
+  documents                LeadDocument[]
+  participantes            LeadParticipante[]
   rendaBrutaFamiliar       Float?
   fgts                     Float?
   valorEntrada             Float?
   estadoCivil              String?
   dataNascimento           DateTime?
+  // Cadastro pessoal
+  cadastroOrigem           Json?     // { cpf: "IA"|null, rg: "IA"|null, ... }
+  cpf                      String?
+  rg                       String?
+  profissao                String?
+  empresa                  String?
+  naturalidade             String?
+  endereco                 String?
+  cep                      String?
+  cidade                   String?
+  uf                       String?
   tempoProcurandoImovel    String?
   conversouComCorretor     Boolean?
   qualCorretorImobiliaria  String?
@@ -1273,4 +1289,75 @@ model TenantSite {
 
   @@index([tenantId])
   @@map("tenant_sites")
+}
+
+model LeadDocument {
+  id               String   @id @default(uuid())
+  leadId           String
+  tenantId         String
+  tipo             String   // RG_CNH | CPF | COMP_RESIDENCIA | COMP_RENDA | FGTS | DECL_IR | CERT_ESTADO_CIVIL | CONTRATO_TRABALHO | OUTRO
+  nome             String   // label legível
+  participanteNome           String?  // nome do participante (ex: "João Silva")
+  participanteClassificacao  String?  // CONJUGE | SOCIO | FIADOR | OUTRO
+  observacao                 String?  // Observação sobre o documento (ex: "mês 03/2025")
+  classificadoPorIA          Boolean  @default(false)  // true = AI classificou automaticamente
+  pendingReview              Boolean  @default(false)  // true = aguardando classificação humana
+  naoAplicavel     Boolean  @default(false)
+  status           String   @default("PENDENTE") // PENDENTE | ENVIADO
+  url         String?  // Cloudinary secure_url
+  publicId    String?  // Cloudinary public_id para deletar
+  filename    String?  // nome original do arquivo
+  mimeType    String?
+  tamanho     Int?     // bytes
+  requestedBy String?  // userId
+  processingStatus String? // EM_FILA | ANALISANDO | CONCLUIDO | PENDENTE_REVISAO | ERRO | MANUAL
+  processingStep   String?
+  aiExtractedName  String?
+  aiDecision       String?
+  aiConfidence     String?
+  aiReason         String?
+  aiSummary        String?
+  aiExtractedData  Json?
+  criadoEm   DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@map("lead_documents")
+}
+
+model LeadParticipante {
+  id              String    @id @default(uuid())
+  leadId          String
+  tenantId        String
+  nome            String
+  classificacao   String?   // CONJUGE | SOCIO | FIADOR | OUTRO
+  cadastroOrigem  Json?     // { cpf: "IA"|null, rg: "IA"|null, ... }
+  cpf             String?
+  rg              String?
+  dataNascimento  DateTime?
+  estadoCivil     String?   // SOLTEIRO | CASADO | DIVORCIADO | VIUVO | UNIAO_ESTAVEL | SEPARADO
+  naturalidade    String?
+  profissao       String?
+  empresa         String?
+  renda           Float?
+  telefone        String?
+  email           String?
+  endereco        String?
+  cep             String?
+  cidade          String?
+  uf              String?
+  sortOrder       Int       @default(0)
+  criadoEm        DateTime  @default(now())
+  atualizadoEm    DateTime  @updatedAt
+
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@map("lead_participantes")
 }

@@ -103,7 +103,24 @@ User              → role: OWNER | MANAGER | AGENT
                     preferences Json? — preferências do usuário: { theme: 'light' | 'dark' }
                     recebeLeads Boolean @default(true) — participa da roleta de distribuição de leads
 Branch            → filial/equipe dentro do tenant
-Lead              → com soft delete (deletedAt/deletedBy/deletionReason)
+LeadDocument      → documentos solicitados para o lead: tipo (RG|CNH|CPF|COMP_RENDA|COMP_ENDERECO|FGTS|DECL_IR|CERT_ESTADO_CIVIL|CONTRATO_TRABALHO|OUTRO), nome, status (PENDENTE|ENVIADO), url/publicId Cloudinary
+                    participanteNome String? — nome do participante dono do documento (null = lead principal)
+                    participanteClassificacao String? — classificação do participante (CONJUGE|SOCIO|FIADOR|OUTRO)
+                    classificadoPorIA Boolean @default(false) — documento foi classificado automaticamente pela IA
+                    pendingReview Boolean @default(false) — documento aguarda revisão humana (não enquadrado pela IA)
+                    observacao String? — observação sobre o documento
+                    Endpoints: GET/POST /leads/:id/documents, PATCH /leads/:id/documents/:docId, POST /leads/:id/documents/:docId/upload, DELETE /leads/:id/documents/:docId
+                    POST /leads/:id/documents/toggle-na — marcar tipo como não aplicável
+                    POST /leads/:id/documents/classify-bulk — upload em massa: fase 1 síncrona (Cloudinary, retorna imediatamente com pendingReview=true) + fase 2 background (IA classifica sem bloquear o request); frontend polling a cada 5s
+                    POST /leads/:id/ai-cadastro — preenche campos de cadastro lendo documentos enviados (Claude vision)
+LeadParticipante  → participantes do lead além do lead principal (@@map("lead_participantes"))
+                    campos: nome, classificacao (CONJUGE|SOCIO|FIADOR|OUTRO), dados pessoais (cpf, rg, profissao, empresa, renda, naturalidade, endereco, cep, cidade, uf, estadoCivil, dataNascimento, telefone, email)
+                    cadastroOrigem Json? — mapa de origem por campo: { cpf: "IA"|null, rg: "IA"|null, ... }
+                    Endpoints: GET/POST /leads/:id/participantes, PATCH/DELETE /leads/:id/participantes/:partId
+Lead              → campos de cadastro pessoal: cpf, rg, profissao, empresa, naturalidade, endereco, cep, cidade, uf + cadastroOrigem Json?
+                    nomeCorreto String? — nome real confirmado (IA ou humano); nomeCorretoOrigem String? ("IA"|"MANUAL")
+                    Prioridade de exibição: nomeCorreto ?? nome em toda a UI e notificações
+                    com soft delete (deletedAt/deletedBy/deletionReason)
 LeadEvent         → histórico de interações
 LeadSla           → controle de janela 23h WhatsApp
 Pipeline          → funil customizável
@@ -124,7 +141,7 @@ TenantSite        → site do tenant — fork independente do template (contentJ
                     slug único, publishedJson separado do contentJson (rascunho vs publicado)
 PlatformConfig    → configurações globais da plataforma (key/value). Chaves: globalAgentRules, agentIdentityRules, whatsappFormattingRules
 PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
-AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION, modelName). Chaves de API ficam no .env.
+AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION|DOC_CLASSIFICATION, modelName). Chaves de API ficam no .env.
 Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
 Tenant.roundRobinConfig → Json? — configuração da roleta de distribuição de leads: { incluirGerentes: bool, incluirOwner: bool }
 ```
@@ -268,7 +285,7 @@ NEXT_PUBLIC_API_URL=
 - Qualquer outro → usa OpenAI
 - **Atenção:** `SecretaryService` usa OpenAI diretamente (hardcoded), não passa pelo `AiService`
 - **Regras configuráveis via banco:** `generateFollowUp()` lê `agentIdentityRules` e `whatsappFormattingRules` do `PlatformConfig` com fallback para constantes hardcoded. Editáveis em `/admin/regras-globais` sem deploy.
-- **Modelo configurável via banco:** `resolveAiModel(prisma, fn)` em `ai/resolve-ai-model.ts` — consultado por TODOS os serviços que usam IA (AiService, SecretaryService, ProductsService, WhatsappMediaWorker). Cascata: AiModelConfig do banco → DEFAULT → padrão hardcoded. Configurável em `/admin/ia/provedores` sem deploy. Chaves ficam no `.env`.
+- **Modelo configurável via banco:** `resolveAiModel(prisma, fn, { allowDefaultFallback })` em `ai/resolve-ai-model.ts` — consultado por TODOS os serviços que usam IA. Cascata: AiModelConfig do banco → DEFAULT (se allowDefaultFallback=true) → padrão hardcoded. Funções com provider fixo (DOC_CLASSIFICATION, PDF_EXTRACTION) usam `allowDefaultFallback: false` para não receber modelos OpenAI acidentalmente. Configurável em `/admin/ia/provedores` sem deploy.
 - **Seed automático:** `seedAiModelDefaults()` roda no startup da API (main.ts) — popula AiModelConfig com padrões se ainda não existirem. Idempotente, nunca sobrescreve configurações existentes.
 
 ---
@@ -321,7 +338,7 @@ NEXT_PUBLIC_API_URL=
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
 - `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
-- `/admin/ia/provedores` → Provedores de IA — configuração de modelo por função do sistema (DEFAULT, FOLLOW_UP, PDF_EXTRACTION, TRANSCRIPTION) sem deploy.
+- `/admin/ia/provedores` → Provedores de IA — configuração de modelo por função do sistema (DEFAULT, FOLLOW_UP, PDF_EXTRACTION, TRANSCRIPTION, DOC_CLASSIFICATION) sem deploy. DOC_CLASSIFICATION e PDF_EXTRACTION restritos a modelos Anthropic (visão).
 - `/my-site` → Gerenciador de Sites do tenant (OWNER only) — 1 site por tenant, fluxo adaptado com/sem site ativo; Publicar/Tirar do ar ficam em Configurações.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
@@ -358,12 +375,17 @@ NEXT_PUBLIC_API_URL=
 | WhatsApp por phone_number_id | Cada tenant tem seu próprio número Meta; inbound worker resolve tenant pelo `phone_number_id` do payload |
 | EmailService graceful degradation | Se `RESEND_API_KEY` não configurado, loga warning e continua sem quebrar o fluxo |
 | `resolveAiModel(prisma, fn)` centralizado | Todos os serviços usam o mesmo helper — modelo configurável via banco sem deploy, sem divergência |
+| classify-bulk assíncrono (setImmediate) | Upload síncrono (retorna imediato) + classificação IA em background — evita timeout de request para lotes grandes; frontend faz polling a cada 5s |
+| `allowDefaultFallback: false` em funções Anthropic | DOC_CLASSIFICATION e PDF_EXTRACTION não podem receber modelo OpenAI via fallback DEFAULT — quebraria o Anthropic SDK |
+| `<button>` não pode conter `<button>` | Accordions com botões internos usam `<div role="button">` no wrapper externo — evita erro de hidratação Next.js 16 |
 | Permissões por JSON no Tenant | Sem tabela extra — `permissionsConfig Json?` no Tenant; `resolvePermissions()` mescla com defaults para novos módulos aparecerem automaticamente |
 | Produtos: delete hierárquico | AGENT não exclui, MANAGER só exclui de AGENT, OWNER exclui tudo — verificação assíncrona do role do dono no `remove()` |
 | Canais/Config.IA/Settings OWNER-only | Configurações de tenant não devem ser visíveis/editáveis por operadores — protegido em frontend (sidebar) e backend (requireOwner) |
 | Round-robin por "último recebeu" ASC | Sem contador dedicado — ordena candidatos elegíveis por data do último lead assignado ASC; auto-corretivo, eficiente |
 | InboundAiWorker notifica só assignedUser | Evita spam de notificações para toda equipe — apenas o responsável pelo lead recebe o WhatsApp de lead qualificado/etapa movida |
 | Tailwind v4 sem opacidade em bg-black/40 | Modificador de opacidade não funciona de forma confiável — usar `style={{ backgroundColor: "rgba(...)" }}` para overlays e valores hex para fundos de modal |
+| `router.push/replace` em Next.js 16 + React 19 | Envolto em `startTransition(() => router.replace(...))` para evitar "Router action dispatched before initialization" |
+| `localStorage` nunca lido durante o render | Sempre em `useEffect` + `useState` — leitura síncrona durante render causa hidratação incorreta e dispara router antes da inicialização |
 
 ---
 
@@ -407,5 +429,30 @@ npx tsc --noEmit           # checar tipos sem compilar
 
 # Web
 cd apps/web
-npm run dev                # Next.js dev
+npm run dev                # Next.js dev (porta 3001)
+```
+
+### Bootstrap do Platform Admin (primeiro acesso / banco limpo)
+
+Se a tabela `PlatformAdmin` estiver vazia, o login `/admin/login` retorna "Credenciais inválidas". Solução:
+
+1. Garantir que `PLATFORM_ADMIN_SECRET` esteja definido no `apps/api/.env`
+2. Reiniciar a API para carregar o env
+3. Chamar o bootstrap:
+
+```bash
+curl -s -X POST http://localhost:3000/admin/bootstrap \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@viacrm.com","senha":"admin123","nome":"Admin","secret":"SEU_PLATFORM_ADMIN_SECRET"}'
+```
+
+Ou criar direto via Prisma (sem reiniciar a API):
+
+```bash
+node -e "
+const bcrypt = require('bcrypt');
+const { PrismaClient } = require('@prisma/client');
+const p = new PrismaClient();
+bcrypt.hash('admin123', 10).then(h => p.platformAdmin.create({ data: { email: 'admin@viacrm.com', senhaHash: h, nome: 'Admin', ativo: true } })).then(a => { console.log('criado:', a.email); p.\$disconnect(); });
+"
 ```

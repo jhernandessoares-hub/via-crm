@@ -2,10 +2,11 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const AI_FUNCTIONS = [
-  { key: 'DEFAULT',        label: 'Padrão (utilitários internos)' },
-  { key: 'FOLLOW_UP',      label: 'Resposta automática ao lead' },
-  { key: 'PDF_EXTRACTION', label: 'Extração de dados de PDF (imóveis)' },
-  { key: 'TRANSCRIPTION',  label: 'Transcrição de áudio (Whisper)' },
+  { key: 'DEFAULT',            label: 'Padrão (utilitários internos)' },
+  { key: 'FOLLOW_UP',          label: 'Resposta automática ao lead' },
+  { key: 'PDF_EXTRACTION',     label: 'Extração de dados de PDF (imóveis)' },
+  { key: 'DOC_CLASSIFICATION', label: 'Classificação e cadastro de documentos de leads' },
+  { key: 'TRANSCRIPTION',      label: 'Transcrição de áudio (Whisper)' },
 ] as const;
 
 export type AiFunction = (typeof AI_FUNCTIONS)[number]['key'];
@@ -23,8 +24,9 @@ export const AI_MODELS = [
 
 // Restrições por função (só permite determinados providers)
 const FUNCTION_RESTRICTIONS: Partial<Record<AiFunction, string[]>> = {
-  PDF_EXTRACTION: ['Anthropic'],
-  TRANSCRIPTION: ['OpenAI'],
+  PDF_EXTRACTION:     ['Anthropic'],
+  DOC_CLASSIFICATION: ['Anthropic'],
+  TRANSCRIPTION:      ['OpenAI'],
 };
 
 @Injectable()
