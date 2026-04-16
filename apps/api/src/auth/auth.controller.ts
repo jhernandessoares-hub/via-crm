@@ -81,4 +81,12 @@ export class AuthController {
     await this.authService.resetPassword(body.token, body.password);
     return { ok: true };
   }
+
+  @Post('logout')
+  async logout(@Body() body: { refreshToken?: string }) {
+    if (body?.refreshToken) {
+      await this.authService.logout(body.refreshToken);
+    }
+    return { ok: true };
+  }
 }

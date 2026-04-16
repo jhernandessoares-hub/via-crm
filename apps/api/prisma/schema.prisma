@@ -173,9 +173,25 @@ model User {
   capturedProducts         Product[]         @relation("ProductCapturedBy")
   branch                   Branch?           @relation(fields: [branchId], references: [id])
   tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  refreshTokens            RefreshToken[]
 
   @@unique([tenantId, email])
   @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  jti       String    @unique
+  userId    String
+  tenantId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([jti])
+  @@map("refresh_tokens")
 }
 
 model Lead {

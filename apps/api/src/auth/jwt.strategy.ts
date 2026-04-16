@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import type { AuthenticatedUser, JwtPayload } from './types';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -13,8 +14,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
+  async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
     if (!payload?.sub) throw new UnauthorizedException();
+
+    // Rejeita refresh tokens sendo usados como access tokens
+    if (payload.type === 'refresh') throw new UnauthorizedException('Token inválido para autenticação.');
 
     const user = await this.prisma.user.findFirst({
       where: { id: payload.sub, tenantId: payload.tenantId, ativo: true },
@@ -23,6 +27,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!user) throw new UnauthorizedException('Sessão inválida ou usuário desativado.');
 
-    return user;
+    return { ...user, sub: user.id };
   }
 }

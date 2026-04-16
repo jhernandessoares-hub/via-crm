@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePermissions } from './permissions.config';
+import { encryptField } from '../crypto/field-crypto.util';
 
 @Injectable()
 export class TenantsService {
@@ -42,11 +43,22 @@ export class TenantsService {
   }
 
   async updateWhatsappSettings(tenantId: string, data: { whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string }) {
+    let tokenToSave: string | undefined;
+    if (data.whatsappToken !== undefined) {
+      try {
+        tokenToSave = encryptField(data.whatsappToken);
+      } catch {
+        // ENCRYPTION_KEY não configurada — salva em plaintext com aviso
+        // (compatibilidade com ambientes sem a variável definida)
+        tokenToSave = data.whatsappToken;
+      }
+    }
+
     return this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
         whatsappPhoneNumberId: data.whatsappPhoneNumberId ?? undefined,
-        whatsappToken: data.whatsappToken ?? undefined,
+        whatsappToken: tokenToSave,
         whatsappVerifyToken: data.whatsappVerifyToken ?? undefined,
       },
       select: { id: true, whatsappPhoneNumberId: true, whatsappVerifyToken: true },

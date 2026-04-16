@@ -38,12 +38,36 @@ async function tryRefreshToken(): Promise<string | null> {
     const data = await res.json();
     if (data?.accessToken) {
       localStorage.setItem("accessToken", data.accessToken);
+      // Atualiza refresh token rotacionado (se a API retornar)
+      if (data?.refreshToken) {
+        localStorage.setItem("refreshToken", data.refreshToken);
+      }
       return data.accessToken;
     }
     return null;
   } catch {
     return null;
   }
+}
+
+/** Revoga o refresh token no servidor antes de limpar sessão local */
+export async function apiLogout(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const refreshToken = localStorage.getItem("refreshToken");
+  if (refreshToken) {
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+    } catch {
+      // Silencia — logout local acontece de qualquer forma
+    }
+  }
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refreshToken");
+  localStorage.removeItem("user");
 }
 
 function clearSession() {

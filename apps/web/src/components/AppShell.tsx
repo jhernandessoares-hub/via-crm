@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import EnvBanner from "@/components/EnvBanner";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiLogout } from "@/lib/api";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -360,10 +360,8 @@ function AppShellInner({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  function logout() {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
+  async function logout() {
+    await apiLogout();
     router.push("/login");
   }
 

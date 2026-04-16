@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
+import type { JwtPayload } from './types';
 
 @Injectable()
 export class AuthService {
@@ -71,7 +72,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    const payload = {
+    const basePayload: JwtPayload = {
       sub: user.id,
       tenantId: user.tenantId,
       email: user.email,
@@ -79,11 +80,26 @@ export class AuthService {
       branchId: user.branchId,
     };
 
-    const accessToken = await this.jwt.signAsync(payload, { expiresIn: '15m' });
+    const accessToken = await this.jwt.signAsync(basePayload, { expiresIn: '15m' });
+
+    // Gera jti único para o refresh token — permite revogação individual
+    const jti = crypto.randomUUID();
+    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
     const refreshToken = await this.jwt.signAsync(
-      { ...payload, type: 'refresh' },
+      { ...basePayload, type: 'refresh', jti } satisfies JwtPayload,
       { expiresIn: '7d' },
     );
+
+    // Persiste o jti no banco para rastreamento e revogação
+    await this.prisma.refreshToken.create({
+      data: {
+        jti,
+        userId: user.id,
+        tenantId: user.tenantId,
+        expiresAt: refreshExpiresAt,
+      },
+    });
 
     this.audit.log({
       tenantId: user.tenantId,
@@ -107,7 +123,7 @@ export class AuthService {
   }
 
   async refreshAccessToken(refreshToken: string) {
-    let payload: any;
+    let payload: JwtPayload;
     try {
       payload = await this.jwt.verifyAsync(refreshToken);
     } catch {
@@ -118,6 +134,23 @@ export class AuthService {
       throw new UnauthorizedException('Token inválido para refresh.');
     }
 
+    // Se o token tem jti, valida contra o banco (tokens novos)
+    if (payload.jti) {
+      const stored = await this.prisma.refreshToken.findUnique({
+        where: { jti: payload.jti },
+      });
+
+      if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+        throw new UnauthorizedException('Refresh token revogado ou expirado.');
+      }
+
+      // Revoga o token atual (rotação de refresh token)
+      await this.prisma.refreshToken.update({
+        where: { jti: payload.jti },
+        data: { revokedAt: new Date() },
+      });
+    }
+
     const user = await this.prisma.user.findFirst({
       where: { id: payload.sub, tenantId: payload.tenantId, ativo: true },
       select: { id: true, tenantId: true, email: true, role: true, branchId: true },
@@ -125,7 +158,7 @@ export class AuthService {
 
     if (!user) throw new UnauthorizedException('Usuário não encontrado ou inativo.');
 
-    const newPayload = {
+    const newBasePayload: JwtPayload = {
       sub: user.id,
       tenantId: user.tenantId,
       email: user.email,
@@ -133,7 +166,28 @@ export class AuthService {
       branchId: user.branchId,
     };
 
-    const newAccessToken = await this.jwt.signAsync(newPayload, { expiresIn: '15m' });
+    const newAccessToken = await this.jwt.signAsync(newBasePayload, { expiresIn: '15m' });
+
+    // Emite novo refresh token com novo jti (rotação completa)
+    const newJti = crypto.randomUUID();
+    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const newRefreshToken = await this.jwt.signAsync(
+      { ...newBasePayload, type: 'refresh', jti: newJti } satisfies JwtPayload,
+      { expiresIn: '7d' },
+    );
+
+    if (payload.jti) {
+      // Persiste novo jti somente se o fluxo novo está ativo
+      await this.prisma.refreshToken.create({
+        data: {
+          jti: newJti,
+          userId: user.id,
+          tenantId: user.tenantId,
+          expiresAt: refreshExpiresAt,
+        },
+      });
+    }
 
     this.audit.log({
       tenantId: user.tenantId,
@@ -141,7 +195,28 @@ export class AuthService {
       action: 'TOKEN_REFRESH',
     });
 
-    return { accessToken: newAccessToken };
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwt.verifyAsync(refreshToken);
+    } catch {
+      // Token já expirado ou inválido — considerado já "deslogado"
+      return;
+    }
+
+    if (payload.jti) {
+      await this.prisma.refreshToken
+        .update({
+          where: { jti: payload.jti },
+          data: { revokedAt: new Date() },
+        })
+        .catch(() => {
+          // Silencia — token pode já ter sido revogado
+        });
+    }
   }
 
   async forgotPassword(email: string): Promise<void> {

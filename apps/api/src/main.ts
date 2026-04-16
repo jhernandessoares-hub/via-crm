@@ -29,6 +29,7 @@ import { QueueService } from "./queue/queue.service";
 import { WhatsappService } from "./secretary/whatsapp.service";
 import { NestLogger, Logger } from "./logger";
 import { seedAiModelDefaults } from "./ai/resolve-ai-model";
+import { initCloudinary } from "./cloudinary/cloudinary-init";
 
 const logger = new Logger('Bootstrap');
 
@@ -73,6 +74,9 @@ async function bootstrap() {
   );
 
   await app.listen(3000);
+
+  // ☁️ Inicializa Cloudinary uma única vez (singleton global)
+  initCloudinary();
 
   // 🤖 Seed de modelos de IA padrão (idempotente — não sobrescreve configurações existentes)
   await seedAiModelDefaults(app.get(PrismaService));

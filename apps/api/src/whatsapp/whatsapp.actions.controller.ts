@@ -33,24 +33,17 @@ export class WhatsAppActionsController {
   }
 
   private ensureCloudinaryEnv() {
-    const hasUrl = !!process.env.CLOUDINARY_URL;
+    // Cloudinary é inicializado uma única vez em main.ts via initCloudinary()
     const hasParts =
       !!process.env.CLOUDINARY_CLOUD_NAME &&
       !!process.env.CLOUDINARY_API_KEY &&
       !!process.env.CLOUDINARY_API_SECRET;
 
-    if (!hasUrl && !hasParts) {
+    if (!hasParts) {
       throw new BadRequestException(
-        'Cloudinary não configurado. Configure CLOUDINARY_URL (recomendado) ou CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET.',
+        'Cloudinary não configurado (CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET).',
       );
     }
-
-    cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
-      secure: true,
-    });
   }
 
   private async callMetaSend(body: any, tenantId?: string) {

@@ -27,27 +27,25 @@ function getRedisConnection() {
 
 function getMetaConfig() {
   const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
+  // Fallback para env vars globais — worker resolve token por tenantId em tempo de execução quando possível
   const token = process.env.WHATSAPP_TOKEN;
 
   if (!token) {
-    throw new Error('WHATSAPP_TOKEN não definido no .env');
+    throw new Error('WHATSAPP_TOKEN não definido no .env (fallback global para o worker de mídia)');
   }
 
   return { version, token };
 }
 
-function getCloudinaryConfig() {
-  const cloud_name = process.env.CLOUDINARY_CLOUD_NAME;
-  const api_key = process.env.CLOUDINARY_API_KEY;
-  const api_secret = process.env.CLOUDINARY_API_SECRET;
-
-  if (!cloud_name || !api_key || !api_secret) {
-    throw new Error(
-      'Cloudinary não configurado (CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET)',
-    );
+function ensureCloudinaryConfigured() {
+  // Cloudinary é inicializado em main.ts via initCloudinary() — apenas valida aqui
+  if (
+    !process.env.CLOUDINARY_CLOUD_NAME ||
+    !process.env.CLOUDINARY_API_KEY ||
+    !process.env.CLOUDINARY_API_SECRET
+  ) {
+    throw new Error('Cloudinary não configurado (CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET)');
   }
-
-  cloudinary.config({ cloud_name, api_key, api_secret, secure: true });
 }
 
 function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
@@ -216,7 +214,7 @@ async function uploadToCloudinary(
   publicId: string,
   kind: string | undefined,
 ) {
-  getCloudinaryConfig();
+  ensureCloudinaryConfigured();
 
   const resource_type = pickResourceType(kind, mimeType);
 

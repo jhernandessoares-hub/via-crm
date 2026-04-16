@@ -1,4 +1,5 @@
 import { PrismaService } from '../prisma/prisma.service';
+import { decryptField } from '../crypto/field-crypto.util';
 
 export interface WhatsappCreds {
   token: string;
@@ -9,6 +10,7 @@ export interface WhatsappCreds {
 /**
  * Resolve as credenciais WhatsApp para um tenant.
  * Prioridade: credenciais do tenant no banco → fallback para env vars (migração).
+ * O token é automaticamente decriptado se foi salvo com encryptField().
  */
 export async function resolveWhatsappCreds(
   prisma: PrismaService,
@@ -20,8 +22,15 @@ export async function resolveWhatsappCreds(
       select: { whatsappToken: true, whatsappPhoneNumberId: true },
     });
     if (tenant?.whatsappToken && tenant?.whatsappPhoneNumberId) {
+      let token: string;
+      try {
+        token = decryptField(tenant.whatsappToken);
+      } catch {
+        // Falha ao decriptar — usa o valor bruto (dados legados sem ENCRYPTION_KEY)
+        token = tenant.whatsappToken;
+      }
       return {
-        token: tenant.whatsappToken,
+        token,
         phoneNumberId: tenant.whatsappPhoneNumberId,
         version: 'v20.0',
       };
