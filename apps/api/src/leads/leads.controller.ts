@@ -185,6 +185,13 @@ export class LeadsController {
       resumoLead?: string | null;
     },
   ) {
+    // AGENT só pode editar qualificação de leads atribuídos a si mesmo
+    if (req.user.role === 'AGENT') {
+      const lead = await this.leadsService.getById(req.user, id);
+      if (lead?.assignedUserId && lead.assignedUserId !== (req.user.id ?? req.user.sub)) {
+        throw new ForbiddenException('Sem permissão para editar este lead');
+      }
+    }
     return this.leadsService.updateQualification(req.user.tenantId, id, body);
   }
 

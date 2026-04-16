@@ -53,6 +53,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
 import Anthropic from '@anthropic-ai/sdk';
 import { resolveAiModel } from '../ai/resolve-ai-model';
+import { resolveWhatsappCreds } from '../whatsapp/whatsapp-creds';
 
 // ✅ NOVO: Pipeline (ETAPA 2)
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -432,8 +433,8 @@ export class LeadsService {
           throw new Error('Fallback Meta: evento sem mediaId no payloadRaw');
         }
 
-        const metaInfo = await this.metaGetDownloadUrl(String(mediaId));
-        const meta = await this.metaDownloadStream(metaInfo.downloadUrl);
+        const metaInfo = await this.metaGetDownloadUrl(String(mediaId), user.tenantId);
+        const meta = await this.metaDownloadStream(metaInfo.downloadUrl, user.tenantId);
 
         const streamNode = meta.stream as unknown as Readable;
 
@@ -644,11 +645,11 @@ export class LeadsService {
       buffer: bufferFinal,
       filename: originalname,
       mimeType: mimeFinal,
-    });
+    }, user.tenantId);
 
     let send: Awaited<ReturnType<typeof this.sendMetaAudioMessage>>;
     try {
-      send = await this.sendMetaAudioMessage(lead.telefone, upload.mediaId);
+      send = await this.sendMetaAudioMessage(lead.telefone, upload.mediaId, user.tenantId);
     } catch (err: any) {
       await this.prisma.leadEvent.create({
         data: {
@@ -756,18 +757,19 @@ export class LeadsService {
       buffer,
       filename: originalname,
       mimeType: mimetype || 'application/octet-stream',
-    });
+    }, user.tenantId);
 
     let send: Awaited<ReturnType<typeof this.sendMetaImageMessage>>;
     try {
       send = isImage
-        ? await this.sendMetaImageMessage(lead.telefone, upload.mediaId)
+        ? await this.sendMetaImageMessage(lead.telefone, upload.mediaId, user.tenantId)
         : isVideo
-          ? await this.sendMetaVideoMessage(lead.telefone, upload.mediaId)
+          ? await this.sendMetaVideoMessage(lead.telefone, upload.mediaId, user.tenantId)
           : await this.sendMetaDocumentMessage(
               lead.telefone,
               upload.mediaId,
               originalname,
+              user.tenantId,
             );
     } catch (err: any) {
       await this.prisma.leadEvent.create({
@@ -938,16 +940,10 @@ export class LeadsService {
     buffer: Buffer;
     filename: string;
     mimeType: string;
-  }): Promise<{ mediaId: string; metaResponse: any }> {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
-    if (!token || !phoneNumberId) {
-      throw new Error(
-        'Config faltando: defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID no Railway/ambiente.',
-      );
-    }
+  }, tenantId?: string): Promise<{ mediaId: string; metaResponse: any }> {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('Config faltando: credenciais WhatsApp não configuradas.');
+    const { token, phoneNumberId, version } = creds;
 
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/media`;
 
@@ -1066,16 +1062,10 @@ export class LeadsService {
     throw lastError;
   }
 
-  private async sendMetaAudioMessage(toRaw: string, mediaId: string) {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
-    if (!token || !phoneNumberId) {
-      throw new Error(
-        'Config faltando: defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID no Railway/ambiente.',
-      );
-    }
+  private async sendMetaAudioMessage(toRaw: string, mediaId: string, tenantId?: string) {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('Config faltando: credenciais WhatsApp não configuradas.');
+    const { token, phoneNumberId, version } = creds;
 
     const to = this.normalizeToE164(toRaw);
 
@@ -1109,14 +1099,10 @@ export class LeadsService {
     return { to, metaResponse: data };
   }
 
-  private async sendMetaImageMessage(toRaw: string, mediaId: string) {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
-    if (!token || !phoneNumberId) {
-      throw new Error('Config faltando: WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID');
-    }
+  private async sendMetaImageMessage(toRaw: string, mediaId: string, tenantId?: string) {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('Config faltando: credenciais WhatsApp não configuradas.');
+    const { token, phoneNumberId, version } = creds;
 
     const to = this.normalizeToE164(toRaw);
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
@@ -1136,14 +1122,10 @@ export class LeadsService {
     return { to, metaResponse: data };
   }
 
-  async sendMetaImageByUrl(toRaw: string, imageUrl: string, caption?: string) {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
-    if (!token || !phoneNumberId) {
-      throw new Error('Config faltando: WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID');
-    }
+  async sendMetaImageByUrl(toRaw: string, imageUrl: string, caption?: string, tenantId?: string) {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('Config faltando: credenciais WhatsApp não configuradas.');
+    const { token, phoneNumberId, version } = creds;
 
     const to = this.normalizeToE164(toRaw);
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
@@ -1166,14 +1148,10 @@ export class LeadsService {
     return { to, metaResponse: data };
   }
 
-  private async sendMetaVideoMessage(toRaw: string, mediaId: string) {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
-    if (!token || !phoneNumberId) {
-      throw new Error('Config faltando: WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID');
-    }
+  private async sendMetaVideoMessage(toRaw: string, mediaId: string, tenantId?: string) {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('Config faltando: credenciais WhatsApp não configuradas.');
+    const { token, phoneNumberId, version } = creds;
 
     const to = this.normalizeToE164(toRaw);
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
@@ -1193,14 +1171,10 @@ export class LeadsService {
     return { to, metaResponse: data };
   }
 
-  private async sendMetaDocumentMessage(toRaw: string, mediaId: string, filename?: string) {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
-    if (!token || !phoneNumberId) {
-      throw new Error('Config faltando: WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID');
-    }
+  private async sendMetaDocumentMessage(toRaw: string, mediaId: string, filename?: string, tenantId?: string) {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('Config faltando: credenciais WhatsApp não configuradas.');
+    const { token, phoneNumberId, version } = creds;
 
     const to = this.normalizeToE164(toRaw);
     const url = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
@@ -1311,24 +1285,19 @@ export class LeadsService {
   // =========================
   // META (WhatsApp Cloud) helpers — download seguro
   // =========================
-  private getMetaConfigOrThrow() {
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-    const token = process.env.WHATSAPP_TOKEN;
-
-    if (!token) {
-      throw new Error('WHATSAPP_TOKEN não definido no .env');
-    }
-
-    return { version, token };
+  private async resolveMetaToken(tenantId?: string): Promise<{ version: string; token: string }> {
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('WHATSAPP_TOKEN não configurado');
+    return { version: creds.version, token: creds.token };
   }
 
-  private async metaGetDownloadUrl(mediaId: string): Promise<{
+  private async metaGetDownloadUrl(mediaId: string, tenantId?: string): Promise<{
     downloadUrl: string;
     mimeType?: string;
     sha256?: string;
     fileSize?: number;
   }> {
-    const { version, token } = this.getMetaConfigOrThrow();
+    const { version, token } = await this.resolveMetaToken(tenantId);
 
     const url = `https://graph.facebook.com/${version}/${encodeURIComponent(mediaId)}`;
 
@@ -1355,11 +1324,11 @@ export class LeadsService {
     };
   }
 
-  private async metaDownloadStream(downloadUrl: string): Promise<{
+  private async metaDownloadStream(downloadUrl: string, tenantId?: string): Promise<{
     stream: NodeJS.ReadableStream;
     contentLength?: number | null;
   }> {
-    const { token } = this.getMetaConfigOrThrow();
+    const { token } = await this.resolveMetaToken(tenantId);
 
     const res = await fetch(downloadUrl, {
       method: 'GET',
@@ -2395,21 +2364,15 @@ async updateStage(user: any, leadId: string, stageId: string) {
     return (found || '').trim();
   }
 
-  private async sendMetaMessage(toRaw: string, text: string) {
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const version = process.env.WHATSAPP_API_VERSION || 'v20.0';
-
+  private async sendMetaMessage(toRaw: string, text: string, tenantId?: string) {
     const safeText = (text || '').trim();
     if (!safeText) {
       throw new Error('Mensagem vazia: informe "message" no body.');
     }
 
-    if (!token || !phoneNumberId) {
-      throw new Error(
-        'Config faltando: defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID no Railway/ambiente.',
-      );
-    }
+    const creds = await resolveWhatsappCreds(this.prisma, tenantId);
+    if (!creds) throw new Error('Config faltando: credenciais WhatsApp não configuradas.');
+    const { token, phoneNumberId, version } = creds;
 
     const to = this.normalizeToE164(toRaw);
     if (!to || to.length < 8) {
@@ -2478,7 +2441,7 @@ const aiAssistanceLabel =
 
     let result: Awaited<ReturnType<typeof this.sendMetaMessage>>;
     try {
-      result = await this.sendMetaMessage(lead.telefone, text);
+      result = await this.sendMetaMessage(lead.telefone, text, user.tenantId);
     } catch (sendErr: any) {
       await this.prisma.leadEvent.create({
         data: {
@@ -2575,9 +2538,12 @@ const aiAssistanceLabel =
     return { ok: true };
   }
 
-  async exportCsv(user: { tenantId: string; role: string; branchId?: string }, filters: { from?: string; to?: string; stageId?: string }): Promise<string> {
+  async exportCsv(user: { tenantId: string; role: string; branchId?: string; id?: string; sub?: string }, filters: { from?: string; to?: string; stageId?: string }): Promise<string> {
     const where: any = { tenantId: user.tenantId, deletedAt: null };
-    if (user.role === 'AGENT' && user.branchId) where.branchId = user.branchId;
+    if (user.role === 'AGENT') {
+      if (user.branchId) where.branchId = user.branchId;
+      else where.assignedUserId = user.id ?? user.sub;
+    }
     if (filters.from) where.criadoEm = { ...(where.criadoEm || {}), gte: new Date(filters.from) };
     if (filters.to) where.criadoEm = { ...(where.criadoEm || {}), lte: new Date(filters.to) };
     if (filters.stageId) where.stageId = filters.stageId;
@@ -3262,6 +3228,8 @@ Objetivo:
     if (data.dataNascimento !== undefined) {
       updateData.dataNascimento = data.dataNascimento ? new Date(data.dataNascimento) : null;
     }
+    const existing = await (this.prisma as any).leadParticipante.findFirst({ where: { id: partId, leadId } });
+    if (!existing) throw new NotFoundException('Participante não encontrado neste lead');
     return (this.prisma as any).leadParticipante.update({
       where: { id: partId },
       data: updateData,

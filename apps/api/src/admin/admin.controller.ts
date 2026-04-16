@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PlatformAdminGuard } from './admin-auth.guard';
 import { AdminService } from './admin.service';
 import { AiProvidersService } from './ai-providers.service';
@@ -11,6 +12,8 @@ export class AdminController {
   ) {}
 
   // ── Auth ────────────────────────────────────────────────────────────────
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ auth: { ttl: 900_000, limit: 10 } })
   @Post('login')
   login(@Body() body: { email: string; senha: string }) {
     return this.adminService.login(body.email, body.senha);

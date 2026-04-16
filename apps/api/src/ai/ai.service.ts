@@ -418,8 +418,6 @@ export class AiService {
       this.getWhatsappFormattingRules(),
     ]);
 
-    // [DEBUG] Log do personaBlock resolvido
-    logger.log('[DEBUG] personaBlock =>\n' + personaBlock);
 
     const lastLeadMessage = String(params.lastLeadMessage || '').trim();
     const previousSuggestion = String(params.previousSuggestion || '').trim();
@@ -480,8 +478,6 @@ export class AiService {
 
     const systemContent = systemParts.join('\n\n');
 
-    // [DEBUG] Log do systemContent completo enviado para a OpenAI
-    logger.log('[DEBUG] systemContent =>\n' + systemContent);
 
     // ── role: user ──────────────────────────────────────────────────────────
     const userParts: string[] = [];

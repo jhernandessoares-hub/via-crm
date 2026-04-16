@@ -909,7 +909,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
       setError(e?.message ?? "Erro ao processar documentos");
       setStatus("ready");
     });
-  }, []);
+  }, [leadId, participanteNome]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function edit(field: string, value: string) {
     setCampos(prev => ({ ...prev, [field]: value }));
@@ -1576,11 +1576,11 @@ export default function DocumentosPage() {
   useEffect(() => { if (leadId) loadAll(); }, [leadId]);
 
   // Polling automático enquanto há documentos sendo classificados em background
+  const hasClassifying = docs.some(
+    d => d.processingStatus === "EM_FILA" || d.processingStatus === "ANALISANDO",
+  );
   useEffect(() => {
-    const classifyingInBackground = docs.some(
-      d => d.processingStatus === "EM_FILA" || d.processingStatus === "ANALISANDO",
-    );
-    if (!classifyingInBackground) return;
+    if (!hasClassifying) return;
     const interval = setInterval(async () => {
       try {
         const [docsRes, partsRes] = await Promise.all([
@@ -1592,7 +1592,7 @@ export default function DocumentosPage() {
       } catch { /* silencioso */ }
     }, 5000);
     return () => clearInterval(interval);
-  }, [docs, leadId]);
+  }, [hasClassifying, leadId]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -1649,10 +1649,14 @@ export default function DocumentosPage() {
   }
 
   async function handleAddParticipante(nome: string, classificacao: string) {
-    const created = await apiFetch(`/leads/${leadId}/participantes`, { method: "POST", body: JSON.stringify({ nome, classificacao }) });
-    setParticipantes(prev => [...prev, created]);
-    setOpenCadastro(prev => new Set(prev).add(created.id));
-    setAddPartOpen(false);
+    try {
+      const created = await apiFetch(`/leads/${leadId}/participantes`, { method: "POST", body: JSON.stringify({ nome, classificacao }) });
+      setParticipantes(prev => [...prev, created]);
+      setOpenCadastro(prev => new Set(prev).add(created.id));
+      setAddPartOpen(false);
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao adicionar participante");
+    }
   }
 
   function handleRemoveParticipante(partId: string) {

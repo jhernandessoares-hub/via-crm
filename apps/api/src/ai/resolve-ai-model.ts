@@ -33,8 +33,9 @@ export async function resolveAiModel(
       const def = await prisma.aiModelConfig.findUnique({ where: { function: 'DEFAULT' } });
       if (def?.modelName) return def.modelName;
     }
-  } catch {
-    // silently fallback
+  } catch (err: any) {
+    // eslint-disable-next-line no-console
+    console.warn(`[resolveAiModel] Falha ao consultar banco para função "${fn}": ${err?.message}`);
   }
   return AI_MODEL_DEFAULTS[fn] ?? AI_MODEL_DEFAULTS['DEFAULT'];
 }

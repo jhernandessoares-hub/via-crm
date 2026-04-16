@@ -165,6 +165,7 @@ export class AdminService {
       select: { id: true, tenantId: true, email: true, role: true, branchId: true },
     });
     if (!owner) throw new BadRequestException('OWNER não encontrado para este tenant.');
+    // Token de impersonação é um token de TENANT — deve usar JWT_SECRET (não PLATFORM_ADMIN_JWT_SECRET)
     const token = await this.jwt.signAsync({
       sub: owner.id,
       tenantId: owner.tenantId,
@@ -172,7 +173,7 @@ export class AdminService {
       role: owner.role,
       branchId: owner.branchId,
       impersonatedBy: adminPayload.sub,
-    }, { expiresIn: '2h' });
+    }, { expiresIn: '2h', secret: process.env.JWT_SECRET });
     this.audit.log({
       action: 'PLATFORM_IMPERSONATE',
       resourceType: 'tenant',

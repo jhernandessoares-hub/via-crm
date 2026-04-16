@@ -636,8 +636,9 @@ async function handleInboundAiJob(
     recentConversation ? `Histórico recente real da conversa:\n${recentConversation}` : '',
   ].filter(Boolean).join('\n\n');
 
+  const AI_TIMEOUT_MS = 30_000;
   try {
-    const suggestion = await ai.generateFollowUp({
+    const aiCallPromise = ai.generateFollowUp({
       nome: String((lead.nomeCorreto ?? lead.nome) || 'Cliente').trim() || 'Cliente',
       status: String(lead.status || 'NOVO'),
       tenantId: lead.tenantId,
@@ -661,6 +662,10 @@ async function handleInboundAiJob(
         return 'ferramenta não reconhecida';
       },
     } as any);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`IA timeout após ${AI_TIMEOUT_MS / 1000}s para leadId=${lead.id}`)), AI_TIMEOUT_MS),
+    );
+    const suggestion = await Promise.race([aiCallPromise, timeoutPromise]);
 
     if (!suggestion || !suggestion.trim()) {
       logger.log(`⚠️ INBOUND AI: suggestion vazia para leadId=${lead.id}`);

@@ -214,7 +214,11 @@ export class ChannelsWebhookController {
       if (channel.type === 'META_ADS') {
         const appSecret = (channel.config as any)?.appSecret;
         const signature = (req.headers as any)['x-hub-signature-256'] as string | undefined;
-        if (appSecret && signature) {
+        if (appSecret) {
+          if (!signature) {
+            logger.warn(`Meta HMAC ausente para canal ${channel.id} — request rejeitado`);
+            return;
+          }
           const expected = 'sha256=' + crypto
             .createHmac('sha256', appSecret)
             .update(JSON.stringify(req.body))
