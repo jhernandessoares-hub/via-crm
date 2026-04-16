@@ -546,10 +546,10 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
 
 // ─── Modal: campo + preview do documento ──────────────────────────────────────
 
-function FieldDocModal({ leadId, fieldLabel, fieldName, currentValue, inputType, options, relevantDocs, onSave, onClose }: {
+function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType, options, relevantDocs, onSave, onClose }: {
   leadId: string;
+  personName: string;
   fieldLabel: string;
-  fieldName: string;
   currentValue: any;
   inputType?: string;
   options?: { value: string; label: string }[];
@@ -557,15 +557,11 @@ function FieldDocModal({ leadId, fieldLabel, fieldName, currentValue, inputType,
   onSave: (value: any) => Promise<void>;
   onClose: () => void;
 }) {
-  // Abre já no primeiro doc da lista (que é o tipo preferido para o campo)
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(relevantDocs[0]?.id ?? null);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState(String(currentValue ?? ""));
   const [saving, setSaving] = useState(false);
 
-  // Reseta seleção quando a lista de docs muda
-  useEffect(() => { setSelectedDocId(relevantDocs[0]?.id ?? null); }, [relevantDocs.map(d => d.id).join(",")]); // eslint-disable-line
-
-  const selectedDoc = relevantDocs.find(d => d.id === selectedDocId) ?? relevantDocs[0] ?? null;
+  const selectedDoc = relevantDocs.find(d => d.id === selectedDocId) ?? null;
 
   async function handleSave() {
     setSaving(true);
@@ -575,35 +571,41 @@ function FieldDocModal({ leadId, fieldLabel, fieldName, currentValue, inputType,
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }} onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full mx-4 flex overflow-hidden" style={{ maxWidth: 900, maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl flex overflow-hidden mx-4"
+        style={{ width: selectedDoc ? 860 : 400, maxWidth: "95vw", maxHeight: "90vh", transition: "width 0.2s ease" }}
+        onClick={e => e.stopPropagation()}>
 
-        {/* ── Coluna esquerda: preview do documento ── */}
-        <div className="flex-1 bg-gray-900 flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
-          {/* Seletor de documento — sempre visível */}
-          <div className="flex flex-wrap gap-1 p-2 bg-gray-800 shrink-0">
-            {relevantDocs.map(d => (
-              <button key={d.id}
-                className={`px-2 py-1 rounded text-xs transition-colors ${selectedDocId === d.id ? "bg-white text-gray-900 font-medium" : "text-gray-300 hover:bg-gray-700"}`}
-                onClick={() => setSelectedDocId(d.id)}>
-                {tipoLabel(d.tipo)}{d.observacao ? ` — ${d.observacao}` : ""}{d.filename ? ` (${d.filename})` : ""}
-              </button>
-            ))}
-          </div>
-          {/* Preview */}
-          {selectedDoc
-            ? <DocPreviewInline leadId={leadId} doc={selectedDoc} />
-            : <div className="flex-1 flex items-center justify-center text-gray-500 text-sm p-8">Nenhum documento disponível para visualizar</div>
-          }
-        </div>
-
-        {/* ── Coluna direita: campo de edição ── */}
-        <div className="w-72 shrink-0 flex flex-col p-5 gap-4 border-l border-gray-100">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-800">{fieldLabel}</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+        {/* ── Coluna esquerda: participante + botões de doc + campo ── */}
+        <div className="flex flex-col shrink-0 overflow-y-auto" style={{ width: 400 }}>
+          {/* Cabeçalho: nome do participante */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Participante</div>
+              <div className="text-base font-semibold text-gray-800">{personName || "Lead"}</div>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none ml-4">✕</button>
           </div>
 
-          <div>
+          {/* Grade de botões — um por documento */}
+          <div className="px-5 pt-4 pb-2">
+            <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-3">Documentos disponíveis</div>
+            <div className="grid grid-cols-2 gap-2">
+              {relevantDocs.map(d => (
+                <button key={d.id}
+                  className={`rounded-xl border-2 px-3 py-4 text-sm font-medium text-left transition-all ${
+                    selectedDocId === d.id
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-300 hover:bg-blue-50"
+                  }`}
+                  onClick={() => setSelectedDocId(d.id === selectedDocId ? null : d.id)}>
+                  {tipoLabel(d.tipo)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Campo de edição */}
+          <div className="px-5 pt-3 pb-5 mt-auto">
             <label className="block text-[10px] text-gray-400 uppercase tracking-wide mb-1">{fieldLabel}</label>
             {options ? (
               <select className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -620,21 +622,29 @@ function FieldDocModal({ leadId, fieldLabel, fieldName, currentValue, inputType,
                 onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
               />
             )}
-          </div>
-
-          <div className="mt-auto flex flex-col gap-2">
-            <button
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? "Salvando..." : "Confirmar"}
-            </button>
-            <button className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onClose}>
-              Cancelar
-            </button>
+            <div className="flex gap-2 mt-3">
+              <button
+                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                onClick={handleSave} disabled={saving}>
+                {saving ? "Salvando..." : "Confirmar"}
+              </button>
+              <button className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onClose}>
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* ── Coluna direita: preview do documento ── */}
+        {selectedDoc && (
+          <div className="flex-1 bg-gray-900 flex flex-col overflow-hidden border-l border-gray-700" style={{ minWidth: 0 }}>
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-800 shrink-0">
+              <span className="text-xs text-gray-300 font-medium">{tipoLabel(selectedDoc.tipo)}</span>
+              <button className="text-gray-400 hover:text-gray-200 text-sm leading-none" onClick={() => setSelectedDocId(null)}>✕</button>
+            </div>
+            <DocPreviewInline leadId={leadId} doc={selectedDoc} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1222,7 +1232,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   participanteNome?: string | null;
   personName?: string;
   onPersonNameSave?: (name: string) => Promise<void>;
-  onOpenFieldDoc?: (fieldName: string, fieldLabel: string, currentValue: any, inputType: string | undefined, options: { value: string; label: string }[] | undefined, relevantDocs: DocItem[], onSave: (val: any) => Promise<void>) => void;
+  onOpenFieldDoc?: (fieldName: string, fieldLabel: string, personName: string, currentValue: any, inputType: string | undefined, options: { value: string; label: string }[] | undefined, relevantDocs: DocItem[], onSave: (val: any) => Promise<void>) => void;
 }) {
   const [vals, setVals] = useState<Record<string, any>>(initialValues);
   const [origens, setOrigens] = useState<Record<string, string | null>>(initialOrigem);
@@ -1322,7 +1332,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
               type="button"
               title="Ver documento"
               className="ml-auto p-0.5 rounded text-gray-300 hover:text-blue-500 transition-colors"
-              onClick={() => onOpenFieldDoc(name, label, vals[name] ?? "", type, options, relevantDocs, async (val) => { setVals(v => ({ ...v, [name]: val })); await saveField(name, val, "MANUAL"); })}
+              onClick={() => onOpenFieldDoc(name, label, personName ?? "", vals[name] ?? "", type, options, relevantDocs, async (val) => { setVals(v => ({ ...v, [name]: val })); await saveField(name, val, "MANUAL"); })}
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1398,7 +1408,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
               <span className="flex-1 text-sm text-gray-800">{personName || <span className="text-gray-400 italic">não informado</span>}</span>
               {getRelevantDocs(isLead ? "nomeCorreto" : "nome").length > 0 && onOpenFieldDoc && (
                 <button type="button" title="Ver documento" className="text-gray-300 hover:text-blue-500 transition-colors"
-                  onClick={() => { const fd = isLead ? "nomeCorreto" : "nome"; const rd = getRelevantDocs(fd); onOpenFieldDoc(fd, "Nome", personName ?? "", undefined, undefined, rd, async (val) => { if (onPersonNameSave) await onPersonNameSave(val); }); }}>
+                  onClick={() => { const fd = isLead ? "nomeCorreto" : "nome"; const rd = getRelevantDocs(fd); onOpenFieldDoc(fd, "Nome", personName ?? "", personName ?? "", undefined, undefined, rd, async (val: string) => { if (onPersonNameSave) await onPersonNameSave(val); }); }}>
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                 </button>
               )}
@@ -1512,7 +1522,7 @@ export default function DocumentosPage() {
 
   // Modal campo + documento (nível de página para evitar clipping por overflow:hidden)
   const [fieldDocModal, setFieldDocModal] = useState<{
-    fieldLabel: string; currentValue: any; inputType?: string;
+    fieldLabel: string; personName: string; currentValue: any; inputType?: string;
     options?: { value: string; label: string }[];
     relevantDocs: DocItem[];
     onSave: (val: any) => Promise<void>;
@@ -2044,7 +2054,7 @@ export default function DocumentosPage() {
                 <div className="px-5 pb-5 border-t border-gray-100 pt-4">
                   <CadastroForm leadId={leadId} isLead={true} showFinanceiro={true}
                     docs={docs} participanteNome={null}
-                    onOpenFieldDoc={(fn, fl, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
+                    onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
                     personName={lead.nomeCorreto ?? lead.nome}
                     onPersonNameSave={async (name) => {
                       await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name, cadastroOrigem: {} }) });
@@ -2107,7 +2117,7 @@ export default function DocumentosPage() {
                   <div className="px-5 pb-5 border-t border-gray-100 pt-4">
                     <CadastroForm leadId={leadId} isLead={false} participanteId={p.id} showFinanceiro={false}
                       docs={docs} participanteNome={p.nome}
-                      onOpenFieldDoc={(fn, fl, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
+                      onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
                       personName={p.nome}
                       onPersonNameSave={async (name) => {
                         await apiFetch(`/leads/${leadId}/participantes/${p.id}`, { method: "PATCH", body: JSON.stringify({ nome: name }) });
@@ -2230,8 +2240,8 @@ export default function DocumentosPage() {
       {fieldDocModal && fieldDocModal.relevantDocs.length > 0 && (
         <FieldDocModal
           leadId={leadId}
+          personName={fieldDocModal.personName}
           fieldLabel={fieldDocModal.fieldLabel}
-          fieldName=""
           currentValue={fieldDocModal.currentValue}
           inputType={fieldDocModal.inputType}
           options={fieldDocModal.options}
