@@ -2698,7 +2698,7 @@ const aiAssistanceLabel =
       .sort((a, b) => b.score - a.score)[0];
 
     const bestParticipantScore = bestParticipant?.score ?? 0;
-    if (leadScore >= 85 && leadScore >= bestParticipantScore + 5) {
+    if (leadScore >= 72 && leadScore >= bestParticipantScore + 5) {
       return {
         participanteNome: null,
         ownerLabel: leadNome,
@@ -2707,7 +2707,7 @@ const aiAssistanceLabel =
       };
     }
 
-    if (bestParticipant && bestParticipant.score >= 85) {
+    if (bestParticipant && bestParticipant.score >= 72) {
       return {
         participanteNome: bestParticipant.nome,
         ownerLabel: bestParticipant.nome,

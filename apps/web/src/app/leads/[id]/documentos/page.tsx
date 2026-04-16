@@ -227,10 +227,26 @@ function normalizeSuggestionValue(field: string, value: any): any {
   }
   return value;
 }
+/** Correspondência fuzzy de nomes: "Alex" bate com "Alex Barbosa Santos" */
+function nameFuzzyMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a === null && b === null) return true;
+  if (!a || !b) return a === b;
+  const stop = new Set(["da", "de", "di", "do", "dos", "das", "e"]);
+  const norm = (s: string) =>
+    s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z\s]/g, " ").trim();
+  const tokens = (s: string) => [...new Set(norm(s).split(/\s+/).filter(t => t.length >= 2 && !stop.has(t)))];
+  const tA = tokens(a);
+  const tB = tokens(b);
+  if (!tA.length || !tB.length) return false;
+  const common = tA.filter(t => tB.includes(t)).length;
+  if (!common) return false;
+  return common / Math.min(tA.length, tB.length) >= 0.7;
+}
+
 function buildCadastroSuggestions(docs: DocItem[], participanteNome: string | null, isLead: boolean): CadastroSuggestionMap {
   const suggestions: CadastroSuggestionMap = {};
   const targetDocs = docs.filter(d =>
-    d.participanteNome === participanteNome &&
+    nameFuzzyMatch(d.participanteNome, participanteNome) &&
     !!d.aiExtractedData &&
     d.processingStatus === "CONCLUIDO",
   );
@@ -1192,7 +1208,7 @@ function ReclassifyModal({ doc, participantes, onConfirm, onCancel, busy }: {
 
 // ─── Formulário de cadastro (painel direito) ───────────────────────────────────
 
-function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOrigem, aiSuggestions = {}, showFinanceiro, docs, participanteNome, personName, onPersonNameSave }: {
+function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOrigem, aiSuggestions = {}, showFinanceiro, docs, participanteNome, personName, onPersonNameSave, onOpenFieldDoc }: {
   leadId: string; isLead: boolean; participanteId?: string;
   initialValues: Record<string, any>;
   initialOrigem: Record<string, string | null>;
@@ -1202,12 +1218,12 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   participanteNome?: string | null;
   personName?: string;
   onPersonNameSave?: (name: string) => Promise<void>;
+  onOpenFieldDoc?: (fieldName: string, fieldLabel: string, currentValue: any, inputType: string | undefined, options: { value: string; label: string }[] | undefined, relevantDocs: DocItem[], onSave: (val: any) => Promise<void>) => void;
 }) {
   const [vals, setVals] = useState<Record<string, any>>(initialValues);
   const [origens, setOrigens] = useState<Record<string, string | null>>(initialOrigem);
   const [savedField, setSavedField] = useState<string | null>(null);
   const [errField, setErrField] = useState<string | null>(null);
-  const [fieldDocModal, setFieldDocModal] = useState<{ fieldName: string; fieldLabel: string; inputType?: string; options?: { value: string; label: string }[] } | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(personName ?? "");
   const [savingName, setSavingName] = useState(false);
@@ -1264,18 +1280,17 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     return (current === null || current === undefined || current === "") && suggestion?.value !== null && suggestion?.value !== undefined && suggestion?.value !== "";
   });
 
-  // Retorna TODOS os docs com arquivo enviado para este participante.
-  // Os tipos mapeados para o campo vêm primeiro (para abertura padrão no modal).
+  // Retorna TODOS os docs com arquivo do participante (fuzzy match de nome).
+  // Os tipos mapeados para o campo vêm primeiro.
   function getRelevantDocs(fieldName: string): DocItem[] {
     if (!docs) return [];
     const preferredTypes = FIELD_DOC_MAP[fieldName] ?? [];
     const all = docs.filter(d =>
-      d.participanteNome === (participanteNome ?? null) &&
+      nameFuzzyMatch(d.participanteNome, participanteNome ?? null) &&
       !d.naoAplicavel &&
       !d.pendingReview &&
       !!d.url,
     );
-    // Ordena: preferred types primeiro, depois o resto
     return [
       ...all.filter(d => preferredTypes.includes(d.tipo)),
       ...all.filter(d => !preferredTypes.includes(d.tipo)),
@@ -1296,12 +1311,12 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         <div className="flex items-center gap-1 mb-0.5">
           <label className="block text-[10px] text-gray-400 uppercase tracking-wide leading-none">{label}</label>
           {isIA && <IABadge small />}
-          {hasDoc && (
+          {hasDoc && onOpenFieldDoc && (
             <button
               type="button"
               title="Ver documento"
               className="ml-auto p-0.5 rounded text-gray-300 hover:text-blue-500 transition-colors"
-              onClick={() => setFieldDocModal({ fieldName: name, fieldLabel: label, inputType: type, options })}
+              onClick={() => onOpenFieldDoc(name, label, vals[name] ?? "", type, options, relevantDocs, async (val) => { setVals(v => ({ ...v, [name]: val })); await saveField(name, val, "MANUAL"); })}
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1350,9 +1365,6 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     );
   };
 
-  // Docs relevantes para o campo aberto no modal
-  const modalDocs = fieldDocModal ? getRelevantDocs(fieldDocModal.fieldName) : [];
-
   return (
     <div className="space-y-4 text-xs">
 
@@ -1378,9 +1390,9 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
           ) : (
             <div className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5">
               <span className="flex-1 text-sm text-gray-800">{personName || <span className="text-gray-400 italic">não informado</span>}</span>
-              {getRelevantDocs(isLead ? "nomeCorreto" : "nome").length > 0 && (
+              {getRelevantDocs(isLead ? "nomeCorreto" : "nome").length > 0 && onOpenFieldDoc && (
                 <button type="button" title="Ver documento" className="text-gray-300 hover:text-blue-500 transition-colors"
-                  onClick={() => setFieldDocModal({ fieldName: isLead ? "nomeCorreto" : "nome", fieldLabel: "Nome" })}>
+                  onClick={() => { const fd = isLead ? "nomeCorreto" : "nome"; const rd = getRelevantDocs(fd); onOpenFieldDoc(fd, "Nome", personName ?? "", undefined, undefined, rd, async (val) => { if (onPersonNameSave) await onPersonNameSave(val); }); }}>
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                 </button>
               )}
@@ -1445,23 +1457,6 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
       </div>
 
-      {/* Modal campo + preview */}
-      {fieldDocModal && modalDocs.length > 0 && (
-        <FieldDocModal
-          leadId={leadId}
-          fieldLabel={fieldDocModal.fieldLabel}
-          fieldName={fieldDocModal.fieldName}
-          currentValue={vals[fieldDocModal.fieldName] ?? ""}
-          inputType={fieldDocModal.inputType}
-          options={fieldDocModal.options}
-          relevantDocs={modalDocs}
-          onSave={async (value) => {
-            setVals(v => ({ ...v, [fieldDocModal.fieldName]: value }));
-            await saveField(fieldDocModal.fieldName, value, "MANUAL");
-          }}
-          onClose={() => setFieldDocModal(null)}
-        />
-      )}
     </div>
   );
 }
@@ -1508,6 +1503,23 @@ export default function DocumentosPage() {
   const [openCadastro, setOpenCadastro] = useState<Set<string>>(new Set(["__lead__"]));
   const [openDocs, setOpenDocs] = useState<Set<string>>(new Set(["__lead__"]));
   const [personOrder, setPersonOrder] = useState<string[]>([]);
+
+  // Modal campo + documento (nível de página para evitar clipping por overflow:hidden)
+  const [fieldDocModal, setFieldDocModal] = useState<{
+    fieldLabel: string; currentValue: any; inputType?: string;
+    options?: { value: string; label: string }[];
+    relevantDocs: DocItem[];
+    onSave: (val: any) => Promise<void>;
+  } | null>(null);
+
+  // Participantes ordenados por personOrder
+  const sortedParticipantes = personOrder.length > 0
+    ? [...participantes].sort((a, b) => {
+        const ia = personOrder.indexOf(a.id);
+        const ib = personOrder.indexOf(b.id);
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      })
+    : participantes;
 
   // ─── Carga ──────────────────────────────────────────────────────────────────
 
@@ -1990,11 +2002,11 @@ export default function DocumentosPage() {
               <ReviewSection />
               <DocSection nome={null} displayName={leadDisplayName} classificacao={null} isLead={true}
                 open={openDocs.has("__lead__")} onToggle={() => setOpenDocs(prev => { const s = new Set(prev); s.has("__lead__") ? s.delete("__lead__") : s.add("__lead__"); return s; })} />
-              {participantes.map((p, idx) => (
+              {sortedParticipantes.map((p, idx) => (
                 <DocSection key={p.id} nome={p.nome} displayName={p.nome} classificacao={p.classificacao} isLead={false}
                   open={openDocs.has(p.id)} onToggle={() => setOpenDocs(prev => { const s = new Set(prev); s.has(p.id) ? s.delete(p.id) : s.add(p.id); return s; })}
                   onMoveUp={idx > 0 ? () => movePerson(p.id, "up") : undefined}
-                  onMoveDown={idx < participantes.length - 1 ? () => movePerson(p.id, "down") : undefined}
+                  onMoveDown={idx < sortedParticipantes.length - 1 ? () => movePerson(p.id, "down") : undefined}
                 />
               ))}
             </div>
@@ -2026,6 +2038,7 @@ export default function DocumentosPage() {
                 <div className="px-5 pb-5 border-t border-gray-100 pt-4">
                   <CadastroForm leadId={leadId} isLead={true} showFinanceiro={true}
                     docs={docs} participanteNome={null}
+                    onOpenFieldDoc={(fn, fl, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
                     personName={lead.nomeCorreto ?? lead.nome}
                     onPersonNameSave={async (name) => {
                       await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name, cadastroOrigem: {} }) });
@@ -2048,46 +2061,47 @@ export default function DocumentosPage() {
             </div>
 
             {/* Participantes adicionais */}
-            {participantes.map((p, idx) => (
+            {sortedParticipantes.map((p, idx) => (
               <div key={p.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-gray-50 cursor-pointer"
                   role="button" tabIndex={0}
                   onClick={() => setOpenCadastro(prev => { const s = new Set(prev); s.has(p.id) ? s.delete(p.id) : s.add(p.id); return s; })}>
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-1" style={{ minWidth: 0 }}>
                     <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
                       <span className="text-xs font-bold text-gray-600">{(p.nome[0] || "?").toUpperCase()}</span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-800 truncate">{p.nome}</span>
+                    <span className="text-sm font-semibold text-gray-800" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nome}</span>
                     {p.classificacao && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5 shrink-0">{classLabel(p.classificacao)}</span>}
                   </div>
-                  <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <div className="flex items-center gap-1 ml-2 shrink-0">
                     <div className="flex items-center" onClick={e => e.stopPropagation()}>
                       <button disabled={idx === 0} onClick={() => movePerson(p.id, "up")} title="Mover para cima"
                         className="p-1 rounded transition-colors"
                         style={{ color: idx === 0 ? "#d1d5db" : "#4b5563", cursor: idx === 0 ? "not-allowed" : "pointer" }}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
                       </button>
-                      <button disabled={idx === participantes.length - 1} onClick={() => movePerson(p.id, "down")} title="Mover para baixo"
+                      <button disabled={idx === sortedParticipantes.length - 1} onClick={() => movePerson(p.id, "down")} title="Mover para baixo"
                         className="p-1 rounded transition-colors"
-                        style={{ color: idx === participantes.length - 1 ? "#d1d5db" : "#4b5563", cursor: idx === participantes.length - 1 ? "not-allowed" : "pointer" }}>
+                        style={{ color: idx === sortedParticipantes.length - 1 ? "#d1d5db" : "#4b5563", cursor: idx === sortedParticipantes.length - 1 ? "not-allowed" : "pointer" }}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                       </button>
                     </div>
-                    <button className="text-xs text-blue-600 border border-blue-200 rounded-full px-2.5 py-1 hover:bg-blue-50 flex items-center gap-1"
+                    <button className="text-xs text-blue-600 border border-blue-200 rounded-full px-2 py-1 hover:bg-blue-50 flex items-center gap-1 shrink-0"
                       onClick={ev => { ev.stopPropagation(); setAICadastroTarget({ participanteNome: p.nome, participanteId: p.id, displayName: p.nome, isLead: false }); }}>
-                      <IABadge small /> Cadastrar com IA
+                      <IABadge small /> IA
                     </button>
-                    <button className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40 px-1"
+                    <button className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40 px-1 shrink-0"
                       onClick={e => { e.stopPropagation(); handleRemoveParticipante(p.id); }} disabled={busyRemove.has(p.id)}>
                       {busyRemove.has(p.id) ? "..." : "Remover"}
                     </button>
-                    <svg className={`h-4 w-4 text-gray-400 transition-transform ${openCadastro.has(p.id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    <svg className={`h-4 w-4 text-gray-400 transition-transform shrink-0 ${openCadastro.has(p.id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                   </div>
                 </div>
                 {openCadastro.has(p.id) && (
                   <div className="px-5 pb-5 border-t border-gray-100 pt-4">
                     <CadastroForm leadId={leadId} isLead={false} participanteId={p.id} showFinanceiro={false}
                       docs={docs} participanteNome={p.nome}
+                      onOpenFieldDoc={(fn, fl, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
                       personName={p.nome}
                       onPersonNameSave={async (name) => {
                         await apiFetch(`/leads/${leadId}/participantes/${p.id}`, { method: "PATCH", body: JSON.stringify({ nome: name }) });
@@ -2204,6 +2218,21 @@ export default function DocumentosPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal: campo + preview de documento (nível raiz para não ser clipado) */}
+      {fieldDocModal && fieldDocModal.relevantDocs.length > 0 && (
+        <FieldDocModal
+          leadId={leadId}
+          fieldLabel={fieldDocModal.fieldLabel}
+          fieldName=""
+          currentValue={fieldDocModal.currentValue}
+          inputType={fieldDocModal.inputType}
+          options={fieldDocModal.options}
+          relevantDocs={fieldDocModal.relevantDocs}
+          onSave={fieldDocModal.onSave}
+          onClose={() => setFieldDocModal(null)}
+        />
       )}
 
       {/* Modal: confirmar remoção de participante */}
