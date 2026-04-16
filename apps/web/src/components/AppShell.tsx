@@ -512,13 +512,10 @@ function AppShellInner({
             )}
 
             {role === "OWNER" && (
-              <Link className={linkClass("/settings/bot")} href="/settings/bot">
-                <span>Config. IA</span>
-              </Link>
-            )}
-
-            {role === "OWNER" && (
-              <Link className={linkClass("/settings")} href="/settings">
+              <Link
+                className={`flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-slate-900 ${pathname.startsWith("/settings") && !currentGroup ? "bg-slate-900" : ""}`}
+                href="/settings"
+              >
                 <span>Configurações</span>
               </Link>
             )}

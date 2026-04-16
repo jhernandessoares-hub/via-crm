@@ -144,6 +144,7 @@ PlatformConfigHistory → histórico de alterações de PlatformConfig (key, pre
 AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION|DOC_CLASSIFICATION, modelName). Chaves de API ficam no .env.
 Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
 Tenant.roundRobinConfig → Json? — configuração da roleta de distribuição de leads: { incluirGerentes: bool, incluirOwner: bool }
+RefreshToken      → revogação de refresh token por jti: campos jti (unique), userId, expiresAt, revokedAt? — persiste no banco para invalidação segura
 ```
 
 ---
@@ -151,12 +152,14 @@ Tenant.roundRobinConfig → Json? — configuração da roleta de distribuição
 ## Autenticação e Segurança
 
 - **JWT access token:** 15 minutos
-- **JWT refresh token:** 7 dias (`type: 'refresh'` no payload)
+- **JWT refresh token:** 7 dias (`type: 'refresh'` no payload) — revogação por jti: login persiste jti no banco, refresh valida+revoga+emite novo (rotation), logout revoga
 - **Platform Admin JWT:** 8 horas (`isPlatformAdmin: true` no payload)
 - **Endpoint refresh:** `POST /auth/refresh` com `{ refreshToken }`
+- **Endpoint logout:** `POST /auth/logout` com `{ refreshToken }` — revoga jti no banco antes de responder
 - **Recuperação de senha:** `POST /auth/forgot-password` → email com token 1h; `POST /auth/reset-password`
-- **Frontend (`api.ts`):** renova token automaticamente no 401 sem logout
-- **JWT Strategy:** valida `sub` no banco a cada request (usuário ativo)
+- **Frontend (`api.ts`):** renova token automaticamente no 401; `apiLogout()` revoga no servidor antes de limpar localStorage; AppShell usa `apiLogout()` no logout
+- **JWT Strategy:** valida `sub` no banco a cada request; rejeita refresh tokens usados como access tokens (campo `type`)
+- **AuthenticatedUser / JwtPayload:** interfaces em `auth/types.ts` — usar em controllers e guards no lugar de `any`
 - **PlanGuard:** existe no código mas **não está aplicado** — lógica de planos removida, todos os tenants têm acesso total
 - **PlatformAdminGuard:** valida `isPlatformAdmin: true` no JWT — rotas `/admin/*`
 - **Rate limiting:** 120 req/min global; 10 tent./15min em `/auth/login`; 5 tent./15min em `/auth/register-master` e `/auth/forgot-password`
@@ -167,6 +170,9 @@ Tenant.roundRobinConfig → Json? — configuração da roleta de distribuição
 - **Branch isolation:** role AGENT só vê leads da própria `branchId`
 - **`POST /tenants` e `POST /auth/register-master`:** protegidos por `REGISTER_MASTER_SECRET` env
 - **`POST /admin/bootstrap`:** protegido por `PLATFORM_ADMIN_SECRET` env (cria primeiro admin)
+- **WhatsApp token encrypt-at-rest:** `Tenant.whatsappToken` armazenado cifrado (AES-256-GCM, prefixo `ENC:`). `field-crypto.util.ts` em `src/crypto/`; `resolveWhatsappCreds` decifra ao ler; `tenants.service` cifra ao salvar. Requer `ENCRYPTION_KEY` (64 chars hex). Graceful degradation sem chave (loga warning, continua sem cifrar).
+- **Cloudinary documentos privados:** uploads de `LeadDocument` usam `type: 'authenticated'` — URL direta nunca funciona sem assinatura. `viewDocument` gera URL assinada (validade 2 min) via `buildSignedCloudinaryDownloadUrl()`. Imagens de produto e mídia WhatsApp continuam públicas.
+- **Cloudinary singleton:** `initCloudinary()` em `cloudinary/cloudinary-init.ts`, chamado uma vez no `main.ts`. Nenhum módulo chama `cloudinary.config()` diretamente.
 
 ---
 
@@ -242,6 +248,7 @@ APP_URL=                        # URL do frontend (para links de reset de senha)
 REGISTER_MASTER_SECRET=         # protege criação de tenants e master users
 WEBHOOK_HMAC_SECRET=            # HMAC dos tokens de webhook
 PLATFORM_ADMIN_SECRET=          # bootstrap do primeiro Platform Admin
+ENCRYPTION_KEY=                 # 64 chars hex — cifra whatsappToken no banco (AES-256-GCM)
 
 # CORS (separados por vírgula, URLs exatas)
 CORS_ALLOWED_ORIGINS=
