@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, InternalServerErrorException, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -14,7 +14,8 @@ export class TenantsController {
   @Post()
   async create(@Body() body: { nome: string; slug: string; secret?: string }) {
     const secret = process.env.REGISTER_MASTER_SECRET;
-    if (secret && body.secret !== secret) {
+    if (!secret) throw new InternalServerErrorException('REGISTER_MASTER_SECRET não configurada');
+    if (body.secret !== secret) {
       throw new UnauthorizedException('Sem autorização para criar tenant.');
     }
     return this.tenantsService.create(body);

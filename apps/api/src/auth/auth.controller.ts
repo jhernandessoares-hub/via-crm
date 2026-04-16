@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, InternalServerErrorException, Post, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
@@ -26,7 +26,8 @@ export class AuthController {
 
     // Requer segredo de provisionamento para criar master users
     const secret = process.env.REGISTER_MASTER_SECRET;
-    if (secret && body['secret'] !== secret) {
+    if (!secret) throw new InternalServerErrorException('REGISTER_MASTER_SECRET não configurada');
+    if (body['secret'] !== secret) {
       throw new UnauthorizedException('Sem autorização para criar usuário master.');
     }
 

@@ -4,7 +4,8 @@ import { Logger } from '../logger';
 import * as crypto from 'crypto';
 
 function hashToken(token: string): string {
-  const secret = process.env.WEBHOOK_HMAC_SECRET || 'default-hmac-secret';
+  const secret = process.env.WEBHOOK_HMAC_SECRET;
+  if (!secret) throw new Error('WEBHOOK_HMAC_SECRET não configurada');
   return crypto.createHmac('sha256', secret).update(token).digest('hex');
 }
 

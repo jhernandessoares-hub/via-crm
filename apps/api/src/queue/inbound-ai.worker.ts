@@ -40,7 +40,7 @@ async function notifyAssignedUser(
   });
 
   if (user?.whatsappNumber) {
-    whatsapp.sendMessage(user.whatsappNumber, message, tenantId).catch(() => {});
+    whatsapp.sendMessage(user.whatsappNumber, message, tenantId).catch((err: any) => logger.warn(`Falha ao notificar usuário assignado: ${err?.message}`));
   }
 }
 
@@ -344,7 +344,7 @@ async function handleEscalation(
 
       for (const u of usersToNotify) {
         if (u.whatsappNumber) {
-          whatsapp.sendMessage(u.whatsappNumber, urgencyMsg).catch(() => {});
+          whatsapp.sendMessage(u.whatsappNumber, urgencyMsg).catch((err: any) => logger.error(`Falha crítica ao notificar escalação para ${u.whatsappNumber}: ${err?.message}`));
         }
       }
     }
@@ -735,9 +735,10 @@ async function handleInboundAiJob(
       });
     }
   } catch (err: any) {
-    logger.log(
+    logger.error(
       `⚠️ Erro ao gerar suggestion no inbound-ai worker leadId=${lead.id}: ${err?.message || err}`,
     );
+    throw err;
   }
 
   // ── Assistente Operacional (análise silenciosa pós-resposta) ────────────

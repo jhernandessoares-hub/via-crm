@@ -114,6 +114,8 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 
         return retryData !== null ? retryData : retryText ? { ok: true, text: retryText } : {};
       } else {
+        // Descartar subscribers pendentes antes de redirecionar
+        refreshSubscribers = [];
         clearSession();
         throw new Error("Sessão expirada. Faça login novamente.");
       }

@@ -54,7 +54,7 @@ import { SitesModule } from './sites/sites.module';
     SecretaryModule,
     ChannelsModule,
     CalendarModule,
-    DevModule,
+    ...(process.env.NODE_ENV !== 'production' ? [DevModule] : []),
     OwnersModule,
     AdminModule,
     SitesModule,

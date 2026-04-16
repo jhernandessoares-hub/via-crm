@@ -36,9 +36,9 @@ export class WhatsAppController {
 
     if (mode !== 'subscribe') return res.sendStatus(403);
 
-    // Check env-level verify token (default / fallback)
-    const envToken = (process.env.WHATSAPP_VERIFY_TOKEN || 'via-crm-dev').trim();
-    if (token === envToken) return res.status(200).send(challenge);
+    // Check env-level verify token
+    const envToken = process.env.WHATSAPP_VERIFY_TOKEN?.trim();
+    if (envToken && token === envToken) return res.status(200).send(challenge);
 
     // Check per-tenant verify tokens stored in DB
     const tenant = await this.prisma.tenant.findFirst({

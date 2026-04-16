@@ -1781,13 +1781,16 @@ async getById(user: any, id: string) {
     }
 
     const [lead, assignedUser] = await Promise.all([
-      this.prisma.lead.findUnique({ where: { id }, select: { id: true, tenantId: true } }),
+      this.prisma.lead.findFirst({ where: { id, tenantId: user.tenantId }, select: { id: true, tenantId: true } }),
       this.prisma.user.findUnique({ where: { id: assignedUserId }, select: { id: true, tenantId: true } }),
     ]);
 
     if (!lead) throw new NotFoundException('Lead não encontrado');
     if (!assignedUser) throw new NotFoundException('Usuário não encontrado');
-    if (lead.tenantId !== assignedUser.tenantId) {
+    if (lead.tenantId !== user.tenantId) {
+      throw new ForbiddenException('Acesso negado a este lead');
+    }
+    if (assignedUser.tenantId !== user.tenantId) {
       throw new ForbiddenException('Usuário pertence a outro tenant');
     }
 

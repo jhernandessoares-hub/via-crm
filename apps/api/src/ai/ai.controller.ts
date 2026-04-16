@@ -1,5 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Post, Req, UseGuards } from '@nestjs/common';
 import { AiService } from './ai.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 type GenerateFollowUpBody = {
   nome: string;
@@ -13,16 +14,20 @@ type GenerateFollowUpBody = {
   mode?: 'REGENERATE' | 'SHORTEN' | 'IMPROVE' | 'VARIATE';
 };
 
+@UseGuards(JwtAuthGuard)
 @Controller('ai')
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
   @Post('generate-follow-up')
-  generateFollowUp(@Body() body: GenerateFollowUpBody) {
+  generateFollowUp(@Body() body: GenerateFollowUpBody, @Req() req: any) {
+    if (body.tenantId && body.tenantId !== req.user.tenantId) {
+      throw new ForbiddenException('Acesso negado a este tenant');
+    }
     return this.aiService.generateFollowUp({
       nome: body.nome,
       status: body.status,
-      tenantId: body.tenantId,
+      tenantId: req.user.tenantId,
       agentId: body.agentId,
       leadId: body.leadId,
       lastLeadMessage: body.lastLeadMessage,
