@@ -2535,6 +2535,21 @@ const aiAssistanceLabel =
 
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
+    // Remove arquivos do Cloudinary (documentos do lead e participantes)
+    const docsWithFile = await this.prisma.leadDocument.findMany({
+      where: { leadId, tenantId: user.tenantId, publicId: { not: null } },
+      select: { publicId: true, mimeType: true },
+    });
+    if (docsWithFile.length > 0) {
+      try {
+        this.ensureCloudinaryConfigured();
+        await Promise.all(docsWithFile.map(d => {
+          const rt = d.mimeType?.startsWith('image/') ? 'image' : 'raw';
+          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, invalidate: true }).catch(() => {});
+        }));
+      } catch { /* não bloqueia o fluxo */ }
+    }
+
     // Soft delete: mantém registro para auditoria LGPD (Art. 17)
     await this.prisma.lead.update({
       where: { id: leadId },
@@ -3254,9 +3269,22 @@ Objetivo:
     await this.assertLeadAccess(tenantId, leadId);
     const part = await (this.prisma as any).leadParticipante.findFirst({ where: { id: partId, leadId, tenantId } });
     if (!part) throw new NotFoundException('Participante não encontrado');
-    // Remove todos os documentos deste participante
+    // Remove arquivos do Cloudinary antes de deletar os registros
+    const docsToDelete = await this.prisma.leadDocument.findMany({
+      where: { leadId, tenantId, participanteNome: part.nome, publicId: { not: null } },
+      select: { publicId: true, mimeType: true },
+    });
+    if (docsToDelete.length > 0) {
+      try {
+        this.ensureCloudinaryConfigured();
+        await Promise.all(docsToDelete.map(d => {
+          const rt = d.mimeType?.startsWith('image/') ? 'image' : 'raw';
+          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, invalidate: true }).catch(() => {});
+        }));
+      } catch { /* não bloqueia o fluxo se Cloudinary não estiver configurado */ }
+    }
+    // Remove documentos do banco e o participante
     await this.prisma.leadDocument.deleteMany({ where: { leadId, tenantId, participanteNome: part.nome } });
-    // Remove o participante
     await (this.prisma as any).leadParticipante.delete({ where: { id: partId } });
     return { ok: true };
   }
