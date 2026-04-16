@@ -40,6 +40,26 @@ const UFS = ["","AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT"
 const CLOUDINARY_FILE_LIMIT_BYTES = 10 * 1024 * 1024;
 const CLOUDINARY_COMPRESS_THRESHOLD = 8 * 1024 * 1024; // comprime se > 8 MB
 
+// Mapeamento: campo do cadastro → tipos de documento onde a informação normalmente aparece
+const FIELD_DOC_MAP: Record<string, string[]> = {
+  nome:               ["RG_CNH"],
+  nomeCorreto:        ["RG_CNH"],
+  cpf:                ["CPF", "RG_CNH"],
+  rg:                 ["RG_CNH"],
+  dataNascimento:     ["RG_CNH"],
+  naturalidade:       ["RG_CNH"],
+  estadoCivil:        ["CERT_ESTADO_CIVIL", "RG_CNH"],
+  profissao:          ["COMP_RENDA", "CONTRATO_TRABALHO"],
+  empresa:            ["COMP_RENDA", "CONTRATO_TRABALHO"],
+  renda:              ["COMP_RENDA"],
+  rendaBrutaFamiliar: ["COMP_RENDA"],
+  fgts:               ["FGTS"],
+  endereco:           ["COMP_RESIDENCIA"],
+  cep:                ["COMP_RESIDENCIA"],
+  cidade:             ["COMP_RESIDENCIA"],
+  uf:                 ["COMP_RESIDENCIA"],
+};
+
 // ─── Compressor de PDF ────────────────────────────────────────────────────────
 // Renderiza cada página em canvas (JPEG comprimido) e remonta via pdf-lib.
 // Reduz PDFs escaneados de 20-30 MB para 2-5 MB sem perda visual significativa.
@@ -461,6 +481,141 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
               </a>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Preview inline (sem wrapper de modal) ────────────────────────────────────
+
+function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [mime, setMime] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    fetchDocBlob(leadId, doc.id)
+      .then(({ blobUrl: u, mimeType: m }) => { objectUrl = u; setBlobUrl(u); setMime(m); })
+      .catch(() => setFetchError(true))
+      .finally(() => setLoading(false));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [leadId, doc.id]);
+
+  const isImage = !!mime?.startsWith("image/");
+  const isPdf = mime === "application/pdf";
+
+  return (
+    <div className="flex-1 flex items-center justify-center overflow-hidden" style={{ minHeight: 200 }}>
+      {loading && (
+        <div className="flex flex-col items-center gap-2 text-gray-400">
+          <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          <span className="text-xs">Carregando...</span>
+        </div>
+      )}
+      {!loading && fetchError && <p className="text-xs text-gray-400">Não foi possível carregar o arquivo.</p>}
+      {!loading && blobUrl && isImage && <img src={blobUrl} alt={doc.nome} className="max-w-full max-h-full object-contain" />}
+      {!loading && blobUrl && isPdf && <iframe src={blobUrl} className="w-full h-full" title={doc.nome} style={{ minHeight: 320 }} />}
+      {!loading && blobUrl && !isImage && !isPdf && (
+        <div className="text-center text-gray-400 text-xs p-6">
+          <p className="mb-2">Visualização não disponível.</p>
+          <a href={blobUrl} download={doc.nome} className="text-blue-400 hover:underline">Baixar arquivo</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Modal: campo + preview do documento ──────────────────────────────────────
+
+function FieldDocModal({ leadId, fieldLabel, fieldName, currentValue, inputType, options, relevantDocs, onSave, onClose }: {
+  leadId: string;
+  fieldLabel: string;
+  fieldName: string;
+  currentValue: any;
+  inputType?: string;
+  options?: { value: string; label: string }[];
+  relevantDocs: DocItem[];
+  onSave: (value: any) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(relevantDocs[0]?.id ?? null);
+  const [inputValue, setInputValue] = useState(String(currentValue ?? ""));
+  const [saving, setSaving] = useState(false);
+
+  const selectedDoc = relevantDocs.find(d => d.id === selectedDocId) ?? relevantDocs[0] ?? null;
+
+  async function handleSave() {
+    setSaving(true);
+    try { await onSave(inputValue); onClose(); }
+    catch { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }} onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full mx-4 flex overflow-hidden" style={{ maxWidth: 900, maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
+
+        {/* ── Coluna esquerda: preview do documento ── */}
+        <div className="flex-1 bg-gray-900 flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
+          {/* Seletor de documento (se mais de um) */}
+          {relevantDocs.length > 1 && (
+            <div className="flex flex-wrap gap-1 p-2 bg-gray-800 shrink-0">
+              {relevantDocs.map(d => (
+                <button key={d.id}
+                  className={`px-2 py-1 rounded text-xs transition-colors ${selectedDocId === d.id ? "bg-white text-gray-900 font-medium" : "text-gray-300 hover:bg-gray-700"}`}
+                  onClick={() => setSelectedDocId(d.id)}>
+                  {tipoLabel(d.tipo)}{d.observacao ? ` — ${d.observacao}` : ""}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Preview */}
+          {selectedDoc
+            ? <DocPreviewInline leadId={leadId} doc={selectedDoc} />
+            : <div className="flex-1 flex items-center justify-center text-gray-500 text-sm p-8">Nenhum documento disponível para visualizar</div>
+          }
+        </div>
+
+        {/* ── Coluna direita: campo de edição ── */}
+        <div className="w-72 shrink-0 flex flex-col p-5 gap-4 border-l border-gray-100">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-800">{fieldLabel}</h3>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-gray-400 uppercase tracking-wide mb-1">{fieldLabel}</label>
+            {options ? (
+              <select className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={inputValue} onChange={e => setInputValue(e.target.value)}>
+                {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : (
+              <input
+                type={inputType ?? "text"}
+                autoFocus
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
+              />
+            )}
+          </div>
+
+          <div className="mt-auto flex flex-col gap-2">
+            <button
+              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Salvando..." : "Confirmar"}
+            </button>
+            <button className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onClose}>
+              Cancelar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1039,20 +1194,29 @@ function ReclassifyModal({ doc, participantes, onConfirm, onCancel, busy }: {
 
 // ─── Formulário de cadastro (painel direito) ───────────────────────────────────
 
-function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOrigem, aiSuggestions = {}, showFinanceiro }: {
+function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOrigem, aiSuggestions = {}, showFinanceiro, docs, participanteNome, personName, onPersonNameSave }: {
   leadId: string; isLead: boolean; participanteId?: string;
   initialValues: Record<string, any>;
   initialOrigem: Record<string, string | null>;
   aiSuggestions?: CadastroSuggestionMap;
   showFinanceiro: boolean;
+  docs?: DocItem[];
+  participanteNome?: string | null;
+  personName?: string;
+  onPersonNameSave?: (name: string) => Promise<void>;
 }) {
   const [vals, setVals] = useState<Record<string, any>>(initialValues);
   const [origens, setOrigens] = useState<Record<string, string | null>>(initialOrigem);
   const [savedField, setSavedField] = useState<string | null>(null);
   const [errField, setErrField] = useState<string | null>(null);
+  const [fieldDocModal, setFieldDocModal] = useState<{ fieldName: string; fieldLabel: string; inputType?: string; options?: { value: string; label: string }[] } | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(personName ?? "");
+  const [savingName, setSavingName] = useState(false);
 
   // Sync when parent re-renders with new data (after AI confirm)
   useEffect(() => { setVals(initialValues); setOrigens(initialOrigem); }, [JSON.stringify(initialValues), JSON.stringify(initialOrigem)]);
+  useEffect(() => { setNameVal(personName ?? ""); }, [personName]);
 
   async function saveField(field: string, value: any, origin: string | null = null) {
     const newOrigens = { ...origens, [field]: origin };
@@ -1070,6 +1234,14 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       setErrField(field);
       setTimeout(() => setErrField(e => e === field ? null : e), 3000);
     }
+  }
+
+  async function handleSaveName() {
+    if (!onPersonNameSave || !nameVal.trim()) return;
+    setSavingName(true);
+    try { await onPersonNameSave(nameVal.trim()); setEditingName(false); }
+    catch { /* mantém editando */ }
+    finally { setSavingName(false); }
   }
 
   async function applySuggestion(field: string, value: any) {
@@ -1094,17 +1266,46 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     return (current === null || current === undefined || current === "") && suggestion?.value !== null && suggestion?.value !== undefined && suggestion?.value !== "";
   });
 
+  // Retorna docs enviados para este participante que são relevantes para o campo
+  function getRelevantDocs(fieldName: string): DocItem[] {
+    if (!docs) return [];
+    const types = FIELD_DOC_MAP[fieldName] ?? [];
+    return docs.filter(d =>
+      d.participanteNome === (participanteNome ?? null) &&
+      types.includes(d.tipo) &&
+      !d.naoAplicavel &&
+      !d.pendingReview &&
+      !!d.url,
+    );
+  }
+
   const Field = ({ label, name, type = "text", options, span2 }: {
     label: string; name: string; type?: string; options?: { value: string; label: string }[]; span2?: boolean;
   }) => {
     const isIA = origens[name] === "IA";
     const suggestion = aiSuggestions[name];
     const showSuggestion = !!suggestion && (vals[name] === null || vals[name] === undefined || vals[name] === "");
+    const relevantDocs = getRelevantDocs(name);
+    const hasDoc = relevantDocs.length > 0;
+
     return (
       <div className={span2 ? "col-span-2" : ""}>
         <div className="flex items-center gap-1 mb-0.5">
           <label className="block text-[10px] text-gray-400 uppercase tracking-wide leading-none">{label}</label>
           {isIA && <IABadge small />}
+          {hasDoc && (
+            <button
+              type="button"
+              title="Ver documento"
+              className="ml-auto p-0.5 rounded text-gray-300 hover:text-blue-500 transition-colors"
+              onClick={() => setFieldDocModal({ fieldName: name, fieldLabel: label, inputType: type, options })}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          )}
         </div>
         <div className="relative">
           {options ? (
@@ -1146,8 +1347,48 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     );
   };
 
+  // Docs relevantes para o campo aberto no modal
+  const modalDocs = fieldDocModal ? getRelevantDocs(fieldDocModal.fieldName) : [];
+
   return (
     <div className="space-y-4 text-xs">
+
+      {/* ── Campo de nome (editável) ── */}
+      {onPersonNameSave && (
+        <div>
+          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Nome</div>
+          {editingName ? (
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                type="text"
+                className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                value={nameVal}
+                onChange={e => setNameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") { setEditingName(false); setNameVal(personName ?? ""); } }}
+              />
+              <button className="rounded border border-blue-200 bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 disabled:opacity-50" onClick={handleSaveName} disabled={savingName}>
+                {savingName ? "..." : "OK"}
+              </button>
+              <button className="rounded border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50" onClick={() => { setEditingName(false); setNameVal(personName ?? ""); }}>✕</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5">
+              <span className="flex-1 text-sm text-gray-800">{personName || <span className="text-gray-400 italic">não informado</span>}</span>
+              {getRelevantDocs(isLead ? "nomeCorreto" : "nome").length > 0 && (
+                <button type="button" title="Ver documento" className="text-gray-300 hover:text-blue-500 transition-colors"
+                  onClick={() => setFieldDocModal({ fieldName: isLead ? "nomeCorreto" : "nome", fieldLabel: "Nome" })}>
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                </button>
+              )}
+              <button type="button" className="text-gray-400 hover:text-gray-700" onClick={() => setEditingName(true)}>
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {pendingSuggestions.length > 0 && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3">
           <div className="flex items-center justify-between gap-3">
@@ -1200,6 +1441,24 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
           {showFinanceiro && <Field label="Entrada disponível (R$)" name="valorEntrada" type="number" />}
         </div>
       </div>
+
+      {/* Modal campo + preview */}
+      {fieldDocModal && modalDocs.length > 0 && (
+        <FieldDocModal
+          leadId={leadId}
+          fieldLabel={fieldDocModal.fieldLabel}
+          fieldName={fieldDocModal.fieldName}
+          currentValue={vals[fieldDocModal.fieldName] ?? ""}
+          inputType={fieldDocModal.inputType}
+          options={fieldDocModal.options}
+          relevantDocs={modalDocs}
+          onSave={async (value) => {
+            setVals(v => ({ ...v, [fieldDocModal.fieldName]: value }));
+            await saveField(fieldDocModal.fieldName, value, "MANUAL");
+          }}
+          onClose={() => setFieldDocModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1763,6 +2022,12 @@ export default function DocumentosPage() {
               {openCadastro.has("__lead__") && (
                 <div className="px-5 pb-5 border-t border-gray-100 pt-4">
                   <CadastroForm leadId={leadId} isLead={true} showFinanceiro={true}
+                    docs={docs} participanteNome={null}
+                    personName={lead.nomeCorreto ?? lead.nome}
+                    onPersonNameSave={async (name) => {
+                      await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name, cadastroOrigem: {} }) });
+                      setLead(l => l ? { ...l, nomeCorreto: name } : l);
+                    }}
                     initialValues={{
                       cpf: lead.cpf, rg: lead.rg, dataNascimento: fmtDate(lead.dataNascimento),
                       estadoCivil: lead.estadoCivil ?? "", naturalidade: lead.naturalidade,
@@ -1819,6 +2084,12 @@ export default function DocumentosPage() {
                 {openCadastro.has(p.id) && (
                   <div className="px-5 pb-5 border-t border-gray-100 pt-4">
                     <CadastroForm leadId={leadId} isLead={false} participanteId={p.id} showFinanceiro={false}
+                      docs={docs} participanteNome={p.nome}
+                      personName={p.nome}
+                      onPersonNameSave={async (name) => {
+                        await apiFetch(`/leads/${leadId}/participantes/${p.id}`, { method: "PATCH", body: JSON.stringify({ nome: name }) });
+                        setParticipantes(prev => prev.map(x => x.id === p.id ? { ...x, nome: name } : x));
+                      }}
                       initialValues={{
                         cpf: p.cpf, rg: p.rg, dataNascimento: fmtDate(p.dataNascimento),
                         estadoCivil: p.estadoCivil ?? "", naturalidade: p.naturalidade,
