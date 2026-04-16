@@ -557,9 +557,13 @@ function FieldDocModal({ leadId, fieldLabel, fieldName, currentValue, inputType,
   onSave: (value: any) => Promise<void>;
   onClose: () => void;
 }) {
+  // Abre já no primeiro doc da lista (que é o tipo preferido para o campo)
   const [selectedDocId, setSelectedDocId] = useState<string | null>(relevantDocs[0]?.id ?? null);
   const [inputValue, setInputValue] = useState(String(currentValue ?? ""));
   const [saving, setSaving] = useState(false);
+
+  // Reseta seleção quando a lista de docs muda
+  useEffect(() => { setSelectedDocId(relevantDocs[0]?.id ?? null); }, [relevantDocs.map(d => d.id).join(",")]); // eslint-disable-line
 
   const selectedDoc = relevantDocs.find(d => d.id === selectedDocId) ?? relevantDocs[0] ?? null;
 
@@ -1304,7 +1308,9 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     const suggestion = aiSuggestions[name];
     const showSuggestion = !!suggestion && (vals[name] === null || vals[name] === undefined || vals[name] === "");
     const relevantDocs = getRelevantDocs(name);
-    const hasDoc = relevantDocs.length > 0;
+    // Olho só aparece quando há ao menos um doc do tipo preferido para este campo
+    const preferredTypes = FIELD_DOC_MAP[name] ?? [];
+    const hasDoc = relevantDocs.some(d => preferredTypes.includes(d.tipo));
 
     return (
       <div className={span2 ? "col-span-2" : ""}>
@@ -1801,7 +1807,7 @@ export default function DocumentosPage() {
           </div>
           <span className="text-sm font-semibold text-gray-800 flex-1">{displayName}</span>
           {isLead && <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">Lead</span>}
-          {classificacao && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{classLabel(classificacao)}</span>}
+          {classificacao && classificacao !== "OUTRO" && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{classLabel(classificacao)}</span>}
           {/* Setas de reordenação */}
           <div className="flex items-center gap-0" onClick={e => e.stopPropagation()}>
             <button onClick={onMoveUp} disabled={!onMoveUp} title="Mover para cima"
@@ -2071,7 +2077,7 @@ export default function DocumentosPage() {
                       <span className="text-xs font-bold text-gray-600">{(p.nome[0] || "?").toUpperCase()}</span>
                     </div>
                     <span className="text-sm font-semibold text-gray-800" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nome}</span>
-                    {p.classificacao && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5 shrink-0">{classLabel(p.classificacao)}</span>}
+                    {p.classificacao && p.classificacao !== "OUTRO" && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5 shrink-0">{classLabel(p.classificacao)}</span>}
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
                     <div className="flex items-center" onClick={e => e.stopPropagation()}>
