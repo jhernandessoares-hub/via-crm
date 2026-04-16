@@ -1235,6 +1235,7 @@ export default function DocumentosPage() {
   const [busyNA, setBusyNA] = useState<Set<string>>(new Set());
   const [busyDel, setBusyDel] = useState<Set<string>>(new Set());
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
+  const [confirmRemovePartId, setConfirmRemovePartId] = useState<string | null>(null);
   const [busyRemove, setBusyRemove] = useState<Set<string>>(new Set());
 
   // Identificação de docs pendentes
@@ -1364,7 +1365,14 @@ export default function DocumentosPage() {
     setAddPartOpen(false);
   }
 
-  async function handleRemoveParticipante(partId: string) {
+  function handleRemoveParticipante(partId: string) {
+    setConfirmRemovePartId(partId);
+  }
+
+  async function confirmRemoveParticipante() {
+    const partId = confirmRemovePartId;
+    if (!partId) return;
+    setConfirmRemovePartId(null);
     setBusyRemove(prev => new Set(prev).add(partId));
     try {
       await apiFetch(`/leads/${leadId}/participantes/${partId}`, { method: "DELETE" });
@@ -1923,6 +1931,36 @@ export default function DocumentosPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: confirmar remoção de participante */}
+      {confirmRemovePartId && (() => {
+        const part = participantes.find(p => p.id === confirmRemovePartId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
+              <h3 className="text-base font-semibold text-gray-800 mb-2">Remover participante</h3>
+              <p className="text-sm text-gray-600 mb-1">
+                Tem certeza que deseja remover <span className="font-medium">{part?.nome}</span>?
+              </p>
+              <p className="text-xs text-red-500 mb-6">Todos os documentos deste participante também serão excluídos.</p>
+              <div className="flex justify-end gap-3">
+                <button
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  onClick={() => setConfirmRemovePartId(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
+                  onClick={confirmRemoveParticipante}
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </AppShell>
   );
 }
