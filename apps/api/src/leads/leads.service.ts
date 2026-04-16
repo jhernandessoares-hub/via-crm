@@ -2504,7 +2504,7 @@ const aiAssistanceLabel =
         this.ensureCloudinaryConfigured();
         await Promise.all(docsWithFile.map(d => {
           const rt = d.mimeType?.startsWith('image/') ? 'image' : 'raw';
-          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, invalidate: true }).catch(() => {});
+          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, type: 'authenticated', invalidate: true }).catch(() => {});
         }));
       } catch { /* não bloqueia o fluxo */ }
     }
@@ -2740,8 +2740,7 @@ const aiAssistanceLabel =
         {
           folder: `via-crm/lead-documents/${tenantId}`,
           resource_type: isImage ? 'image' : 'raw',
-          type: 'upload',
-          access_mode: 'public',
+          type: 'authenticated', // 🔒 privado — só acessível via URL assinada pelo backend
           use_filename: false,
           unique_filename: true,
         },
@@ -3243,7 +3242,7 @@ Objetivo:
         this.ensureCloudinaryConfigured();
         await Promise.all(docsToDelete.map(d => {
           const rt = d.mimeType?.startsWith('image/') ? 'image' : 'raw';
-          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, invalidate: true }).catch(() => {});
+          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, type: 'authenticated', invalidate: true }).catch(() => {});
         }));
       } catch { /* não bloqueia o fluxo se Cloudinary não estiver configurado */ }
     }
@@ -3307,8 +3306,7 @@ Objetivo:
         {
           folder: `via-crm/lead-documents/${tenantId}`,
           resource_type: isImage ? 'image' : 'raw',
-          type: 'upload',
-          access_mode: 'public',
+          type: 'authenticated', // 🔒 privado — só acessível via URL assinada pelo backend
           use_filename: false,
           unique_filename: true,
         },
@@ -3335,16 +3333,32 @@ Objetivo:
     await this.assertLeadAccess(tenantId, leadId);
     const doc = await this.prisma.leadDocument.findFirst({
       where: { id: docId, leadId, tenantId },
-      select: { url: true, mimeType: true, filename: true, nome: true },
+      select: { url: true, publicId: true, mimeType: true, filename: true, nome: true },
     });
-    if (!doc?.url) throw new NotFoundException('Documento não encontrado ou sem arquivo');
-
-    const response = await fetch(doc.url);
-    if (!response.ok) throw new NotFoundException('Arquivo não disponível no storage');
+    if (!doc) throw new NotFoundException('Documento não encontrado ou sem arquivo');
 
     const mimeType = doc.mimeType || 'application/octet-stream';
     const rawName = doc.filename || doc.nome || 'documento';
     const filename = this.safeFilename(rawName, mimeType.split('/')[1] || 'bin');
+
+    let fetchUrl: string;
+
+    if (doc.publicId) {
+      // 🔒 Documento privado (authenticated) — URL assinada válida por 2 minutos
+      const isImage = mimeType.startsWith('image/');
+      const resourceType = isImage ? 'image' : 'raw';
+      const ext = rawName.includes('.') ? rawName.split('.').pop()! : (mimeType.split('/')[1] || 'bin');
+      fetchUrl = this.buildSignedCloudinaryDownloadUrl({ publicId: doc.publicId, ext, resourceType });
+    } else if (doc.url) {
+      // Fallback para documentos antigos sem publicId (período de migração)
+      fetchUrl = doc.url;
+    } else {
+      throw new NotFoundException('Documento não encontrado ou sem arquivo');
+    }
+
+    const response = await fetch(fetchUrl);
+    if (!response.ok) throw new NotFoundException('Arquivo não disponível no storage');
+
     const contentLength = response.headers.get('content-length');
 
     return {
@@ -3363,7 +3377,7 @@ Objetivo:
     if (doc.publicId) {
       this.ensureCloudinaryConfigured();
       const rt = doc.mimeType?.startsWith('image/') ? 'image' : 'raw';
-      await cloudinary.uploader.destroy(doc.publicId, { resource_type: rt, invalidate: true }).catch(() => {});
+      await cloudinary.uploader.destroy(doc.publicId, { resource_type: rt, type: 'authenticated', invalidate: true }).catch(() => {});
     }
 
     await this.prisma.leadDocument.delete({ where: { id: docId } });
