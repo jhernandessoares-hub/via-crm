@@ -16,6 +16,14 @@ type Branding = {
 export default function BrandingPage() {
   const [branding, setBranding] = useState<Branding>({ brandPalette: null, logoUrl: null, faviconUrl: null });
   const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
+
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      if (user?.role !== "OWNER") setUnauthorized(true);
+    } catch { setUnauthorized(true); }
+  }, []);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -93,6 +101,14 @@ export default function BrandingPage() {
       set(false);
     }
   }
+
+  if (unauthorized) return (
+    <AppShell title="Personalização">
+      <div className="flex items-center justify-center h-64 text-[var(--shell-subtext)]">
+        Acesso restrito ao proprietário da conta.
+      </div>
+    </AppShell>
+  );
 
   if (loading) return (
     <AppShell title="Personalização">

@@ -1,8 +1,18 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 
 export default function SettingsPage() {
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      setIsOwner(user?.role === "OWNER");
+    } catch {}
+  }, []);
+
   const items = [
     {
       href: "/settings/whatsapp",
@@ -19,11 +29,11 @@ export default function SettingsPage() {
       title: "Notificações",
       desc: "Escolha quais eventos e etapas te notificam pelo WhatsApp",
     },
-    {
+    ...(isOwner ? [{
       href: "/settings/branding",
       title: "Personalização",
       desc: "Logo, favicon e paleta de cores da sua imobiliária",
-    },
+    }] : []),
   ];
 
   return (
