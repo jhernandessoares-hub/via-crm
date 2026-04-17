@@ -20,6 +20,7 @@ import {
   Settings,
   Shield,
   Globe,
+  Palette,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -33,10 +34,17 @@ type Counts = {
   groups: Record<string, number>;
 };
 
+type Branding = {
+  logoUrl?: string | null;
+  faviconUrl?: string | null;
+  brandPalette?: string | null;
+};
+
 interface SidebarProps {
   role: Role | undefined;
   tenantNome: string | null;
   counts: Counts | null;
+  branding?: Branding;
 }
 
 const FUNNEL_GROUPS = [
@@ -48,7 +56,8 @@ const FUNNEL_GROUPS = [
   { label: "Pós Venda", group: "POS_VENDA" },
 ];
 
-export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
+export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
+  const logoSrc = branding?.logoUrl || "/Novo%20modelo%20de%20Logo.png";
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentGroup = searchParams.get("group");
@@ -115,8 +124,8 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
         title={collapsed ? label : undefined}
         className="group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
         style={{
-          background: active ? "rgba(29, 158, 117, 0.18)" : "transparent",
-          color: active ? "#5DCAA5" : "rgba(255,255,255,0.92)",
+          background: active ? "var(--brand-accent-muted)" : "transparent",
+          color: active ? "var(--brand-accent-light)" : "rgba(255,255,255,0.92)",
           justifyContent: collapsed ? "center" : undefined,
           paddingLeft: collapsed ? undefined : undefined,
         }}
@@ -129,7 +138,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
       >
         <Icon
           className="h-[18px] w-[18px] shrink-0"
-          style={{ color: active ? "#5DCAA5" : "#8DA1C9" }}
+          style={{ color: active ? "var(--brand-accent-light)" : "#8DA1C9" }}
         />
         {!collapsed && <span className="flex-1 truncate">{label}</span>}
         {!collapsed && badge !== undefined && badge !== null && (
@@ -138,7 +147,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
         {collapsed && badge !== undefined && badge !== null && badge > 0 && (
           <span
             className="absolute top-1 right-1 h-2 w-2 rounded-full"
-            style={{ background: "#1D9E75" }}
+            style={{ background: "var(--brand-accent)" }}
           />
         )}
       </Link>
@@ -166,7 +175,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
         {!collapsed && (
           <Link href="/dashboard" className="block flex-1">
             <img
-              src="/Novo%20modelo%20de%20Logo.png"
+              src={logoSrc}
               alt="VIA CRM"
               className="w-[72%] h-auto mx-auto block"
             />
@@ -175,7 +184,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
         {collapsed && (
           <Link href="/dashboard" title="Dashboard">
             <img
-              src="/Novo%20modelo%20de%20Logo.png"
+              src={logoSrc}
               alt="VIA CRM"
               className="w-9 h-9 object-contain"
             />
@@ -188,7 +197,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
           style={{ color: "#8DA1C9", marginLeft: collapsed ? 0 : "4px" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = "#142450";
-            e.currentTarget.style.color = "#5DCAA5";
+            e.currentTarget.style.color = "var(--brand-accent-light)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
@@ -260,8 +269,8 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
                       href={`/leads?group=${group}`}
                       className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors"
                       style={{
-                        background: active ? "rgba(29, 158, 117, 0.18)" : "transparent",
-                        color: active ? "#5DCAA5" : "#8DA1C9",
+                        background: active ? "var(--brand-accent-muted)" : "transparent",
+                        color: active ? "var(--brand-accent-light)" : "#8DA1C9",
                       }}
                       onMouseEnter={(e) => {
                         if (!active) {
@@ -302,7 +311,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
             {funnelTotal !== undefined && funnelTotal > 0 && (
               <span
                 className="absolute top-1 right-1 h-2 w-2 rounded-full"
-                style={{ background: "#1D9E75" }}
+                style={{ background: "var(--brand-accent)" }}
               />
             )}
           </Link>
@@ -327,8 +336,8 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
             title={collapsed ? "Configurações" : undefined}
             className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
             style={{
-              background: settingsActive ? "rgba(29, 158, 117, 0.18)" : "transparent",
-              color: settingsActive ? "#5DCAA5" : "rgba(255,255,255,0.92)",
+              background: settingsActive ? "var(--brand-accent-muted)" : "transparent",
+              color: settingsActive ? "var(--brand-accent-light)" : "rgba(255,255,255,0.92)",
               justifyContent: collapsed ? "center" : undefined,
             }}
             onMouseEnter={(e) => {
@@ -340,7 +349,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
           >
             <Settings
               className="h-[18px] w-[18px] shrink-0"
-              style={{ color: settingsActive ? "#5DCAA5" : "#8DA1C9" }}
+              style={{ color: settingsActive ? "var(--brand-accent-light)" : "#8DA1C9" }}
             />
             {!collapsed && <span className="flex-1 truncate">Configurações</span>}
           </Link>
@@ -350,6 +359,9 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
         )}
         {role === "OWNER" && (
           <NavItem href="/my-site" label="Meu Site" icon={Globe} mode="prefix" />
+        )}
+        {role === "OWNER" && (
+          <NavItem href="/settings/branding" label="Personalização" icon={Palette} />
         )}
       </nav>
 
@@ -383,7 +395,7 @@ function CountBadge({ n, active }: { n: number; active: boolean }) {
       className="inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none"
       style={
         active
-          ? { background: "#1D9E75", color: "#FFFFFF" }
+          ? { background: "var(--brand-accent)", color: "#FFFFFF" }
           : { background: "rgba(255,255,255,0.10)", color: "#8DA1C9" }
       }
     >

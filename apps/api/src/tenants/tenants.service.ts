@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePermissions } from './permissions.config';
 import { encryptField } from '../crypto/field-crypto.util';
+import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class TenantsService {
@@ -48,8 +49,6 @@ export class TenantsService {
       try {
         tokenToSave = encryptField(data.whatsappToken);
       } catch {
-        // ENCRYPTION_KEY não configurada — salva em plaintext com aviso
-        // (compatibilidade com ambientes sem a variável definida)
         tokenToSave = data.whatsappToken;
       }
     }
@@ -70,7 +69,6 @@ export class TenantsService {
       where: { id: tenantId },
       select: { id: true, whatsappPhoneNumberId: true, whatsappVerifyToken: true, whatsappToken: true },
     });
-    // Mask token for security
     return {
       whatsappPhoneNumberId: tenant?.whatsappPhoneNumberId || null,
       whatsappVerifyToken: tenant?.whatsappVerifyToken || null,
@@ -111,6 +109,76 @@ export class TenantsService {
     });
   }
 
+  async getBranding(tenantId: string) {
+    return this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, brandPalette: true, logoUrl: true, faviconUrl: true },
+    });
+  }
+
+  async updateBranding(tenantId: string, data: { brandPalette?: string }) {
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { brandPalette: data.brandPalette ?? undefined },
+      select: { id: true, brandPalette: true, logoUrl: true, faviconUrl: true },
+    });
+  }
+
+  async uploadBrandingImage(
+    tenantId: string,
+    field: 'logo' | 'favicon',
+    fileBuffer: Buffer,
+  ) {
+    const folder = `tenants/${tenantId}/branding`;
+
+    const result: any = await new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          { folder, resource_type: 'image', type: 'upload', access_mode: 'public' },
+          (err, res) => { if (err) return reject(err); resolve(res); },
+        )
+        .end(fileBuffer);
+    });
+
+    const urlField = field === 'logo' ? 'logoUrl' : 'faviconUrl';
+    const pidField = field === 'logo' ? 'logoPublicId' : 'faviconPublicId';
+
+    const current = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { logoPublicId: true, faviconPublicId: true },
+    });
+    const oldPid = field === 'logo' ? current?.logoPublicId : current?.faviconPublicId;
+    if (oldPid) {
+      await cloudinary.uploader.destroy(oldPid, { resource_type: 'image', invalidate: true }).catch(() => null);
+    }
+
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { [urlField]: result.secure_url, [pidField]: result.public_id },
+      select: { id: true, brandPalette: true, logoUrl: true, faviconUrl: true },
+    });
+  }
+
+  async removeBrandingImage(tenantId: string, field: 'logo' | 'favicon') {
+    const urlField = field === 'logo' ? 'logoUrl' : 'faviconUrl';
+    const pidField = field === 'logo' ? 'logoPublicId' : 'faviconPublicId';
+
+    const current = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { logoPublicId: true, faviconPublicId: true },
+    });
+    const oldPid = field === 'logo' ? current?.logoPublicId : current?.faviconPublicId;
+    if (oldPid) {
+      await cloudinary.uploader.destroy(oldPid, { resource_type: 'image', invalidate: true }).catch(() => null);
+    }
+
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { [urlField]: null, [pidField]: null },
+      select: { id: true, brandPalette: true, logoUrl: true, faviconUrl: true },
+    });
+  }
+
   async getPermissions(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -124,7 +192,6 @@ export class TenantsService {
       where: { id: tenantId },
       select: { permissionsConfig: true },
     });
-    // Mescla com o atual para não perder módulos não enviados
     const merged = {
       ...((current?.permissionsConfig as any) ?? {}),
       ...config,

@@ -76,6 +76,12 @@ model Tenant {
   // Permissões configuráveis por role
   permissionsConfig     Json?
   roundRobinConfig      Json?             // { incluirGerentes: bool, incluirOwner: bool }
+  // Branding / White-label
+  brandPalette          String?           // chave da paleta: "verde-via" | "azul-royal" | ...
+  logoUrl               String?           // URL Cloudinary da logo customizada
+  logoPublicId          String?           // publicId Cloudinary para deletar
+  faviconUrl            String?           // URL Cloudinary do favicon customizado
+  faviconPublicId       String?
   criadoEm            DateTime                @default(now())
   agentKnowledgeBases    AgentKnowledgeBase[]
   agentTools             AgentTool[]

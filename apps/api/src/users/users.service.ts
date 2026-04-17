@@ -145,7 +145,7 @@ export class UsersService {
         ativo: true,
         criadoEm: true,
         tenant: {
-          select: { nome: true },
+          select: { nome: true, brandPalette: true, logoUrl: true, faviconUrl: true },
         },
       },
     });

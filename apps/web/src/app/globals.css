@@ -24,6 +24,11 @@
   --sidebar-active-text: #5DCAA5;
   --sidebar-border: #1A2A55;
 
+  /* Brand / Palette — padrão Verde VIA, sobrescrito via JS */
+  --brand-accent: #1D9E75;
+  --brand-accent-light: #5DCAA5;
+  --brand-accent-muted: rgba(29,158,117,0.18);
+
   /* Shell — light */
   --shell-bg: var(--via-offwhite);
   --shell-text: #1A202C;

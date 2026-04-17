@@ -9,8 +9,15 @@ import {
   type FullProfile,
 } from "@/components/layout/MeusDadosModal";
 import { apiFetch } from "@/lib/api";
+import { getPalette, applyPalette } from "@/lib/palettes";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
+
+type TenantBranding = {
+  brandPalette?: string | null;
+  logoUrl?: string | null;
+  faviconUrl?: string | null;
+};
 
 type StoredUser = {
   id: string;
@@ -52,6 +59,7 @@ function AppShellInner({
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [modalOpen, setModalOpen] = useState(false);
   const [counts, setCounts] = useState<Counts | null>(null);
+  const [branding, setBranding] = useState<TenantBranding>({});
 
   useEffect(() => {
     try {
@@ -65,11 +73,24 @@ function AppShellInner({
   useEffect(() => {
     apiFetch("/users/me")
       .then((data) => {
-        const p = data as FullProfile;
+        const p = data as FullProfile & { tenant?: TenantBranding };
         setProfile(p);
         const t = p?.preferences?.theme ?? "light";
         setTheme(t);
         applyTheme(t);
+        // Aplica paleta e favicon do tenant
+        const b: TenantBranding = {
+          brandPalette: (p as any)?.tenant?.brandPalette,
+          logoUrl: (p as any)?.tenant?.logoUrl,
+          faviconUrl: (p as any)?.tenant?.faviconUrl,
+        };
+        setBranding(b);
+        applyPalette(getPalette(b.brandPalette));
+        if (b.faviconUrl) {
+          let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+          if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
+          link.href = b.faviconUrl;
+        }
       })
       .catch(() => null);
   }, []);
@@ -118,7 +139,7 @@ function AppShellInner({
     >
       <EnvBanner />
       <div className="flex flex-1 min-h-0">
-        <Sidebar role={role} tenantNome={tenantNome} counts={counts} />
+        <Sidebar role={role} tenantNome={tenantNome} counts={counts} branding={branding} />
         <div className="flex-1 flex flex-col min-w-0">
           <Header
             title={title}

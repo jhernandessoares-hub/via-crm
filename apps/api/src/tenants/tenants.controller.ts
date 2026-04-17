@@ -1,4 +1,5 @@
-import { Body, Controller, ForbiddenException, Get, InternalServerErrorException, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, InternalServerErrorException, Param, Patch, Post, Req, UnauthorizedException, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -87,5 +88,49 @@ export class TenantsController {
   async updatePermissions(@Req() req: any, @Body() body: Record<string, any>) {
     requireOwner(req);
     return this.tenantsService.updatePermissions(req.user.tenantId, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('branding')
+  async getBranding(@Req() req: any) {
+    requireOwner(req);
+    return this.tenantsService.getBranding(req.user.tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('branding')
+  async updateBranding(@Req() req: any, @Body() body: { brandPalette?: string }) {
+    requireOwner(req);
+    return this.tenantsService.updateBranding(req.user.tenantId, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('branding/logo')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadLogo(@Req() req: any, @UploadedFile() file: any) {
+    requireOwner(req);
+    return this.tenantsService.uploadBrandingImage(req.user.tenantId, 'logo', file.buffer);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('branding/logo')
+  async removeLogo(@Req() req: any) {
+    requireOwner(req);
+    return this.tenantsService.removeBrandingImage(req.user.tenantId, 'logo');
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('branding/favicon')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFavicon(@Req() req: any, @UploadedFile() file: any) {
+    requireOwner(req);
+    return this.tenantsService.uploadBrandingImage(req.user.tenantId, 'favicon', file.buffer);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('branding/favicon')
+  async removeFavicon(@Req() req: any) {
+    requireOwner(req);
+    return this.tenantsService.removeBrandingImage(req.user.tenantId, 'favicon');
   }
 }
