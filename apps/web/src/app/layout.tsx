@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import ClientProviders from "@/components/ClientProviders";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "VIA CRM",
-  description: "CRM imobiliario para atendimento, operacao e gestao",
+  description: "CRM imobiliário para atendimento, operação e gestão",
   icons: {
     icon: [
       { url: "/favicon-via.svg", type: "image/svg+xml" },
@@ -21,11 +28,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className={inter.variable}>
       <head>
         <meta charSet="utf-8" />
       </head>
-      <body className="antialiased bg-gray-50">
+      <body className="antialiased">
         <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
