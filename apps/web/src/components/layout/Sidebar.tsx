@@ -9,6 +9,8 @@ import {
   Users,
   Filter,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Building2,
   Bot,
   UserCog,
@@ -53,16 +55,26 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
   const router = useRouter();
 
   const [funnelOpen, setFunnelOpen] = useState<boolean>(false);
+  const [collapsed, setCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setFunnelOpen(localStorage.getItem("sidebar_funnel_open") === "true");
+    setCollapsed(localStorage.getItem("sidebar_collapsed") === "true");
   }, []);
 
   function toggleFunnel() {
     setFunnelOpen((v) => {
       const next = !v;
       localStorage.setItem("sidebar_funnel_open", String(next));
+      return next;
+    });
+  }
+
+  function toggleCollapsed() {
+    setCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem("sidebar_collapsed", String(next));
       return next;
     });
   }
@@ -100,10 +112,13 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
     return (
       <Link
         href={href}
-        className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
+        title={collapsed ? label : undefined}
+        className="group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
         style={{
           background: active ? "rgba(29, 158, 117, 0.18)" : "transparent",
           color: active ? "#5DCAA5" : "rgba(255,255,255,0.92)",
+          justifyContent: collapsed ? "center" : undefined,
+          paddingLeft: collapsed ? undefined : undefined,
         }}
         onMouseEnter={(e) => {
           if (!active) e.currentTarget.style.background = "#142450";
@@ -116,9 +131,15 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
           className="h-[18px] w-[18px] shrink-0"
           style={{ color: active ? "#5DCAA5" : "#8DA1C9" }}
         />
-        <span className="flex-1 truncate">{label}</span>
-        {badge !== undefined && badge !== null && (
+        {!collapsed && <span className="flex-1 truncate">{label}</span>}
+        {!collapsed && badge !== undefined && badge !== null && (
           <CountBadge n={badge} active={active} />
+        )}
+        {collapsed && badge !== undefined && badge !== null && badge > 0 && (
+          <span
+            className="absolute top-1 right-1 h-2 w-2 rounded-full"
+            style={{ background: "#1D9E75" }}
+          />
         )}
       </Link>
     );
@@ -130,28 +151,60 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
 
   return (
     <aside
-      className="w-64 shrink-0 flex flex-col border-r"
+      className="shrink-0 flex flex-col border-r transition-all duration-200"
       style={{
+        width: collapsed ? "64px" : "256px",
         background: "var(--sidebar-bg)",
         borderColor: "var(--sidebar-border)",
       }}
     >
-      {/* Logo + tenant */}
+      {/* Logo + toggle */}
       <div
-        className="px-5 pt-5 pb-4 border-b"
-        style={{ borderColor: "var(--sidebar-border)" }}
+        className="px-3 pt-4 pb-3 border-b flex items-center"
+        style={{ borderColor: "var(--sidebar-border)", justifyContent: collapsed ? "center" : "space-between" }}
       >
-        <Link href="/dashboard" className="block">
-          <img
-            src="/Novo%20modelo%20de%20Logo.png"
-            alt="VIA CRM"
-            className="w-[72%] h-auto mx-auto block"
-          />
-        </Link>
+        {!collapsed && (
+          <Link href="/dashboard" className="block flex-1">
+            <img
+              src="/Novo%20modelo%20de%20Logo.png"
+              alt="VIA CRM"
+              className="w-[72%] h-auto mx-auto block"
+            />
+          </Link>
+        )}
+        {collapsed && (
+          <Link href="/dashboard" title="Dashboard">
+            <img
+              src="/Novo%20modelo%20de%20Logo.png"
+              alt="VIA CRM"
+              className="w-9 h-9 object-contain"
+            />
+          </Link>
+        )}
+        <button
+          onClick={toggleCollapsed}
+          title={collapsed ? "Expandir menu" : "Minimizar menu"}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors"
+          style={{ color: "#8DA1C9", marginLeft: collapsed ? 0 : "4px" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "#142450";
+            e.currentTarget.style.color = "#5DCAA5";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#8DA1C9";
+          }}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
+        </button>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
         <NavItem href="/dashboard" label="Dashboard" icon={LayoutDashboard} />
         <NavItem
           href="/meus-leads"
@@ -168,86 +221,96 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
           />
         )}
 
-        {/* Funil colapsável */}
-        <div className="pt-1">
-          <button
-            type="button"
-            onClick={toggleFunnel}
-            className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+        {/* Funil colapsável — oculto quando sidebar compacta */}
+        {!collapsed && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={toggleFunnel}
+              className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              style={{ color: "rgba(255,255,255,0.92)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#142450")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              aria-expanded={funnelOpen}
+            >
+              <Filter
+                className="h-[18px] w-[18px] shrink-0"
+                style={{ color: "#8DA1C9" }}
+              />
+              <span className="flex-1 text-left">Funil de Venda</span>
+              {funnelTotal !== undefined && (
+                <CountBadge n={funnelTotal} active={false} />
+              )}
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${funnelOpen ? "rotate-180" : ""}`}
+                style={{ color: "#8DA1C9" }}
+              />
+            </button>
+            {funnelOpen && (
+              <div
+                className="mt-1 ml-3 space-y-0.5 border-l pl-3"
+                style={{ borderColor: "rgba(26, 42, 85, 0.6)" }}
+              >
+                {FUNNEL_GROUPS.map(({ label, group }) => {
+                  const active = pathname === "/leads" && currentGroup === group;
+                  const n = counts?.groups[group];
+                  return (
+                    <Link
+                      key={group}
+                      href={`/leads?group=${group}`}
+                      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors"
+                      style={{
+                        background: active ? "rgba(29, 158, 117, 0.18)" : "transparent",
+                        color: active ? "#5DCAA5" : "#8DA1C9",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = "#142450";
+                          e.currentTarget.style.color = "#FFFFFF";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.color = "#8DA1C9";
+                        }
+                      }}
+                    >
+                      <span className="flex-1 truncate">{label}</span>
+                      {n !== undefined && n > 0 && (
+                        <CountBadge n={n} active={active} />
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Funil compacto — só ícone */}
+        {collapsed && (
+          <Link
+            href="/leads"
+            title="Funil de Venda"
+            className="flex items-center justify-center rounded-lg py-2 transition-colors relative"
             style={{ color: "rgba(255,255,255,0.92)" }}
             onMouseEnter={(e) => (e.currentTarget.style.background = "#142450")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            aria-expanded={funnelOpen}
           >
-            <Filter
-              className="h-[18px] w-[18px] shrink-0"
-              style={{ color: "#8DA1C9" }}
-            />
-            <span className="flex-1 text-left">Funil de Venda</span>
-            {funnelTotal !== undefined && (
-              <CountBadge n={funnelTotal} active={false} />
+            <Filter className="h-[18px] w-[18px]" style={{ color: "#8DA1C9" }} />
+            {funnelTotal !== undefined && funnelTotal > 0 && (
+              <span
+                className="absolute top-1 right-1 h-2 w-2 rounded-full"
+                style={{ background: "#1D9E75" }}
+              />
             )}
-            <ChevronDown
-              className={`h-3.5 w-3.5 transition-transform ${
-                funnelOpen ? "rotate-180" : ""
-              }`}
-              style={{ color: "#8DA1C9" }}
-            />
-          </button>
-          {funnelOpen && (
-            <div
-              className="mt-1 ml-3 space-y-0.5 border-l pl-3"
-              style={{ borderColor: "rgba(26, 42, 85, 0.6)" }}
-            >
-              {FUNNEL_GROUPS.map(({ label, group }) => {
-                const active = pathname === "/leads" && currentGroup === group;
-                const n = counts?.groups[group];
-                return (
-                  <Link
-                    key={group}
-                    href={`/leads?group=${group}`}
-                    className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors"
-                    style={{
-                      background: active ? "rgba(29, 158, 117, 0.18)" : "transparent",
-                      color: active ? "#5DCAA5" : "#8DA1C9",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!active) {
-                        e.currentTarget.style.background = "#142450";
-                        e.currentTarget.style.color = "#FFFFFF";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!active) {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "#8DA1C9";
-                      }
-                    }}
-                  >
-                    <span className="flex-1 truncate">{label}</span>
-                    {n !== undefined && n > 0 && (
-                      <CountBadge n={n} active={active} />
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          </Link>
+        )}
 
-        <NavItem
-          href="/products"
-          label="Produtos"
-          icon={Building2}
-          mode="prefix"
-        />
+        <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
         {role === "OWNER" && (
-          <NavItem
-            href="/central-agentes"
-            label="Central de Agentes"
-            icon={Bot}
-            mode="prefix"
-          />
+          <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />
         )}
         {role === "OWNER" && (
           <NavItem href="/equipe" label="Equipe" icon={UserCog} />
@@ -255,22 +318,18 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
         <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
         <NavItem href="/calendar" label="Agenda" icon={Calendar} />
         {role === "OWNER" && (
-          <NavItem
-            href="/channels"
-            label="Canais"
-            icon={Megaphone}
-            mode="prefix"
-          />
+          <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />
         )}
 
-        {/* Configurações — ativo em qualquer /settings/* exceto permissões */}
         {role === "OWNER" && (
           <Link
             href="/settings"
+            title={collapsed ? "Configurações" : undefined}
             className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
             style={{
               background: settingsActive ? "rgba(29, 158, 117, 0.18)" : "transparent",
               color: settingsActive ? "#5DCAA5" : "rgba(255,255,255,0.92)",
+              justifyContent: collapsed ? "center" : undefined,
             }}
             onMouseEnter={(e) => {
               if (!settingsActive) e.currentTarget.style.background = "#142450";
@@ -283,43 +342,35 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
               className="h-[18px] w-[18px] shrink-0"
               style={{ color: settingsActive ? "#5DCAA5" : "#8DA1C9" }}
             />
-            <span className="flex-1 truncate">Configurações</span>
+            {!collapsed && <span className="flex-1 truncate">Configurações</span>}
           </Link>
         )}
         {role === "OWNER" && (
-          <NavItem
-            href="/settings/permissions"
-            label="Permissões"
-            icon={Shield}
-          />
+          <NavItem href="/settings/permissions" label="Permissões" icon={Shield} />
         )}
         {role === "OWNER" && (
-          <NavItem
-            href="/my-site"
-            label="Meu Site"
-            icon={Globe}
-            mode="prefix"
-          />
+          <NavItem href="/my-site" label="Meu Site" icon={Globe} mode="prefix" />
         )}
       </nav>
 
       {/* Logout */}
       <div
-        className="p-3 border-t"
+        className="p-2 border-t"
         style={{ borderColor: "var(--sidebar-border)" }}
       >
         <button
           onClick={logout}
+          title={collapsed ? "Sair" : undefined}
           className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-          style={{ color: "rgba(255,255,255,0.92)" }}
+          style={{
+            color: "rgba(255,255,255,0.92)",
+            justifyContent: collapsed ? "center" : undefined,
+          }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "#142450")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
-          <LogOut
-            className="h-[18px] w-[18px]"
-            style={{ color: "#8DA1C9" }}
-          />
-          <span>Sair</span>
+          <LogOut className="h-[18px] w-[18px]" style={{ color: "#8DA1C9" }} />
+          {!collapsed && <span>Sair</span>}
         </button>
       </div>
     </aside>
