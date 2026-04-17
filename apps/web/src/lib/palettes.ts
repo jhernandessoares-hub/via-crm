@@ -55,13 +55,13 @@ export const PALETTES: Palette[] = [
     preview: "#BE123C",
   },
   {
-    key: "dourado",
-    label: "Dourado",
-    sidebarBg: "#1A1408",
-    accent: "#B45309",
-    accentLight: "#F59E0B",
-    accentMuted: "rgba(180,83,9,0.18)",
-    preview: "#B45309",
+    key: "azul-claro",
+    label: "Azul Claro",
+    sidebarBg: "#1E3A8A",
+    accent: "#38BDF8",
+    accentLight: "#7DD3FC",
+    accentMuted: "rgba(56,189,248,0.18)",
+    preview: "#38BDF8",
   },
 ];
 
