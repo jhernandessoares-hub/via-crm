@@ -1487,6 +1487,169 @@ export class LeadsService {
     return { total, mine, groups };
   }
 
+  async dashboard(
+    user: { id: string; tenantId: string; role: string; branchId?: string | null },
+    from: Date,
+    to: Date,
+  ) {
+    const { id, tenantId, role, branchId } = user;
+
+    let roleFilter: Record<string, unknown> = {};
+    if (role === 'AGENT') roleFilter = { assignedUserId: id };
+    else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
+
+    const baseWhere = { tenantId, ...roleFilter, deletedAt: null };
+    const periodWhere = { ...baseWhere, criadoEm: { gte: from, lte: to } };
+
+    // ── Cards ──────────────────────────────────────────────────────────
+    const [totalPeriodo, fechados, perdidos, ativos] = await Promise.all([
+      this.prisma.lead.count({ where: periodWhere }),
+      this.prisma.lead.count({ where: { ...periodWhere, status: 'FECHADO' } }),
+      this.prisma.lead.count({ where: { ...periodWhere, status: 'PERDIDO' } }),
+      this.prisma.lead.count({ where: { ...baseWhere, status: { notIn: ['FECHADO', 'PERDIDO'] } } }),
+    ]);
+
+    const taxaConversao = totalPeriodo > 0 ? Math.round((fechados / totalPeriodo) * 100) : 0;
+
+    // ── Funil por grupo ────────────────────────────────────────────────
+    const GROUPS = ['PRE_ATENDIMENTO', 'AGENDAMENTO', 'NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
+    const GROUP_LABELS: Record<string, string> = {
+      PRE_ATENDIMENTO: 'Pré-atendimento',
+      AGENDAMENTO: 'Agendamento',
+      NEGOCIACOES: 'Negociações',
+      CREDITO_IMOBILIARIO: 'Crédito Imobiliário',
+      NEGOCIO_FECHADO: 'Negócio Fechado',
+      POS_VENDA: 'Pós-venda',
+    };
+
+    const leadsWithStage = await this.prisma.lead.findMany({
+      where: periodWhere,
+      select: { stageId: true },
+    });
+    const stageIds = [...new Set(leadsWithStage.map((l) => l.stageId).filter(Boolean))] as string[];
+    const stages = stageIds.length > 0
+      ? await this.prisma.pipelineStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, group: true } })
+      : [];
+    const stageGroupMap: Record<string, string> = {};
+    for (const s of stages) { if (s.group) stageGroupMap[s.id] = s.group; }
+
+    const groupCounts: Record<string, number> = Object.fromEntries(GROUPS.map((g) => [g, 0]));
+    for (const l of leadsWithStage) {
+      const g = l.stageId ? stageGroupMap[l.stageId] : 'PRE_ATENDIMENTO';
+      if (g && g in groupCounts) groupCounts[g]++;
+      else groupCounts['PRE_ATENDIMENTO']++;
+    }
+    const noStage = await this.prisma.lead.count({ where: { ...periodWhere, stageId: null } });
+    groupCounts['PRE_ATENDIMENTO'] += noStage;
+
+    const funil = GROUPS.map((g) => ({ key: g, label: GROUP_LABELS[g], count: groupCounts[g] }));
+
+    // ── Origem dos leads ───────────────────────────────────────────────
+    const leadsComOrigem = await this.prisma.lead.findMany({
+      where: periodWhere,
+      select: { origem: true },
+    });
+    const origemMap: Record<string, number> = {};
+    for (const l of leadsComOrigem) {
+      const key = l.origem || 'Não informado';
+      origemMap[key] = (origemMap[key] || 0) + 1;
+    }
+    const origens = Object.entries(origemMap)
+      .map(([nome, count]) => ({ nome, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+    // ── Leads recentes ─────────────────────────────────────────────────
+    const recentes = await this.prisma.lead.findMany({
+      where: periodWhere,
+      select: {
+        id: true, nome: true, telefone: true, origem: true, criadoEm: true,
+        status: true, stageId: true, assignedUserId: true,
+      },
+      orderBy: { criadoEm: 'desc' },
+      take: 8,
+    });
+
+    // Enriches recentes com stage name e responsavel
+    const recenteStageIds = [...new Set(recentes.map((l) => l.stageId).filter(Boolean))] as string[];
+    const recenteUserIds = [...new Set(recentes.map((l) => l.assignedUserId).filter(Boolean))] as string[];
+    const [recenteStages, recenteUsers] = await Promise.all([
+      recenteStageIds.length > 0
+        ? this.prisma.pipelineStage.findMany({ where: { id: { in: recenteStageIds } }, select: { id: true, name: true, group: true } })
+        : [],
+      recenteUserIds.length > 0
+        ? this.prisma.user.findMany({ where: { id: { in: recenteUserIds } }, select: { id: true, nome: true, apelido: true } })
+        : [],
+    ]);
+    const stageById = Object.fromEntries(recenteStages.map((s) => [s.id, s]));
+    const userById = Object.fromEntries(recenteUsers.map((u) => [u.id, u]));
+
+    // ── IA execuções ───────────────────────────────────────────────────
+    const aiCount = await this.prisma.aiExecutionLog.count({
+      where: { tenantId, createdAt: { gte: from, lte: to } },
+    });
+
+    // ── Agenda próxima ─────────────────────────────────────────────────
+    const now = new Date();
+    const agendaWhere: any = {
+      tenantId,
+      startAt: { gte: now },
+      status: { in: ['AGENDADO', 'CONFIRMADO'] },
+    };
+    if (role === 'AGENT') agendaWhere.userId = id;
+    else if (role === 'MANAGER' && branchId) {
+      const teamIds = await this.prisma.user.findMany({ where: { tenantId, branchId }, select: { id: true } });
+      agendaWhere.userId = { in: teamIds.map((u) => u.id) };
+    }
+
+    const agenda = await this.prisma.calendarEvent.findMany({
+      where: agendaWhere,
+      select: { id: true, title: true, startAt: true, eventType: true, status: true, leadId: true, userId: true },
+      orderBy: { startAt: 'asc' },
+      take: 5,
+    });
+
+    // Enriches agenda com lead nome e user
+    const agendaLeadIds = [...new Set(agenda.map((e) => e.leadId).filter(Boolean))] as string[];
+    const agendaUserIds = [...new Set(agenda.map((e) => e.userId).filter(Boolean))] as string[];
+    const [agendaLeads, agendaUsers] = await Promise.all([
+      agendaLeadIds.length > 0
+        ? this.prisma.lead.findMany({ where: { id: { in: agendaLeadIds } }, select: { id: true, nome: true } })
+        : [],
+      agendaUserIds.length > 0
+        ? this.prisma.user.findMany({ where: { id: { in: agendaUserIds } }, select: { id: true, nome: true, apelido: true } })
+        : [],
+    ]);
+    const leadById = Object.fromEntries(agendaLeads.map((l) => [l.id, l]));
+    const agendaUserById = Object.fromEntries(agendaUsers.map((u) => [u.id, u]));
+
+    return {
+      periodo: { from, to },
+      cards: { totalPeriodo, ativos, fechados, perdidos, taxaConversao },
+      funil,
+      origens,
+      recentes: recentes.map((l) => {
+        const stage = l.stageId ? stageById[l.stageId] : null;
+        const usr = l.assignedUserId ? userById[l.assignedUserId] : null;
+        return {
+          id: l.id, nome: l.nome, telefone: l.telefone, origem: l.origem,
+          status: l.status, stageName: stage?.name ?? null, stageGroup: stage?.group ?? null,
+          responsavel: usr?.apelido || usr?.nome || null, criadoEm: l.criadoEm,
+        };
+      }),
+      ia: { execucoes: aiCount },
+      agenda: agenda.map((e) => {
+        const lead = e.leadId ? leadById[e.leadId] : null;
+        const usr = e.userId ? agendaUserById[e.userId] : null;
+        return {
+          id: e.id, title: e.title, startAt: e.startAt, eventType: e.eventType,
+          status: e.status, leadNome: lead?.nome ?? null, leadId: lead?.id ?? null,
+          responsavel: usr?.apelido || usr?.nome || null,
+        };
+      }),
+    };
+  }
+
   async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
     const { id, tenantId, role, branchId } = user;
 

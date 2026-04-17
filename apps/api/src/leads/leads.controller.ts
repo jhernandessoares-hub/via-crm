@@ -67,6 +67,14 @@ export class LeadsController {
     return this.leadsService.counts(req.user);
   }
 
+  @Get('dashboard')
+  async dashboard(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
+    const now = new Date();
+    const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    const toDate = to ? new Date(to) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return this.leadsService.dashboard(req.user, fromDate, toDate);
+  }
+
   @Get()
   async list(@Req() req: any) {
     return this.leadsService.list(req.user);
