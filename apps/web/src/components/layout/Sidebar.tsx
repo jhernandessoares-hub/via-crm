@@ -125,12 +125,11 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
         className="group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
         style={{
           background: active ? "var(--brand-accent-muted)" : "transparent",
-          color: active ? "var(--brand-accent-light)" : "rgba(255,255,255,0.92)",
+          color: active ? "var(--brand-accent)" : "var(--sidebar-text)",
           justifyContent: collapsed ? "center" : undefined,
-          paddingLeft: collapsed ? undefined : undefined,
         }}
         onMouseEnter={(e) => {
-          if (!active) e.currentTarget.style.background = "#142450";
+          if (!active) e.currentTarget.style.background = "var(--sidebar-hover)";
         }}
         onMouseLeave={(e) => {
           if (!active) e.currentTarget.style.background = "transparent";
@@ -138,7 +137,7 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
       >
         <Icon
           className="h-[18px] w-[18px] shrink-0"
-          style={{ color: active ? "var(--brand-accent-light)" : "#8DA1C9" }}
+          style={{ color: active ? "var(--brand-accent)" : "var(--sidebar-text-muted)" }}
         />
         {!collapsed && <span className="flex-1 truncate">{label}</span>}
         {!collapsed && badge !== undefined && badge !== null && (
@@ -174,91 +173,64 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
       >
         {!collapsed && (
           <Link href="/dashboard" className="block flex-1">
-            <img
-              src={logoSrc}
-              alt="VIA CRM"
-              className="w-[72%] h-auto mx-auto block"
-            />
+            <img src={logoSrc} alt="VIA CRM" className="w-[72%] h-auto mx-auto block" />
           </Link>
         )}
         {collapsed && (
           <Link href="/dashboard" title="Dashboard">
-            <img
-              src={logoSrc}
-              alt="VIA CRM"
-              className="w-9 h-9 object-contain"
-            />
+            <img src={logoSrc} alt="VIA CRM" className="w-9 h-9 object-contain" />
           </Link>
         )}
         <button
           onClick={toggleCollapsed}
           title={collapsed ? "Expandir menu" : "Minimizar menu"}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors"
-          style={{ color: "#8DA1C9", marginLeft: collapsed ? 0 : "4px" }}
+          style={{ color: "var(--sidebar-text-muted)", marginLeft: collapsed ? 0 : "4px" }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#142450";
-            e.currentTarget.style.color = "var(--brand-accent-light)";
+            e.currentTarget.style.background = "var(--sidebar-hover)";
+            e.currentTarget.style.color = "var(--brand-accent)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "#8DA1C9";
+            e.currentTarget.style.color = "var(--sidebar-text-muted)";
           }}
         >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
         <NavItem href="/dashboard" label="Dashboard" icon={LayoutDashboard} />
-        <NavItem
-          href="/meus-leads"
-          label="Meus Leads"
-          icon={User}
-          badge={counts?.mine}
-        />
+        <NavItem href="/meus-leads" label="Meus Leads" icon={User} badge={counts?.mine} />
         {role !== "AGENT" && (
-          <NavItem
-            href="/pipeline"
-            label="Todos os Leads"
-            icon={Users}
-            badge={counts?.total}
-          />
+          <NavItem href="/pipeline" label="Todos os Leads" icon={Users} badge={counts?.total} />
         )}
 
-        {/* Funil colapsável — oculto quando sidebar compacta */}
+        {/* Funil colapsável */}
         {!collapsed && (
           <div className="pt-1">
             <button
               type="button"
               onClick={toggleFunnel}
               className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-              style={{ color: "rgba(255,255,255,0.92)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#142450")}
+              style={{ color: "var(--sidebar-text)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sidebar-hover)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               aria-expanded={funnelOpen}
             >
-              <Filter
-                className="h-[18px] w-[18px] shrink-0"
-                style={{ color: "#8DA1C9" }}
-              />
+              <Filter className="h-[18px] w-[18px] shrink-0" style={{ color: "var(--sidebar-text-muted)" }} />
               <span className="flex-1 text-left">Funil de Venda</span>
-              {funnelTotal !== undefined && (
-                <CountBadge n={funnelTotal} active={false} />
-              )}
+              {funnelTotal !== undefined && <CountBadge n={funnelTotal} active={false} />}
               <ChevronDown
                 className={`h-3.5 w-3.5 transition-transform ${funnelOpen ? "rotate-180" : ""}`}
-                style={{ color: "#8DA1C9" }}
+                style={{ color: "var(--sidebar-text-muted)" }}
               />
             </button>
             {funnelOpen && (
               <div
                 className="mt-1 ml-3 space-y-0.5 border-l pl-3"
-                style={{ borderColor: "rgba(26, 42, 85, 0.6)" }}
+                style={{ borderColor: "var(--sidebar-funnel-border)" }}
               >
                 {FUNNEL_GROUPS.map(({ label, group }) => {
                   const active = pathname === "/leads" && currentGroup === group;
@@ -270,25 +242,23 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
                       className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors"
                       style={{
                         background: active ? "var(--brand-accent-muted)" : "transparent",
-                        color: active ? "var(--brand-accent-light)" : "#8DA1C9",
+                        color: active ? "var(--brand-accent)" : "var(--sidebar-text-muted)",
                       }}
                       onMouseEnter={(e) => {
                         if (!active) {
-                          e.currentTarget.style.background = "#142450";
-                          e.currentTarget.style.color = "#FFFFFF";
+                          e.currentTarget.style.background = "var(--sidebar-hover)";
+                          e.currentTarget.style.color = "var(--sidebar-text)";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!active) {
                           e.currentTarget.style.background = "transparent";
-                          e.currentTarget.style.color = "#8DA1C9";
+                          e.currentTarget.style.color = "var(--sidebar-text-muted)";
                         }
                       }}
                     >
                       <span className="flex-1 truncate">{label}</span>
-                      {n !== undefined && n > 0 && (
-                        <CountBadge n={n} active={active} />
-                      )}
+                      {n !== undefined && n > 0 && <CountBadge n={n} active={active} />}
                     </Link>
                   );
                 })}
@@ -297,38 +267,29 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
           </div>
         )}
 
-        {/* Funil compacto — só ícone */}
+        {/* Funil compacto */}
         {collapsed && (
           <Link
             href="/leads"
             title="Funil de Venda"
             className="flex items-center justify-center rounded-lg py-2 transition-colors relative"
-            style={{ color: "rgba(255,255,255,0.92)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#142450")}
+            style={{ color: "var(--sidebar-text)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sidebar-hover)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
-            <Filter className="h-[18px] w-[18px]" style={{ color: "#8DA1C9" }} />
+            <Filter className="h-[18px] w-[18px]" style={{ color: "var(--sidebar-text-muted)" }} />
             {funnelTotal !== undefined && funnelTotal > 0 && (
-              <span
-                className="absolute top-1 right-1 h-2 w-2 rounded-full"
-                style={{ background: "var(--brand-accent)" }}
-              />
+              <span className="absolute top-1 right-1 h-2 w-2 rounded-full" style={{ background: "var(--brand-accent)" }} />
             )}
           </Link>
         )}
 
         <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
-        {role === "OWNER" && (
-          <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />
-        )}
-        {role === "OWNER" && (
-          <NavItem href="/equipe" label="Equipe" icon={UserCog} />
-        )}
+        {role === "OWNER" && <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />}
+        {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
         <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
         <NavItem href="/calendar" label="Agenda" icon={Calendar} />
-        {role === "OWNER" && (
-          <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />
-        )}
+        {role === "OWNER" && <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />}
 
         {role === "OWNER" && (
           <Link
@@ -337,48 +298,34 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
             className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all"
             style={{
               background: settingsActive ? "var(--brand-accent-muted)" : "transparent",
-              color: settingsActive ? "var(--brand-accent-light)" : "rgba(255,255,255,0.92)",
+              color: settingsActive ? "var(--brand-accent)" : "var(--sidebar-text)",
               justifyContent: collapsed ? "center" : undefined,
             }}
-            onMouseEnter={(e) => {
-              if (!settingsActive) e.currentTarget.style.background = "#142450";
-            }}
-            onMouseLeave={(e) => {
-              if (!settingsActive) e.currentTarget.style.background = "transparent";
-            }}
+            onMouseEnter={(e) => { if (!settingsActive) e.currentTarget.style.background = "var(--sidebar-hover)"; }}
+            onMouseLeave={(e) => { if (!settingsActive) e.currentTarget.style.background = "transparent"; }}
           >
             <Settings
               className="h-[18px] w-[18px] shrink-0"
-              style={{ color: settingsActive ? "var(--brand-accent-light)" : "#8DA1C9" }}
+              style={{ color: settingsActive ? "var(--brand-accent)" : "var(--sidebar-text-muted)" }}
             />
             {!collapsed && <span className="flex-1 truncate">Configurações</span>}
           </Link>
         )}
-        {role === "OWNER" && (
-          <NavItem href="/settings/permissions" label="Permissões" icon={Shield} />
-        )}
-        {role === "OWNER" && (
-          <NavItem href="/my-site" label="Meu Site" icon={Globe} mode="prefix" />
-        )}
+        {role === "OWNER" && <NavItem href="/settings/permissions" label="Permissões" icon={Shield} />}
+        {role === "OWNER" && <NavItem href="/my-site" label="Meu Site" icon={Globe} mode="prefix" />}
       </nav>
 
       {/* Logout */}
-      <div
-        className="p-2 border-t"
-        style={{ borderColor: "var(--sidebar-border)" }}
-      >
+      <div className="p-2 border-t" style={{ borderColor: "var(--sidebar-border)" }}>
         <button
           onClick={logout}
           title={collapsed ? "Sair" : undefined}
           className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-          style={{
-            color: "rgba(255,255,255,0.92)",
-            justifyContent: collapsed ? "center" : undefined,
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#142450")}
+          style={{ color: "var(--sidebar-text)", justifyContent: collapsed ? "center" : undefined }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sidebar-hover)")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
-          <LogOut className="h-[18px] w-[18px]" style={{ color: "#8DA1C9" }} />
+          <LogOut className="h-[18px] w-[18px]" style={{ color: "var(--sidebar-text-muted)" }} />
           {!collapsed && <span>Sair</span>}
         </button>
       </div>
@@ -393,7 +340,7 @@ function CountBadge({ n, active }: { n: number; active: boolean }) {
       style={
         active
           ? { background: "var(--brand-accent)", color: "#FFFFFF" }
-          : { background: "rgba(255,255,255,0.10)", color: "#8DA1C9" }
+          : { background: "rgba(128,128,128,0.15)", color: "var(--sidebar-text-muted)" }
       }
     >
       {n > 999 ? "999+" : n}

@@ -15,14 +15,13 @@
   --via-muted: #6B7A99;
   --via-border: #E4E6E0;
 
-  /* Sidebar (sempre escura) */
+  /* Sidebar — padrão Verde VIA, sobrescrito via JS pela paleta */
   --sidebar-bg: var(--via-navy);
-  --sidebar-text: #FFFFFF;
+  --sidebar-text: rgba(255,255,255,0.92);
   --sidebar-text-muted: #8DA1C9;
   --sidebar-hover: #142450;
-  --sidebar-active-bg: rgba(29, 158, 117, 0.18);
-  --sidebar-active-text: #5DCAA5;
   --sidebar-border: #1A2A55;
+  --sidebar-funnel-border: rgba(26,42,85,0.6);
 
   /* Brand / Palette — padrão Verde VIA, sobrescrito via JS */
   --brand-accent: #1D9E75;
