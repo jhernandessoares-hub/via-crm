@@ -283,8 +283,8 @@ function processingStatusClass(status: string | null | undefined): string {
     case "CONCLUIDO": return "bg-green-100 text-green-700";
     case "PENDENTE_REVISAO": return "bg-amber-100 text-amber-700";
     case "ERRO": return "bg-red-100 text-red-700";
-    case "MANUAL": return "bg-gray-100 text-gray-600";
-    default: return "bg-gray-100 text-gray-500";
+    case "MANUAL": return "bg-[var(--shell-hover)] text-[var(--shell-subtext)]";
+    default: return "bg-[var(--shell-hover)] text-[var(--shell-subtext)]";
   }
 }
 function decisionLabel(decision: string | null | undefined): string {
@@ -360,25 +360,25 @@ function FileModal({ title, showNome, nomeDefault = "", onConfirm, onCancel, bus
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">✕</button>
+          <h3 className="text-sm font-semibold text-[var(--shell-text)]">{title}</h3>
+          <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕</button>
         </div>
         <div className="px-5 py-4 space-y-4">
           {!file ? (
-            <button className="w-full flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-8 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors" onClick={() => inputRef.current?.click()}>
+            <button className="w-full flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-8 text-sm text-[var(--shell-subtext)] hover:border-blue-400 hover:text-blue-600 transition-colors" onClick={() => inputRef.current?.click()}>
               <svg className="h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
               Clique para escolher o arquivo
-              <span className="text-xs text-gray-400">PDF, imagem, Word</span>
+              <span className="text-xs text-[var(--shell-subtext)]">PDF, imagem, Word</span>
             </button>
           ) : (
-            <div className="rounded-xl border bg-gray-50 overflow-hidden">
-              {previewUrl && file.type.startsWith("image/") && <img src={previewUrl} alt="preview" className="w-full max-h-40 object-contain bg-white" />}
+            <div className="rounded-xl border bg-[var(--shell-bg)] overflow-hidden">
+              {previewUrl && file.type.startsWith("image/") && <img src={previewUrl} alt="preview" className="w-full max-h-40 object-contain bg-[var(--shell-card-bg)]" />}
               {previewUrl && file.type === "application/pdf" && <iframe src={previewUrl} className="w-full h-32" title="preview" />}
-              {!previewUrl && <div className="flex items-center gap-3 px-4 py-3"><svg className="h-7 w-7 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="text-sm text-gray-700 truncate">{file.name}</span></div>}
-              <div className="px-3 py-2 border-t bg-white flex items-center justify-between">
-                <span className="text-xs text-gray-500 truncate">{file.name}</span>
+              {!previewUrl && <div className="flex items-center gap-3 px-4 py-3"><svg className="h-7 w-7 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="text-sm text-[var(--shell-subtext)] truncate">{file.name}</span></div>}
+              <div className="px-3 py-2 border-t bg-[var(--shell-card-bg)] flex items-center justify-between">
+                <span className="text-xs text-[var(--shell-subtext)] truncate">{file.name}</span>
                 <button className="text-xs text-blue-600 hover:underline" onClick={() => inputRef.current?.click()}>Trocar</button>
               </div>
             </div>
@@ -392,14 +392,14 @@ function FileModal({ title, showNome, nomeDefault = "", onConfirm, onCancel, bus
           )}
           {showNome && (
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Nome do documento</label>
-              <input type="text" autoFocus className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              <label className="block text-xs text-[var(--shell-subtext)] mb-1">Nome do documento</label>
+              <input type="text" autoFocus className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 placeholder="Ex: Holerite, Procuração..." value={nome} onChange={e => setNome(e.target.value)} />
             </div>
           )}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Observação <span className="text-gray-400">(opcional)</span></label>
-            <input type="text" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            <label className="block text-xs text-[var(--shell-subtext)] mb-1">Observação <span className="text-[var(--shell-subtext)]">(opcional)</span></label>
+            <input type="text" className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               placeholder="Ex: mês 03/2025, data de emissão..." value={obs} onChange={e => setObs(e.target.value)} />
           </div>
           {isPdfLarge && !compressing && (
@@ -416,7 +416,7 @@ function FileModal({ title, showNome, nomeDefault = "", onConfirm, onCancel, bus
             </div>
           )}
           <div className="flex gap-2 pt-1">
-            <button className="flex-1 rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onCancel} disabled={busy || compressing}>Cancelar</button>
+            <button className="flex-1 rounded-lg border border-[var(--shell-card-border)] py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]" onClick={onCancel} disabled={busy || compressing}>Cancelar</button>
             <button className="flex-1 rounded-lg bg-blue-600 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
               onClick={handleConfirm} disabled={busy || compressing || !canConfirm}>
               {compressing ? "Comprimindo..." : busy ? "Enviando..." : "Confirmar"}
@@ -467,19 +467,19 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }} onClick={onClose}>
       <div className="relative w-full max-w-4xl mx-4 flex flex-col" style={{ maxHeight: "92vh" }} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between bg-white rounded-t-xl px-4 py-3 shrink-0">
-          <span className="text-sm font-medium text-gray-800 truncate flex-1">{nome}</span>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none ml-4">✕</button>
+        <div className="flex items-center justify-between bg-[var(--shell-card-bg)] rounded-t-xl px-4 py-3 shrink-0">
+          <span className="text-sm font-medium text-[var(--shell-text)] truncate flex-1">{nome}</span>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-4">✕</button>
         </div>
         <div className="flex-1 overflow-hidden bg-gray-900 rounded-b-xl flex items-center justify-center min-h-[300px]">
           {loading && (
-            <div className="flex flex-col items-center gap-3 text-gray-400">
+            <div className="flex flex-col items-center gap-3 text-[var(--shell-subtext)]">
               <svg className="animate-spin h-8 w-8" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
               <span className="text-sm">Carregando...</span>
             </div>
           )}
           {!loading && fetchError && (
-            <div className="text-center text-gray-400 p-8">
+            <div className="text-center text-[var(--shell-subtext)] p-8">
               <p className="text-sm mb-2">Não foi possível carregar o arquivo.</p>
             </div>
           )}
@@ -526,16 +526,16 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
   return (
     <div className="flex-1 flex items-center justify-center overflow-hidden" style={{ minHeight: 200 }}>
       {loading && (
-        <div className="flex flex-col items-center gap-2 text-gray-400">
+        <div className="flex flex-col items-center gap-2 text-[var(--shell-subtext)]">
           <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
           <span className="text-xs">Carregando...</span>
         </div>
       )}
-      {!loading && fetchError && <p className="text-xs text-gray-400">Não foi possível carregar o arquivo.</p>}
+      {!loading && fetchError && <p className="text-xs text-[var(--shell-subtext)]">Não foi possível carregar o arquivo.</p>}
       {!loading && blobUrl && isImage && <img src={blobUrl} alt={doc.nome} className="max-w-full max-h-full object-contain" />}
       {!loading && blobUrl && isPdf && <iframe src={blobUrl} className="w-full h-full" title={doc.nome} style={{ minHeight: 320 }} />}
       {!loading && blobUrl && !isImage && !isPdf && (
-        <div className="text-center text-gray-400 text-xs p-6">
+        <div className="text-center text-[var(--shell-subtext)] text-xs p-6">
           <p className="mb-2">Visualização não disponível.</p>
           <a href={blobUrl} download={doc.nome} className="text-blue-400 hover:underline">Baixar arquivo</a>
         </div>
@@ -571,31 +571,31 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }} onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl flex overflow-hidden mx-4"
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl flex overflow-hidden mx-4"
         style={{ width: selectedDoc ? 860 : 400, maxWidth: "95vw", maxHeight: "90vh", transition: "width 0.2s ease" }}
         onClick={e => e.stopPropagation()}>
 
         {/* ── Coluna esquerda: participante + botões de doc + campo ── */}
         <div className="flex flex-col shrink-0 overflow-y-auto" style={{ width: 400 }}>
           {/* Cabeçalho: nome do participante */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--shell-card-border)]">
             <div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Participante</div>
-              <div className="text-base font-semibold text-gray-800">{personName || "Lead"}</div>
+              <div className="text-[10px] text-[var(--shell-subtext)] uppercase tracking-wide mb-0.5">Participante</div>
+              <div className="text-base font-semibold text-[var(--shell-text)]">{personName || "Lead"}</div>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none ml-4">✕</button>
+            <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-xl leading-none ml-4">✕</button>
           </div>
 
           {/* Grade de botões — um por documento */}
           <div className="px-5 pt-4 pb-2">
-            <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-3">Documentos disponíveis</div>
+            <div className="text-[10px] text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Documentos disponíveis</div>
             <div className="grid grid-cols-2 gap-2">
               {relevantDocs.map(d => (
                 <button key={d.id}
                   className={`rounded-xl border-2 px-3 py-4 text-sm font-medium text-left transition-all ${
                     selectedDocId === d.id
                       ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-300 hover:bg-blue-50"
+                      : "border-[var(--shell-card-border)] bg-[var(--shell-bg)] text-[var(--shell-subtext)] hover:border-blue-300 hover:bg-blue-50"
                   }`}
                   onClick={() => setSelectedDocId(d.id === selectedDocId ? null : d.id)}>
                   {tipoLabel(d.tipo)}
@@ -606,9 +606,9 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
 
           {/* Campo de edição */}
           <div className="px-5 pt-3 pb-5 mt-auto">
-            <label className="block text-[10px] text-gray-400 uppercase tracking-wide mb-1">{fieldLabel}</label>
+            <label className="block text-[10px] text-[var(--shell-subtext)] uppercase tracking-wide mb-1">{fieldLabel}</label>
             {options ? (
-              <select className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              <select className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 value={inputValue} onChange={e => setInputValue(e.target.value)}>
                 {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -616,7 +616,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
               <input
                 type={inputType ?? "text"}
                 autoFocus
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 value={inputValue}
                 onChange={e => setInputValue(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
@@ -628,7 +628,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
                 onClick={handleSave} disabled={saving}>
                 {saving ? "Salvando..." : "Confirmar"}
               </button>
-              <button className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onClose}>
+              <button className="flex-1 rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]" onClick={onClose}>
                 Cancelar
               </button>
             </div>
@@ -640,7 +640,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
           <div className="flex-1 bg-gray-900 flex flex-col overflow-hidden border-l border-gray-700" style={{ minWidth: 0 }}>
             <div className="flex items-center justify-between px-3 py-2 bg-gray-800 shrink-0">
               <span className="text-xs text-gray-300 font-medium">{tipoLabel(selectedDoc.tipo)}</span>
-              <button className="text-gray-400 hover:text-gray-200 text-sm leading-none" onClick={() => setSelectedDocId(null)}>✕</button>
+              <button className="text-[var(--shell-subtext)] hover:text-gray-200 text-sm leading-none" onClick={() => setSelectedDocId(null)}>✕</button>
             </div>
             <DocPreviewInline leadId={leadId} doc={selectedDoc} />
           </div>
@@ -756,14 +756,14 @@ function BulkUploadModal({ leadId, onDone, onCancel }: {
   if (status === "sent") {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+        <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
           <div className="px-6 py-6 text-center space-y-3">
             <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
               <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">{pendingCount} documento{pendingCount !== 1 ? "s" : ""} enviado{pendingCount !== 1 ? "s" : ""}!</p>
-              <p className="text-xs text-gray-500 mt-1">A IA já começou a processar. O painel de acompanhamento abaixo mostra arquivo por arquivo até concluir.</p>
+              <p className="text-sm font-semibold text-[var(--shell-text)]">{pendingCount} documento{pendingCount !== 1 ? "s" : ""} enviado{pendingCount !== 1 ? "s" : ""}!</p>
+              <p className="text-xs text-[var(--shell-subtext)] mt-1">A IA já começou a processar. O painel de acompanhamento abaixo mostra arquivo por arquivo até concluir.</p>
             </div>
             {(localRejected.length > 0 || uploadErrors.length > 0) && (
               <div className="text-left rounded-lg bg-red-50 border border-red-100 px-3 py-2">
@@ -795,30 +795,30 @@ function BulkUploadModal({ leadId, onDone, onCancel }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Subir vários documentos</h3>
-            <p className="text-xs text-gray-400 mt-0.5">A IA classifica e organiza automaticamente</p>
+            <h3 className="text-sm font-semibold text-[var(--shell-text)]">Subir vários documentos</h3>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">A IA classifica e organiza automaticamente</p>
           </div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">✕</button>
+          <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕</button>
         </div>
         <div className="px-5 py-4 space-y-4">
           {/* Drop zone */}
           <div
             ref={dropRef}
-            className="rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-400 transition-colors cursor-pointer"
+            className="rounded-xl border-2 border-dashed border-[var(--shell-card-border)] hover:border-blue-400 transition-colors cursor-pointer"
             onDragOver={e => e.preventDefault()}
             onDrop={onDrop}
             onClick={() => inputRef.current?.click()}
           >
             {files.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-10 text-sm text-gray-500">
+              <div className="flex flex-col items-center gap-2 py-10 text-sm text-[var(--shell-subtext)]">
                 <svg className="h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                 </svg>
                 Arraste os arquivos aqui ou clique para selecionar
-                <span className="text-xs text-gray-400">PDF, imagens — até 20 arquivos</span>
+                <span className="text-xs text-[var(--shell-subtext)]">PDF, imagens — até 20 arquivos</span>
               </div>
             ) : (
               <div className="p-4 space-y-1.5 max-h-48 overflow-y-auto">
@@ -827,10 +827,10 @@ function BulkUploadModal({ leadId, onDone, onCancel }: {
                   const willCompress = isPdf && f.size > CLOUDINARY_COMPRESS_THRESHOLD;
                   return (
                   <div key={i} className="flex items-center gap-2 text-sm">
-                    <svg className="h-4 w-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    <span className="flex-1 text-gray-700 truncate">{f.name}</span>
+                    <svg className="h-4 w-4 text-[var(--shell-subtext)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    <span className="flex-1 text-[var(--shell-subtext)] truncate">{f.name}</span>
                     {willCompress && <span className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 shrink-0">será comprimido</span>}
-                    <span className="text-xs text-gray-400 shrink-0">{fmtFileSize(f.size)}</span>
+                    <span className="text-xs text-[var(--shell-subtext)] shrink-0">{fmtFileSize(f.size)}</span>
                     <button className="text-gray-300 hover:text-red-400 shrink-0" onClick={ev => { ev.stopPropagation(); setFiles(prev => prev.filter((_, j) => j !== i)); }}>✕</button>
                   </div>
                   );
@@ -866,7 +866,7 @@ function BulkUploadModal({ leadId, onDone, onCancel }: {
             </div>
           )}
           <div className="flex gap-2">
-            <button className="flex-1 rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onCancel} disabled={status !== "idle"}>Cancelar</button>
+            <button className="flex-1 rounded-lg border border-[var(--shell-card-border)] py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]" onClick={onCancel} disabled={status !== "idle"}>Cancelar</button>
             <button
               className="flex-1 rounded-lg bg-blue-600 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
               onClick={upload} disabled={!files.length || status !== "idle"}
@@ -924,16 +924,16 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
   const Field = ({ label, name, type = "text", options }: { label: string; name: string; type?: string; options?: { value: string; label: string }[] }) => (
     <div>
       <div className="flex items-center gap-1.5 mb-0.5">
-        <label className="block text-[10px] text-gray-400 uppercase tracking-wide">{label}</label>
+        <label className="block text-[10px] text-[var(--shell-subtext)] uppercase tracking-wide">{label}</label>
         {origens[name] === "IA" && <IABadge small />}
       </div>
       {options ? (
-        <select className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+        <select className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
           value={campos[name] ?? ""} onChange={e => edit(name, e.target.value)}>
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (
-        <input type={type} className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+        <input type={type} className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
           value={campos[name] ?? ""} onChange={e => edit(name, e.target.value)} />
       )}
     </div>
@@ -943,20 +943,20 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Cadastro com IA — {displayName}</h3>
+            <h3 className="text-sm font-semibold text-[var(--shell-text)]">Cadastro com IA — {displayName}</h3>
             {status === "ready" && !error && aiCount > 0 && (
               <p className="text-xs text-blue-600 mt-0.5">{aiCount} campo{aiCount > 1 ? "s" : ""} preenchido{aiCount > 1 ? "s" : ""} pela IA — valide antes de confirmar</p>
             )}
           </div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">✕</button>
+          <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {status === "loading" && (
-            <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-12 gap-3 text-[var(--shell-subtext)]">
               <svg className="animate-spin h-8 w-8" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -968,7 +968,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
           {status === "ready" && !error && (
             <div className="space-y-5">
               <div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Identificação</div>
+                <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="CPF" name="cpf" />
                   <Field label="RG" name="rg" />
@@ -980,7 +980,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Contato</div>
+                <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Telefone" name="telefone" />
                   <Field label="Email" name="email" type="email" />
@@ -993,7 +993,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Profissional</div>
+                <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Profissão" name="profissao" />
                   <Field label="Empresa" name="empresa" />
@@ -1008,7 +1008,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
 
         {status !== "loading" && !error && (
           <div className="px-5 py-4 border-t flex gap-2 shrink-0">
-            <button className="flex-1 rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onCancel} disabled={status === "saving"}>Cancelar</button>
+            <button className="flex-1 rounded-lg border border-[var(--shell-card-border)] py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]" onClick={onCancel} disabled={status === "saving"}>Cancelar</button>
             <button className="flex-1 rounded-lg bg-blue-600 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50" onClick={confirm} disabled={status === "saving"}>
               {status === "saving" ? "Salvando..." : "Confirmar cadastro"}
             </button>
@@ -1025,23 +1025,23 @@ function AddParticipanteModal({ onConfirm, onCancel }: { onConfirm: (n: string, 
   const [nome, setNome] = useState(""); const [classificacao, setClassificacao] = useState("CONJUGE");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h3 className="text-sm font-semibold text-gray-900">Adicionar participante</h3>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">✕</button>
+          <h3 className="text-sm font-semibold text-[var(--shell-text)]">Adicionar participante</h3>
+          <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕</button>
         </div>
         <div className="px-5 py-4 space-y-4">
-          <div><label className="block text-xs text-gray-500 mb-1">Nome completo</label>
-            <input type="text" autoFocus className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          <div><label className="block text-xs text-[var(--shell-subtext)] mb-1">Nome completo</label>
+            <input type="text" autoFocus className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               placeholder="Ex: Maria Silva" value={nome} onChange={e => setNome(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && nome.trim()) onConfirm(nome.trim(), classificacao); if (e.key === "Escape") onCancel(); }} /></div>
-          <div><label className="block text-xs text-gray-500 mb-1">Classificação</label>
-            <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          <div><label className="block text-xs text-[var(--shell-subtext)] mb-1">Classificação</label>
+            <select className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={classificacao} onChange={e => setClassificacao(e.target.value)}>
               {CLASSIFICACOES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select></div>
           <div className="flex gap-2 pt-1">
-            <button className="flex-1 rounded-lg border border-gray-200 py-2 text-sm text-gray-600" onClick={onCancel}>Cancelar</button>
+            <button className="flex-1 rounded-lg border border-[var(--shell-card-border)] py-2 text-sm text-[var(--shell-subtext)]" onClick={onCancel}>Cancelar</button>
             <button className="flex-1 rounded-lg bg-blue-600 py-2 text-sm text-white disabled:opacity-50"
               onClick={() => { if (nome.trim()) onConfirm(nome.trim(), classificacao); }} disabled={!nome.trim()}>Adicionar</button>
           </div>
@@ -1087,28 +1087,28 @@ function IdentifyDocModal({ leadId, doc, participantes, onConfirm, onCancel, bus
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }} onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col overflow-hidden" style={{ maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col overflow-hidden" style={{ maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Identificar documento</h3>
-            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[380px]">{doc.filename || doc.nome}</p>
+            <h3 className="text-sm font-semibold text-[var(--shell-text)]">Identificar documento</h3>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5 truncate max-w-[380px]">{doc.filename || doc.nome}</p>
           </div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 text-lg leading-none ml-4">✕</button>
+          <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-4">✕</button>
         </div>
 
         {/* Body: preview + formulário */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           {/* Preview */}
-          <div className="flex-1 bg-gray-100 flex items-center justify-center overflow-hidden min-h-[220px]">
+          <div className="flex-1 bg-[var(--shell-hover)] flex items-center justify-center overflow-hidden min-h-[220px]">
             {loadingPreview && (
-              <div className="flex flex-col items-center gap-3 text-gray-400">
+              <div className="flex flex-col items-center gap-3 text-[var(--shell-subtext)]">
                 <svg className="animate-spin h-7 w-7" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                 <span className="text-sm">Carregando...</span>
               </div>
             )}
             {!loadingPreview && previewError && (
-              <div className="text-center p-8 text-gray-400">
+              <div className="text-center p-8 text-[var(--shell-subtext)]">
                 <p className="text-sm">Não foi possível carregar a visualização.</p>
               </div>
             )}
@@ -1119,11 +1119,11 @@ function IdentifyDocModal({ leadId, doc, participantes, onConfirm, onCancel, bus
               <iframe src={blobUrl} className="w-full h-full" style={{ minHeight: "340px" }} title={doc.nome} />
             )}
             {!loadingPreview && blobUrl && !isImage && !isPdf && (
-              <div className="text-center p-8 text-gray-400">
+              <div className="text-center p-8 text-[var(--shell-subtext)]">
                 <svg className="h-14 w-14 text-gray-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-sm text-gray-500 mb-2">{doc.filename || doc.nome}</p>
+                <p className="text-sm text-[var(--shell-subtext)] mb-2">{doc.filename || doc.nome}</p>
                 <a href={blobUrl} download={doc.filename || doc.nome} className="text-xs text-blue-600 hover:underline">
                   Baixar arquivo
                 </a>
@@ -1132,31 +1132,31 @@ function IdentifyDocModal({ leadId, doc, participantes, onConfirm, onCancel, bus
           </div>
 
           {/* Formulário */}
-          <div className="lg:w-72 shrink-0 flex flex-col border-t lg:border-t-0 lg:border-l border-gray-100">
+          <div className="lg:w-72 shrink-0 flex flex-col border-t lg:border-t-0 lg:border-l border-[var(--shell-card-border)]">
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Tipo de documento</label>
-                <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                <label className="block text-xs text-[var(--shell-subtext)] mb-1">Tipo de documento</label>
+                <select className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   value={tipo} onChange={e => setTipo(e.target.value)}>
                   {TIPOS_PADRAO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Pertence a</label>
-                <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                <label className="block text-xs text-[var(--shell-subtext)] mb-1">Pertence a</label>
+                <select className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   value={participanteNome} onChange={e => setParticipanteNome(e.target.value)}>
                   {partOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Descrição <span className="text-gray-400">(opcional)</span></label>
-                <input type="text" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                <label className="block text-xs text-[var(--shell-subtext)] mb-1">Descrição <span className="text-[var(--shell-subtext)]">(opcional)</span></label>
+                <input type="text" className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   placeholder="Ex: Holerite 03/2025, RG frente e verso..."
                   value={descricao} onChange={e => setDescricao(e.target.value)} />
               </div>
             </div>
-            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 shrink-0">
-              <button className="flex-1 rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onCancel} disabled={busy}>Cancelar</button>
+            <div className="px-5 py-4 border-t border-[var(--shell-card-border)] flex gap-2 shrink-0">
+              <button className="flex-1 rounded-lg border border-[var(--shell-card-border)] py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]" onClick={onCancel} disabled={busy}>Cancelar</button>
               <button className="flex-1 rounded-lg bg-blue-600 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
                 onClick={() => onConfirm(doc.id, tipo, participanteNome || null, nomeDoc)} disabled={busy}>
                 {busy ? "Salvando..." : "Confirmar"}
@@ -1184,31 +1184,31 @@ function ReclassifyModal({ doc, participantes, onConfirm, onCancel, busy }: {
   ];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Reclassificar documento</h3>
-            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">{doc.filename || doc.nome}</p>
+            <h3 className="text-sm font-semibold text-[var(--shell-text)]">Reclassificar documento</h3>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5 truncate max-w-[220px]">{doc.filename || doc.nome}</p>
           </div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">✕</button>
+          <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕</button>
         </div>
         <div className="px-5 py-4 space-y-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Tipo de documento</label>
-            <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            <label className="block text-xs text-[var(--shell-subtext)] mb-1">Tipo de documento</label>
+            <select className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={tipo} onChange={e => setTipo(e.target.value)}>
               {TIPOS_PADRAO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Pertence a</label>
-            <select className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            <label className="block text-xs text-[var(--shell-subtext)] mb-1">Pertence a</label>
+            <select className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={participanteNome} onChange={e => setParticipanteNome(e.target.value)}>
               {partOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
           <div className="flex gap-2 pt-1">
-            <button className="flex-1 rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={onCancel} disabled={busy}>Cancelar</button>
+            <button className="flex-1 rounded-lg border border-[var(--shell-card-border)] py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]" onClick={onCancel} disabled={busy}>Cancelar</button>
             <button className="flex-1 rounded-lg bg-blue-600 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
               onClick={() => onConfirm(doc.id, tipo, participanteNome || null)} disabled={busy}>
               {busy ? "Salvando..." : "Salvar"}
@@ -1325,7 +1325,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     return (
       <div className={span2 ? "col-span-2" : ""}>
         <div className="flex items-center gap-1 mb-0.5">
-          <label className="block text-[10px] text-gray-400 uppercase tracking-wide leading-none">{label}</label>
+          <label className="block text-[10px] text-[var(--shell-subtext)] uppercase tracking-wide leading-none">{label}</label>
           {isIA && <IABadge small />}
           {hasDoc && onOpenFieldDoc && (
             <button
@@ -1343,13 +1343,13 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
         <div className="relative">
           {options ? (
-            <select className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-white"
+            <select className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]"
               value={vals[name] ?? ""} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
               onBlur={e => saveField(name, e.target.value)}>
               {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : (
-            <input type={type} className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-white"
+            <input type={type} className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]"
               value={vals[name] ?? ""} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
               onBlur={e => saveField(name, e.target.value)} />
           )}
@@ -1369,7 +1369,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
               </div>
               <button
                 type="button"
-                className="shrink-0 rounded border border-blue-200 bg-white px-2 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50"
+                className="shrink-0 rounded border border-blue-200 bg-[var(--shell-card-bg)] px-2 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50"
                 onClick={() => applySuggestion(name, suggestion.value)}
               >
                 Aplicar
@@ -1387,13 +1387,13 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       {/* ── Campo de nome (editável) ── */}
       {onPersonNameSave && (
         <div>
-          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Nome</div>
+          <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Nome</div>
           {editingName ? (
             <div className="flex gap-2">
               <input
                 autoFocus
                 type="text"
-                className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="flex-1 rounded border border-blue-300 bg-[var(--shell-card-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
                 value={nameVal}
                 onChange={e => setNameVal(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") { setEditingName(false); setNameVal(personName ?? ""); } }}
@@ -1401,18 +1401,18 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
               <button className="rounded border border-blue-200 bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 disabled:opacity-50" onClick={handleSaveName} disabled={savingName}>
                 {savingName ? "..." : "OK"}
               </button>
-              <button className="rounded border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50" onClick={() => { setEditingName(false); setNameVal(personName ?? ""); }}>✕</button>
+              <button className="rounded border border-[var(--shell-card-border)] px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]" onClick={() => { setEditingName(false); setNameVal(personName ?? ""); }}>✕</button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5">
-              <span className="flex-1 text-sm text-gray-800">{personName || <span className="text-gray-400 italic">não informado</span>}</span>
+            <div className="flex items-center gap-2 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5">
+              <span className="flex-1 text-sm text-[var(--shell-text)]">{personName || <span className="text-[var(--shell-subtext)] italic">não informado</span>}</span>
               {getRelevantDocs(isLead ? "nomeCorreto" : "nome").length > 0 && onOpenFieldDoc && (
                 <button type="button" title="Ver documento" className="text-gray-300 hover:text-blue-500 transition-colors"
                   onClick={() => { const fd = isLead ? "nomeCorreto" : "nome"; const rd = getRelevantDocs(fd); onOpenFieldDoc(fd, "Nome", personName ?? "", personName ?? "", undefined, undefined, rd, async (val: string) => { if (onPersonNameSave) await onPersonNameSave(val); }); }}>
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                 </button>
               )}
-              <button type="button" className="text-gray-400 hover:text-gray-700" onClick={() => setEditingName(true)}>
+              <button type="button" className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]" onClick={() => setEditingName(true)}>
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
               </button>
             </div>
@@ -1433,7 +1433,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
             </div>
             <button
               type="button"
-              className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+              className="rounded-lg border border-blue-200 bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
               onClick={applyAllSuggestions}
             >
               Aplicar campos vazios
@@ -1442,7 +1442,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
       )}
       <div>
-        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Identificação</div>
+        <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           <Field label="CPF" name="cpf" />
           <Field label="RG" name="rg" />
@@ -1452,7 +1452,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
       </div>
       <div>
-        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Contato</div>
+        <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           <Field label="Telefone" name="telefone" />
           <Field label="Email" name="email" type="email" />
@@ -1463,7 +1463,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
       </div>
       <div>
-        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Profissional</div>
+        <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           <Field label="Profissão" name="profissao" />
           <Field label="Empresa" name="empresa" />
@@ -1749,25 +1749,25 @@ export default function DocumentosPage() {
     const naBusy = busyNA.has(naKey);
 
     return (
-      <div className="border-b border-gray-100 last:border-0">
+      <div className="border-b border-[var(--shell-card-border)] last:border-0">
         {/* Linha do tipo */}
         <div className="flex items-center gap-3 py-2.5">
           <div className="flex-1 min-w-0">
-            <span className={`text-sm ${na ? "text-gray-400 line-through" : "text-gray-700"}`}>{tLabel}</span>
+            <span className={`text-sm ${na ? "text-[var(--shell-subtext)] line-through" : "text-[var(--shell-subtext)]"}`}>{tLabel}</span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {na ? (
-              <span className="text-xs text-gray-400 bg-gray-100 rounded px-2 py-0.5">N/A</span>
+              <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded px-2 py-0.5">N/A</span>
             ) : typeDocs.length === 0 ? (
               <button className="text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1 hover:bg-blue-50 transition-colors" onClick={() => openUpload(participanteNome, participanteClassificacao, tipo_, tLabel)}>
                 ↑ Fazer upload
               </button>
             ) : (
-              <button title="Adicionar outro" className="text-xs text-gray-400 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition-colors" onClick={() => openUpload(participanteNome, participanteClassificacao, tipo_, tLabel)}>
+              <button title="Adicionar outro" className="text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-2.5 py-1 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => openUpload(participanteNome, participanteClassificacao, tipo_, tLabel)}>
                 + outro
               </button>
             )}
-            <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer select-none ml-1">
+            <label className="flex items-center gap-1 text-xs text-[var(--shell-subtext)] cursor-pointer select-none ml-1">
               <input type="checkbox" checked={na} disabled={naBusy} onChange={() => handleToggleNA(participanteNome, tipo_, !na)} className="rounded" />
               N/A
             </label>
@@ -1777,23 +1777,23 @@ export default function DocumentosPage() {
         {typeDocs.length > 0 && (
           <div className="pb-2 pl-3 space-y-1">
             {typeDocs.map(doc => (
-              <div key={doc.id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+              <div key={doc.id} className="flex items-center gap-2 rounded-lg bg-[var(--shell-bg)] px-3 py-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs text-green-700 bg-green-50 rounded px-1.5 py-0.5">Enviado</span>
                     {doc.classificadoPorIA && <IABadge small />}
-                    <span className="text-xs text-gray-600 truncate">{doc.nome !== tLabel ? doc.nome : (doc.filename || doc.nome)}</span>
+                    <span className="text-xs text-[var(--shell-subtext)] truncate">{doc.nome !== tLabel ? doc.nome : (doc.filename || doc.nome)}</span>
                   </div>
-                  {doc.observacao && <div className="text-[11px] text-gray-400 mt-0.5">{doc.observacao}</div>}
+                  {doc.observacao && <div className="text-[11px] text-[var(--shell-subtext)] mt-0.5">{doc.observacao}</div>}
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
-                  <button title="Visualizar" className="p-1.5 rounded hover:bg-white text-gray-400 hover:text-gray-700" onClick={() => setPreviewDoc({ docId: doc.id, nome: doc.nome })}>
+                  <button title="Visualizar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]" onClick={() => setPreviewDoc({ docId: doc.id, nome: doc.nome })}>
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                   </button>
-                  <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-white text-gray-400 hover:text-blue-600" onClick={() => setReclassifyDoc(doc)}>
+                  <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600" onClick={() => setReclassifyDoc(doc)}>
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </button>
-                  <button title="Excluir" className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500" onClick={() => handleDeleteDoc(doc.id)} disabled={busyDel.has(doc.id)}>
+                  <button title="Excluir" className="p-1.5 rounded hover:bg-red-50 text-[var(--shell-subtext)] hover:text-red-500" onClick={() => handleDeleteDoc(doc.id)} disabled={busyDel.has(doc.id)}>
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                   </button>
                 </div>
@@ -1812,16 +1812,16 @@ export default function DocumentosPage() {
   }) {
     const outros = outroDocs(docs, nome);
     return (
-      <div className="mb-3 last:mb-0 rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="mb-3 last:mb-0 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
         {/* Header clicável */}
-        <div className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-gray-50 select-none"
+        <div className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[var(--shell-bg)] select-none"
           role="button" tabIndex={0} onClick={onToggle}>
           <div className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
             <span className="text-xs font-bold text-blue-700">{(displayName[0] || "?").toUpperCase()}</span>
           </div>
-          <span className="text-sm font-semibold text-gray-800 flex-1">{displayName}</span>
+          <span className="text-sm font-semibold text-[var(--shell-text)] flex-1">{displayName}</span>
           {isLead && <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">Lead</span>}
-          {classificacao && classificacao !== "OUTRO" && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{classLabel(classificacao)}</span>}
+          {classificacao && classificacao !== "OUTRO" && <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-full px-2 py-0.5">{classLabel(classificacao)}</span>}
           {/* Setas de reordenação */}
           <div className="flex items-center gap-0" onClick={e => e.stopPropagation()}>
             <button onClick={onMoveUp} disabled={!onMoveUp} title="Mover para cima"
@@ -1835,33 +1835,33 @@ export default function DocumentosPage() {
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
           </div>
-          <svg className={`h-4 w-4 text-gray-400 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform shrink-0 ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
         </div>
         {/* Conteúdo colapsável */}
-        {open && <div className="border-t border-gray-100 px-4">
+        {open && <div className="border-t border-[var(--shell-card-border)] px-4">
           {TIPOS_PADRAO.filter(t => t.value !== "OUTRO").map(t => (
             <TipoRow key={t.value} participanteNome={nome} participanteClassificacao={classificacao} tipo={t.value} tipoLabel={t.label} />
           ))}
-          <div className="py-3 border-t border-gray-100">
+          <div className="py-3 border-t border-[var(--shell-card-border)]">
             {outros.length > 0 && (
               <div className="mb-3 space-y-1">
                 {outros.map(d => (
-                  <div key={d.id} className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                  <div key={d.id} className="flex items-center gap-2 rounded-lg bg-[var(--shell-bg)] px-3 py-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         {d.classificadoPorIA && <IABadge small />}
-                        <span className="text-xs text-gray-700 truncate">{d.nome}</span>
+                        <span className="text-xs text-[var(--shell-subtext)] truncate">{d.nome}</span>
                       </div>
-                      {d.observacao && <div className="text-[11px] text-gray-400 mt-0.5">{d.observacao}</div>}
+                      {d.observacao && <div className="text-[11px] text-[var(--shell-subtext)] mt-0.5">{d.observacao}</div>}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
-                      {d.url && <button title="Visualizar" className="p-1.5 rounded hover:bg-white text-gray-400 hover:text-gray-700" onClick={() => setPreviewDoc({ docId: d.id, nome: d.nome })}>
+                      {d.url && <button title="Visualizar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]" onClick={() => setPreviewDoc({ docId: d.id, nome: d.nome })}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                       </button>}
-                      <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-white text-gray-400 hover:text-blue-600" onClick={() => setReclassifyDoc(d)}>
+                      <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600" onClick={() => setReclassifyDoc(d)}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                       </button>
-                      <button title="Excluir" className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500" onClick={() => handleDeleteDoc(d.id)} disabled={busyDel.has(d.id)}>
+                      <button title="Excluir" className="p-1.5 rounded hover:bg-red-50 text-[var(--shell-subtext)] hover:text-red-500" onClick={() => handleDeleteDoc(d.id)} disabled={busyDel.has(d.id)}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       </button>
                     </div>
@@ -1869,7 +1869,7 @@ export default function DocumentosPage() {
                 ))}
               </div>
             )}
-            <button className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors"
+            <button className="flex items-center gap-1 text-xs text-[var(--shell-subtext)] hover:text-blue-600 transition-colors"
               onClick={() => setUploadTarget({ participanteNome: nome, participanteClassificacao: classificacao, tipo: "OUTRO", tipoLabel: "Outro", existingDocId: null, isOutro: true })}>
               <span className="text-sm font-medium">+</span> Adicionar documento
             </button>
@@ -1903,19 +1903,19 @@ export default function DocumentosPage() {
           {processing.map(d => (
             <div key={d.id} className="px-4 py-3">
               <div className="flex items-start gap-3">
-                <div className="h-8 w-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                <div className="h-8 w-8 rounded-full bg-[var(--shell-card-bg)] border border-slate-200 flex items-center justify-center shrink-0">
                   <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-gray-800 truncate">{d.filename || d.nome}</span>
+                    <span className="text-sm font-medium text-[var(--shell-text)] truncate">{d.filename || d.nome}</span>
                     <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${processingStatusClass(d.processingStatus)}`}>
                       {processingStatusLabel(d.processingStatus)}
                     </span>
                     {d.aiConfidence && (
-                      <span className="text-[11px] text-gray-500 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                      <span className="text-[11px] text-[var(--shell-subtext)] bg-[var(--shell-card-bg)] border border-[var(--shell-card-border)] rounded-full px-2 py-0.5">
                         Confiança {d.aiConfidence.toLowerCase()}
                       </span>
                     )}
@@ -1924,19 +1924,19 @@ export default function DocumentosPage() {
                     <div className="text-xs text-slate-500 mb-1">{d.processingStep}</div>
                   )}
                   {d.aiSummary ? (
-                    <div className="text-xs text-gray-700 leading-5">{d.aiSummary}</div>
+                    <div className="text-xs text-[var(--shell-subtext)] leading-5">{d.aiSummary}</div>
                   ) : (
-                    <div className="text-xs text-gray-500">Arquivo aguardando retorno detalhado da IA.</div>
+                    <div className="text-xs text-[var(--shell-subtext)]">Arquivo aguardando retorno detalhado da IA.</div>
                   )}
                   {(d.aiExtractedName || d.aiDecision) && (
                     <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                       {d.aiExtractedName && (
-                        <span className="rounded-full bg-white border border-slate-200 px-2 py-0.5 text-slate-600">
+                        <span className="rounded-full bg-[var(--shell-card-bg)] border border-slate-200 px-2 py-0.5 text-slate-600">
                           Nome: {d.aiExtractedName}
                         </span>
                       )}
                       {d.aiDecision && (
-                        <span className="rounded-full bg-white border border-slate-200 px-2 py-0.5 text-slate-600">
+                        <span className="rounded-full bg-[var(--shell-card-bg)] border border-slate-200 px-2 py-0.5 text-slate-600">
                           Destino: {decisionLabel(d.aiDecision)}
                         </span>
                       )}
@@ -1969,9 +1969,9 @@ export default function DocumentosPage() {
           {pending.map(d => (
             <div key={d.id} className="px-4 py-3 flex items-center gap-3">
               <svg className="h-4 w-4 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              <span className="text-sm text-gray-700 flex-1 truncate">{d.filename || d.nome}</span>
+              <span className="text-sm text-[var(--shell-subtext)] flex-1 truncate">{d.filename || d.nome}</span>
               <button
-                className="text-xs text-blue-600 border border-blue-200 bg-white rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors shrink-0"
+                className="text-xs text-blue-600 border border-blue-200 bg-[var(--shell-card-bg)] rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors shrink-0"
                 onClick={() => setIdentifyDoc(d)}>
                 Identificar DOC
               </button>
@@ -1988,13 +1988,13 @@ export default function DocumentosPage() {
   const leadDisplayName = lead ? ((lead.nomeCorreto ?? lead.nome) || "Lead") : "Lead";
   const leadSuggestions = buildCadastroSuggestions(docs, null, true);
 
-  if (loading) return <AppShell title="Documentos"><div className="flex items-center justify-center h-64 text-gray-400 text-sm">Carregando...</div></AppShell>;
+  if (loading) return <AppShell title="Documentos"><div className="flex items-center justify-center h-64 text-[var(--shell-subtext)] text-sm">Carregando...</div></AppShell>;
   if (error || !lead) return <AppShell title="Documentos"><div className="flex items-center justify-center h-64 text-red-500 text-sm">{error ?? "Lead não encontrado"}</div></AppShell>;
 
   return (
     <AppShell title={`Documentos — ${leadDisplayName}`}>
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <button onClick={() => router.push(`/leads/${leadId}`)} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6">
+        <button onClick={() => router.push(`/leads/${leadId}`)} className="flex items-center gap-1.5 text-sm text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] mb-6">
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           Voltar ao lead
         </button>
@@ -2002,14 +2002,14 @@ export default function DocumentosPage() {
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
 
           {/* ── Coluna esquerda: Documentos ──────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--shell-card-border)]">
               <div>
-                <h1 className="text-base font-semibold text-gray-900">Documentos</h1>
-                <p className="text-xs text-gray-400 mt-0.5">{leadDisplayName}</p>
+                <h1 className="text-base font-semibold text-[var(--shell-text)]">Documentos</h1>
+                <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{leadDisplayName}</p>
               </div>
               <div className="flex items-center gap-2">
-                <button className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-200 rounded-full px-3 py-1.5 hover:bg-gray-50 transition-colors" onClick={() => setBulkOpen(true)}>
+                <button className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => setBulkOpen(true)}>
                   ↑ Subir vários
                 </button>
                 <button className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors" onClick={() => setAddPartOpen(true)}>
@@ -2035,15 +2035,15 @@ export default function DocumentosPage() {
           {/* ── Coluna direita: Cadastro ──────────────────────────────────────── */}
           <div className="space-y-3">
             {/* Lead principal */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-gray-50 cursor-pointer"
+            <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
+              <div className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[var(--shell-bg)] cursor-pointer"
                 role="button" tabIndex={0}
                 onClick={() => setOpenCadastro(prev => { const s = new Set(prev); s.has("__lead__") ? s.delete("__lead__") : s.add("__lead__"); return s; })}>
                 <div className="flex items-center gap-2">
                   <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                     <span className="text-xs font-bold text-blue-700">{(leadDisplayName[0] || "?").toUpperCase()}</span>
                   </div>
-                  <span className="text-sm font-semibold text-gray-800">{leadDisplayName}</span>
+                  <span className="text-sm font-semibold text-[var(--shell-text)]">{leadDisplayName}</span>
                   <span className="text-xs text-blue-600 bg-blue-50 rounded-full px-2 py-0.5">Lead</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2051,11 +2051,11 @@ export default function DocumentosPage() {
                     onClick={e => { e.stopPropagation(); setAICadastroTarget({ participanteNome: null, displayName: leadDisplayName, isLead: true }); }}>
                     <IABadge small /> Cadastrar com IA
                   </button>
-                  <svg className={`h-4 w-4 text-gray-400 transition-transform ${openCadastro.has("__lead__") ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${openCadastro.has("__lead__") ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
               </div>
               {openCadastro.has("__lead__") && (
-                <div className="px-5 pb-5 border-t border-gray-100 pt-4">
+                <div className="px-5 pb-5 border-t border-[var(--shell-card-border)] pt-4">
                   <CadastroForm leadId={leadId} isLead={true} showFinanceiro={true}
                     docs={docs} participanteNome={null}
                     onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
@@ -2082,16 +2082,16 @@ export default function DocumentosPage() {
 
             {/* Participantes adicionais */}
             {sortedParticipantes.map((p, idx) => (
-              <div key={p.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-gray-50 cursor-pointer"
+              <div key={p.id} className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
+                <div className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[var(--shell-bg)] cursor-pointer"
                   role="button" tabIndex={0}
                   onClick={() => setOpenCadastro(prev => { const s = new Set(prev); s.has(p.id) ? s.delete(p.id) : s.add(p.id); return s; })}>
                   <div className="flex items-center gap-2 flex-1" style={{ minWidth: 0 }}>
-                    <div className="h-6 w-6 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                      <span className="text-xs font-bold text-gray-600">{(p.nome[0] || "?").toUpperCase()}</span>
+                    <div className="h-6 w-6 rounded-full bg-[var(--shell-hover)] flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-[var(--shell-subtext)]">{(p.nome[0] || "?").toUpperCase()}</span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-800" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nome}</span>
-                    {p.classificacao && p.classificacao !== "OUTRO" && <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2 py-0.5 shrink-0">{classLabel(p.classificacao)}</span>}
+                    <span className="text-sm font-semibold text-[var(--shell-text)]" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nome}</span>
+                    {p.classificacao && p.classificacao !== "OUTRO" && <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-full px-2 py-0.5 shrink-0">{classLabel(p.classificacao)}</span>}
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
                     <div className="flex items-center" onClick={e => e.stopPropagation()}>
@@ -2114,11 +2114,11 @@ export default function DocumentosPage() {
                       onClick={e => { e.stopPropagation(); handleRemoveParticipante(p.id); }} disabled={busyRemove.has(p.id)}>
                       {busyRemove.has(p.id) ? "..." : "Remover"}
                     </button>
-                    <svg className={`h-4 w-4 text-gray-400 transition-transform shrink-0 ${openCadastro.has(p.id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform shrink-0 ${openCadastro.has(p.id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                   </div>
                 </div>
                 {openCadastro.has(p.id) && (
-                  <div className="px-5 pb-5 border-t border-gray-100 pt-4">
+                  <div className="px-5 pb-5 border-t border-[var(--shell-card-border)] pt-4">
                     <CadastroForm leadId={leadId} isLead={false} participanteId={p.id} showFinanceiro={false}
                       docs={docs} participanteNome={p.nome}
                       onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
@@ -2219,12 +2219,12 @@ export default function DocumentosPage() {
       {/* Modal: confirmar exclusão de documento */}
       {confirmDeleteDocId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
-            <h3 className="text-base font-semibold text-gray-800 mb-2">Excluir documento</h3>
-            <p className="text-sm text-gray-600 mb-6">Tem certeza que deseja excluir este documento? Esta ação não pode ser desfeita.</p>
+          <div className="bg-[var(--shell-card-bg)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-[var(--shell-text)] mb-2">Excluir documento</h3>
+            <p className="text-sm text-[var(--shell-subtext)] mb-6">Tem certeza que deseja excluir este documento? Esta ação não pode ser desfeita.</p>
             <div className="flex justify-end gap-3">
               <button
-                className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="px-4 py-2 text-sm rounded-lg border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]"
                 onClick={() => setConfirmDeleteDocId(null)}
               >
                 Cancelar
@@ -2260,15 +2260,15 @@ export default function DocumentosPage() {
         const part = participantes.find(p => p.id === confirmRemovePartId);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
-            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
-              <h3 className="text-base font-semibold text-gray-800 mb-2">Remover participante</h3>
-              <p className="text-sm text-gray-600 mb-1">
+            <div className="bg-[var(--shell-card-bg)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4">
+              <h3 className="text-base font-semibold text-[var(--shell-text)] mb-2">Remover participante</h3>
+              <p className="text-sm text-[var(--shell-subtext)] mb-1">
                 Tem certeza que deseja remover <span className="font-medium">{part?.nome}</span>?
               </p>
               <p className="text-xs text-red-500 mb-6">Todos os documentos deste participante também serão excluídos.</p>
               <div className="flex justify-end gap-3">
                 <button
-                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 text-sm rounded-lg border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]"
                   onClick={() => setConfirmRemovePartId(null)}
                 >
                   Cancelar

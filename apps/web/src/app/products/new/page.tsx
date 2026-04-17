@@ -11,10 +11,10 @@ export default function NewProductPage() {
     <AppShell title="Novo produto">
     <div className="mx-auto w-full max-w-2xl">
       <div className="mb-8">
-        <Link href="/products" className="text-xs text-gray-400 hover:text-gray-600">
+        <Link href="/products" className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">
           ← Produtos
         </Link>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900">
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--shell-text)]">
           Novo produto
         </h1>
         <p className="mt-1 text-sm text-neutral-500">
@@ -27,7 +27,7 @@ export default function NewProductPage() {
         <button
           type="button"
           onClick={() => router.push("/products/new/empreendimento?type=EMPREENDIMENTO")}
-          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-white p-7 text-center hover:border-blue-400 hover:shadow-md transition-all"
+          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-[var(--shell-card-bg)] p-7 text-center hover:border-blue-400 hover:shadow-md transition-all"
         >
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 group-hover:bg-blue-100 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -35,8 +35,8 @@ export default function NewProductPage() {
             </svg>
           </div>
           <div>
-            <p className="font-semibold text-gray-900">Empreendimento</p>
-            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+            <p className="font-semibold text-[var(--shell-text)]">Empreendimento</p>
+            <p className="mt-1 text-xs text-[var(--shell-subtext)] leading-relaxed">
               Projeto residencial ou comercial com múltiplas unidades
             </p>
           </div>
@@ -46,7 +46,7 @@ export default function NewProductPage() {
         <button
           type="button"
           onClick={() => router.push("/products/new/empreendimento?type=LOTEAMENTO")}
-          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-white p-7 text-center hover:border-emerald-400 hover:shadow-md transition-all"
+          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-[var(--shell-card-bg)] p-7 text-center hover:border-emerald-400 hover:shadow-md transition-all"
         >
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 group-hover:bg-emerald-100 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -54,8 +54,8 @@ export default function NewProductPage() {
             </svg>
           </div>
           <div>
-            <p className="font-semibold text-gray-900">Loteamento</p>
-            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+            <p className="font-semibold text-[var(--shell-text)]">Loteamento</p>
+            <p className="mt-1 text-xs text-[var(--shell-subtext)] leading-relaxed">
               Projeto de divisão de terreno em lotes individuais
             </p>
           </div>
@@ -65,7 +65,7 @@ export default function NewProductPage() {
         <button
           type="button"
           onClick={() => router.push("/products/new/imovel")}
-          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-white p-7 text-center hover:border-slate-400 hover:shadow-md transition-all"
+          className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-[var(--shell-card-bg)] p-7 text-center hover:border-slate-400 hover:shadow-md transition-all"
         >
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-50 group-hover:bg-slate-100 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -73,8 +73,8 @@ export default function NewProductPage() {
             </svg>
           </div>
           <div>
-            <p className="font-semibold text-gray-900">Imóvel</p>
-            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+            <p className="font-semibold text-[var(--shell-text)]">Imóvel</p>
+            <p className="mt-1 text-xs text-[var(--shell-subtext)] leading-relaxed">
               Casa, apartamento, terreno, sala comercial e outros
             </p>
           </div>

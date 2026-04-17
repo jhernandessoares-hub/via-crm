@@ -704,8 +704,8 @@ export default function KnowledgeBaseSalesPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Base de Conhecimento de Vendas</h1>
-            <p className="mt-1 text-sm text-gray-600">Gerencie as bases usadas pelos AI Agents.</p>
+            <h1 className="text-2xl font-semibold text-[var(--shell-text)]">Base de Conhecimento de Vendas</h1>
+            <p className="mt-1 text-sm text-[var(--shell-subtext)]">Gerencie as bases usadas pelos AI Agents.</p>
           </div>
           <button
             type="button"
@@ -718,9 +718,9 @@ export default function KnowledgeBaseSalesPage() {
 
         {/* Form panel */}
         {showForm && (
-          <div className="rounded-xl border bg-white p-4 space-y-6">
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4 space-y-6">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 mb-4">
+              <h2 className="text-base font-semibold text-[var(--shell-text)] mb-4">
                 {editingItem
                   ? "Editar item da Base de Conhecimento de Vendas"
                   : "Novo item da Base de Conhecimento de Vendas"}
@@ -728,7 +728,7 @@ export default function KnowledgeBaseSalesPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Título</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">Título</label>
                   <input
                     value={form.title}
                     onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
@@ -738,7 +738,7 @@ export default function KnowledgeBaseSalesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Categoria</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">Categoria</label>
                   <select
                     value={form.type}
                     onChange={(e) =>
@@ -758,7 +758,7 @@ export default function KnowledgeBaseSalesPage() {
 
                 {form.type === "CUSTOM" && (
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                    <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">
                       Nome da categoria personalizada
                     </label>
                     <input
@@ -771,7 +771,7 @@ export default function KnowledgeBaseSalesPage() {
                 )}
 
                 <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                  <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">
                     Conteúdo principal
                   </label>
                   <textarea
@@ -785,16 +785,16 @@ export default function KnowledgeBaseSalesPage() {
 
                 <div>
                   <div className="mb-1 flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-700">O que a IA entendeu</label>
+                    <label className="text-sm font-medium text-[var(--shell-subtext)]">O que a IA entendeu</label>
                     <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">
                       gerado pela IA
                     </span>
                   </div>
                   {editingItem ? (
                     <>
-                      <div className="min-h-[88px] w-full rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap">
+                      <div className="min-h-[88px] w-full rounded-md border bg-[var(--shell-bg)] px-3 py-2 text-sm text-[var(--shell-subtext)] whitespace-pre-wrap">
                         {editingItem.whatAiUnderstood || (
-                          <span className="text-gray-400 italic">Nenhum resumo gerado ainda.</span>
+                          <span className="text-[var(--shell-subtext)] italic">Nenhum resumo gerado ainda.</span>
                         )}
                       </div>
                       {summarizeError && (
@@ -804,20 +804,20 @@ export default function KnowledgeBaseSalesPage() {
                         type="button"
                         onClick={handleSummarize}
                         disabled={summarizing}
-                        className="mt-2 rounded-md border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                        className="mt-2 rounded-md border px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)] disabled:opacity-60"
                       >
                         {summarizing ? "Gerando resumo..." : "Regenerar resumo"}
                       </button>
                     </>
                   ) : (
-                    <div className="min-h-[88px] w-full rounded-md border border-dashed bg-gray-50 px-3 py-2 text-sm text-gray-400 italic">
+                    <div className="min-h-[88px] w-full rounded-md border border-dashed bg-[var(--shell-bg)] px-3 py-2 text-sm text-[var(--shell-subtext)] italic">
                       Será gerado automaticamente após salvar.
                     </div>
                   )}
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Tags (separadas por vírgula)</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">Tags (separadas por vírgula)</label>
                   <input
                     value={form.tagsText}
                     onChange={(e) => setForm((p) => ({ ...p, tagsText: e.target.value }))}
@@ -827,7 +827,7 @@ export default function KnowledgeBaseSalesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Audiência</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">Audiência</label>
                   <select
                     value={form.audience}
                     onChange={(e) =>
@@ -842,7 +842,7 @@ export default function KnowledgeBaseSalesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Prioridade</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">Prioridade</label>
                   <input
                     type="number"
                     value={form.priority}
@@ -853,7 +853,7 @@ export default function KnowledgeBaseSalesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Versão</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">Versão</label>
                   <input
                     type="number"
                     value={form.version}
@@ -864,7 +864,7 @@ export default function KnowledgeBaseSalesPage() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <label className="inline-flex items-center gap-2 text-sm text-[var(--shell-subtext)]">
                     <input
                       type="checkbox"
                       checked={form.active}
@@ -893,7 +893,7 @@ export default function KnowledgeBaseSalesPage() {
                 <button
                   type="button"
                   onClick={resetAndClose}
-                  className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                  className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)]"
                 >
                   Cancelar
                 </button>
@@ -907,7 +907,7 @@ export default function KnowledgeBaseSalesPage() {
 
                 {/* ── PDFs ── */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                  <h3 className="text-sm font-semibold text-[var(--shell-text)] mb-3">
                     Documentos PDF ({editingItem.documents?.length ?? 0})
                   </h3>
 
@@ -916,7 +916,7 @@ export default function KnowledgeBaseSalesPage() {
                       {editingItem.documents.map((doc) => (
                         <div key={doc.id} className="flex items-center justify-between px-3 py-2 text-sm">
                           <div className="min-w-0">
-                            <span className="font-medium text-gray-800">{doc.title || "Sem título"}</span>
+                            <span className="font-medium text-[var(--shell-text)]">{doc.title || "Sem título"}</span>
                             {doc.extractedText && (
                               <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">
                                 texto extraído
@@ -945,7 +945,7 @@ export default function KnowledgeBaseSalesPage() {
 
                   <div className="flex flex-col gap-2 md:flex-row md:items-end">
                     <div className="flex-1">
-                      <label className="mb-1 block text-xs text-gray-600">Título (opcional)</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">Título (opcional)</label>
                       <input
                         value={docTitle}
                         onChange={(e) => setDocTitle(e.target.value)}
@@ -954,17 +954,17 @@ export default function KnowledgeBaseSalesPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-gray-600">Arquivo PDF</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">Arquivo PDF</label>
                       <input
                         ref={fileInputRef}
                         type="file"
                         accept="application/pdf"
                         onChange={handleDocUpload}
                         disabled={docUploading}
-                        className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white hover:file:bg-slate-800 disabled:opacity-60"
+                        className="block w-full text-sm text-[var(--shell-subtext)] file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white hover:file:bg-slate-800 disabled:opacity-60"
                       />
                     </div>
-                    {docUploading && <span className="text-xs text-gray-500">Enviando...</span>}
+                    {docUploading && <span className="text-xs text-[var(--shell-subtext)]">Enviando...</span>}
                   </div>
 
                   {docError && <p className="mt-2 text-xs text-red-600">{docError}</p>}
@@ -974,7 +974,7 @@ export default function KnowledgeBaseSalesPage() {
 
                 {/* ── Vídeos ── */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                  <h3 className="text-sm font-semibold text-[var(--shell-text)] mb-3">
                     Vídeos ({editingItem.videos?.length ?? 0})
                   </h3>
 
@@ -984,7 +984,7 @@ export default function KnowledgeBaseSalesPage() {
                         <div key={v.id} className="px-3 py-2 text-sm">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              {v.title && <p className="font-medium text-gray-800">{v.title}</p>}
+                              {v.title && <p className="font-medium text-[var(--shell-text)]">{v.title}</p>}
                               <a
                                 href={v.url}
                                 target="_blank"
@@ -994,7 +994,7 @@ export default function KnowledgeBaseSalesPage() {
                                 {v.url}
                               </a>
                               {v.description && (
-                                <p className="mt-0.5 text-xs text-gray-600">{v.description}</p>
+                                <p className="mt-0.5 text-xs text-[var(--shell-subtext)]">{v.description}</p>
                               )}
                             </div>
                             <div className="flex shrink-0 gap-2">
@@ -1021,7 +1021,7 @@ export default function KnowledgeBaseSalesPage() {
 
                   <div className="grid gap-2 md:grid-cols-3">
                     <div>
-                      <label className="mb-1 block text-xs text-gray-600">URL do vídeo *</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">URL do vídeo *</label>
                       <input
                         value={videoForm.url}
                         onChange={(e) => setVideoForm((p) => ({ ...p, url: e.target.value }))}
@@ -1030,7 +1030,7 @@ export default function KnowledgeBaseSalesPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-gray-600">Título</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">Título</label>
                       <input
                         value={videoForm.title}
                         onChange={(e) => setVideoForm((p) => ({ ...p, title: e.target.value }))}
@@ -1039,7 +1039,7 @@ export default function KnowledgeBaseSalesPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-gray-600">Descrição</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">Descrição</label>
                       <input
                         value={videoForm.description}
                         onChange={(e) => setVideoForm((p) => ({ ...p, description: e.target.value }))}
@@ -1067,7 +1067,7 @@ export default function KnowledgeBaseSalesPage() {
                           setEditingVideoId(null);
                           setVideoForm({ url: "", title: "", description: "" });
                         }}
-                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--shell-bg)]"
                       >
                         Cancelar edição
                       </button>
@@ -1079,7 +1079,7 @@ export default function KnowledgeBaseSalesPage() {
 
                 {/* ── Links ── */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                  <h3 className="text-sm font-semibold text-[var(--shell-text)] mb-3">
                     Links ({editingItem.kbLinks?.length ?? 0})
                   </h3>
 
@@ -1089,7 +1089,7 @@ export default function KnowledgeBaseSalesPage() {
                         <div key={l.id} className="px-3 py-2 text-sm">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              {l.title && <p className="font-medium text-gray-800">{l.title}</p>}
+                              {l.title && <p className="font-medium text-[var(--shell-text)]">{l.title}</p>}
                               <a
                                 href={l.url}
                                 target="_blank"
@@ -1099,7 +1099,7 @@ export default function KnowledgeBaseSalesPage() {
                                 {l.url}
                               </a>
                               {l.description && (
-                                <p className="mt-0.5 text-xs text-gray-600">{l.description}</p>
+                                <p className="mt-0.5 text-xs text-[var(--shell-subtext)]">{l.description}</p>
                               )}
                             </div>
                             <div className="flex shrink-0 gap-2">
@@ -1126,7 +1126,7 @@ export default function KnowledgeBaseSalesPage() {
 
                   <div className="grid gap-2 md:grid-cols-3">
                     <div>
-                      <label className="mb-1 block text-xs text-gray-600">URL *</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">URL *</label>
                       <input
                         value={linkForm.url}
                         onChange={(e) => setLinkForm((p) => ({ ...p, url: e.target.value }))}
@@ -1135,7 +1135,7 @@ export default function KnowledgeBaseSalesPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-gray-600">Título</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">Título</label>
                       <input
                         value={linkForm.title}
                         onChange={(e) => setLinkForm((p) => ({ ...p, title: e.target.value }))}
@@ -1144,7 +1144,7 @@ export default function KnowledgeBaseSalesPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs text-gray-600">Descrição</label>
+                      <label className="mb-1 block text-xs text-[var(--shell-subtext)]">Descrição</label>
                       <input
                         value={linkForm.description}
                         onChange={(e) => setLinkForm((p) => ({ ...p, description: e.target.value }))}
@@ -1172,7 +1172,7 @@ export default function KnowledgeBaseSalesPage() {
                           setEditingLinkId(null);
                           setLinkForm({ url: "", title: "", description: "" });
                         }}
-                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-[var(--shell-bg)]"
                       >
                         Cancelar edição
                       </button>
@@ -1184,15 +1184,15 @@ export default function KnowledgeBaseSalesPage() {
 
                 {/* ── Vincular ao Agente ── */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                  <h3 className="text-sm font-semibold text-[var(--shell-text)] mb-1">
                     Vincular ao Agente
                   </h3>
-                  <p className="mb-3 text-xs text-gray-500">
+                  <p className="mb-3 text-xs text-[var(--shell-subtext)]">
                     Marque os agentes que devem usar este item da base de conhecimento.
                   </p>
 
                   {availableAgents.length === 0 ? (
-                    <p className="text-xs text-gray-500">Nenhum agente cadastrado.</p>
+                    <p className="text-xs text-[var(--shell-subtext)]">Nenhum agente cadastrado.</p>
                   ) : (
                     <div className="divide-y rounded-lg border">
                       {availableAgents.map((agent) => {
@@ -1201,32 +1201,32 @@ export default function KnowledgeBaseSalesPage() {
                         return (
                           <label
                             key={agent.id}
-                            className="flex cursor-pointer items-center justify-between px-3 py-2.5 hover:bg-gray-50"
+                            className="flex cursor-pointer items-center justify-between px-3 py-2.5 hover:bg-[var(--shell-bg)]"
                           >
                             <div className="flex items-center gap-3">
                               <input
                                 type="checkbox"
-                                className="h-4 w-4 rounded border-gray-300 accent-slate-900"
+                                className="h-4 w-4 rounded border-[var(--shell-card-border)] accent-slate-900"
                                 checked={isLinked}
                                 disabled={isLoading}
                                 onChange={() => toggleAgentLink(agent.id)}
                               />
                               <div>
-                                <span className="text-sm font-medium text-gray-900">
+                                <span className="text-sm font-medium text-[var(--shell-text)]">
                                   {agent.title}
                                 </span>
-                                <span className="ml-2 text-xs text-gray-400">/{agent.slug}</span>
+                                <span className="ml-2 text-xs text-[var(--shell-subtext)]">/{agent.slug}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
                               {isLoading && (
-                                <span className="text-xs text-gray-400">Salvando...</span>
+                                <span className="text-xs text-[var(--shell-subtext)]">Salvando...</span>
                               )}
                               <span
                                 className={`rounded-full px-2 py-0.5 text-xs ${
                                   agent.active
                                     ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-gray-100 text-gray-500"
+                                    : "bg-[var(--shell-hover)] text-[var(--shell-subtext)]"
                                 }`}
                               >
                                 {agent.active ? "Ativo" : "Inativo"}
@@ -1258,30 +1258,30 @@ export default function KnowledgeBaseSalesPage() {
                     className="flex w-full items-center justify-between text-left"
                   >
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-900">
+                      <h3 className="text-sm font-semibold text-[var(--shell-text)]">
                         Ensinamentos Salvos ({editingItem._count?.teachings ?? teachingsCount}/30)
                       </h3>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-[var(--shell-subtext)]">
                         Exemplos reais aprovados por vendedores — injetados no prompt da IA.
                       </p>
                     </div>
-                    <span className="text-gray-400 text-sm ml-4">{showTeachings ? "▲" : "▼"}</span>
+                    <span className="text-[var(--shell-subtext)] text-sm ml-4">{showTeachings ? "▲" : "▼"}</span>
                   </button>
 
                   {showTeachings && (
                     <div className="mt-3">
                       {teachingsLoading ? (
-                        <p className="text-xs text-gray-500">Carregando...</p>
+                        <p className="text-xs text-[var(--shell-subtext)]">Carregando...</p>
                       ) : teachings.length === 0 ? (
-                        <p className="text-xs text-gray-500">Nenhum ensinamento salvo ainda.</p>
+                        <p className="text-xs text-[var(--shell-subtext)]">Nenhum ensinamento salvo ainda.</p>
                       ) : (
                         <div className="divide-y rounded-lg border">
                           {teachings.map((t) => (
                             <div key={t.id} className="px-3 py-3">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium text-gray-900">{t.title}</p>
-                                  <p className="mt-0.5 text-xs text-gray-500">
+                                  <p className="text-sm font-medium text-[var(--shell-text)]">{t.title}</p>
+                                  <p className="mt-0.5 text-xs text-[var(--shell-subtext)]">
                                     {new Date(t.createdAt).toLocaleString("pt-BR")} · por {t.createdBy}
                                     {t.lead?.nome && ` · Lead: ${t.lead.nome}`}
                                     {t.lead?.telefone && ` (${t.lead.telefone})`}
@@ -1293,11 +1293,11 @@ export default function KnowledgeBaseSalesPage() {
                                     )}
                                   </p>
                                   {t.leadMessage && (
-                                    <div className="mt-2 rounded-md bg-gray-50 px-2 py-1.5">
-                                      <p className="mb-0.5 text-xs font-medium text-gray-600">
+                                    <div className="mt-2 rounded-md bg-[var(--shell-bg)] px-2 py-1.5">
+                                      <p className="mb-0.5 text-xs font-medium text-[var(--shell-subtext)]">
                                         Mensagem do lead:
                                       </p>
-                                      <p className="whitespace-pre-wrap text-xs text-gray-700">
+                                      <p className="whitespace-pre-wrap text-xs text-[var(--shell-subtext)]">
                                         {t.leadMessage}
                                       </p>
                                     </div>
@@ -1306,7 +1306,7 @@ export default function KnowledgeBaseSalesPage() {
                                     <p className="mb-0.5 text-xs font-medium text-emerald-700">
                                       Resposta aprovada:
                                     </p>
-                                    <p className="whitespace-pre-wrap text-xs text-gray-700">
+                                    <p className="whitespace-pre-wrap text-xs text-[var(--shell-subtext)]">
                                       {t.approvedResponse}
                                     </p>
                                   </div>
@@ -1336,22 +1336,22 @@ export default function KnowledgeBaseSalesPage() {
 
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border bg-white p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Total</div>
-            <div className="mt-2 text-2xl font-semibold text-gray-900">{items.length}</div>
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
+            <div className="text-xs uppercase tracking-wide text-[var(--shell-subtext)]">Total</div>
+            <div className="mt-2 text-2xl font-semibold text-[var(--shell-text)]">{items.length}</div>
           </div>
-          <div className="rounded-xl border bg-white p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Ativas</div>
-            <div className="mt-2 text-2xl font-semibold text-gray-900">{totalAtivos}</div>
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
+            <div className="text-xs uppercase tracking-wide text-[var(--shell-subtext)]">Ativas</div>
+            <div className="mt-2 text-2xl font-semibold text-[var(--shell-text)]">{totalAtivos}</div>
           </div>
-          <div className="rounded-xl border bg-white p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Categorias</div>
-            <div className="mt-2 text-2xl font-semibold text-gray-900">{orderedSections.length}</div>
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
+            <div className="text-xs uppercase tracking-wide text-[var(--shell-subtext)]">Categorias</div>
+            <div className="mt-2 text-2xl font-semibold text-[var(--shell-text)]">{orderedSections.length}</div>
           </div>
         </div>
 
         {/* Search */}
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
           <div className="flex flex-col gap-3 md:flex-row">
             <input
               value={search}
@@ -1363,14 +1363,14 @@ export default function KnowledgeBaseSalesPage() {
             <button
               type="button"
               onClick={() => loadItems(search)}
-              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)]"
             >
               Buscar
             </button>
             <button
               type="button"
               onClick={() => { setSearch(""); loadItems(""); }}
-              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)]"
             >
               Limpar
             </button>
@@ -1379,11 +1379,11 @@ export default function KnowledgeBaseSalesPage() {
 
         {/* Grouped list */}
         {loading ? (
-          <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">Carregando...</div>
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4 text-sm text-[var(--shell-subtext)]">Carregando...</div>
         ) : error ? (
-          <div className="rounded-xl border bg-white p-4 text-sm text-red-600">{error}</div>
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4 text-sm text-red-600">{error}</div>
         ) : items.length === 0 ? (
-          <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4 text-sm text-[var(--shell-subtext)]">
             Nenhum item encontrado na Base de Conhecimento de Vendas.
           </div>
         ) : (
@@ -1395,29 +1395,29 @@ export default function KnowledgeBaseSalesPage() {
               const isFixed = SECTION_ORDER.includes(skey);
 
               return (
-                <div key={skey} className="rounded-xl border bg-white overflow-hidden">
+                <div key={skey} className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
                   {/* Section header */}
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+                    className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--shell-bg)]"
                     onClick={() => toggleSection(skey)}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-gray-900">{label}</span>
+                      <span className="text-sm font-semibold text-[var(--shell-text)]">{label}</span>
                       {!isFixed && (
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                           personalizada
                         </span>
                       )}
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                      <span className="rounded-full bg-[var(--shell-hover)] px-2 py-0.5 text-xs text-[var(--shell-subtext)]">
                         {sectionItems.length} {sectionItems.length === 1 ? "base" : "bases"}
                       </span>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-[var(--shell-subtext)]">
                         {sectionItems.filter((i) => i.active).length} ativa
                         {sectionItems.filter((i) => i.active).length !== 1 ? "s" : ""}
                       </span>
                     </div>
-                    <span className="text-gray-400 text-sm">{isExpanded ? "▲" : "▼"}</span>
+                    <span className="text-[var(--shell-subtext)] text-sm">{isExpanded ? "▲" : "▼"}</span>
                   </button>
 
                   {/* Section items */}
@@ -1428,30 +1428,30 @@ export default function KnowledgeBaseSalesPage() {
                           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <h2 className="text-base font-semibold text-gray-900">{item.title}</h2>
-                                <span className="rounded-full border px-2 py-0.5 text-xs text-gray-700">
+                                <h2 className="text-base font-semibold text-[var(--shell-text)]">{item.title}</h2>
+                                <span className="rounded-full border px-2 py-0.5 text-xs text-[var(--shell-subtext)]">
                                   {audienceLabel(item.audience)}
                                 </span>
                                 <span
                                   className={`rounded-full px-2 py-0.5 text-xs ${
                                     item.active
                                       ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                                      : "border border-gray-200 bg-gray-100 text-gray-600"
+                                      : "border border-[var(--shell-card-border)] bg-[var(--shell-hover)] text-[var(--shell-subtext)]"
                                   }`}
                                 >
                                   {item.active ? "Ativa" : "Inativa"}
                                 </span>
                               </div>
 
-                              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 line-clamp-3">
+                              <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--shell-subtext)] line-clamp-3">
                                 {item.prompt}
                               </p>
 
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                                <span className="rounded-md bg-[var(--shell-hover)] px-2 py-1 text-xs text-[var(--shell-subtext)]">
                                   Prioridade: {item.priority}
                                 </span>
-                                <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                                <span className="rounded-md bg-[var(--shell-hover)] px-2 py-1 text-xs text-[var(--shell-subtext)]">
                                   Versão: {item.version}
                                 </span>
                                 {item.documents?.length > 0 && (
@@ -1470,7 +1470,7 @@ export default function KnowledgeBaseSalesPage() {
                                   </span>
                                 )}
                                 {item.tags?.length > 0 && (
-                                  <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                                  <span className="rounded-md bg-[var(--shell-hover)] px-2 py-1 text-xs text-[var(--shell-subtext)]">
                                     {item.tags.length} tag{item.tags.length > 1 ? "s" : ""}
                                   </span>
                                 )}
@@ -1499,7 +1499,7 @@ export default function KnowledgeBaseSalesPage() {
                               <button
                                 type="button"
                                 onClick={() => startEdit(item)}
-                                className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+                                className="rounded-md border px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
                               >
                                 Editar
                               </button>
@@ -1525,16 +1525,16 @@ export default function KnowledgeBaseSalesPage() {
         {/* Delete modal */}
         {deleteTarget && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-              <h2 className="text-lg font-semibold text-gray-900">Confirmar exclusão</h2>
-              <p className="mt-2 text-sm text-gray-700">
+            <div className="w-full max-w-lg rounded-xl bg-[var(--shell-card-bg)] p-5 shadow-xl">
+              <h2 className="text-lg font-semibold text-[var(--shell-text)]">Confirmar exclusão</h2>
+              <p className="mt-2 text-sm text-[var(--shell-subtext)]">
                 Você está prestes a excluir este item da Base de Conhecimento de Vendas:
               </p>
-              <div className="mt-3 rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-900">
+              <div className="mt-3 rounded-md border bg-[var(--shell-bg)] px-3 py-2 text-sm text-[var(--shell-text)]">
                 <b>{deleteTarget.title}</b>
               </div>
               <p className="mt-3 text-sm text-red-600">Esta ação não pode ser desfeita.</p>
-              <p className="mt-3 text-sm text-gray-700">
+              <p className="mt-3 text-sm text-[var(--shell-subtext)]">
                 Para confirmar, digite o título exato:
               </p>
               <input
@@ -1561,7 +1561,7 @@ export default function KnowledgeBaseSalesPage() {
                   type="button"
                   onClick={closeDeleteModal}
                   disabled={deleting}
-                  className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                  className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-60"
                 >
                   Cancelar
                 </button>

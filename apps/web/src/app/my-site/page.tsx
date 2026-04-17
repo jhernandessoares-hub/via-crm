@@ -201,7 +201,7 @@ export default function MySitePage() {
   if (loading) {
     return (
       <AppShell title="Meu Site">
-        <div className="rounded-2xl border bg-white p-12 text-center text-sm text-slate-500">Carregando...</div>
+        <div className="rounded-2xl border bg-[var(--shell-card-bg)] p-12 text-center text-sm text-slate-500">Carregando...</div>
       </AppShell>
     );
   }
@@ -227,7 +227,7 @@ export default function MySitePage() {
 
         {/* ── Estado 2: Site ativo ─────────────────────────────────────────── */}
         {activeSite ? (
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border bg-[var(--shell-card-bg)] p-6 shadow-sm">
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -287,7 +287,7 @@ export default function MySitePage() {
                       value={customDomain}
                       onChange={(e) => setCustomDomain(e.target.value)}
                       placeholder="meusite.com.br"
-                      className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-950"
+                      className="flex-1 rounded-xl border border-slate-200 bg-[var(--shell-card-bg)] px-3 py-2 text-sm outline-none focus:border-slate-950"
                     />
                     <button
                       onClick={handleSaveDomain}
@@ -308,7 +308,7 @@ export default function MySitePage() {
                       href={activeSite.customDomain ? `https://${activeSite.customDomain}` : `/s/${activeSite.slug}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-3 inline-block rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950"
+                      className="mt-3 inline-block rounded-xl border border-slate-200 bg-[var(--shell-card-bg)] px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-950"
                     >
                       Abrir site
                     </a>
@@ -353,7 +353,7 @@ export default function MySitePage() {
                           </div>
                         </div>
                       ) : (
-                        <button onClick={() => setUnpublishConfirm(true)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-amber-600 transition hover:border-amber-200 hover:bg-amber-50">
+                        <button onClick={() => setUnpublishConfirm(true)} className="rounded-xl border border-slate-200 bg-[var(--shell-card-bg)] px-4 py-2 text-sm font-semibold text-amber-600 transition hover:border-amber-200 hover:bg-amber-50">
                           Tirar do ar
                         </button>
                       )}
@@ -381,7 +381,7 @@ export default function MySitePage() {
                         </div>
                       </div>
                     ) : (
-                      <button onClick={() => setDeactivateConfirm(true)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-red-500 transition hover:border-red-200 hover:bg-red-50">
+                      <button onClick={() => setDeactivateConfirm(true)} className="rounded-xl border border-slate-200 bg-[var(--shell-card-bg)] px-4 py-2 text-sm font-semibold text-red-500 transition hover:border-red-200 hover:bg-red-50">
                         Desativar site
                       </button>
                     )}
@@ -394,7 +394,7 @@ export default function MySitePage() {
         ) : (
           /* ── Estado 1: Sem site ativo ──────────────────────────────────── */
           <div className="space-y-6">
-            <div className="rounded-2xl border bg-white p-8 text-center">
+            <div className="rounded-2xl border bg-[var(--shell-card-bg)] p-8 text-center">
               <div className="text-4xl">🌐</div>
               <div className="mt-3 text-lg font-semibold text-slate-950">Você ainda não tem um site ativo</div>
               <p className="mt-2 text-sm text-slate-500">
@@ -403,13 +403,13 @@ export default function MySitePage() {
             </div>
 
             {templates.length === 0 ? (
-              <div className="rounded-2xl border bg-white p-8 text-center text-sm text-slate-500">
+              <div className="rounded-2xl border bg-[var(--shell-card-bg)] p-8 text-center text-sm text-slate-500">
                 Nenhum template disponível no momento. Fale com seu administrador.
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {templates.map((tpl) => (
-                  <div key={tpl.id} className="rounded-2xl border bg-white p-5 shadow-sm flex flex-col gap-4">
+                  <div key={tpl.id} className="rounded-2xl border bg-[var(--shell-card-bg)] p-5 shadow-sm flex flex-col gap-4">
                     <div className="flex items-start gap-3">
                       <div className="text-2xl">{TYPE_ICONS[tpl.siteType]}</div>
                       <div className="flex-1 min-w-0">

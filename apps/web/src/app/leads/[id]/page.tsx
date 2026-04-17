@@ -589,16 +589,16 @@ function LocationBlock({ ev }: { ev: LeadEvent }) {
   const mapsUrl = "https://www.google.com/maps?q=" + encodeURIComponent(String(lat) + "," + String(lng));
 
   return (
-    <div className="mt-2 rounded-lg border bg-white p-2">
-      <div className="text-xs text-gray-700 font-medium">Localização</div>
-      <div className="mt-1 text-[11px] text-gray-600 font-mono break-all">
+    <div className="mt-2 rounded-lg border bg-[var(--shell-card-bg)] p-2">
+      <div className="text-xs text-[var(--shell-subtext)] font-medium">Localização</div>
+      <div className="mt-1 text-[11px] text-[var(--shell-subtext)] font-mono break-all">
         {lat}, {lng}
       </div>
       <a
         href={mapsUrl}
         target="_blank"
         rel="noreferrer noopener"
-        className="mt-2 inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+        className="mt-2 inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
       >
         Abrir no Google Maps
       </a>
@@ -619,12 +619,12 @@ function MediaModal({ state, onClose }: { state: MediaModalState; onClose: () =>
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="w-full max-w-4xl rounded-xl bg-white shadow-lg overflow-hidden"
+        className="w-full max-w-4xl rounded-xl bg-[var(--shell-card-bg)] shadow-lg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <div className="text-sm font-semibold text-gray-900 truncate">{state.title || "Mídia"}</div>
-          <button className="rounded-md border bg-white px-3 py-1 text-sm hover:bg-gray-50" onClick={onClose}>
+          <div className="text-sm font-semibold text-[var(--shell-text)] truncate">{state.title || "Mídia"}</div>
+          <button className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-1 text-sm hover:bg-[var(--shell-bg)]" onClick={onClose}>
             Fechar
           </button>
         </div>
@@ -858,7 +858,7 @@ function MediaBlock({
         {!blobUrl ? (
           <button
             type="button"
-            className="mt-2 inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+            className="mt-2 inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] disabled:opacity-60"
             onClick={ensureBlob}
             disabled={loading}
             title="Carrega o preview via /download com token"
@@ -880,7 +880,7 @@ function MediaBlock({
             type="button"
             onClick={openModal}
             disabled={!canOpen}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] disabled:opacity-60"
           >
             Abrir
           </button>
@@ -888,7 +888,7 @@ function MediaBlock({
             type="button"
             onClick={onDownload}
             disabled={!canDownload}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] disabled:opacity-60"
           >
             Baixar
           </button>
@@ -910,8 +910,8 @@ function MediaBlock({
         ) : null}
 
         {typeof p.transcription === "string" && p.transcription.trim() ? (
-          <div className="rounded-lg border bg-white p-2 text-xs text-gray-800">
-            <div className="text-[11px] text-gray-500 mb-1">Transcrição</div>
+          <div className="rounded-lg border bg-[var(--shell-card-bg)] p-2 text-xs text-[var(--shell-text)]">
+            <div className="text-[11px] text-[var(--shell-subtext)] mb-1">Transcrição</div>
             <div className="whitespace-pre-wrap">{p.transcription.trim()}</div>
           </div>
         ) : null}
@@ -921,14 +921,14 @@ function MediaBlock({
             type="button"
             onClick={openModal}
             disabled={!canOpen}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] disabled:opacity-60"
           >
             Abrir
           </button>
           <button
             type="button"
             onClick={onDownload}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
           >
             Baixar
           </button>
@@ -957,14 +957,14 @@ function MediaBlock({
             type="button"
             onClick={openModal}
             disabled={!canOpen}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] disabled:opacity-60"
           >
             Abrir
           </button>
           <button
             type="button"
             onClick={onDownload}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
           >
             Baixar
           </button>
@@ -996,14 +996,14 @@ function MediaBlock({
             type="button"
             onClick={openModal}
             disabled={!canOpen}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] disabled:opacity-60"
           >
             Abrir
           </button>
           <button
             type="button"
             onClick={onDownload}
-            className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
           >
             Baixar
           </button>
@@ -1021,7 +1021,7 @@ function MediaBlock({
           type="button"
           onClick={openModal}
           disabled={!canOpen}
-          className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] disabled:opacity-60"
           title="Abrir"
         >
           Abrir {filename}
@@ -1030,7 +1030,7 @@ function MediaBlock({
         <button
           type="button"
           onClick={onDownload}
-          className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+          className="inline-flex items-center gap-2 rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
           title="Baixar"
         >
           Baixar
@@ -1079,16 +1079,16 @@ function Bubble({
               ? "bg-amber-50 border-amber-200 text-amber-900"
               : outgoing
                 ? "bg-emerald-50 border-emerald-200 text-emerald-900"
-                : "bg-white border-gray-200 text-gray-900",
+                : "bg-[var(--shell-card-bg)] border-[var(--shell-card-border)] text-[var(--shell-text)]",
           ].join(" ")}
         >
-          <div className="text-[11px] text-gray-500 flex items-center justify-between gap-2">
+          <div className="text-[11px] text-[var(--shell-subtext)] flex items-center justify-between gap-2">
             <span className="font-mono">{channelDisplay}</span>
             <span>{formatTime(ev.criadoEm)}</span>
           </div>
 
           {isAiSuggestion ? (
-            <div className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800">
+            <div className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-[var(--shell-card-bg)] px-2 py-1 text-[11px] font-semibold text-amber-800">
               Sugestão da IA
             </div>
           ) : null}
@@ -1116,12 +1116,12 @@ function Bubble({
         {reactions.length > 0 ? (
           <div className="absolute -bottom-3 right-2 flex gap-1">
             {reactions.slice(0, 6).map((r, idx) => (
-              <span key={idx} className="bg-white border rounded-full px-2 py-0.5 text-xs shadow">
+              <span key={idx} className="bg-[var(--shell-card-bg)] border rounded-full px-2 py-0.5 text-xs shadow">
                 {r}
               </span>
             ))}
             {reactions.length > 6 ? (
-              <span className="bg-white border rounded-full px-2 py-0.5 text-xs shadow">
+              <span className="bg-[var(--shell-card-bg)] border rounded-full px-2 py-0.5 text-xs shadow">
                 {"+" + String(reactions.length - 6)}
               </span>
             ) : null}
@@ -2341,9 +2341,9 @@ function discardAiSuggestion() {
     <AppShell title="Lead">
       <div className="h-screen flex flex-col overflow-hidden">
             {/* STEPPER DO FUNIL (ETAPA 4) */}
-        <div className="mb-4 rounded-xl border bg-white p-3">
+        <div className="mb-4 rounded-xl border bg-[var(--shell-card-bg)] p-3">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="text-xs font-semibold text-gray-700">Funil</div>
+            <div className="text-xs font-semibold text-[var(--shell-subtext)]">Funil</div>
 
             {(lead as any)?.stageKey === "BASE_FRIA" && (lead as any)?.previousStageName ? (
               <div className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-800">
@@ -2386,7 +2386,7 @@ function discardAiSuggestion() {
               />
             );
           })() : loadingPipeline ? (
-            <div className="text-sm text-gray-600">Carregando funil...</div>
+            <div className="text-sm text-[var(--shell-subtext)]">Carregando funil...</div>
           ) : pipelineErr ? (
             <div className="text-sm text-red-700">{pipelineErr}</div>
           ) : null}
@@ -2396,38 +2396,38 @@ function discardAiSuggestion() {
           {/* ESQUERDA */}
           <div className="space-y-4 lg:col-span-1 overflow-y-auto pr-1">
             {/* Lead */}
-            <div className="rounded-xl border bg-white p-4">
-              <div className="text-sm font-semibold text-gray-900 flex items-center justify-between gap-2">
+            <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
+              <div className="text-sm font-semibold text-[var(--shell-text)] flex items-center justify-between gap-2">
                 <span>Lead</span>
-                <label className="text-xs text-gray-600 flex items-center gap-2 select-none">
+                <label className="text-xs text-[var(--shell-subtext)] flex items-center gap-2 select-none">
                   <input type="checkbox" checked={debugOn} onChange={(e) => setDebugOn(e.target.checked)} />
                   Debug
                 </label>
               </div>
 
               {loadingLead ? (
-                <div className="mt-3 text-sm text-gray-600">Carregando...</div>
+                <div className="mt-3 text-sm text-[var(--shell-subtext)]">Carregando...</div>
               ) : lead ? (
                 <div className="mt-3 space-y-2 text-sm">
                   <div>
-                    <div className="text-xs text-gray-500">Nome da fonte</div>
-                    <div className="font-medium text-gray-900">{lead.nome || "—"}</div>
+                    <div className="text-xs text-[var(--shell-subtext)]">Nome da fonte</div>
+                    <div className="font-medium text-[var(--shell-text)]">{lead.nome || "—"}</div>
                   </div>
 
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">Nome confirmado</div>
+                    <div className="text-xs text-[var(--shell-subtext)] mb-1">Nome confirmado</div>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">
-                        {lead.nomeCorreto || <span className="text-gray-400 italic text-xs">não confirmado</span>}
+                      <span className="font-medium text-[var(--shell-text)]">
+                        {lead.nomeCorreto || <span className="text-[var(--shell-subtext)] italic text-xs">não confirmado</span>}
                       </span>
                       {lead.nomeCorretoOrigem === "IA" && (
                         <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700">IA</span>
                       )}
                       {lead.nomeCorretoOrigem === "MANUAL" && (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-600">Manual</span>
+                        <span className="inline-flex items-center rounded-full bg-[var(--shell-hover)] border border-[var(--shell-card-border)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)]">Manual</span>
                       )}
                       <button
-                        className="ml-auto text-gray-400 hover:text-gray-700"
+                        className="ml-auto text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]"
                         title="Editar nome confirmado"
                         onClick={() => { setNomeConfirmadoEdit(lead.nomeCorreto ?? ""); setNomeModalOpen(true); }}
                       >
@@ -2439,28 +2439,28 @@ function discardAiSuggestion() {
                   </div>
 
                   <div>
-                    <div className="text-xs text-gray-500">Telefone</div>
-                    <div className="text-gray-900">{lead.telefone || "�"}</div>
+                    <div className="text-xs text-[var(--shell-subtext)]">Telefone</div>
+                    <div className="text-[var(--shell-text)]">{lead.telefone || "�"}</div>
                   </div>
 
                   <div>
-                    <div className="text-xs text-gray-500">Status</div>
-                    <div className="text-gray-900">{lead.status || "NOVO"}</div>
+                    <div className="text-xs text-[var(--shell-subtext)]">Status</div>
+                    <div className="text-[var(--shell-text)]">{lead.status || "NOVO"}</div>
                   </div>
 
                   {lead.origem && (
                     <div>
-                      <div className="text-xs text-gray-500">Origem</div>
-                      <div className="text-gray-900">{lead.origem}</div>
+                      <div className="text-xs text-[var(--shell-subtext)]">Origem</div>
+                      <div className="text-[var(--shell-text)]">{lead.origem}</div>
                     </div>
                   )}
 
                   {/* Responsável — select para OWNER/MANAGER */}
                   <div>
-                    <div className="text-xs text-gray-500 mb-1">Responsável</div>
+                    <div className="text-xs text-[var(--shell-subtext)] mb-1">Responsável</div>
                     {user?.role !== "AGENT" ? (
                       <select
-                        className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 disabled:opacity-60"
+                        className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] disabled:opacity-60"
                         value={lead.assignedUserId ?? ""}
                         disabled={assignLoading}
                         onChange={async (e) => {
@@ -2486,7 +2486,7 @@ function discardAiSuggestion() {
                         ))}
                       </select>
                     ) : (
-                      <div className="text-gray-900">
+                      <div className="text-[var(--shell-text)]">
                         {teamMembers.find((m) => m.id === lead.assignedUserId)?.nome ?? "—"}
                       </div>
                     )}
@@ -2494,11 +2494,11 @@ function discardAiSuggestion() {
 
                 </div>
               ) : (
-                <div className="mt-3 text-sm text-gray-600">Não carregou.</div>
+                <div className="mt-3 text-sm text-[var(--shell-subtext)]">Não carregou.</div>
               )}
 
               <button
-                className="mt-4 w-full rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+                className="mt-4 w-full rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
                 onClick={loadAll}
                 disabled={loadingLead || loadingEvents}
               >
@@ -2507,7 +2507,7 @@ function discardAiSuggestion() {
 
               {user?.role === "OWNER" && lead && (
                 <button
-                  className="mt-2 w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                  className="mt-2 w-full rounded-md border border-red-200 bg-[var(--shell-card-bg)] px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                   onClick={async () => {
                     if (!confirm(`Excluir o lead "${lead.nome}"? Esta ação não pode ser desfeita.`)) return;
                     try {
@@ -2527,53 +2527,53 @@ function discardAiSuggestion() {
               ) : null}
 
               {debugOn ? (
-                <div className="mt-4 rounded-lg border bg-gray-50 p-3 text-xs text-gray-800 space-y-2">
-                  <div className="font-semibold text-gray-900">Debug (Front)</div>
+                <div className="mt-4 rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-text)] space-y-2">
+                  <div className="font-semibold text-[var(--shell-text)]">Debug (Front)</div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <div className="text-[11px] text-gray-500">events (state)</div>
+                      <div className="text-[11px] text-[var(--shell-subtext)]">events (state)</div>
                       <div className="font-mono">{events.length}</div>
                     </div>
 
                     <div>
-                      <div className="text-[11px] text-gray-500">viewEvents (render)</div>
+                      <div className="text-[11px] text-[var(--shell-subtext)]">viewEvents (render)</div>
                       <div className="font-mono">{viewEvents.length}</div>
                     </div>
 
                     <div>
-                      <div className="text-[11px] text-gray-500">pollCount</div>
+                      <div className="text-[11px] text-[var(--shell-subtext)]">pollCount</div>
                       <div className="font-mono">{pollCount}</div>
                     </div>
 
                     <div>
-                      <div className="text-[11px] text-gray-500">lastFetchAt</div>
+                      <div className="text-[11px] text-[var(--shell-subtext)]">lastFetchAt</div>
                       <div className="font-mono break-all">{lastFetchAt || "�"}</div>
                     </div>
 
                     <div className="col-span-2">
-                      <div className="text-[11px] text-gray-500">events shape</div>
+                      <div className="text-[11px] text-[var(--shell-subtext)]">events shape</div>
                       <div className="font-mono break-all">{lastEventsShape || "�"}</div>
                     </div>
 
                     {lastPollError ? (
                       <div className="col-span-2">
-                        <div className="text-[11px] text-gray-500">lastPollError</div>
+                        <div className="text-[11px] text-[var(--shell-subtext)]">lastPollError</div>
                         <div className="font-mono text-red-700 break-all">{lastPollError}</div>
                       </div>
                     ) : null}
                   </div>
 
                   <div>
-                    <div className="text-[11px] text-gray-500">last visible event (ordered)</div>
-                    <pre className="mt-1 max-h-48 overflow-auto rounded-md border bg-white p-2 text-[11px] leading-snug">
+                    <div className="text-[11px] text-[var(--shell-subtext)]">last visible event (ordered)</div>
+                    <pre className="mt-1 max-h-48 overflow-auto rounded-md border bg-[var(--shell-card-bg)] p-2 text-[11px] leading-snug">
                       {JSON.stringify(lastVisibleEvent, null, 2)}
                     </pre>
                   </div>
 
                   <div>
-                    <div className="text-[11px] text-gray-500">raw /events response (shape)</div>
-                    <pre className="mt-1 max-h-48 overflow-auto rounded-md border bg-white p-2 text-[11px] leading-snug">
+                    <div className="text-[11px] text-[var(--shell-subtext)]">raw /events response (shape)</div>
+                    <pre className="mt-1 max-h-48 overflow-auto rounded-md border bg-[var(--shell-card-bg)] p-2 text-[11px] leading-snug">
                       {JSON.stringify(lastEventsRaw, null, 2)}
                     </pre>
                   </div>
@@ -2610,98 +2610,98 @@ function discardAiSuggestion() {
               };
 
               return (
-                <div className="rounded-xl border bg-white p-4">
+                <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
                   <button
                     type="button"
                     className="flex w-full items-center justify-between gap-2 text-left"
                     onClick={() => setQualOpen((v) => !v)}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-900">Qualificação IA</span>
+                      <span className="text-sm font-semibold text-[var(--shell-text)]">Qualificação IA</span>
                       {hasAnyQual && (
                         <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
                           Coletado
                         </span>
                       )}
                     </div>
-                    <span className="text-gray-400 text-xs">{qualOpen ? "▲" : "▼"}</span>
+                    <span className="text-[var(--shell-subtext)] text-xs">{qualOpen ? "▲" : "▼"}</span>
                   </button>
 
                   {qualOpen && (
                     <div className="mt-3 space-y-2 text-sm">
                       {!hasAnyQual && (
-                        <div className="text-xs text-gray-400 italic">
+                        <div className="text-xs text-[var(--shell-subtext)] italic">
                           Nenhum dado coletado ainda. A IA preenche automaticamente durante a conversa.
                         </div>
                       )}
 
                       {fmtCurrency(lead.rendaBrutaFamiliar) && (
                         <div>
-                          <div className="text-xs text-gray-500">Renda bruta familiar</div>
-                          <div className="text-gray-900">{fmtCurrency(lead.rendaBrutaFamiliar)}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Renda bruta familiar</div>
+                          <div className="text-[var(--shell-text)]">{fmtCurrency(lead.rendaBrutaFamiliar)}</div>
                         </div>
                       )}
 
                       {fmtCurrency(lead.fgts) && (
                         <div>
-                          <div className="text-xs text-gray-500">FGTS</div>
-                          <div className="text-gray-900">{fmtCurrency(lead.fgts)}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">FGTS</div>
+                          <div className="text-[var(--shell-text)]">{fmtCurrency(lead.fgts)}</div>
                         </div>
                       )}
 
                       {fmtCurrency(lead.valorEntrada) && (
                         <div>
-                          <div className="text-xs text-gray-500">Valor de entrada</div>
-                          <div className="text-gray-900">{fmtCurrency(lead.valorEntrada)}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Valor de entrada</div>
+                          <div className="text-[var(--shell-text)]">{fmtCurrency(lead.valorEntrada)}</div>
                         </div>
                       )}
 
                       {lead.estadoCivil && (
                         <div>
-                          <div className="text-xs text-gray-500">Estado civil</div>
-                          <div className="text-gray-900">{estadoCivilLabels[lead.estadoCivil] ?? lead.estadoCivil}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Estado civil</div>
+                          <div className="text-[var(--shell-text)]">{estadoCivilLabels[lead.estadoCivil] ?? lead.estadoCivil}</div>
                         </div>
                       )}
 
                       {fmtDate(lead.dataNascimento) && (
                         <div>
-                          <div className="text-xs text-gray-500">Data de nascimento</div>
-                          <div className="text-gray-900">{fmtDate(lead.dataNascimento)}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Data de nascimento</div>
+                          <div className="text-[var(--shell-text)]">{fmtDate(lead.dataNascimento)}</div>
                         </div>
                       )}
 
                       {lead.tempoProcurandoImovel && (
                         <div>
-                          <div className="text-xs text-gray-500">Tempo buscando imóvel</div>
-                          <div className="text-gray-900">{lead.tempoProcurandoImovel}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Tempo buscando imóvel</div>
+                          <div className="text-[var(--shell-text)]">{lead.tempoProcurandoImovel}</div>
                         </div>
                       )}
 
                       {lead.conversouComCorretor != null && (
                         <div>
-                          <div className="text-xs text-gray-500">Conversou com corretor antes?</div>
-                          <div className="text-gray-900">{lead.conversouComCorretor ? "Sim" : "Não"}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Conversou com corretor antes?</div>
+                          <div className="text-[var(--shell-text)]">{lead.conversouComCorretor ? "Sim" : "Não"}</div>
                         </div>
                       )}
 
                       {lead.qualCorretorImobiliaria && (
                         <div>
-                          <div className="text-xs text-gray-500">Corretor/Imobiliária anterior</div>
-                          <div className="text-gray-900">{lead.qualCorretorImobiliaria}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Corretor/Imobiliária anterior</div>
+                          <div className="text-[var(--shell-text)]">{lead.qualCorretorImobiliaria}</div>
                         </div>
                       )}
 
                       {lead.perfilImovel && (
                         <div>
-                          <div className="text-xs text-gray-500">Perfil do imóvel</div>
-                          <div className="text-gray-900">{perfilLabels[lead.perfilImovel] ?? lead.perfilImovel}</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Perfil do imóvel</div>
+                          <div className="text-[var(--shell-text)]">{perfilLabels[lead.perfilImovel] ?? lead.perfilImovel}</div>
                         </div>
                       )}
 
                       {lead.resumoLead && (
                         <div>
-                          <div className="text-xs text-gray-500">Resumo</div>
-                          <div className="rounded-md border bg-gray-50 p-2 text-xs text-gray-800 leading-relaxed whitespace-pre-wrap">
+                          <div className="text-xs text-[var(--shell-subtext)]">Resumo</div>
+                          <div className="rounded-md border bg-[var(--shell-bg)] p-2 text-xs text-[var(--shell-text)] leading-relaxed whitespace-pre-wrap">
                             {lead.resumoLead}
                           </div>
                         </div>
@@ -2716,21 +2716,21 @@ function discardAiSuggestion() {
             {lead && (
               <a
                 href={`/leads/${lead.id}/documentos`}
-                className="mt-4 flex w-full items-center justify-between rounded-xl border bg-white px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                className="mt-4 flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
               >
                 <span className="flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Cadastro e Documentos
                 </span>
-                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
               </a>
             )}
             {/* Painel SLA */}
             {slaData && (
-              <div className="rounded-xl border bg-white p-4">
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="text-sm font-semibold text-gray-900">SLA</div>
-                  {slaLoading && <span className="text-xs text-gray-400">atualizando...</span>}
+                  <div className="text-sm font-semibold text-[var(--shell-text)]">SLA</div>
+                  {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
                 </div>
 
                 {/* Stage group badge */}
@@ -2738,12 +2738,12 @@ function discardAiSuggestion() {
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                     slaData.stageGroup === 'PRE_ATENDIMENTO'
                       ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-100 text-gray-600'
+                      : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
                   }`}>
                     {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
                   </span>
                   {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
-                    <span className="text-xs text-gray-500">SLA inativo nesta etapa</span>
+                    <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
                   )}
                 </div>
 
@@ -2774,7 +2774,7 @@ function discardAiSuggestion() {
                 {/* Scheduled jobs */}
                 {slaData.scheduledJobs?.length > 0 ? (
                   <div className="mb-3">
-                    <div className="text-xs font-medium text-gray-500 mb-1">Agendados</div>
+                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
                     <div className="space-y-1">
                       {slaData.scheduledJobs.map((job: any) => {
                         const urgencyColor: Record<string, string> = {
@@ -2783,7 +2783,7 @@ function discardAiSuggestion() {
                           ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
                           CRITICA: 'text-red-700 bg-red-50 border-red-200',
                         };
-                        const color = urgencyColor[job.urgency] ?? 'text-gray-600 bg-gray-50 border-gray-200';
+                        const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
                         return (
                           <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
                             <span className="font-medium">{job.name}</span>
@@ -2799,13 +2799,13 @@ function discardAiSuggestion() {
                     </div>
                   </div>
                 ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
-                  <div className="text-xs text-gray-400 mb-3">Nenhum SLA agendado</div>
+                  <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
                 ) : null}
 
                 {/* Recent history */}
                 {slaData.history?.length > 0 && (
                   <div>
-                    <div className="text-xs font-medium text-gray-500 mb-1">Histórico recente</div>
+                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Histórico recente</div>
                     <div className="space-y-1 max-h-40 overflow-y-auto">
                       {slaData.history.slice(0, 8).map((ev: any) => {
                         const p = ev.payload || {};
@@ -2813,7 +2813,7 @@ function discardAiSuggestion() {
                         const isDue = p.outcome === 'DUE';
                         const isSuggestion = ev.channel === 'ai.suggestion';
                         return (
-                          <div key={ev.id} className="flex items-start gap-1.5 text-xs text-gray-600">
+                          <div key={ev.id} className="flex items-start gap-1.5 text-xs text-[var(--shell-subtext)]">
                             <span className="mt-0.5 shrink-0">
                               {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
                             </span>
@@ -2822,7 +2822,7 @@ function discardAiSuggestion() {
                                 {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
                               </span>
                               {' · '}
-                              <span className="text-gray-400">
+                              <span className="text-[var(--shell-subtext)]">
                                 {new Date(ev.criadoEm).toLocaleString('pt-BR', {
                                   day: '2-digit', month: '2-digit',
                                   hour: '2-digit', minute: '2-digit',
@@ -2839,12 +2839,12 @@ function discardAiSuggestion() {
             )}
 
             {/* Produtos Disponíveis */}
-            <div className="rounded-xl border bg-white p-4">
+            <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-gray-900">Produtos Disponíveis</div>
+                <div className="text-sm font-semibold text-[var(--shell-text)]">Produtos Disponíveis</div>
                 <button
                   type="button"
-                  className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                   onClick={() => loadProducts()}
                   disabled={productsLoading}
                 >
@@ -2869,12 +2869,12 @@ function discardAiSuggestion() {
                   placeholder="Buscar por título/cidade/bairro..."
                   className="w-full rounded-md border p-2 text-sm"
                 />
-                <div className="mt-1 text-[11px] text-gray-500">Mostrando até 50 resultados. Total carregado: {products.length}</div>
+                <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">Mostrando até 50 resultados. Total carregado: {products.length}</div>
               </div>
 
               <div className="mt-3 grid gap-2">
                 <select
-                  className="w-full rounded-md border bg-white p-2 text-sm"
+                  className="w-full rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
                   value={selectedProductId}
                   onChange={(e) => {
                     const v = e.target.value || "";
@@ -2897,20 +2897,20 @@ function discardAiSuggestion() {
                 </select>
 
                 {selectedProduct ? (
-                  <div className="rounded-lg border bg-gray-50 p-3 text-xs text-gray-800">
-                    <div className="font-semibold text-gray-900 truncate">{selectedProduct.title || "Produto"}</div>
-                    <div className="mt-1 text-[11px] text-gray-600">
+                  <div className="rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-text)]">
+                    <div className="font-semibold text-[var(--shell-text)] truncate">{selectedProduct.title || "Produto"}</div>
+                    <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
                       {selectedProduct.city ? <span>{selectedProduct.city}</span> : null}
                       {selectedProduct.neighborhood ? <span>{" - " + selectedProduct.neighborhood}</span> : null}
                     </div>
 
-                    <div className="mt-3 rounded-md border bg-white p-2">
-                      <div className="text-[11px] text-gray-500 mb-1">Resumo</div>
-                      <div className="text-xs whitespace-pre-wrap text-gray-900">{buildProductSummary(selectedProduct)}</div>
+                    <div className="mt-3 rounded-md border bg-[var(--shell-card-bg)] p-2">
+                      <div className="text-[11px] text-[var(--shell-subtext)] mb-1">Resumo</div>
+                      <div className="text-xs whitespace-pre-wrap text-[var(--shell-text)]">{buildProductSummary(selectedProduct)}</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button
                           type="button"
-                          className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                          className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                           onClick={() => insertIntoChat(buildProductSummary(selectedProduct))}
                           title="Insere o resumo no campo de mensagem"
                         >
@@ -2920,7 +2920,7 @@ function discardAiSuggestion() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-lg border bg-gray-50 p-3 text-xs text-gray-700">
+                  <div className="rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-subtext)]">
                     Selecione um produto para ver imagens/documentos/vídeos.
                   </div>
                 )}
@@ -2933,7 +2933,7 @@ function discardAiSuggestion() {
                       onClick={() => setProductTab(t)}
                       className={[
                         "rounded-md border px-3 py-2 text-xs font-semibold",
-                        productTab === t ? "bg-slate-900 text-white border-slate-900" : "bg-white hover:bg-gray-50",
+                        productTab === t ? "bg-slate-900 text-white border-slate-900" : "bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)]",
                       ].join(" ")}
                       disabled={!selectedProduct}
                     >
@@ -2944,14 +2944,14 @@ function discardAiSuggestion() {
 
                 <div className="mt-2">
                   {!selectedProduct ? (
-                    <div className="text-xs text-gray-600">�</div>
+                    <div className="text-xs text-[var(--shell-subtext)]">�</div>
                   ) : productTab === null ? (
-                    <div className="text-xs text-gray-600">
+                    <div className="text-xs text-[var(--shell-subtext)]">
                       Clique em <b>Imagens</b>, <b>Documentos</b> ou <b>Vídeos</b> para mostrar o conteúdo.
                     </div>
                   ) : productTab === "IMAGENS" ? (
                     (selectedProduct.images || []).length === 0 ? (
-                      <div className="text-xs text-gray-600">Sem imagens neste produto.</div>
+                      <div className="text-xs text-[var(--shell-subtext)]">Sem imagens neste produto.</div>
                     ) : (
                       <div className="space-y-2">
                         {(selectedProduct.images || [])
@@ -2962,13 +2962,13 @@ function discardAiSuggestion() {
                             const url = String(img.url || "");
                             const nameBase = img.title || img.label || "imagem-" + img.id;
                             return (
-                              <div key={img.id} className="rounded-lg border bg-white p-2">
-                                <div className="text-xs font-semibold text-gray-900 truncate">
+                              <div key={img.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
+                                <div className="text-xs font-semibold text-[var(--shell-text)] truncate">
                                   {img.title || img.label || "Imagem"}
                                   {img.isPrimary ? " = (capa)" : ""}
                                 </div>
 
-                                <div className="mt-1 text-[11px] text-gray-500 break-all">{url}</div>
+                                <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
 
                                 {url ? (
                                   <a href={url} target="_blank" rel="noreferrer noopener" className="mt-2 block">
@@ -2979,7 +2979,7 @@ function discardAiSuggestion() {
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <button
                                     type="button"
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     onClick={() => insertIntoChat(url)}
                                     disabled={!url}
                                     title="Insere o link no campo de mensagem"
@@ -2989,7 +2989,7 @@ function discardAiSuggestion() {
 
                                   <button
                                     type="button"
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     onClick={async () => {
                                       if (!url) return;
                                       try {
@@ -3007,7 +3007,7 @@ function discardAiSuggestion() {
 
                                   <button
                                     type="button"
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     onClick={() => handleCopyLink(url)}
                                     disabled={!url}
                                     title="Copiar link"
@@ -3016,7 +3016,7 @@ function discardAiSuggestion() {
                                   </button>
 
                                   <a
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     href={url}
                                     target="_blank"
                                     rel="noreferrer noopener"
@@ -3029,13 +3029,13 @@ function discardAiSuggestion() {
                           })}
 
                         {(selectedProduct.images || []).length > 20 ? (
-                          <div className="text-[11px] text-gray-500">Mostrando 20 primeiras imagens.</div>
+                          <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiras imagens.</div>
                         ) : null}
                       </div>
                     )
                   ) : productTab === "DOCUMENTOS" ? (
                     (selectedProduct.documents || []).length === 0 ? (
-                      <div className="text-xs text-gray-600">Sem documentos neste produto.</div>
+                      <div className="text-xs text-[var(--shell-subtext)]">Sem documentos neste produto.</div>
                     ) : (
                       <div className="space-y-2">
                         {(selectedProduct.documents || [])
@@ -3052,21 +3052,21 @@ function discardAiSuggestion() {
                             const filename = base + ".pdf";
 
                             return (
-                              <div key={doc.id} className="rounded-lg border bg-white p-2">
-                                <div className="text-xs font-semibold text-gray-900 truncate">{doc.title || doc.type || "Documento"}</div>
+                              <div key={doc.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
+                                <div className="text-xs font-semibold text-[var(--shell-text)] truncate">{doc.title || doc.type || "Documento"}</div>
 
-                                <div className="mt-1 text-[11px] text-gray-600">
+                                <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
                                   {doc.type ? <span>{doc.type}</span> : null}
                                   {doc.category ? <span>{" - " + doc.category}</span> : null}
                                   {doc.visibility ? <span>{" - " + doc.visibility}</span> : null}
                                 </div>
 
-                                <div className="mt-1 text-[11px] text-gray-500 break-all">{url}</div>
+                                <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
 
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <button
                                     type="button"
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     onClick={() => insertIntoChat(url)}
                                     disabled={!url}
                                     title="Insere o link no campo de mensagem"
@@ -3076,7 +3076,7 @@ function discardAiSuggestion() {
 
                                   <button
                                     type="button"
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     onClick={async () => {
                                       if (!url) return;
                                       try {
@@ -3094,7 +3094,7 @@ function discardAiSuggestion() {
 
                                   <button
                                     type="button"
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     onClick={() => handleCopyLink(url)}
                                     disabled={!url}
                                     title="Copiar link"
@@ -3102,11 +3102,11 @@ function discardAiSuggestion() {
                                     Copiar link
                                   </button>
 
-                                  <a className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50" href={url} target="_blank" rel="noreferrer noopener">
+                                  <a className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" href={url} target="_blank" rel="noreferrer noopener">
                                     Abrir
                                   </a>
 
-                                  <button type="button" className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50" onClick={() => downloadWithAuth(url, filename)} disabled={!url}>
+                                  <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => downloadWithAuth(url, filename)} disabled={!url}>
                                     Baixar
                                   </button>
                                 </div>
@@ -3115,12 +3115,12 @@ function discardAiSuggestion() {
                           })}
 
                         {(selectedProduct.documents || []).length > 20 ? (
-                          <div className="text-[11px] text-gray-500">Mostrando 20 primeiros documentos.</div>
+                          <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiros documentos.</div>
                         ) : null}
                       </div>
                     )
                   ) : (selectedProduct.videos || []).length === 0 ? (
-                    <div className="text-xs text-gray-600">Sem vídeos neste produto.</div>
+                    <div className="text-xs text-[var(--shell-subtext)]">Sem vídeos neste produto.</div>
                   ) : (
                     <div className="space-y-2">
                       {(selectedProduct.videos || [])
@@ -3132,9 +3132,9 @@ function discardAiSuggestion() {
                           const name = safeFileNameBase(v.title || "video-" + v.id) + ".mp4";
 
                           return (
-                            <div key={v.id} className="rounded-lg border bg-white p-2">
-                              <div className="text-xs font-semibold text-gray-900 truncate">{v.title || "Vídeo"}</div>
-                              <div className="mt-1 text-[11px] text-gray-500 break-all">{url}</div>
+                            <div key={v.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
+                              <div className="text-xs font-semibold text-[var(--shell-text)] truncate">{v.title || "Vídeo"}</div>
+                              <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
 
                               {url ? (
                                 <video controls preload="metadata" className="mt-2 max-h-40 w-full rounded-md border">
@@ -3143,13 +3143,13 @@ function discardAiSuggestion() {
                               ) : null}
 
                               <div className="mt-2 flex flex-wrap gap-2">
-                                <button type="button" className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50" onClick={() => insertIntoChat(url)} disabled={!url}>
+                                <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => insertIntoChat(url)} disabled={!url}>
                                   Inserir link no chat
                                 </button>
 
                                 <button
                                   type="button"
-                                  className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                   onClick={async () => {
                                     if (!url) return;
                                     try {
@@ -3164,15 +3164,15 @@ function discardAiSuggestion() {
                                   Enviar vídeo
                                 </button>
 
-                                <button type="button" className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50" onClick={() => handleCopyLink(url)} disabled={!url}>
+                                <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => handleCopyLink(url)} disabled={!url}>
                                   Copiar link
                                 </button>
 
-                                <a className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50" href={url} target="_blank" rel="noreferrer noopener">
+                                <a className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" href={url} target="_blank" rel="noreferrer noopener">
                                   Abrir
                                 </a>
 
-                                <button type="button" className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50" onClick={() => downloadWithAuth(url, name)} disabled={!url}>
+                                <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => downloadWithAuth(url, name)} disabled={!url}>
                                   Baixar
                                 </button>
                               </div>
@@ -3181,7 +3181,7 @@ function discardAiSuggestion() {
                         })}
 
                       {(selectedProduct.videos || []).length > 20 ? (
-                        <div className="text-[11px] text-gray-500">Mostrando 20 primeiros vídeos.</div>
+                        <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiros vídeos.</div>
                       ) : null}
                     </div>
                   )}
@@ -3191,14 +3191,14 @@ function discardAiSuggestion() {
           </div>
 
           {/* CHAT */}
-          <div className="rounded-xl border bg-white overflow-hidden lg:col-span-2 flex flex-col h-full lg:sticky lg:top-4">
-            <div className="border-b bg-gray-50 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden lg:col-span-2 flex flex-col h-full lg:sticky lg:top-4">
+            <div className="border-b bg-[var(--shell-bg)] px-4 py-3 flex items-center justify-between gap-3">
               <div className="min-w-0 flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full border bg-white flex items-center justify-center overflow-hidden shrink-0">
+                <div className="h-9 w-9 rounded-full border bg-[var(--shell-card-bg)] flex items-center justify-center overflow-hidden shrink-0">
                   {lead?.avatarUrl ? (
                     <img src={lead.avatarUrl} alt="avatar" className="h-9 w-9 object-cover" />
                   ) : (
-                    <span className="text-xs font-semibold text-gray-700">
+                    <span className="text-xs font-semibold text-[var(--shell-subtext)]">
                       {String((lead?.nomeCorreto ?? lead?.nome) || "HC")
                         .split(" ")
                         .slice(0, 2)
@@ -3210,7 +3210,7 @@ function discardAiSuggestion() {
                 </div>
 
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
+                  <div className="text-sm font-semibold text-[var(--shell-text)] truncate flex items-center gap-2">
                     <span>{lead?.nomeCorreto ?? lead?.nome ?? "Chat"}</span>
                     {hasNewInbound ? (
                       <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
@@ -3219,7 +3219,7 @@ function discardAiSuggestion() {
                     ) : null}
                   </div>
 
-                  <div className="text-[11px] text-gray-600 flex flex-wrap gap-x-3 gap-y-1">
+                  <div className="text-[11px] text-[var(--shell-subtext)] flex flex-wrap gap-x-3 gap-y-1">
                     <span className="font-mono">{"Nº " + leadNumberLabel}</span>
                     <span>{"Inicio: " + (startedAt ? formatDateOnly(startedAt) : "�")}</span>
                     <span>
@@ -3234,7 +3234,7 @@ function discardAiSuggestion() {
               </div>
 
               {debugOn ? (
-                <div className="text-[11px] text-gray-600 font-mono shrink-0">
+                <div className="text-[11px] text-[var(--shell-subtext)] font-mono shrink-0">
                   {"events:" + events.length + " | render:" + viewEvents.length}
                 </div>
               ) : null}
@@ -3242,9 +3242,9 @@ function discardAiSuggestion() {
 
             <div className="flex-1 overflow-auto p-4 space-y-5">
               {loadingEvents ? (
-                <div className="text-sm text-gray-600">Carregando historico...</div>
+                <div className="text-sm text-[var(--shell-subtext)]">Carregando historico...</div>
               ) : viewEvents.length === 0 ? (
-                <div className="text-sm text-gray-600">Sem mensagens ainda.</div>
+                <div className="text-sm text-[var(--shell-subtext)]">Sem mensagens ainda.</div>
               ) : (
                 viewEvents.map(({ ev, reactions }) => (
                   <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} />
@@ -3253,7 +3253,7 @@ function discardAiSuggestion() {
               <div ref={bottomRef} />
             </div>
 
-            <div className="border-t bg-white p-3 space-y-3">
+            <div className="border-t bg-[var(--shell-card-bg)] p-3 space-y-3">
               {/* PAINEL DA IA */}
               <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -3271,70 +3271,70 @@ function discardAiSuggestion() {
                       onClick={() => toggleAutopilot(!autopilotEnabled)}
                       className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${autopilotEnabled ? "bg-emerald-500" : "bg-gray-300"}`}
                     >
-                      <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow-md transition-transform duration-200 ${autopilotEnabled ? "translate-x-6" : "translate-x-0"}`} />
+                      <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow-md transition-transform duration-200 ${autopilotEnabled ? "translate-x-6" : "translate-x-0"}`} />
                     </button>
-                    <span className={`text-xs font-semibold ${autopilotEnabled ? "text-emerald-700" : "text-gray-400"}`}>
+                    <span className={`text-xs font-semibold ${autopilotEnabled ? "text-emerald-700" : "text-[var(--shell-subtext)]"}`}>
                       {autopilotEnabled ? "ON" : "OFF"}
                     </span>
                   </div>
                 </div>
 
                 {latestAiSuggestion ? (
-                  <div className="rounded-xl border border-amber-300 bg-white p-3 space-y-3">
+                  <div className="rounded-xl border border-amber-300 bg-[var(--shell-card-bg)] p-3 space-y-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
                           Sugestão da IA
                         </div>
-                        <div className="mt-2 text-[11px] text-gray-500">
+                        <div className="mt-2 text-[11px] text-[var(--shell-subtext)]">
                           {formatTime(latestAiSuggestion.criadoEm)}
                           {latestAiPayload?.agentTitle ? " • " + String(latestAiPayload.agentTitle) : ""}
                           {latestAiPayload?.jobName ? " • " + String(latestAiPayload.jobName) : ""}
                         </div>
                       </div>
 
-                      <div className="rounded-md border bg-gray-50 px-2 py-1 text-[11px] text-gray-700">
+                      <div className="rounded-md border bg-[var(--shell-bg)] px-2 py-1 text-[11px] text-[var(--shell-subtext)]">
                         {aiUsagePercent}% IA
                       </div>
                     </div>
 
                     <div>
-                      <div className="text-[11px] font-semibold text-gray-500">Formato sugerido</div>
-                      <div className="mt-1 text-sm font-medium text-gray-900">{activeAiResponseFormat}</div>
+                      <div className="text-[11px] font-semibold text-[var(--shell-subtext)]">Formato sugerido</div>
+                      <div className="mt-1 text-sm font-medium text-[var(--shell-text)]">{activeAiResponseFormat}</div>
                     </div>
 
 {activeAiSuggestionText ? (
-  <div className={`rounded-lg border p-3 ${suggestionModifiedBy ? "bg-amber-50 border-amber-200" : "bg-gray-50"}`}>
+  <div className={`rounded-lg border p-3 ${suggestionModifiedBy ? "bg-amber-50 border-amber-200" : "bg-[var(--shell-bg)]"}`}>
     <div className="flex items-center gap-2">
       {suggestionModifiedBy ? (
         <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
           Modificado por {suggestionModifiedBy}
         </span>
       ) : (
-        <span className="text-[11px] font-semibold text-gray-500">Texto sugerido</span>
+        <span className="text-[11px] font-semibold text-[var(--shell-subtext)]">Texto sugerido</span>
       )}
     </div>
-    <div className="mt-2 whitespace-pre-wrap text-sm text-gray-900">
+    <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--shell-text)]">
       {activeAiSuggestionText}
     </div>
   </div>
 ) : null}
 
                     {latestAiSuggestedAudioScript ? (
-                      <div className="rounded-lg border bg-white p-3">
-                        <div className="text-[11px] font-semibold text-gray-500">Roteiro de áudio sugerido</div>
-                        <div className="mt-2 whitespace-pre-wrap text-sm text-gray-900">
+                      <div className="rounded-lg border bg-[var(--shell-card-bg)] p-3">
+                        <div className="text-[11px] font-semibold text-[var(--shell-subtext)]">Roteiro de áudio sugerido</div>
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-[var(--shell-text)]">
                           {latestAiSuggestedAudioScript}
                         </div>
-                        <div className="mt-2 text-[11px] text-gray-500">
+                        <div className="mt-2 text-[11px] text-[var(--shell-subtext)]">
                           Estrutura pronta para áudio. O envio automático de áudio fica para a próxima etapa.
                         </div>
                       </div>
                     ) : null}
 
                     {latestAiSuggestedAttachments.length > 0 ? (
-                      <div className="rounded-lg border bg-white p-3">
-                        <div className="text-[11px] font-semibold text-gray-500">Mídias / documentos sugeridos</div>
+                      <div className="rounded-lg border bg-[var(--shell-card-bg)] p-3">
+                        <div className="text-[11px] font-semibold text-[var(--shell-subtext)]">Mídias / documentos sugeridos</div>
 
                         <div className="mt-2 space-y-2">
                           {latestAiSuggestedAttachments.map((att, idx) => {
@@ -3343,13 +3343,13 @@ function discardAiSuggestion() {
                               String(att?.title || att?.filename || (kind === "image" ? "Imagem" : kind === "video" ? "Vídeo" : kind === "audio" ? "Áudio" : "Documento"));
 
                             return (
-                              <div key={idx} className="rounded-md border bg-gray-50 p-2">
-                                <div className="text-xs font-semibold text-gray-900">{title}</div>
-                                <div className="mt-1 text-[11px] text-gray-500 break-all">{String(att?.url || "")}</div>
+                              <div key={idx} className="rounded-md border bg-[var(--shell-bg)] p-2">
+                                <div className="text-xs font-semibold text-[var(--shell-text)]">{title}</div>
+                                <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{String(att?.url || "")}</div>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   <button
                                     type="button"
-                                    className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                     onClick={() => useSuggestedAttachment(att)}
                                   >
                                     Usar sugestão
@@ -3357,7 +3357,7 @@ function discardAiSuggestion() {
 
                                   {att?.url ? (
                                     <a
-                                      className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                                      className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                                       href={String(att.url)}
                                       target="_blank"
                                       rel="noreferrer noopener"
@@ -3376,7 +3376,7 @@ function discardAiSuggestion() {
                     <div className="flex flex-wrap gap-2">
 <button
   type="button"
-  className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)] disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("REGENERATE")}
   disabled={!!aiActionLoading}
 >
@@ -3385,7 +3385,7 @@ function discardAiSuggestion() {
 
 <button
   type="button"
-  className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)] disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("SHORTEN")}
   disabled={!!aiActionLoading || !activeAiSuggestionText}
 >
@@ -3394,7 +3394,7 @@ function discardAiSuggestion() {
 
 <button
   type="button"
-  className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)] disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("IMPROVE")}
   disabled={!!aiActionLoading || !activeAiSuggestionText}
 >
@@ -3403,7 +3403,7 @@ function discardAiSuggestion() {
 
 <button
   type="button"
-  className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)] disabled:opacity-60"
   onClick={() => requestAiPanelSuggestion("VARIATE")}
   disabled={!!aiActionLoading || !activeAiSuggestionText}
 >
@@ -3411,7 +3411,7 @@ function discardAiSuggestion() {
 </button>
                       <button
                         type="button"
-                        className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                         onClick={useAiSuggestionInField}
                         disabled={!activeAiSuggestionText}
                       >
@@ -3429,7 +3429,7 @@ function discardAiSuggestion() {
 
                       <button
                         type="button"
-                        className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                         onClick={discardAiSuggestion}
                       >
                         Descartar
@@ -3437,7 +3437,7 @@ function discardAiSuggestion() {
 
                       <button
                         type="button"
-                        className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50"
+                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
                         onClick={openTeachingModal}
                         disabled={!activeAiSuggestionText}
                       >
@@ -3452,11 +3452,11 @@ function discardAiSuggestion() {
                     ) : null}
                   </div>
                 ) : aiPanelState === "sent" ? (
-                  <div className="rounded-lg border border-dashed border-emerald-300 bg-white p-3 space-y-2">
-                    <div className="text-xs text-gray-500">Aguardando próxima mensagem do lead...</div>
+                  <div className="rounded-lg border border-dashed border-emerald-300 bg-[var(--shell-card-bg)] p-3 space-y-2">
+                    <div className="text-xs text-[var(--shell-subtext)]">Aguardando próxima mensagem do lead...</div>
                     <button
                       type="button"
-                      className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+                      className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)] disabled:opacity-60"
                       onClick={() => requestAiPanelSuggestion("REGENERATE")}
                       disabled={!!aiActionLoading}
                     >
@@ -3464,11 +3464,11 @@ function discardAiSuggestion() {
                     </button>
                   </div>
                 ) : aiPanelState === "discarded" ? (
-                  <div className="rounded-lg border border-dashed border-gray-300 bg-white p-3 space-y-2">
-                    <div className="text-xs text-gray-500">Sugestão descartada.</div>
+                  <div className="rounded-lg border border-dashed border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-3 space-y-2">
+                    <div className="text-xs text-[var(--shell-subtext)]">Sugestão descartada.</div>
                     <button
                       type="button"
-                      className="rounded-md border bg-white px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-60"
+                      className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)] disabled:opacity-60"
                       onClick={() => requestAiPanelSuggestion("REGENERATE")}
                       disabled={!!aiActionLoading}
                     >
@@ -3476,7 +3476,7 @@ function discardAiSuggestion() {
                     </button>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-amber-300 bg-white p-3 text-xs text-gray-600">
+                  <div className="rounded-lg border border-dashed border-amber-300 bg-[var(--shell-card-bg)] p-3 text-xs text-[var(--shell-subtext)]">
                     Nenhuma sugestão de IA pendente para este lead no momento.
                   </div>
                 )}
@@ -3484,12 +3484,12 @@ function discardAiSuggestion() {
 
               {/* PREVIEW DO ANEXO */}
               {attachFile ? (
-                <div className="rounded-lg border bg-gray-50 p-2">
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                     <div className="text-xs font-semibold text-gray-900">📎 Anexo pronto</div>
-                      <div className="mt-1 text-xs text-gray-700 truncate">{attachFile.name}</div>
-                      <div className="mt-1 text-[11px] text-gray-500">
+                     <div className="text-xs font-semibold text-[var(--shell-text)]">📎 Anexo pronto</div>
+                      <div className="mt-1 text-xs text-[var(--shell-subtext)] truncate">{attachFile.name}</div>
+                      <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
                         {String(attachFile.type || "arquivo").toLowerCase() +
                           " - " +
                           (attachFile.size / 1024).toFixed(1) +
@@ -3499,7 +3499,7 @@ function discardAiSuggestion() {
 
                     <button
                       type="button"
-                      className="rounded-md border bg-white px-2 py-1 text-xs hover:bg-gray-50"
+                      className="rounded-md border bg-[var(--shell-card-bg)] px-2 py-1 text-xs hover:bg-[var(--shell-bg)]"
                       onClick={() => {
                         setAttachErr(null);
                         setAttachFile(null);
@@ -3521,7 +3521,7 @@ function discardAiSuggestion() {
 
                   {attachPreviewUrl && String(attachFile.type || "").toLowerCase() === "application/pdf" ? (
                     <div className="mt-2">
-                      <iframe src={attachPreviewUrl} className="w-full h-56 rounded-md border bg-white" title="preview-pdf" />
+                      <iframe src={attachPreviewUrl} className="w-full h-56 rounded-md border bg-[var(--shell-card-bg)]" title="preview-pdf" />
                     </div>
                   ) : null}
 
@@ -3564,12 +3564,12 @@ function discardAiSuggestion() {
 
               {/* Áudio gravado */}
               {audioUrl ? (
-                <div className="rounded-lg border bg-gray-50 p-2">
-                  <div className="text-xs text-gray-700 flex items-center justify-between gap-2">
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-2">
+                  <div className="text-xs text-[var(--shell-subtext)] flex items-center justify-between gap-2">
                     <span className="font-medium">Áudio gravado</span>
                     <button
                       type="button"
-                      className="rounded-md border bg-white px-2 py-1 text-xs hover:bg-gray-50"
+                      className="rounded-md border bg-[var(--shell-card-bg)] px-2 py-1 text-xs hover:bg-[var(--shell-bg)]"
                       onClick={discardRecordedAudio}
                       title="Descartar áudio"
                     >
@@ -3593,7 +3593,7 @@ function discardAiSuggestion() {
                     </button>
                   </div>
 
-                  <div className="mt-2 text-[11px] text-gray-500">
+                  <div className="mt-2 text-[11px] text-[var(--shell-subtext)]">
                     Obs: o envio real depende do backend criar o endpoint{" "}
                     <span className="font-mono">POST /leads/:id/send-whatsapp-audio</span>.
                   </div>
@@ -3619,7 +3619,7 @@ function discardAiSuggestion() {
                     ) : (
                       <button
                         type="button"
-                        className="h-10 w-10 rounded-md border bg-white hover:bg-gray-50 flex items-center justify-center"
+                        className="h-10 w-10 rounded-md border bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)] flex items-center justify-center"
                         title="Gravar áudio"
                         onClick={startRecording}
                         disabled={!audioSupported}
@@ -3628,7 +3628,7 @@ function discardAiSuggestion() {
                       </button>
                     )
                   ) : (
-                    <button type="button" className="h-10 w-10 rounded-md border bg-gray-50 flex items-center justify-center" title="Áudio pronto" disabled>
+                    <button type="button" className="h-10 w-10 rounded-md border bg-[var(--shell-bg)] flex items-center justify-center" title="Áudio pronto" disabled>
                       📎
                     </button>
                   )}
@@ -3648,7 +3648,7 @@ function discardAiSuggestion() {
 
                     <button
                       type="button"
-                      className="h-10 w-10 rounded-md border bg-white hover:bg-gray-50 flex items-center justify-center"
+                      className="h-10 w-10 rounded-md border bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)] flex items-center justify-center"
                       title="Anexar"
                       onClick={() => {
                         setAttachErr(null);
@@ -3664,7 +3664,7 @@ function discardAiSuggestion() {
                   <div className="relative">
                     <button
                       type="button"
-                      className="h-10 w-10 rounded-md border bg-white hover:bg-gray-50 flex items-center justify-center"
+                      className="h-10 w-10 rounded-md border bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)] flex items-center justify-center"
                       title="Emoji"
                       onClick={() => setEmojiOpen((v) => !v)}
                     >
@@ -3672,14 +3672,14 @@ function discardAiSuggestion() {
                     </button>
 
                     {emojiOpen ? (
-                      <div className="absolute bottom-12 left-0 z-20 w-56 rounded-lg border bg-white shadow p-2">
-                        <div className="text-[11px] text-gray-500 mb-2">Inserir emoji</div>
+                      <div className="absolute bottom-12 left-0 z-20 w-56 rounded-lg border bg-[var(--shell-card-bg)] shadow p-2">
+                        <div className="text-[11px] text-[var(--shell-subtext)] mb-2">Inserir emoji</div>
                         <div className="flex flex-wrap gap-2">
                           {["👍","❤️","😂","🙏","🔥","👏","😮","😢","😡","✅","📌","⭐"].map((em) => (
                             <button
                               key={em}
                               type="button"
-                              className="h-9 w-9 rounded-md border bg-white hover:bg-gray-50 text-lg"
+                              className="h-9 w-9 rounded-md border bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)] text-lg"
                               onClick={() => insertEmoji(em)}
                               title={em}
                             >
@@ -3691,7 +3691,7 @@ function discardAiSuggestion() {
                         <div className="mt-2 flex justify-end">
                           <button
                             type="button"
-                            className="rounded-md border bg-white px-2 py-1 text-xs hover:bg-gray-50"
+                            className="rounded-md border bg-[var(--shell-card-bg)] px-2 py-1 text-xs hover:bg-[var(--shell-bg)]"
                             onClick={() => setEmojiOpen(false)}
                           >
                             Fechar
@@ -3729,7 +3729,7 @@ function discardAiSuggestion() {
               </div>
 
               {!audioSupported ? (
-                <div className="text-[11px] text-gray-500">�a�️ Seu navegador não suporta gravação (MediaRecorder). Teste no Chrome/Edge.</div>
+                <div className="text-[11px] text-[var(--shell-subtext)]">�a�️ Seu navegador não suporta gravação (MediaRecorder). Teste no Chrome/Edge.</div>
               ) : null}
             </div>
 
@@ -3752,12 +3752,12 @@ function discardAiSuggestion() {
       {/* ── Teaching Modal ── */}
       {teachModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-lg rounded-xl bg-[var(--shell-card-bg)] shadow-xl flex flex-col max-h-[90vh]">
             {!teachReplaceMode ? (
               <>
                 <div className="px-5 pt-5 pb-4 border-b">
-                  <h2 className="text-base font-semibold text-gray-900">Salvar como ensinamento</h2>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <h2 className="text-base font-semibold text-[var(--shell-text)]">Salvar como ensinamento</h2>
+                  <p className="mt-1 text-xs text-[var(--shell-subtext)]">
                     Este exemplo será injetado no prompt da IA como resposta aprovada.
                   </p>
                 </div>
@@ -3765,11 +3765,11 @@ function discardAiSuggestion() {
                 <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
                   {/* KB selector */}
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                    <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">
                       Base de Conhecimento
                     </label>
                     {teachKbs.length === 0 ? (
-                      <p className="text-xs text-gray-500">Carregando bases...</p>
+                      <p className="text-xs text-[var(--shell-subtext)]">Carregando bases...</p>
                     ) : (
                       <select
                         value={teachSelectedKbId}
@@ -3793,24 +3793,24 @@ function discardAiSuggestion() {
 
                   {/* Title */}
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                    <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">
                       Título{" "}
-                      <span className="font-normal text-gray-400">(gerado pela IA)</span>
+                      <span className="font-normal text-[var(--shell-subtext)]">(gerado pela IA)</span>
                     </label>
                     <input
                       value={teachGeneratingTitle ? "" : teachTitle}
                       onChange={(e) => setTeachTitle(e.target.value)}
                       disabled={teachGeneratingTitle}
                       placeholder={teachGeneratingTitle ? "Gerando título..." : "Ex: Resposta sobre prazo de entrega"}
-                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:bg-gray-50 disabled:text-gray-400"
+                      className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:bg-[var(--shell-bg)] disabled:text-[var(--shell-subtext)]"
                     />
                   </div>
 
                   {/* Lead message — somente leitura */}
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                    <label className="mb-1 block text-sm font-medium text-[var(--shell-subtext)]">
                       Mensagem do lead{" "}
-                      <span className="font-normal text-gray-400">(contexto/gatilho)</span>
+                      <span className="font-normal text-[var(--shell-subtext)]">(contexto/gatilho)</span>
                     </label>
                     <textarea
                       ref={teachLeadMessageRef}
@@ -3818,16 +3818,16 @@ function discardAiSuggestion() {
                       readOnly
                       rows={4}
                       placeholder="O que o lead perguntou ou disse..."
-                      className="w-full rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none"
+                      className="w-full rounded-md border bg-[var(--shell-bg)] px-3 py-2 text-sm text-[var(--shell-subtext)] outline-none"
                     />
                   </div>
 
                   {/* Approved response */}
                   <div>
                     <div className="mb-1 flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700">
+                      <label className="text-sm font-medium text-[var(--shell-subtext)]">
                         Resposta aprovada{" "}
-                        <span className="font-normal text-gray-400">(editável)</span>
+                        <span className="font-normal text-[var(--shell-subtext)]">(editável)</span>
                       </label>
                       <button
                         type="button"
@@ -3867,9 +3867,9 @@ function discardAiSuggestion() {
                       rows={4}
                       className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
                     />
-                    <p className="mt-1 text-xs text-gray-400">
+                    <p className="mt-1 text-xs text-[var(--shell-subtext)]">
                       Dica: selecione um nome próprio na resposta e clique em{" "}
-                      <span className="font-medium text-gray-500">Substituir por [nome do lead]</span>{" "}
+                      <span className="font-medium text-[var(--shell-subtext)]">Substituir por [nome do lead]</span>{" "}
                       — o nome será substituído nos dois campos automaticamente.
                     </p>
                   </div>
@@ -3894,7 +3894,7 @@ function discardAiSuggestion() {
                     type="button"
                     onClick={() => setTeachModalOpen(false)}
                     disabled={teachSaving}
-                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-60"
                   >
                     Cancelar
                   </button>
@@ -3907,11 +3907,11 @@ function discardAiSuggestion() {
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                       Limite atingido
                     </span>
-                    <h2 className="text-base font-semibold text-gray-900">
+                    <h2 className="text-base font-semibold text-[var(--shell-text)]">
                       Esta base já tem 30 ensinamentos
                     </h2>
                   </div>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <p className="mt-1 text-sm text-[var(--shell-subtext)]">
                     Selecione qual ensinamento deseja substituir pelo novo:
                   </p>
                 </div>
@@ -3921,13 +3921,13 @@ function discardAiSuggestion() {
                     <div key={t.id} className="px-5 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900">{t.title}</p>
-                          <p className="mt-0.5 text-xs text-gray-500">
+                          <p className="text-sm font-medium text-[var(--shell-text)]">{t.title}</p>
+                          <p className="mt-0.5 text-xs text-[var(--shell-subtext)]">
                             {new Date(t.createdAt).toLocaleString("pt-BR")} · {t.createdBy}
                             {t.lead?.nome && ` · Lead: ${t.lead.nome}`}
                           </p>
                           {t.leadMessage && (
-                            <p className="mt-1 text-xs text-gray-600 line-clamp-2 italic">
+                            <p className="mt-1 text-xs text-[var(--shell-subtext)] line-clamp-2 italic">
                               "{t.leadMessage}"
                             </p>
                           )}
@@ -3956,7 +3956,7 @@ function discardAiSuggestion() {
                     type="button"
                     onClick={() => setTeachReplaceMode(false)}
                     disabled={teachSaving}
-                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-60"
                   >
                     Voltar
                   </button>
@@ -3964,7 +3964,7 @@ function discardAiSuggestion() {
                     type="button"
                     onClick={() => setTeachModalOpen(false)}
                     disabled={teachSaving}
-                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                    className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-60"
                   >
                     Cancelar
                   </button>
@@ -3982,17 +3982,17 @@ function discardAiSuggestion() {
           onClick={() => setNomeModalOpen(false)}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
+            className="bg-[var(--shell-card-bg)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">Nome confirmado</h3>
-            <p className="text-xs text-gray-500 mb-3">
+            <h3 className="text-sm font-semibold text-[var(--shell-text)] mb-1">Nome confirmado</h3>
+            <p className="text-xs text-[var(--shell-subtext)] mb-3">
               O nome original é <span className="font-medium">{lead?.nome}</span>. Informe o nome real confirmado na conversa.
             </p>
             <input
               type="text"
               autoFocus
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
+              className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm text-[var(--shell-text)] focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
               placeholder="Nome real do lead..."
               value={nomeConfirmadoEdit}
               onChange={(e) => setNomeConfirmadoEdit(e.target.value)}
@@ -4000,7 +4000,7 @@ function discardAiSuggestion() {
             />
             <div className="flex gap-2 justify-end">
               <button
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]"
                 onClick={() => setNomeModalOpen(false)}
               >
                 Cancelar

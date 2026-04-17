@@ -30,7 +30,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
       className={`relative w-11 h-6 rounded-full transition-colors ${value ? "bg-emerald-500" : "bg-gray-300"}`}
     >
       <div
-        className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${value ? "translate-x-6" : "translate-x-1"}`}
+        className={`absolute top-1 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${value ? "translate-x-6" : "translate-x-1"}`}
       />
     </button>
   );
@@ -91,7 +91,7 @@ export default function NotificationsSettingsPage() {
   if (loading) {
     return (
       <AppShell title="Notificações">
-        <div className="flex items-center justify-center h-64 text-gray-400">Carregando...</div>
+        <div className="flex items-center justify-center h-64 text-[var(--shell-subtext)]">Carregando...</div>
       </AppShell>
     );
   }
@@ -102,8 +102,8 @@ export default function NotificationsSettingsPage() {
     <AppShell title="Notificações">
       <div className="max-w-2xl mx-auto py-10 px-4 space-y-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notificações</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <h1 className="text-2xl font-bold text-[var(--shell-text)]">Notificações</h1>
+          <p className="text-sm text-[var(--shell-subtext)] mt-1">
             Configure o que você quer receber pelo WhatsApp da sua secretária.
           </p>
         </div>
@@ -120,10 +120,10 @@ export default function NotificationsSettingsPage() {
         )}
 
         {/* Eventos */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5">
+        <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 space-y-5">
           <div>
-            <p className="text-base font-semibold text-gray-900">Eventos</p>
-            <p className="text-sm text-gray-400 mt-0.5">
+            <p className="text-base font-semibold text-[var(--shell-text)]">Eventos</p>
+            <p className="text-sm text-[var(--shell-subtext)] mt-0.5">
               Escolha quais eventos disparam uma mensagem para você.
             </p>
           </div>
@@ -132,8 +132,8 @@ export default function NotificationsSettingsPage() {
             {EVENTS.map((ev) => (
               <div key={ev.key} className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{ev.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{ev.desc}</p>
+                  <p className="text-sm font-medium text-[var(--shell-text)]">{ev.label}</p>
+                  <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{ev.desc}</p>
                 </div>
                 <Toggle
                   value={events.includes(ev.key)}
@@ -146,13 +146,13 @@ export default function NotificationsSettingsPage() {
 
         {/* Etapas do funil */}
         <div
-          className={`rounded-2xl border bg-white p-6 space-y-4 transition-opacity ${
-            stageChangeEnabled ? "border-gray-200 opacity-100" : "border-gray-100 opacity-40 pointer-events-none"
+          className={`rounded-2xl border bg-[var(--shell-card-bg)] p-6 space-y-4 transition-opacity ${
+            stageChangeEnabled ? "border-[var(--shell-card-border)] opacity-100" : "border-[var(--shell-card-border)] opacity-40 pointer-events-none"
           }`}
         >
           <div>
-            <p className="text-base font-semibold text-gray-900">Etapas do funil</p>
-            <p className="text-sm text-gray-400 mt-0.5">
+            <p className="text-base font-semibold text-[var(--shell-text)]">Etapas do funil</p>
+            <p className="text-sm text-[var(--shell-subtext)] mt-0.5">
               Receba notificação quando um lead avançar para estas etapas.
             </p>
           </div>
@@ -161,15 +161,15 @@ export default function NotificationsSettingsPage() {
             {pipelineStages.map((stage) => (
               <label
                 key={stage.key}
-                className="flex items-center gap-3 rounded-xl border border-gray-100 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] px-4 py-3 cursor-pointer hover:bg-[var(--shell-bg)] transition-colors"
               >
                 <input
                   type="checkbox"
                   checked={stages.includes(stage.key)}
                   onChange={() => toggleStage(stage.key)}
-                  className="h-4 w-4 rounded border-gray-300 accent-emerald-500"
+                  className="h-4 w-4 rounded border-[var(--shell-card-border)] accent-emerald-500"
                 />
-                <span className="text-sm text-gray-700">{stage.name}</span>
+                <span className="text-sm text-[var(--shell-subtext)]">{stage.name}</span>
               </label>
             ))}
           </div>

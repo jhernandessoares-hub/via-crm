@@ -73,7 +73,7 @@ const KB_TYPE_COLORS: Record<string, string> = {
   PRODUTO: "bg-orange-100 text-orange-700",
   MERCADO: "bg-yellow-100 text-yellow-700",
   INFORMACAO_GERAL: "bg-slate-100 text-slate-600",
-  CUSTOM: "bg-gray-100 text-gray-600",
+  CUSTOM: "bg-[var(--shell-hover)] text-[var(--shell-subtext)]",
 };
 const SYSTEM_TOOLS = [
   { name: "criar_evento", label: "Criar evento na agenda", icon: "📅" },
@@ -109,7 +109,7 @@ function OrgNode({ agent, selectedId, onSelect, depth = 0 }: {
         className={`group relative rounded-2xl border-2 p-4 w-52 text-left transition-all duration-150 ${
           sel ? "border-slate-900 bg-slate-900 shadow-lg scale-105"
           : agent.isOrchestrator ? "border-slate-600 bg-slate-800 shadow-md hover:scale-102"
-          : "border-slate-200 bg-white shadow-sm hover:border-slate-400 hover:shadow-md"
+          : "border-slate-200 bg-[var(--shell-card-bg)] shadow-sm hover:border-slate-400 hover:shadow-md"
         }`}
       >
         {agent.isOrchestrator && (
@@ -118,29 +118,29 @@ function OrgNode({ agent, selectedId, onSelect, depth = 0 }: {
           </div>
         )}
         <div className="flex items-start justify-between">
-          <p className={`text-sm font-semibold leading-snug ${sel || agent.isOrchestrator ? "text-white" : "text-gray-900"}`}>
+          <p className={`text-sm font-semibold leading-snug ${sel || agent.isOrchestrator ? "text-white" : "text-[var(--shell-text)]"}`}>
             {agent.title}
           </p>
           <span className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${agent.active ? "bg-emerald-400" : "bg-gray-300"}`} />
         </div>
-        <p className={`mt-1 text-xs ${sel || agent.isOrchestrator ? "text-slate-300" : "text-gray-400"}`}>
+        <p className={`mt-1 text-xs ${sel || agent.isOrchestrator ? "text-slate-300" : "text-[var(--shell-subtext)]"}`}>
           {(agent as any).agentType === "OPERACIONAL"
             ? "🔧 Operacional"
             : agent.mode === "AUTOPILOT" ? "⚡ Autopilot" : "🤝 Copilot"}
         </p>
-        <div className={`mt-3 flex gap-3 text-[11px] ${sel || agent.isOrchestrator ? "text-slate-300" : "text-gray-400"}`}>
+        <div className={`mt-3 flex gap-3 text-[11px] ${sel || agent.isOrchestrator ? "text-slate-300" : "text-[var(--shell-subtext)]"}`}>
           <span>📚 {agent.knowledgeBases.length} KB</span>
           <span>🔧 {agent.tools.length} tools</span>
         </div>
         {agent.routingKeywords.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {agent.routingKeywords.slice(0, 3).map(kw => (
-              <span key={kw} className={`rounded-full px-2 py-0.5 text-[10px] ${sel || agent.isOrchestrator ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+              <span key={kw} className={`rounded-full px-2 py-0.5 text-[10px] ${sel || agent.isOrchestrator ? "bg-[var(--shell-card-bg)]/20 text-white" : "bg-slate-100 text-slate-600"}`}>
                 {kw}
               </span>
             ))}
             {agent.routingKeywords.length > 3 && (
-              <span className={`text-[10px] ${sel || agent.isOrchestrator ? "text-slate-400" : "text-gray-400"}`}>+{agent.routingKeywords.length - 3}</span>
+              <span className={`text-[10px] ${sel || agent.isOrchestrator ? "text-slate-400" : "text-[var(--shell-subtext)]"}`}>+{agent.routingKeywords.length - 3}</span>
             )}
           </div>
         )}
@@ -396,23 +396,23 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
   const linkedKbData = allKbs.filter(k => linkedKbs.includes(k.id));
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-[var(--shell-card-bg)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-[var(--shell-card-bg)]">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">{isNew ? "Novo Agente" : agent?.title}</h2>
+          <h2 className="text-base font-semibold text-[var(--shell-text)]">{isNew ? "Novo Agente" : agent?.title}</h2>
           {!isNew && agent && (
-            <p className="text-xs text-gray-400 font-mono mt-0.5">{agent.slug}</p>
+            <p className="text-xs text-[var(--shell-subtext)] font-mono mt-0.5">{agent.slug}</p>
           )}
         </div>
-        <button onClick={onClose} className="rounded-full h-8 w-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 text-xl">×</button>
+        <button onClick={onClose} className="rounded-full h-8 w-8 flex items-center justify-center text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] hover:text-[var(--shell-subtext)] text-xl">×</button>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b bg-white px-6">
+      <div className="flex border-b bg-[var(--shell-card-bg)] px-6">
         {(["config", "kb", "tools"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-slate-900 text-slate-900" : "border-transparent text-gray-400 hover:text-gray-700"}`}>
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-slate-900 text-slate-900" : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]"}`}>
             {t === "config" ? "Configuração" : t === "kb" ? `Conhecimento ${linkedKbs.length > 0 ? `(${linkedKbs.length})` : ""}` : `Tools ${tools.length > 0 ? `(${tools.length})` : ""}`}
           </button>
         ))}
@@ -427,52 +427,52 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
 
             {/* Identificação */}
             <div className="px-8 py-6 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Identificação</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[var(--shell-subtext)]">Identificação</p>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Título *</label>
+                <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Título *</label>
                 <input value={title} onChange={e => setTitle(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
+                  className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
                   placeholder="Ex: Secretaria Pessoal" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Slug * <span className="font-normal text-gray-400 text-xs ml-1">identificador único</span>
+                <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">
+                  Slug * <span className="font-normal text-[var(--shell-subtext)] text-xs ml-1">identificador único</span>
                 </label>
                 <input value={slug} onChange={e => setSlug(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-mono outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
+                  className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm font-mono outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
                   placeholder="secretaria-pessoal" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Descrição <span className="font-normal text-gray-400 text-xs ml-1">resumo curto — visível no organograma</span>
+                <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">
+                  Descrição <span className="font-normal text-[var(--shell-subtext)] text-xs ml-1">resumo curto — visível no organograma</span>
                 </label>
                 <input value={description} onChange={e => setDescription(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
+                  className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
                   placeholder="Assistente pessoal do corretor" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Objetivo</label>
+                <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Objetivo</label>
                 <textarea value={objective} onChange={e => setObjective(e.target.value)} rows={3}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 resize-none transition-all"
+                  className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 resize-none transition-all"
                   placeholder="Descreva o objetivo detalhado deste agente, quando ele deve ser acionado e o que deve fazer." />
               </div>
             </div>
 
             {/* Comportamento */}
             <div className="px-8 py-6 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Comportamento</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[var(--shell-subtext)]">Comportamento</p>
 
               {/* Tipo: Conversacional / Operacional */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo</label>
-                <div className="flex rounded-xl border border-gray-200 overflow-hidden w-fit">
+                <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Tipo</label>
+                <div className="flex rounded-xl border border-[var(--shell-card-border)] overflow-hidden w-fit">
                   {(["CONVERSACIONAL", "OPERACIONAL"] as const).map(t => (
                     <button key={t} type="button"
                       onClick={() => setAgentType(t)}
                       className={`px-6 py-2.5 text-sm font-medium transition-colors ${
                         agentType === t
                           ? t === "OPERACIONAL" ? "bg-purple-600 text-white" : "bg-slate-900 text-white"
-                          : "bg-white text-gray-500 hover:bg-gray-50"
+                          : "bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]"
                       }`}>
                       {t === "CONVERSACIONAL" ? "Conversacional" : "Operacional"}
                     </button>
@@ -489,9 +489,9 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Modo</label>
+                  <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Modo</label>
                   <select value={mode} onChange={e => setMode(e.target.value as any)}
-                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 bg-white">
+                    className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm outline-none focus:border-slate-500 bg-[var(--shell-card-bg)]">
                     <option value="COPILOT">🤝 Copilot — sugere</option>
                     <option value="AUTOPILOT">⚡ Autopilot — age</option>
                   </select>
@@ -500,16 +500,16 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div className={`relative w-10 h-5 rounded-full transition-colors ${active ? "bg-slate-900" : "bg-gray-200"}`}
                       onClick={() => setActive(!active)}>
-                      <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
+                      <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
                     </div>
-                    <span className="text-sm text-gray-700">Ativo</span>
+                    <span className="text-sm text-[var(--shell-subtext)]">Ativo</span>
                   </label>
                   <label className="flex items-center gap-3 cursor-pointer">
                     <div className={`relative w-10 h-5 rounded-full transition-colors ${isOrchestrator ? "bg-amber-500" : "bg-gray-200"}`}
                       onClick={() => setIsOrchestrator(!isOrchestrator)}>
-                      <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${isOrchestrator ? "translate-x-5" : "translate-x-0.5"}`} />
+                      <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${isOrchestrator ? "translate-x-5" : "translate-x-0.5"}`} />
                     </div>
-                    <span className="text-sm text-gray-700">Orquestrador</span>
+                    <span className="text-sm text-[var(--shell-subtext)]">Orquestrador</span>
                   </label>
                 </div>
               </div>
@@ -525,9 +525,9 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
 
               {!isOrchestrator && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Agente pai</label>
+                  <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Agente pai</label>
                   <select value={parentId} onChange={e => setParentId(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 bg-white">
+                    className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm outline-none focus:border-slate-500 bg-[var(--shell-card-bg)]">
                     <option value="">— Raiz (sem pai) —</option>
                     {parents.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                   </select>
@@ -535,23 +535,23 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Palavras-chave de roteamento</label>
+                <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Palavras-chave de roteamento</label>
                 <input value={keywords} onChange={e => setKeywords(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
+                  className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
                   placeholder="Ex: preço, visita, renda" />
-                <p className="mt-1.5 text-xs text-gray-400">Separadas por vírgula. O orquestrador usa essas palavras para rotear a mensagem.</p>
+                <p className="mt-1.5 text-xs text-[var(--shell-subtext)]">Separadas por vírgula. O orquestrador usa essas palavras para rotear a mensagem.</p>
               </div>
               </> /* end agentType === CONVERSACIONAL */
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Modelo de IA</label>
+                  <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Modelo de IA</label>
                   <input
                     list="ai-models"
                     value={model}
                     onChange={e => setModel(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
+                    className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 transition-all"
                     placeholder="gpt-4o-mini (padrão)"
                   />
                   <datalist id="ai-models">
@@ -569,7 +569,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                   </datalist>
                   {(() => {
                     const KNOWN_MODELS = ["gpt-4o", "gpt-4o-mini", "claude-opus-4-6", "claude-sonnet-4-6", "claude-sonnet-4-5", "claude-haiku-4-5-20251001"];
-                    if (!model.trim()) return <p className="mt-1 text-xs text-gray-400">Deixe vazio para usar o padrão do sistema.</p>;
+                    if (!model.trim()) return <p className="mt-1 text-xs text-[var(--shell-subtext)]">Deixe vazio para usar o padrão do sistema.</p>;
                     if (KNOWN_MODELS.includes(model.trim())) return (
                       <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
                         <span>✓</span> Tecnologia ativada
@@ -583,11 +583,11 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                   })()}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Temperature ({temperature})</label>
+                  <label className="block text-sm font-medium text-[var(--shell-subtext)] mb-2">Temperature ({temperature})</label>
                   <input type="range" min={0} max={1} step={0.05} value={temperature}
                     onChange={e => setTemperature(parseFloat(e.target.value))}
                     className="w-full mt-2" />
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <div className="flex justify-between text-xs text-[var(--shell-subtext)] mt-1">
                     <span>Preciso (0)</span><span>Criativo (1)</span>
                   </div>
                 </div>
@@ -597,17 +597,17 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
             {/* Permissões — só para Conversacional */}
             {agentType === "CONVERSACIONAL" && (
             <div className="px-8 py-6 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Acesso a dados do CRM</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[var(--shell-subtext)]">Acesso a dados do CRM</p>
               <div className="grid grid-cols-2 gap-2.5">
                 {PERMISSIONS.map(p => (
                   <button key={p.key} onClick={() => togglePerm(p.key)}
                     className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm transition-all text-left ${
                       permissions.includes(p.key)
                         ? "border-slate-900 bg-slate-900 text-white font-medium"
-                        : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                        : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-[var(--shell-card-border)] hover:bg-[var(--shell-bg)]"
                     }`}>
                     <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${
-                      permissions.includes(p.key) ? "border-white bg-white" : "border-gray-300"
+                      permissions.includes(p.key) ? "border-white bg-[var(--shell-card-bg)]" : "border-[var(--shell-card-border)]"
                     }`}>
                       {permissions.includes(p.key) && <div className="w-2 h-2 rounded-sm bg-slate-900" />}
                     </div>
@@ -621,11 +621,11 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
             {/* Prompt */}
             <div className="px-8 py-6 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Prompt / Personalidade</p>
-                <span className="text-xs text-gray-400">{prompt.length} chars</span>
+                <p className="text-xs font-semibold uppercase tracking-widest text-[var(--shell-subtext)]">Prompt / Personalidade</p>
+                <span className="text-xs text-[var(--shell-subtext)]">{prompt.length} chars</span>
               </div>
               <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={10}
-                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-mono outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 resize-y transition-all leading-relaxed"
+                className="w-full rounded-xl border border-[var(--shell-card-border)] px-4 py-3 text-sm font-mono outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100 resize-y transition-all leading-relaxed"
                 placeholder="Você é uma assistente especialista em imóveis da imobiliária [Nome]..." />
             </div>
 
@@ -636,13 +636,13 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
         {tab === "kb" && (
           <div className="p-6 space-y-4">
             {isNew ? (
-              <p className="text-sm text-gray-400 text-center py-8">Salve o agente primeiro para vincular conhecimento.</p>
+              <p className="text-sm text-[var(--shell-subtext)] text-center py-8">Salve o agente primeiro para vincular conhecimento.</p>
             ) : (
               <>
                 {/* KBs vinculadas */}
                 {linkedKbData.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Vinculados</p>
+                    <p className="text-xs font-medium text-[var(--shell-subtext)] uppercase tracking-wide">Vinculados</p>
                     {linkedKbData.map(kb => (
                       <div key={kb.id} className="rounded-xl border border-slate-200 overflow-hidden">
                         {/* Header */}
@@ -650,12 +650,12 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                           <button onClick={() => toggleKbExpand(kb.id)} className="flex items-center gap-3 flex-1 text-left">
                             <span className={`text-xs transition-transform ${expandedKbId === kb.id ? "rotate-90" : ""}`}>▶</span>
                             <div>
-                              <p className="text-sm font-medium text-gray-900">{kb.title}</p>
+                              <p className="text-sm font-medium text-[var(--shell-text)]">{kb.title}</p>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${KB_TYPE_COLORS[kb.type] || "bg-gray-100 text-gray-600"}`}>
+                                <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${KB_TYPE_COLORS[kb.type] || "bg-[var(--shell-hover)] text-[var(--shell-subtext)]"}`}>
                                   {KB_TYPE_LABELS[kb.type] || kb.type}
                                 </span>
-                                <span className="text-[11px] text-gray-400">
+                                <span className="text-[11px] text-[var(--shell-subtext)]">
                                   {teachings[kb.id]?.length ?? kb._count.teachings} ensinamentos · {kb._count.documents} docs
                                 </span>
                               </div>
@@ -666,26 +666,26 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
 
                         {/* Expanded content */}
                         {expandedKbId === kb.id && (
-                          <div className="border-t border-slate-200 bg-white p-4 space-y-3">
+                          <div className="border-t border-slate-200 bg-[var(--shell-card-bg)] p-4 space-y-3">
                             {loadingTeachings === kb.id ? (
-                              <p className="text-xs text-gray-400 text-center py-2">Carregando...</p>
+                              <p className="text-xs text-[var(--shell-subtext)] text-center py-2">Carregando...</p>
                             ) : (
                               <>
                                 {/* Teaching list */}
                                 {(teachings[kb.id] ?? []).length === 0 && !showTeachingForm && (
-                                  <p className="text-xs text-gray-400 text-center py-2">Nenhum ensinamento ainda.</p>
+                                  <p className="text-xs text-[var(--shell-subtext)] text-center py-2">Nenhum ensinamento ainda.</p>
                                 )}
                                 {(teachings[kb.id] ?? []).map(t => (
-                                  <div key={t.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3 space-y-1">
+                                  <div key={t.id} className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-3 space-y-1">
                                     <div className="flex items-start justify-between gap-2">
-                                      <p className="text-xs font-semibold text-gray-700">{t.title || "Sem título"}</p>
+                                      <p className="text-xs font-semibold text-[var(--shell-subtext)]">{t.title || "Sem título"}</p>
                                       <div className="flex gap-1 shrink-0">
-                                        <button onClick={() => openTeachingForm(kb.id, t)} className="text-[11px] text-gray-400 hover:text-gray-700 px-1">✏️</button>
+                                        <button onClick={() => openTeachingForm(kb.id, t)} className="text-[11px] text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] px-1">✏️</button>
                                         <button onClick={() => deleteTeaching(kb.id, t.id)} className="text-[11px] text-red-300 hover:text-red-600 px-1">×</button>
                                       </div>
                                     </div>
                                     {t.leadMessage && <p className="text-[11px] text-blue-500 italic">"{t.leadMessage}"</p>}
-                                    <p className="text-xs text-gray-600 whitespace-pre-wrap">{t.approvedResponse}</p>
+                                    <p className="text-xs text-[var(--shell-subtext)] whitespace-pre-wrap">{t.approvedResponse}</p>
                                   </div>
                                 ))}
 
@@ -694,17 +694,17 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                                   <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 space-y-2">
                                     <p className="text-xs font-medium text-slate-700">{editingTeaching ? "Editar ensinamento" : "Novo ensinamento"}</p>
                                     <input value={teachingTitle} onChange={e => setTeachingTitle(e.target.value)}
-                                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs outline-none focus:border-slate-400"
+                                      className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs outline-none focus:border-slate-400"
                                       placeholder="Título (opcional)" />
                                     <input value={teachingQuestion} onChange={e => setTeachingQuestion(e.target.value)}
-                                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs outline-none focus:border-slate-400"
+                                      className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs outline-none focus:border-slate-400"
                                       placeholder="Situação / pergunta do lead (opcional)" />
                                     <textarea value={teachingAnswer} onChange={e => setTeachingAnswer(e.target.value)} rows={4}
-                                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs outline-none focus:border-slate-400 resize-none"
+                                      className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs outline-none focus:border-slate-400 resize-none"
                                       placeholder="Resposta aprovada / instrução para o agente *" />
                                     <div className="flex gap-2">
                                       <button onClick={() => { setShowTeachingForm(false); setEditingTeaching(null); }}
-                                        className="flex-1 rounded-lg border px-3 py-1.5 text-xs text-gray-600 hover:bg-white">Cancelar</button>
+                                        className="flex-1 rounded-lg border px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-card-bg)]">Cancelar</button>
                                       <button onClick={saveTeaching} disabled={savingTeaching || !teachingAnswer.trim()}
                                         className="flex-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50">
                                         {savingTeaching ? "Salvando..." : "Salvar"}
@@ -713,7 +713,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                                   </div>
                                 ) : (
                                   <button onClick={() => openTeachingForm(kb.id)}
-                                    className="w-full rounded-lg border border-dashed border-gray-200 py-2 text-xs text-gray-400 hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
+                                    className="w-full rounded-lg border border-dashed border-[var(--shell-card-border)] py-2 text-xs text-[var(--shell-subtext)] hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors">
                                     + Adicionar ensinamento
                                   </button>
                                 )}
@@ -731,30 +731,30 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                   <div className="rounded-xl border border-dashed border-emerald-300 bg-emerald-50 p-4 space-y-3">
                     <p className="text-sm font-medium text-emerald-800">Nova base de conhecimento</p>
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Título</label>
-                      <input value={kbTitle} onChange={e => setKbTitle(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-emerald-400" placeholder="Ex: Script de abordagem inicial" />
+                      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Título</label>
+                      <input value={kbTitle} onChange={e => setKbTitle(e.target.value)} className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm outline-none focus:border-emerald-400" placeholder="Ex: Script de abordagem inicial" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Tipo</label>
-                      <select value={kbType} onChange={e => setKbType(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none">
+                      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Tipo</label>
+                      <select value={kbType} onChange={e => setKbType(e.target.value)} className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm outline-none">
                         {Object.entries(KB_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Conteúdo / Instrução</label>
+                      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Conteúdo / Instrução</label>
                       <textarea value={kbPrompt} onChange={e => setKbPrompt(e.target.value)} rows={4}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none resize-none focus:border-emerald-400"
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm outline-none resize-none focus:border-emerald-400"
                         placeholder="Descreva como o agente deve agir nessa situação..." />
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => setShowKbForm(false)} className="flex-1 rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-white">Cancelar</button>
+                      <button onClick={() => setShowKbForm(false)} className="flex-1 rounded-lg border px-3 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-card-bg)]">Cancelar</button>
                       <button onClick={createKb} disabled={savingKb} className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                         {savingKb ? "Criando..." : "Criar e vincular"}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setShowKbForm(true)} className="w-full rounded-xl border-2 border-dashed border-gray-200 py-3 text-sm text-gray-400 hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                  <button onClick={() => setShowKbForm(true)} className="w-full rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-3 text-sm text-[var(--shell-subtext)] hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
                     + Criar nova base de conhecimento
                   </button>
                 )}
@@ -762,12 +762,12 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                 {/* Vincular existente */}
                 {unlinkedKbs.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Disponíveis para vincular</p>
+                    <p className="text-xs font-medium text-[var(--shell-subtext)] uppercase tracking-wide">Disponíveis para vincular</p>
                     {unlinkedKbs.map(kb => (
-                      <div key={kb.id} className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-3 hover:border-slate-300 hover:bg-gray-50 transition-colors">
+                      <div key={kb.id} className="flex items-center gap-2 rounded-xl border border-[var(--shell-card-border)] px-4 py-3 hover:border-slate-300 hover:bg-[var(--shell-bg)] transition-colors">
                         <button onClick={() => toggleKb(kb.id)} className="flex-1 text-left">
-                          <p className="text-sm font-medium text-gray-700">{kb.title}</p>
-                          <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${KB_TYPE_COLORS[kb.type] || "bg-gray-100 text-gray-600"}`}>
+                          <p className="text-sm font-medium text-[var(--shell-subtext)]">{kb.title}</p>
+                          <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${KB_TYPE_COLORS[kb.type] || "bg-[var(--shell-hover)] text-[var(--shell-subtext)]"}`}>
                             {KB_TYPE_LABELS[kb.type] || kb.type}
                           </span>
                         </button>
@@ -779,7 +779,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                 )}
 
                 {linkedKbData.length === 0 && unlinkedKbs.length === 0 && !showKbForm && (
-                  <p className="text-sm text-gray-400 text-center py-4">Nenhuma base disponível.</p>
+                  <p className="text-sm text-[var(--shell-subtext)] text-center py-4">Nenhuma base disponível.</p>
                 )}
               </>
             )}
@@ -791,16 +791,16 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
           <div className="p-6 space-y-5">
             {/* Tools do sistema */}
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Tools do sistema</p>
+              <p className="text-xs font-medium text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Tools do sistema</p>
               <div className="space-y-2">
                 {SYSTEM_TOOLS.map(t => {
                   const existing = tools.find(x => x.name === t.name && x.type === "SYSTEM");
                   return (
-                    <div key={t.name} className="flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3">
+                    <div key={t.name} className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] px-4 py-3">
                       <span className="text-lg">{t.icon}</span>
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{t.label}</p>
-                        <p className="text-[11px] font-mono text-gray-400">{t.name}</p>
+                        <p className="text-sm font-medium text-[var(--shell-text)]">{t.label}</p>
+                        <p className="text-[11px] font-mono text-[var(--shell-subtext)]">{t.name}</p>
                       </div>
                       <span className="text-[11px] rounded-full px-2 py-0.5 bg-slate-100 text-slate-500 font-medium">Sistema</span>
                     </div>
@@ -812,7 +812,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
             {/* Webhook tools */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Seus tools (webhook)</p>
+                <p className="text-xs font-medium text-[var(--shell-subtext)] uppercase tracking-wide">Seus tools (webhook)</p>
                 {!isNew && (
                   <button onClick={() => openToolForm()} className="text-xs rounded-lg bg-slate-900 text-white px-3 py-1.5 hover:bg-slate-800">
                     + Novo tool
@@ -821,7 +821,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               </div>
 
               {isNew && (
-                <p className="text-sm text-gray-400 text-center py-4">Salve o agente para criar tools personalizados.</p>
+                <p className="text-sm text-[var(--shell-subtext)] text-center py-4">Salve o agente para criar tools personalizados.</p>
               )}
 
               {!isNew && showToolForm && (
@@ -829,37 +829,37 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                   <p className="text-sm font-medium text-blue-800">{editingTool ? "Editar tool" : "Novo tool via webhook"}</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Nome (snake_case)</label>
+                      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome (snake_case)</label>
                       <input value={toolName} onChange={e => setToolName(e.target.value)} disabled={!!editingTool}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono outline-none focus:border-blue-400 disabled:bg-gray-100" placeholder="consultar_tabela" />
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-mono outline-none focus:border-blue-400 disabled:bg-[var(--shell-hover)]" placeholder="consultar_tabela" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Label</label>
+                      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Label</label>
                       <input value={toolLabel} onChange={e => setToolLabel(e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400" placeholder="Consultar tabela de preços" />
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm outline-none focus:border-blue-400" placeholder="Consultar tabela de preços" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Descrição <span className="font-normal text-gray-400">(o AI lê isso para decidir quando usar)</span></label>
+                    <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Descrição <span className="font-normal text-[var(--shell-subtext)]">(o AI lê isso para decidir quando usar)</span></label>
                     <textarea value={toolDesc} onChange={e => setToolDesc(e.target.value)} rows={2}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none resize-none focus:border-blue-400"
+                      className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm outline-none resize-none focus:border-blue-400"
                       placeholder="Use quando o usuário perguntar sobre preços ou tabela de vendas" />
                   </div>
                   <div className="flex gap-3">
                     <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">URL do webhook</label>
+                      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">URL do webhook</label>
                       <input value={toolUrl} onChange={e => setToolUrl(e.target.value)}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono outline-none focus:border-blue-400" placeholder="https://..." />
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm font-mono outline-none focus:border-blue-400" placeholder="https://..." />
                     </div>
                     <div className="w-24">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Método</label>
-                      <select value={toolMethod} onChange={e => setToolMethod(e.target.value)} className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm outline-none">
+                      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Método</label>
+                      <select value={toolMethod} onChange={e => setToolMethod(e.target.value)} className="w-full rounded-lg border border-[var(--shell-card-border)] px-2 py-2 text-sm outline-none">
                         <option>POST</option><option>GET</option><option>PUT</option>
                       </select>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => setShowToolForm(false)} className="flex-1 rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-white">Cancelar</button>
+                    <button onClick={() => setShowToolForm(false)} className="flex-1 rounded-lg border px-3 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-card-bg)]">Cancelar</button>
                     <button onClick={saveTool} disabled={savingTool} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                       {savingTool ? "Salvando..." : "Salvar"}
                     </button>
@@ -868,28 +868,28 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               )}
 
               {!isNew && tools.filter(t => t.type === "WEBHOOK").length === 0 && !showToolForm && (
-                <div className="rounded-xl border-2 border-dashed border-gray-200 py-6 text-center">
-                  <p className="text-sm text-gray-400">Nenhum tool personalizado ainda.</p>
+                <div className="rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-6 text-center">
+                  <p className="text-sm text-[var(--shell-subtext)]">Nenhum tool personalizado ainda.</p>
                   <p className="text-xs text-gray-300 mt-1">Tools via webhook permitem o agente chamar APIs externas.</p>
                 </div>
               )}
 
               {tools.filter(t => t.type === "WEBHOOK").map(tool => (
-                <div key={tool.id} className="flex items-start gap-3 rounded-xl border border-gray-200 px-4 py-3">
+                <div key={tool.id} className="flex items-start gap-3 rounded-xl border border-[var(--shell-card-border)] px-4 py-3">
                   <span className="text-lg mt-0.5">🔧</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-900">{tool.label}</p>
+                      <p className="text-sm font-medium text-[var(--shell-text)]">{tool.label}</p>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => toggleToolActive(tool)} className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${tool.active ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+                        <button onClick={() => toggleToolActive(tool)} className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${tool.active ? "bg-emerald-100 text-emerald-700" : "bg-[var(--shell-hover)] text-[var(--shell-subtext)]"}`}>
                           {tool.active ? "Ativo" : "Inativo"}
                         </button>
-                        <button onClick={() => openToolForm(tool)} className="text-xs text-gray-400 hover:text-gray-700 px-1">✏️</button>
+                        <button onClick={() => openToolForm(tool)} className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] px-1">✏️</button>
                         <button onClick={() => deleteTool(tool.id)} className="text-xs text-red-300 hover:text-red-600 px-1">×</button>
                       </div>
                     </div>
-                    <p className="text-[11px] font-mono text-gray-400 mt-0.5">{tool.name}</p>
-                    <p className="text-xs text-gray-500 mt-1">{tool.description}</p>
+                    <p className="text-[11px] font-mono text-[var(--shell-subtext)] mt-0.5">{tool.name}</p>
+                    <p className="text-xs text-[var(--shell-subtext)] mt-1">{tool.description}</p>
                     {tool.webhookUrl && (
                       <p className="text-[10px] font-mono text-blue-400 truncate mt-1">{tool.webhookMethod} {tool.webhookUrl}</p>
                     )}
@@ -902,12 +902,12 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
       </div>
 
       {/* Footer */}
-      <div className="border-t px-6 py-4 flex justify-between items-center bg-white">
+      <div className="border-t px-6 py-4 flex justify-between items-center bg-[var(--shell-card-bg)]">
         {!isNew && onDelete ? (
           <button onClick={onDelete} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-500 hover:bg-red-50">Excluir agente</button>
         ) : <div />}
         <div className="flex gap-2">
-          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Fechar</button>
+          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]">Fechar</button>
           {tab === "config" && (
             <button onClick={save} disabled={saving} className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
               {saving ? "Salvando..." : isNew ? "Criar agente" : "Salvar"}
@@ -967,12 +967,12 @@ export default function CentralAgentesPage() {
       <div className="flex -m-6 h-[calc(100vh-56px)] overflow-hidden">
 
         {/* ── Organograma ── */}
-        <div className={`flex-1 overflow-auto bg-gray-50 transition-all ${panelOpen ? "" : ""}`}>
+        <div className={`flex-1 overflow-auto bg-[var(--shell-bg)] transition-all ${panelOpen ? "" : ""}`}>
           <div className="p-8">
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Organograma de Agentes</h1>
-                <p className="text-sm text-gray-400 mt-0.5">Clique em um agente para configurar</p>
+                <h1 className="text-xl font-bold text-[var(--shell-text)]">Organograma de Agentes</h1>
+                <p className="text-sm text-[var(--shell-subtext)] mt-0.5">Clique em um agente para configurar</p>
               </div>
               <button onClick={openNew} className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 shadow-sm">
                 + Novo Agente
@@ -981,13 +981,13 @@ export default function CentralAgentesPage() {
 
             {loading ? (
               <div className="flex items-center justify-center py-24">
-                <p className="text-gray-400">Carregando agentes...</p>
+                <p className="text-[var(--shell-subtext)]">Carregando agentes...</p>
               </div>
             ) : tree.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 gap-4">
                 <div className="text-5xl">🤖</div>
-                <p className="text-gray-500 font-medium">Nenhum agente criado ainda</p>
-                <button onClick={openNew} className="rounded-xl border-2 border-dashed border-gray-300 px-8 py-3 text-sm text-gray-400 hover:border-slate-400 hover:text-slate-600">
+                <p className="text-[var(--shell-subtext)] font-medium">Nenhum agente criado ainda</p>
+                <button onClick={openNew} className="rounded-xl border-2 border-dashed border-[var(--shell-card-border)] px-8 py-3 text-sm text-[var(--shell-subtext)] hover:border-slate-400 hover:text-slate-600">
                   Criar primeiro agente
                 </button>
               </div>
@@ -1003,7 +1003,7 @@ export default function CentralAgentesPage() {
 
         {/* ── Painel lateral ── */}
         {panelOpen && (
-          <div className="w-[600px] shrink-0 border-l shadow-2xl flex flex-col bg-white overflow-hidden">
+          <div className="w-[600px] shrink-0 border-l shadow-2xl flex flex-col bg-[var(--shell-card-bg)] overflow-hidden">
             <Panel
               key={selected?.id ?? "new"}
               agent={selected}

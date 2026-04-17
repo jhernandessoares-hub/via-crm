@@ -34,7 +34,7 @@ const STATUS_OPTIONS: { value: ProductStatus; label: string }[] = [
 ];
 
 const inp = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400";
-const sel = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400 bg-white";
+const sel = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400 bg-[var(--shell-card-bg)]";
 
 export default function NewImovelPage() {
   const router = useRouter();
@@ -71,7 +71,7 @@ export default function NewImovelPage() {
     <AppShell title="Novo imóvel">
     <div className="mx-auto w-full max-w-lg">
       <div className="mb-6">
-        <Link href="/products/new" className="text-xs text-gray-400 hover:text-gray-600">
+        <Link href="/products/new" className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">
           ← Voltar
         </Link>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">Novo imóvel</h1>
@@ -86,7 +86,7 @@ export default function NewImovelPage() {
         </div>
       )}
 
-      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-neutral-200 bg-[var(--shell-card-bg)] p-6 shadow-sm">
         <div>
           <label className="mb-1 block text-sm font-medium text-neutral-800">Tipo *</label>
           <select
@@ -128,7 +128,7 @@ export default function NewImovelPage() {
         <div className="flex items-center justify-end gap-2 pt-2">
           <Link
             href="/products/new"
-            className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:bg-neutral-50"
+            className="rounded-lg border border-neutral-200 bg-[var(--shell-card-bg)] px-4 py-2 text-sm font-medium hover:bg-neutral-50"
           >
             Cancelar
           </Link>

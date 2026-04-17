@@ -57,7 +57,7 @@ function NewEmpreendimentoForm() {
     <AppShell title={`Novo ${typeLabel.toLowerCase()}`}>
     <div className="mx-auto w-full max-w-lg">
       <div className="mb-6">
-        <Link href="/products/new" className="text-xs text-gray-400 hover:text-gray-600">
+        <Link href="/products/new" className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">
           ← Voltar
         </Link>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">
@@ -74,7 +74,7 @@ function NewEmpreendimentoForm() {
         </div>
       )}
 
-      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-neutral-200 bg-[var(--shell-card-bg)] p-6 shadow-sm">
         <div className="flex items-center gap-2 mb-1">
           <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
             {typeLabel}
@@ -112,7 +112,7 @@ function NewEmpreendimentoForm() {
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-2">
-          <Link href="/products/new" className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium hover:bg-neutral-50">
+          <Link href="/products/new" className="rounded-lg border border-neutral-200 bg-[var(--shell-card-bg)] px-4 py-2 text-sm font-medium hover:bg-neutral-50">
             Cancelar
           </Link>
           <button type="submit" disabled={!canSave} className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60">
