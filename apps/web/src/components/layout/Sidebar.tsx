@@ -145,7 +145,7 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
           <img
             src="/LOGO%20VIA%20HTML%20BRANCO.svg"
             alt="VIA CRM"
-            className="h-16 w-auto max-w-full"
+            className="h-32 w-auto max-w-full"
           />
         </Link>
         {tenantNome && (
