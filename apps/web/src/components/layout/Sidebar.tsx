@@ -141,11 +141,13 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
         className="px-5 pt-5 pb-4 border-b"
         style={{ borderColor: "var(--sidebar-border)" }}
       >
-        <img
-          src="/LOGO%20VIA%20HTML%20BRANCO.svg"
-          alt="VIA CRM"
-          className="h-9 w-auto"
-        />
+        <Link href="/dashboard" className="block">
+          <img
+            src="/LOGO%20VIA%20HTML%20BRANCO.svg"
+            alt="VIA CRM"
+            className="h-16 w-auto max-w-full"
+          />
+        </Link>
         {tenantNome && (
           <div
             className="mt-3 text-[11px] uppercase tracking-wider font-semibold truncate"
