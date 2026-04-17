@@ -74,6 +74,19 @@ export function Header({
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
+          {/* Nome do tenant */}
+          {tenantNome && (
+            <span
+              className="hidden sm:block text-xs font-semibold mr-2 px-2.5 py-1 rounded-md"
+              style={{
+                color: "var(--shell-subtext)",
+                background: "var(--shell-hover)",
+              }}
+            >
+              {tenantNome}
+            </span>
+          )}
+
           {/* Toggle tema */}
           <button
             onClick={onToggleTheme}

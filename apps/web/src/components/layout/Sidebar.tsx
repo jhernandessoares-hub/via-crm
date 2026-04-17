@@ -148,15 +148,6 @@ export function Sidebar({ role, tenantNome, counts }: SidebarProps) {
             className="w-[80%] h-auto mx-auto block"
           />
         </Link>
-        {tenantNome && (
-          <div
-            className="mt-3 text-[11px] uppercase tracking-wider font-semibold truncate"
-            style={{ color: "#8DA1C9" }}
-            title={tenantNome}
-          >
-            {tenantNome}
-          </div>
-        )}
       </div>
 
       {/* Nav */}
