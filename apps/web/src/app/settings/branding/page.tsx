@@ -250,7 +250,7 @@ export default function BrandingPage() {
                 style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
               >
                 <img
-                  src={branding.faviconUrl || "/favicon.ico"}
+                  src={branding.faviconUrl || "/Novo%20modelo%20de%20Favicon.png"}
                   alt="Favicon atual"
                   className="h-8 w-8 object-contain"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}

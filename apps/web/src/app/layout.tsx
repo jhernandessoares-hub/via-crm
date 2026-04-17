@@ -13,12 +13,9 @@ export const metadata: Metadata = {
   title: "VIA CRM",
   description: "CRM imobiliário para atendimento, operação e gestão",
   icons: {
-    icon: [
-      { url: "/favicon-via.svg", type: "image/svg+xml" },
-      { url: "/favicon-via.png", type: "image/png", sizes: "256x256" },
-    ],
-    shortcut: "/favicon-via.png",
-    apple: "/favicon-via.png",
+    icon: "/Novo modelo de Favicon.png",
+    shortcut: "/Novo modelo de Favicon.png",
+    apple: "/Novo modelo de Favicon.png",
   },
 };
 
