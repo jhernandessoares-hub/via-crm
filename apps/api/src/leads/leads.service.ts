@@ -1524,9 +1524,9 @@ export class LeadsService {
       POS_VENDA: 'Pós-venda',
     };
 
-    // Funil: todos os leads ativos do tenant (sem filtro de período)
+    // Funil: leads criados no período
     const todosLeads = await this.prisma.lead.findMany({
-      where: baseWhere,
+      where: periodWhere,
       select: { id: true, stageId: true },
     });
     const todosLeadIds = todosLeads.map((l) => l.id);
