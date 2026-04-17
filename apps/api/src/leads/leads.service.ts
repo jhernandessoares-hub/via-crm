@@ -1511,7 +1511,9 @@ export class LeadsService {
 
     const taxaConversao = totalPeriodo > 0 ? Math.round((fechados / totalPeriodo) * 100) : 0;
 
-    // ── Funil por grupo ────────────────────────────────────────────────
+    // ── Funil cumulativo — quantos leads PASSARAM por cada grupo ───────
+    // Lógica: para cada grupo, conta leads criados no período que
+    // chegaram àquele grupo (estão lá agora OU já passaram por lá).
     const GROUPS = ['PRE_ATENDIMENTO', 'AGENDAMENTO', 'NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
     const GROUP_LABELS: Record<string, string> = {
       PRE_ATENDIMENTO: 'Pré-atendimento',
@@ -1522,25 +1524,59 @@ export class LeadsService {
       POS_VENDA: 'Pós-venda',
     };
 
-    const leadsWithStage = await this.prisma.lead.findMany({
+    // IDs dos leads criados no período
+    const leadsNoPeriodo = await this.prisma.lead.findMany({
       where: periodWhere,
-      select: { stageId: true },
+      select: { id: true },
     });
-    const stageIds = [...new Set(leadsWithStage.map((l) => l.stageId).filter(Boolean))] as string[];
-    const stages = stageIds.length > 0
-      ? await this.prisma.pipelineStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, group: true } })
-      : [];
-    const stageGroupMap: Record<string, string> = {};
-    for (const s of stages) { if (s.group) stageGroupMap[s.id] = s.group; }
+    const leadIdsPeriodo = leadsNoPeriodo.map((l) => l.id);
 
-    const groupCounts: Record<string, number> = Object.fromEntries(GROUPS.map((g) => [g, 0]));
-    for (const l of leadsWithStage) {
-      const g = l.stageId ? stageGroupMap[l.stageId] : 'PRE_ATENDIMENTO';
-      if (g && g in groupCounts) groupCounts[g]++;
-      else groupCounts['PRE_ATENDIMENTO']++;
+    // Todas as stages do tenant para mapear stageId → group
+    const todasStages = await this.prisma.pipelineStage.findMany({
+      where: { pipeline: { tenantId } },
+      select: { id: true, group: true },
+    });
+    const stageGroupMap: Record<string, string> = {};
+    for (const s of todasStages) { if (s.group) stageGroupMap[s.id] = s.group; }
+
+    // Para cada lead do período, quais grupos ele alcançou?
+    // Fonte 1: stage atual
+    const leadsComStageAtual = await this.prisma.lead.findMany({
+      where: { id: { in: leadIdsPeriodo }, stageId: { not: null } },
+      select: { id: true, stageId: true },
+    });
+    // Fonte 2: histórico de transições (toStage = stageId que o lead visitou)
+    const transicoes = leadIdsPeriodo.length > 0
+      ? await this.prisma.leadTransitionLog.findMany({
+          where: { tenantId, leadId: { in: leadIdsPeriodo } },
+          select: { leadId: true, toStage: true },
+        })
+      : [];
+
+    // Monta set de (leadId, group) que o lead atingiu
+    const leadGrupos = new Map<string, Set<string>>();
+    const addGrupo = (leadId: string, stageId: string) => {
+      const g = stageGroupMap[stageId];
+      if (!g) return;
+      if (!leadGrupos.has(leadId)) leadGrupos.set(leadId, new Set());
+      leadGrupos.get(leadId)!.add(g);
+    };
+
+    // Todos os leads do período chegaram ao menos em PRE_ATENDIMENTO
+    for (const l of leadsNoPeriodo) {
+      if (!leadGrupos.has(l.id)) leadGrupos.set(l.id, new Set());
+      leadGrupos.get(l.id)!.add('PRE_ATENDIMENTO');
     }
-    const noStage = await this.prisma.lead.count({ where: { ...periodWhere, stageId: null } });
-    groupCounts['PRE_ATENDIMENTO'] += noStage;
+    for (const l of leadsComStageAtual) addGrupo(l.id, l.stageId!);
+    for (const t of transicoes) addGrupo(t.leadId, t.toStage);
+
+    // Conta distintos por grupo
+    const groupCounts: Record<string, number> = Object.fromEntries(GROUPS.map((g) => [g, 0]));
+    for (const grupos of leadGrupos.values()) {
+      for (const g of grupos) {
+        if (g in groupCounts) groupCounts[g]++;
+      }
+    }
 
     const funil = GROUPS.map((g) => ({ key: g, label: GROUP_LABELS[g], count: groupCounts[g] }));
 
