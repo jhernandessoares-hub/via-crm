@@ -214,18 +214,18 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 
 const inp = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400";
-const sel = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 bg-white";
+const sel = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 bg-[var(--shell-card-bg)]";
 
 
 function Section({ title, open, onToggle, children }: {
   title: string; open: boolean; onToggle: () => void; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border bg-white overflow-hidden">
+    <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
       <button type="button" onClick={onToggle}
-        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors">
-        <span className="text-sm font-semibold text-gray-900">{title}</span>
-        <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-[var(--shell-bg)] transition-colors">
+        <span className="text-sm font-semibold text-[var(--shell-text)]">{title}</span>
+        <span className="text-[var(--shell-subtext)] text-xs">{open ? "▲" : "▼"}</span>
       </button>
       {open && <div className="border-t px-5 py-5 space-y-4">{children}</div>}
     </div>
@@ -238,7 +238,7 @@ function Field({ label, ai, onClearAI, children }: {
   return (
     <div>
       <div className="mb-1 flex items-center gap-2">
-        <label className="text-xs font-medium text-gray-600">{label}</label>
+        <label className="text-xs font-medium text-[var(--shell-subtext)]">{label}</label>
         {ai && (
           <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
             ✦ IA
@@ -258,7 +258,7 @@ function CurrencyInput({ value, onChange, placeholder = "0,00", disabled }: {
 }) {
   return (
     <div className="flex w-full items-center rounded-lg border focus-within:border-slate-400 overflow-hidden">
-      <span className="pl-3 text-sm text-gray-400 select-none shrink-0">R$</span>
+      <span className="pl-3 text-sm text-[var(--shell-subtext)] select-none shrink-0">R$</span>
       <input
         key={value}
         defaultValue={fmtBRL(value)}
@@ -281,9 +281,9 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   return (
     <button type="button" onClick={() => onChange(!checked)}
       className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-        checked ? "border-slate-900 bg-slate-900 text-white" : "border-gray-200 bg-white text-gray-700 hover:border-slate-400"
+        checked ? "border-slate-900 bg-slate-900 text-white" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
       }`}>
-      <span className={`inline-block w-3.5 h-3.5 rounded-sm border ${checked ? "bg-white border-white" : "border-gray-400"}`}>
+      <span className={`inline-block w-3.5 h-3.5 rounded-sm border ${checked ? "bg-[var(--shell-card-bg)] border-white" : "border-gray-400"}`}>
         {checked && <span className="block w-full h-full flex items-center justify-center text-slate-900 text-[9px] font-bold leading-none">✓</span>}
       </span>
       {label}
@@ -342,7 +342,7 @@ function TagInput({ value, onChange, suggestions, ai, onClearAI, disabled }: {
             <div className="flex flex-wrap gap-1 mt-2">
               {suggestions.filter((s) => !value.includes(s)).map((s) => (
                 <button key={s} type="button" onClick={() => add(s)}
-                  className="rounded-full border border-dashed px-2 py-0.5 text-xs text-gray-500 hover:border-slate-400 hover:text-gray-700">
+                  className="rounded-full border border-dashed px-2 py-0.5 text-xs text-[var(--shell-subtext)] hover:border-slate-400 hover:text-[var(--shell-subtext)]">
                   + {s}
                 </button>
               ))}
@@ -869,7 +869,7 @@ export default function EmpreendimentoEditPage() {
     return (
       <AppShell title={typeLabel}>
         <div className="flex items-center justify-center py-20">
-          <span className="text-sm text-gray-400">Carregando...</span>
+          <span className="text-sm text-[var(--shell-subtext)]">Carregando...</span>
         </div>
       </AppShell>
     );
@@ -883,21 +883,21 @@ export default function EmpreendimentoEditPage() {
           {/* Header */}
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-gray-900 leading-tight">
+              <h1 className="text-xl font-semibold text-[var(--shell-text)] leading-tight">
                 {form.title || `Novo ${typeLabel.toLowerCase()}`}
               </h1>
               <div className="mt-1 flex items-center gap-2">
                 <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                   {typeLabel}
                 </span>
-                <span className="text-xs text-gray-400">ID: {id}</span>
+                <span className="text-xs text-[var(--shell-subtext)]">ID: {id}</span>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {userRole === "AGENT" ? (
                 <span
                   title="Corretores não podem excluir produtos. Solicite ao gerente ou proprietário."
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-300 cursor-not-allowed"
+                  className="rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-sm font-medium text-gray-300 cursor-not-allowed"
                 >
                   Excluir
                 </span>
@@ -907,7 +907,7 @@ export default function EmpreendimentoEditPage() {
                   Excluir
                 </button>
               )}
-              <Link href="/products" className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50">
+              <Link href="/products" className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-[var(--shell-bg)]">
                 Voltar
               </Link>
             </div>
@@ -920,22 +920,22 @@ export default function EmpreendimentoEditPage() {
           {/* AI suggestions modal */}
           {aiSuggestions && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[80vh] overflow-y-auto">
-                <h2 className="text-base font-semibold text-gray-900 mb-1">Sugestões da IA</h2>
-                <p className="text-sm text-gray-500 mb-4">Campos extraídos do Book / Memorial. Revise e clique em Aplicar.</p>
+              <div className="w-full max-w-lg rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl max-h-[80vh] overflow-y-auto">
+                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Sugestões da IA</h2>
+                <p className="text-sm text-[var(--shell-subtext)] mb-4">Campos extraídos do Book / Memorial. Revise e clique em Aplicar.</p>
                 <div className="space-y-2 text-sm">
                   {Object.entries(aiSuggestions).map(([key, val]) =>
                     val != null && val !== "" && !(Array.isArray(val) && val.length === 0) && (
-                      <div key={key} className="flex items-start gap-2 rounded-lg border bg-gray-50 px-3 py-2">
-                        <span className="font-medium text-gray-700 w-36 shrink-0 text-xs">{AI_FIELD_LABELS[key] ?? key}</span>
-                        <span className="text-gray-600 text-xs break-words min-w-0">{formatAIValue(val)}</span>
+                      <div key={key} className="flex items-start gap-2 rounded-lg border bg-[var(--shell-bg)] px-3 py-2">
+                        <span className="font-medium text-[var(--shell-subtext)] w-36 shrink-0 text-xs">{AI_FIELD_LABELS[key] ?? key}</span>
+                        <span className="text-[var(--shell-subtext)] text-xs break-words min-w-0">{formatAIValue(val)}</span>
                       </div>
                     )
                   )}
                 </div>
                 <div className="mt-5 flex justify-end gap-3">
                   <button type="button" onClick={() => setAiSuggestions(null)}
-                    className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Cancelar</button>
+                    className="rounded-lg border px-4 py-2 text-sm hover:bg-[var(--shell-bg)]">Cancelar</button>
                   <button type="button" onClick={applyAISuggestions}
                     className="rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-800">
                     Aplicar sugestões
@@ -948,12 +948,12 @@ export default function EmpreendimentoEditPage() {
           {/* Delete confirm */}
           {showDeleteConfirm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-                <h2 className="text-base font-semibold text-gray-900 mb-2">Excluir {typeLabel.toLowerCase()}?</h2>
-                <p className="text-sm text-gray-500 mb-6">Esta ação não pode ser desfeita.</p>
+              <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl">
+                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-2">Excluir {typeLabel.toLowerCase()}?</h2>
+                <p className="text-sm text-[var(--shell-subtext)] mb-6">Esta ação não pode ser desfeita.</p>
                 <div className="flex gap-3 justify-end">
                   <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}
-                    className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">Cancelar</button>
+                    className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50">Cancelar</button>
                   <button type="button" onClick={handleDelete} disabled={deleting}
                     className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
                     {deleting ? "Excluindo..." : "Sim, excluir"}
@@ -966,20 +966,20 @@ export default function EmpreendimentoEditPage() {
           {/* Save modal */}
           {showSaveModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-                <h2 className="text-base font-semibold text-gray-900 mb-2">Publicar agora?</h2>
-                <p className="text-sm text-gray-500 mb-6">Escolha se deseja publicar o {typeLabel.toLowerCase()} ou salvar como rascunho.</p>
+              <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl">
+                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-2">Publicar agora?</h2>
+                <p className="text-sm text-[var(--shell-subtext)] mb-6">Escolha se deseja publicar o {typeLabel.toLowerCase()} ou salvar como rascunho.</p>
                 <div className="flex flex-col gap-2">
                   <button type="button" onClick={() => doSave("PUBLISHED")} disabled={saving}
                     className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
                     Publicar agora
                   </button>
                   <button type="button" onClick={() => doSave("DRAFT")} disabled={saving}
-                    className="w-full rounded-lg border px-4 py-2.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
+                    className="w-full rounded-lg border px-4 py-2.5 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50">
                     Salvar como rascunho
                   </button>
                   <button type="button" onClick={() => setShowSaveModal(false)}
-                    className="w-full text-center text-sm text-gray-400 hover:text-gray-600 py-1">Cancelar</button>
+                    className="w-full text-center text-sm text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] py-1">Cancelar</button>
                 </div>
               </div>
             </div>
@@ -1021,14 +1021,14 @@ export default function EmpreendimentoEditPage() {
 
                 {/* Programas sociais */}
                 <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-600">Programas sociais</label>
+                  <label className="mb-2 block text-xs font-medium text-[var(--shell-subtext)]">Programas sociais</label>
                   <div className="flex flex-wrap gap-2">
                     {SOCIAL_PROGRAMS.map((prog) => (
                       <button key={prog} type="button" onClick={() => toggleArr("socialPrograms", prog)}
                         className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                           form.socialPrograms.includes(prog)
                             ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-gray-200 bg-white text-gray-700 hover:border-slate-400"
+                            : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
                         }`}>
                         {prog}
                       </button>
@@ -1042,12 +1042,12 @@ export default function EmpreendimentoEditPage() {
 
                 {/* Documentos — lista unificada */}
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Documentos Anexados</p>
-                  <p className="mb-3 text-xs text-gray-500">Book, Memorial, Tabela e Plantas. Os documentos marcados serão lidos pela IA.</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Documentos Anexados</p>
+                  <p className="mb-3 text-xs text-[var(--shell-subtext)]">Book, Memorial, Tabela e Plantas. Os documentos marcados serão lidos pela IA.</p>
 
-                  {docsLoading && <p className="text-xs text-gray-400">Carregando documentos...</p>}
+                  {docsLoading && <p className="text-xs text-[var(--shell-subtext)]">Carregando documentos...</p>}
                   {docs.length > 0 && (
-                    <ul className="divide-y rounded-lg border bg-white mb-3">
+                    <ul className="divide-y rounded-lg border bg-[var(--shell-card-bg)] mb-3">
                       {docs.map((doc) => {
                         const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
                         const token = typeof window !== "undefined" ? (localStorage.getItem("accessToken") || "") : "";
@@ -1072,7 +1072,7 @@ export default function EmpreendimentoEditPage() {
                                 className="text-slate-700 hover:underline truncate cursor-pointer">
                                 {doc.title || DOC_TYPE_LABELS[doc.type ?? ""] || doc.type}
                               </a>
-                              {doc.notes && <span className="shrink-0 text-xs text-gray-400">{doc.notes} m²</span>}
+                              {doc.notes && <span className="shrink-0 text-xs text-[var(--shell-subtext)]">{doc.notes} m²</span>}
                             </div>
                             <button type="button" onClick={() => handleDeleteDoc(doc.id)}
                               className="shrink-0 rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50">Excluir</button>
@@ -1087,13 +1087,13 @@ export default function EmpreendimentoEditPage() {
                     {(["BOOK", "MEMORIAL", "TABELA", "OUTROS"] as const).map((t) => (
                       <button key={t} type="button" disabled={docUploading}
                         onClick={() => { docFileRef.current?.setAttribute("data-dtype", t); docFileRef.current?.click(); }}
-                        className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 transition-colors">
+                        className="rounded-lg border bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-medium hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 transition-colors">
                         {docUploading ? "Enviando..." : `+ ${DOC_TYPE_LABELS[t]}`}
                       </button>
                     ))}
                     <button type="button" disabled={plantUploading}
                       onClick={() => setShowPlantForm((v) => !v)}
-                      className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 transition-colors">
+                      className="rounded-lg border bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-medium hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 transition-colors">
                       {plantUploading ? "Enviando..." : "+ Planta"}
                     </button>
                     <input ref={docFileRef} type="file" accept=".pdf" className="sr-only"
@@ -1135,20 +1135,20 @@ export default function EmpreendimentoEditPage() {
 
                 {/* Planta form inline */}
                 {showPlantForm && (
-                  <div className="rounded-lg border bg-white p-4 space-y-3">
+                  <div className="rounded-lg border bg-[var(--shell-card-bg)] p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-gray-700">Nova planta</p>
+                      <p className="text-xs font-semibold text-[var(--shell-subtext)]">Nova planta</p>
                       <button type="button" onClick={() => { setShowPlantForm(false); setPlantName(""); setPlantArea(""); }}
-                        className="text-xs text-gray-400 hover:text-gray-600">✕ Cancelar</button>
+                        className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕ Cancelar</button>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">Nome da planta *</label>
+                        <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Nome da planta *</label>
                         <input value={plantName} onChange={(e) => setPlantName(e.target.value)}
                           placeholder="Ex.: Planta tipo A — 2 quartos" className={inp} />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">Metragem (m²)</label>
+                        <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Metragem (m²)</label>
                         <input value={plantArea} onChange={(e) => setPlantArea(e.target.value)}
                           placeholder="Ex.: 65" inputMode="numeric" className={inp} />
                       </div>
@@ -1183,7 +1183,7 @@ export default function EmpreendimentoEditPage() {
                       <div className="grid grid-cols-3 gap-2">
                         <div>
                           <div className="mb-1 flex items-center gap-1">
-                            <label className="text-xs font-medium text-gray-600">Estado (UF)</label>
+                            <label className="text-xs font-medium text-[var(--shell-subtext)]">Estado (UF)</label>
                             {aiFields.has("state") && <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">✦ IA <button type="button" onClick={() => clearAI("state")} className="ml-0.5 text-violet-400 hover:text-violet-700">×</button></span>}
                           </div>
                           <input value={form.state} onChange={(e) => { f({ state: e.target.value.toUpperCase() }); clearAI("state"); }}
@@ -1191,7 +1191,7 @@ export default function EmpreendimentoEditPage() {
                         </div>
                         <div className="col-span-2">
                           <div className="mb-1 flex items-center gap-1">
-                            <label className="text-xs font-medium text-gray-600">Cidade</label>
+                            <label className="text-xs font-medium text-[var(--shell-subtext)]">Cidade</label>
                             {aiFields.has("city") && <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">✦ IA <button type="button" onClick={() => clearAI("city")} className="ml-0.5 text-violet-400 hover:text-violet-700">×</button></span>}
                           </div>
                           <input value={form.city} onChange={(e) => { f({ city: e.target.value }); clearAI("city"); }} className={inp} disabled={loading} />
@@ -1289,7 +1289,7 @@ export default function EmpreendimentoEditPage() {
                     </Field>
 
                     <Field label="Descrição comercial" ai={aiFields.has("commercialDescription")} onClearAI={() => clearAI("commercialDescription")}>
-                      <p className="mb-1 text-xs text-gray-400">Usada pela IA de vendas e pelo marketing.</p>
+                      <p className="mb-1 text-xs text-[var(--shell-subtext)]">Usada pela IA de vendas e pelo marketing.</p>
                       <textarea value={form.commercialDescription}
                         onChange={(e) => { f({ commercialDescription: e.target.value }); clearAI("commercialDescription"); }}
                         rows={4} placeholder="Descrição com foco comercial, destacando diferenciais..."
@@ -1299,7 +1299,7 @@ export default function EmpreendimentoEditPage() {
                     {/* Locais de visita */}
                     <div>
                       <div className="mb-2 flex items-center justify-between">
-                        <label className="text-xs font-medium text-gray-600">Locais de visita</label>
+                        <label className="text-xs font-medium text-[var(--shell-subtext)]">Locais de visita</label>
                         <button type="button"
                           onClick={() => {
                             const isPrimary = visitLocations.length === 0;
@@ -1308,20 +1308,20 @@ export default function EmpreendimentoEditPage() {
                               type: "STAND", address: "", label: "", primary: isPrimary,
                             }]);
                           }}
-                          className="rounded-lg border border-dashed border-gray-300 px-2.5 py-1 text-xs text-gray-500 hover:border-slate-400 hover:text-gray-700 transition-colors">
+                          className="rounded-lg border border-dashed border-[var(--shell-card-border)] px-2.5 py-1 text-xs text-[var(--shell-subtext)] hover:border-slate-400 hover:text-[var(--shell-subtext)] transition-colors">
                           + Adicionar local
                         </button>
                       </div>
                       {visitLocations.length === 0 && (
                         <button type="button"
                           onClick={() => setVisitLocations([{ _key: `vl_${Date.now()}`, type: "STAND", address: "", label: "", primary: true }])}
-                          className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 px-4 py-3 text-sm text-gray-400 hover:border-slate-300 hover:text-gray-600 transition-colors">
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] px-4 py-3 text-sm text-[var(--shell-subtext)] hover:border-slate-300 hover:text-[var(--shell-subtext)] transition-colors">
                           + Adicionar local de visita
                         </button>
                       )}
                       <div className="space-y-2">
                         {visitLocations.map((vl, idx) => (
-                          <div key={vl._key} className={`rounded-lg border p-3 space-y-2 ${vl.primary ? "border-blue-200 bg-blue-50/40" : "bg-gray-50"}`}>
+                          <div key={vl._key} className={`rounded-lg border p-3 space-y-2 ${vl.primary ? "border-blue-200 bg-blue-50/40" : "bg-[var(--shell-bg)]"}`}>
                             <div className="flex items-center gap-2">
                               <select value={vl.type}
                                 onChange={(e) => setVisitLocations((p) => p.map((x) => x._key === vl._key ? { ...x, type: e.target.value as VisitLocation["type"] } : x))}
@@ -1335,7 +1335,7 @@ export default function EmpreendimentoEditPage() {
                                   const newList = visitLocations.map((x) => ({ ...x, primary: x._key === vl._key }));
                                   setVisitLocations(newList);
                                 }}
-                                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${vl.primary ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300 text-gray-500 hover:border-blue-400"}`}
+                                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${vl.primary ? "border-blue-600 bg-blue-600 text-white" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-blue-400"}`}
                                 title="Definir como prioritário para a IA">
                                 {vl.primary ? "★ Prioritário" : "Prioritário"}
                               </button>
@@ -1364,7 +1364,7 @@ export default function EmpreendimentoEditPage() {
               <Section title="4. Especificações das Unidades" open={open.has("especificacoes")} onToggle={() => toggle("especificacoes")}>
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Especificações das Unidades</span>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Especificações das Unidades</span>
                     {aiFields.has("unitSpecs") && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                         ✦ IA
@@ -1382,7 +1382,7 @@ export default function EmpreendimentoEditPage() {
                         return next;
                       });
                     }}
-                    className="rounded-lg border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-500 hover:border-slate-400 hover:text-gray-700 transition-colors">
+                    className="rounded-lg border border-dashed border-[var(--shell-card-border)] px-3 py-1 text-xs text-[var(--shell-subtext)] hover:border-slate-400 hover:text-[var(--shell-subtext)] transition-colors">
                     + Adicionar unidade
                   </button>
                 </div>
@@ -1390,7 +1390,7 @@ export default function EmpreendimentoEditPage() {
                 {unitSpecs.length === 0 && (
                   <button type="button"
                     onClick={() => { setUnitSpecs([EMPTY_UNIT_SPEC(1)]); setMinimizedSpecs(new Set()); }}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 px-4 py-4 text-sm text-gray-400 hover:border-slate-300 hover:text-gray-600 transition-colors">
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] px-4 py-4 text-sm text-[var(--shell-subtext)] hover:border-slate-300 hover:text-[var(--shell-subtext)] transition-colors">
                     + Adicionar especificação de unidade
                   </button>
                 )}
@@ -1402,10 +1402,10 @@ export default function EmpreendimentoEditPage() {
                     const title = unitSpecTitle(spec, idx);
 
                     return (
-                      <div key={spec._key} className={`rounded-lg border overflow-hidden ${isAI ? "border-violet-200 bg-violet-50/30" : "bg-gray-50"}`}>
+                      <div key={spec._key} className={`rounded-lg border overflow-hidden ${isAI ? "border-violet-200 bg-violet-50/30" : "bg-[var(--shell-bg)]"}`}>
                         {/* Header do card */}
                         <div className="flex items-center gap-2 px-3 py-2.5">
-                          <span className="flex-1 text-sm font-semibold text-gray-800 min-w-0 truncate">{title}</span>
+                          <span className="flex-1 text-sm font-semibold text-[var(--shell-text)] min-w-0 truncate">{title}</span>
                           {isAI && (
                             <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                               ✦ IA
@@ -1417,7 +1417,7 @@ export default function EmpreendimentoEditPage() {
                               next.has(spec._key) ? next.delete(spec._key) : next.add(spec._key);
                               return next;
                             })}
-                            className="shrink-0 text-gray-400 hover:text-gray-700 text-xs px-1"
+                            className="shrink-0 text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-xs px-1"
                             title={isMin ? "Expandir" : "Minimizar"}>
                             {isMin ? "▼" : "▲"}
                           </button>
@@ -1434,33 +1434,33 @@ export default function EmpreendimentoEditPage() {
                           <div className="border-t px-3 py-3 space-y-3">
                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                               <div>
-                                <label className="mb-1 block text-xs font-medium text-gray-600">Quartos</label>
+                                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Quartos</label>
                                 <input value={spec.bedrooms} onChange={(e) => patchUnitSpec(spec._key, { bedrooms: e.target.value })}
                                   inputMode="numeric" placeholder="Ex.: 2" className={inp} />
                               </div>
                               <div>
-                                <label className="mb-1 block text-xs font-medium text-gray-600">Suítes</label>
+                                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Suítes</label>
                                 <input value={spec.suites} onChange={(e) => patchUnitSpec(spec._key, { suites: e.target.value })}
                                   inputMode="numeric" placeholder="Ex.: 1" className={inp} />
                               </div>
                               <div>
-                                <label className="mb-1 block text-xs font-medium text-gray-600">Salas</label>
+                                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Salas</label>
                                 <input value={spec.livingRooms} onChange={(e) => patchUnitSpec(spec._key, { livingRooms: e.target.value })}
                                   inputMode="numeric" placeholder="Ex.: 1" className={inp} />
                               </div>
                               <div>
-                                <label className="mb-1 block text-xs font-medium text-gray-600">Área privativa (m²)</label>
+                                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Área privativa (m²)</label>
                                 <input value={spec.areaM2 ?? ""} onChange={(e) => patchUnitSpec(spec._key, { areaM2: e.target.value })}
                                   inputMode="decimal" placeholder="Ex.: 58" className={inp} />
                               </div>
                               <div>
-                                <label className="mb-1 block text-xs font-medium text-gray-600">Pts. ar-condicionado</label>
+                                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Pts. ar-condicionado</label>
                                 <input value={spec.acPoints} onChange={(e) => patchUnitSpec(spec._key, { acPoints: e.target.value })}
                                   inputMode="numeric" placeholder="Ex.: 2" className={inp} />
                               </div>
                             </div>
                             <div>
-                              <label className="mb-1.5 block text-xs font-medium text-gray-600">Características da unidade</label>
+                              <label className="mb-1.5 block text-xs font-medium text-[var(--shell-subtext)]">Características da unidade</label>
                               <TagInput
                                 value={spec.features}
                                 onChange={(v) => patchUnitSpec(spec._key, { features: v })}
@@ -1494,7 +1494,7 @@ export default function EmpreendimentoEditPage() {
 
                 {/* Aceites */}
                 <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-600">Condições aceitas</label>
+                  <label className="mb-2 block text-xs font-medium text-[var(--shell-subtext)]">Condições aceitas</label>
                   <div className="flex flex-wrap gap-2">
                     <Toggle checked={form.acceptsFGTS} onChange={(v) => f({ acceptsFGTS: v })} label="FGTS" />
                     <Toggle checked={form.acceptsFinancing} onChange={(v) => f({ acceptsFinancing: v })} label="Financiamento Bancário" />
@@ -1506,14 +1506,14 @@ export default function EmpreendimentoEditPage() {
                 {/* Tipos de troca */}
                 {form.acceptsTradeIn && (
                   <div>
-                    <label className="mb-2 block text-xs font-medium text-gray-600">O que aceita na troca?</label>
+                    <label className="mb-2 block text-xs font-medium text-[var(--shell-subtext)]">O que aceita na troca?</label>
                     <div className="flex flex-wrap gap-2">
                       {TRADE_IN_TYPES.map((t) => (
                         <button key={t} type="button" onClick={() => toggleArr("tradeInTypes", t)}
                           className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                             form.tradeInTypes.includes(t)
                               ? "border-slate-900 bg-slate-900 text-white"
-                              : "border-gray-200 bg-white text-gray-700 hover:border-slate-400"
+                              : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
                           }`}>
                           {t}
                         </button>
@@ -1568,33 +1568,33 @@ export default function EmpreendimentoEditPage() {
               </Section>
 
               {/* ── S6: Simulador ───────────────────────────────────────────── */}
-              <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
                 <div className="flex w-full items-center justify-between px-5 py-4">
-                  <span className="text-sm font-semibold text-gray-900">6. Simulador</span>
-                  <span className="text-xs text-gray-400 rounded-full border border-gray-200 px-2 py-0.5">Em breve</span>
+                  <span className="text-sm font-semibold text-[var(--shell-text)]">6. Simulador</span>
+                  <span className="text-xs text-[var(--shell-subtext)] rounded-full border border-[var(--shell-card-border)] px-2 py-0.5">Em breve</span>
                 </div>
               </div>
 
               {/* ── S7: Mídia ───────────────────────────────────────────────── */}
-              <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggle("midia")}
-                  className="flex w-full items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+                  className="flex w-full items-center justify-between px-5 py-4 hover:bg-[var(--shell-bg)] transition-colors"
                 >
-                  <span className="text-sm font-semibold text-gray-900">7. Mídia</span>
-                  <svg className={`h-4 w-4 text-gray-400 transition-transform ${open.has("midia") ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
+                  <span className="text-sm font-semibold text-[var(--shell-text)]">7. Mídia</span>
+                  <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${open.has("midia") ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
                 {open.has("midia") && (
                   <div className="border-t px-5 py-4 space-y-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fotos</p>
+                    <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Fotos</p>
 
                     {/* Upload form */}
-                    <div className="rounded-lg border bg-gray-50 p-3 space-y-2">
+                    <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-2">
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-gray-600">Nome da imagem</label>
+                        <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Nome da imagem</label>
                         <input
                           value={imgTitle}
                           onChange={(e) => setImgTitle(e.target.value)}
@@ -1606,9 +1606,9 @@ export default function EmpreendimentoEditPage() {
                       <label className="block">
                         <input type="file" accept="image/*" disabled={imgUploading || loading}
                           onChange={(e) => onUploadImage(e.target.files?.[0] ?? null)}
-                          className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-50" />
+                          className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
                       </label>
-                      {imgUploading && <p className="text-xs text-gray-400">Enviando...</p>}
+                      {imgUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
                     </div>
 
                     {productImages.length > 0 && (
@@ -1619,7 +1619,7 @@ export default function EmpreendimentoEditPage() {
                           const isCover = img.isPrimary === true;
                           const displayName = img.customLabel || img.title || "";
                           return (
-                            <div key={img.id ?? url} className={`relative overflow-hidden rounded-lg border bg-gray-50 ${isCover ? "ring-2 ring-amber-400" : ""}`}>
+                            <div key={img.id ?? url} className={`relative overflow-hidden rounded-lg border bg-[var(--shell-bg)] ${isCover ? "ring-2 ring-amber-400" : ""}`}>
                               <a href={url ?? undefined} target="_blank" rel="noreferrer">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={url ?? undefined} alt={displayName} className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
@@ -1637,8 +1637,8 @@ export default function EmpreendimentoEditPage() {
                               {!isCover && (
                                 <button type="button" onClick={() => onSetPrimaryImage(img.id)}
                                   title="Definir como capa do produto"
-                                  className="absolute top-1 left-1 rounded-full bg-white/90 p-1 shadow hover:bg-amber-50 transition-colors">
-                                  <svg className="h-3.5 w-3.5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                  className="absolute top-1 left-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-amber-50 transition-colors">
+                                  <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)]" viewBox="0 0 20 20" fill="currentColor">
                                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                                   </svg>
                                 </button>
@@ -1647,7 +1647,7 @@ export default function EmpreendimentoEditPage() {
                               {url && (
                                 <button type="button" onClick={() => downloadImage(url, displayName || `imagem-${img.id}`)}
                                   title="Baixar imagem"
-                                  className="absolute top-1 right-11 rounded-full bg-white/90 p-1 shadow hover:bg-blue-50 transition-colors">
+                                  className="absolute top-1 right-11 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-blue-50 transition-colors">
                                   <svg className="h-3.5 w-3.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                                   </svg>
@@ -1655,13 +1655,13 @@ export default function EmpreendimentoEditPage() {
                               )}
                               <button type="button" onClick={() => handleToggleImagePublic(img.id, isPublic)}
                                 title={isPublic ? "Pública (divulgada) — clique para uso interno" : "Interna — clique para divulgar"}
-                                className="absolute top-1 right-6 rounded-full bg-white/90 p-1 shadow hover:bg-white transition-colors">
+                                className="absolute top-1 right-6 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-[var(--shell-card-bg)] transition-colors">
                                 {isPublic ? (
                                   <svg className="h-3.5 w-3.5 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
                                     <path d="M10 3C5 3 1.73 7.11 1.05 8.45a1 1 0 000 1.1C1.73 10.89 5 15 10 15s8.27-4.11 8.95-5.45a1 1 0 000-1.1C18.27 7.11 15 3 10 3zm0 10a4 4 0 110-8 4 4 0 010 8zm0-6a2 2 0 100 4 2 2 0 000-4z" />
                                   </svg>
                                 ) : (
-                                  <svg className="h-3.5 w-3.5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                  <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)]" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
                                     <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
                                   </svg>
@@ -1669,7 +1669,7 @@ export default function EmpreendimentoEditPage() {
                               </button>
                               <button type="button" onClick={() => onDeleteImage(img.id)}
                                 title="Excluir imagem"
-                                className="absolute top-1 right-1 rounded-full bg-white/90 p-1 shadow hover:bg-red-50 transition-colors">
+                                className="absolute top-1 right-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-red-50 transition-colors">
                                 <svg className="h-3.5 w-3.5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                                   <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                                 </svg>
@@ -1720,9 +1720,9 @@ export default function EmpreendimentoEditPage() {
 
                   {/* Downloads */}
                   {docs.length > 0 && (
-                    <div className="rounded-xl border bg-white overflow-hidden">
+                    <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
                       <div className="px-4 py-3 border-b">
-                        <span className="text-xs font-semibold text-gray-600">Documentos anexados</span>
+                        <span className="text-xs font-semibold text-[var(--shell-subtext)]">Documentos anexados</span>
                       </div>
                       <div className="px-4 py-3 space-y-2">
                         {docs.map((doc) => {
@@ -1743,7 +1743,7 @@ export default function EmpreendimentoEditPage() {
                                   });
                               }}
                               className="flex items-center gap-2 text-xs text-slate-700 hover:text-slate-900 w-full text-left">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-[var(--shell-subtext)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
                               <span className="truncate">{DOC_TYPE_LABELS[doc.type ?? ""] ?? doc.type}{doc.title ? ` — ${doc.title}` : ""}</span>
@@ -1761,7 +1761,7 @@ export default function EmpreendimentoEditPage() {
           </div>
 
           {/* Bottom save bar */}
-          <div className="mt-6 flex items-center justify-end gap-3 rounded-xl border bg-white px-5 py-4">
+          <div className="mt-6 flex items-center justify-end gap-3 rounded-xl border bg-[var(--shell-card-bg)] px-5 py-4">
             <button type="submit" disabled={saving || loading}
               className="rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
               {saving ? "Salvando..." : "Salvar"}

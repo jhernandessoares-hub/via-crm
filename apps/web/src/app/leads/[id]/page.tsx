@@ -3269,7 +3269,7 @@ function discardAiSuggestion() {
                     <button
                       type="button"
                       onClick={() => toggleAutopilot(!autopilotEnabled)}
-                      className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${autopilotEnabled ? "bg-emerald-500" : "bg-gray-300"}`}
+                      className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${autopilotEnabled ? "bg-emerald-500" : "bg-[var(--shell-card-border)]"}`}
                     >
                       <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow-md transition-transform duration-200 ${autopilotEnabled ? "translate-x-6" : "translate-x-0"}`} />
                     </button>

@@ -48,11 +48,11 @@ const CATEGORIES = [
   { key: "DOCUMENTO", label: "Documento", color: "bg-orange-100 text-orange-700" },
   { key: "SENHA",     label: "Senha",     color: "bg-red-100 text-red-700" },
   { key: "LEMBRETE",  label: "Lembrete",  color: "bg-purple-100 text-purple-700" },
-  { key: "OUTRO",     label: "Outro",     color: "bg-gray-100 text-gray-600" },
+  { key: "OUTRO",     label: "Outro",     color: "bg-[var(--shell-hover)] text-[var(--shell-subtext)]" },
 ];
 
 function catColor(cat: string) {
-  return CATEGORIES.find((c) => c.key === cat)?.color ?? "bg-gray-100 text-gray-600";
+  return CATEGORIES.find((c) => c.key === cat)?.color ?? "bg-[var(--shell-hover)] text-[var(--shell-subtext)]";
 }
 function catLabel(cat: string) {
   return CATEGORIES.find((c) => c.key === cat)?.label ?? cat;
@@ -381,7 +381,7 @@ export default function SecretaryPage() {
                 ) : (
                   filteredNotes.map((n) => (
                     <button key={n.id} onClick={() => setSelectedNote(n)}
-                      className={`w-full text-left rounded-xl border p-3 transition-all ${selectedNote?.id === n.id ? "border-slate-900 bg-[var(--shell-hover)]" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] hover:border-gray-300 hover:shadow-sm"}`}>
+                      className={`w-full text-left rounded-xl border p-3 transition-all ${selectedNote?.id === n.id ? "border-slate-900 bg-[var(--shell-hover)]" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] hover:border-[var(--shell-card-border)] hover:shadow-sm"}`}>
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium text-[var(--shell-text)] truncate">{n.title || n.content.slice(0, 40)}</p>
                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${catColor(n.category)}`}>

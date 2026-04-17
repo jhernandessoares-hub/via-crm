@@ -27,7 +27,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   return (
     <button
       onClick={() => onChange(!value)}
-      className={`relative w-11 h-6 rounded-full transition-colors ${value ? "bg-emerald-500" : "bg-gray-300"}`}
+      className={`relative w-11 h-6 rounded-full transition-colors ${value ? "bg-emerald-500" : "bg-[var(--shell-card-border)]"}`}
     >
       <div
         className={`absolute top-1 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${value ? "translate-x-6" : "translate-x-1"}`}

@@ -368,7 +368,7 @@ function FileModal({ title, showNome, nomeDefault = "", onConfirm, onCancel, bus
         <div className="px-5 py-4 space-y-4">
           {!file ? (
             <button className="w-full flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-8 text-sm text-[var(--shell-subtext)] hover:border-blue-400 hover:text-blue-600 transition-colors" onClick={() => inputRef.current?.click()}>
-              <svg className="h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+              <svg className="h-8 w-8 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
               Clique para escolher o arquivo
               <span className="text-xs text-[var(--shell-subtext)]">PDF, imagem, Word</span>
             </button>
@@ -376,7 +376,7 @@ function FileModal({ title, showNome, nomeDefault = "", onConfirm, onCancel, bus
             <div className="rounded-xl border bg-[var(--shell-bg)] overflow-hidden">
               {previewUrl && file.type.startsWith("image/") && <img src={previewUrl} alt="preview" className="w-full max-h-40 object-contain bg-[var(--shell-card-bg)]" />}
               {previewUrl && file.type === "application/pdf" && <iframe src={previewUrl} className="w-full h-32" title="preview" />}
-              {!previewUrl && <div className="flex items-center gap-3 px-4 py-3"><svg className="h-7 w-7 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="text-sm text-[var(--shell-subtext)] truncate">{file.name}</span></div>}
+              {!previewUrl && <div className="flex items-center gap-3 px-4 py-3"><svg className="h-7 w-7 text-[var(--shell-subtext)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="text-sm text-[var(--shell-subtext)] truncate">{file.name}</span></div>}
               <div className="px-3 py-2 border-t bg-[var(--shell-card-bg)] flex items-center justify-between">
                 <span className="text-xs text-[var(--shell-subtext)] truncate">{file.name}</span>
                 <button className="text-xs text-blue-600 hover:underline" onClick={() => inputRef.current?.click()}>Trocar</button>
@@ -491,7 +491,7 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
           )}
           {!loading && blobUrl && !isImage && !isPdf && (
             <div className="text-white text-center p-10">
-              <p className="text-sm mb-4 text-gray-300">Visualização não disponível para este formato.</p>
+              <p className="text-sm mb-4 text-[var(--shell-subtext)]">Visualização não disponível para este formato.</p>
               <a href={blobUrl} download={nome} className="text-blue-400 hover:underline text-sm">
                 Baixar arquivo
               </a>
@@ -639,7 +639,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
         {selectedDoc && (
           <div className="flex-1 bg-gray-900 flex flex-col overflow-hidden border-l border-gray-700" style={{ minWidth: 0 }}>
             <div className="flex items-center justify-between px-3 py-2 bg-gray-800 shrink-0">
-              <span className="text-xs text-gray-300 font-medium">{tipoLabel(selectedDoc.tipo)}</span>
+              <span className="text-xs text-[var(--shell-subtext)] font-medium">{tipoLabel(selectedDoc.tipo)}</span>
               <button className="text-[var(--shell-subtext)] hover:text-gray-200 text-sm leading-none" onClick={() => setSelectedDocId(null)}>✕</button>
             </div>
             <DocPreviewInline leadId={leadId} doc={selectedDoc} />
@@ -814,7 +814,7 @@ function BulkUploadModal({ leadId, onDone, onCancel }: {
           >
             {files.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-10 text-sm text-[var(--shell-subtext)]">
-                <svg className="h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-10 w-10 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                 </svg>
                 Arraste os arquivos aqui ou clique para selecionar
@@ -831,7 +831,7 @@ function BulkUploadModal({ leadId, onDone, onCancel }: {
                     <span className="flex-1 text-[var(--shell-subtext)] truncate">{f.name}</span>
                     {willCompress && <span className="text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 shrink-0">será comprimido</span>}
                     <span className="text-xs text-[var(--shell-subtext)] shrink-0">{fmtFileSize(f.size)}</span>
-                    <button className="text-gray-300 hover:text-red-400 shrink-0" onClick={ev => { ev.stopPropagation(); setFiles(prev => prev.filter((_, j) => j !== i)); }}>✕</button>
+                    <button className="text-[var(--shell-subtext)] hover:text-red-400 shrink-0" onClick={ev => { ev.stopPropagation(); setFiles(prev => prev.filter((_, j) => j !== i)); }}>✕</button>
                   </div>
                   );
                 })}
@@ -1331,7 +1331,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
             <button
               type="button"
               title="Ver documento"
-              className="ml-auto p-0.5 rounded text-gray-300 hover:text-blue-500 transition-colors"
+              className="ml-auto p-0.5 rounded text-[var(--shell-subtext)] hover:text-blue-500 transition-colors"
               onClick={() => onOpenFieldDoc(name, label, personName ?? "", vals[name] ?? "", type, options, relevantDocs, async (val) => { setVals(v => ({ ...v, [name]: val })); await saveField(name, val, "MANUAL"); })}
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1407,7 +1407,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
             <div className="flex items-center gap-2 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5">
               <span className="flex-1 text-sm text-[var(--shell-text)]">{personName || <span className="text-[var(--shell-subtext)] italic">não informado</span>}</span>
               {getRelevantDocs(isLead ? "nomeCorreto" : "nome").length > 0 && onOpenFieldDoc && (
-                <button type="button" title="Ver documento" className="text-gray-300 hover:text-blue-500 transition-colors"
+                <button type="button" title="Ver documento" className="text-[var(--shell-subtext)] hover:text-blue-500 transition-colors"
                   onClick={() => { const fd = isLead ? "nomeCorreto" : "nome"; const rd = getRelevantDocs(fd); onOpenFieldDoc(fd, "Nome", personName ?? "", personName ?? "", undefined, undefined, rd, async (val: string) => { if (onPersonNameSave) await onPersonNameSave(val); }); }}>
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                 </button>
@@ -1975,7 +1975,7 @@ export default function DocumentosPage() {
                 onClick={() => setIdentifyDoc(d)}>
                 Identificar DOC
               </button>
-              <button className="text-gray-300 hover:text-red-400 shrink-0 p-1" onClick={() => handleDeleteDoc(d.id)}>✕</button>
+              <button className="text-[var(--shell-subtext)] hover:text-red-400 shrink-0 p-1" onClick={() => handleDeleteDoc(d.id)}>✕</button>
             </div>
           ))}
         </div>

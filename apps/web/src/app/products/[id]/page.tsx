@@ -206,14 +206,14 @@ function Section({
   id: string; title: string; open: boolean; onToggle: () => void; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border bg-white overflow-hidden">
+    <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
+        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-[var(--shell-bg)] transition-colors"
       >
-        <span className="text-sm font-semibold text-gray-900">{title}</span>
-        <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+        <span className="text-sm font-semibold text-[var(--shell-text)]">{title}</span>
+        <span className="text-[var(--shell-subtext)] text-xs">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
         <div className="border-t px-5 py-5 space-y-4">
@@ -233,9 +233,9 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
         onClick={() => onChange(!checked)}
         className={`relative h-5 w-9 rounded-full transition-colors ${checked ? "bg-slate-900" : "bg-gray-200"}`}
       >
-        <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
+        <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
       </div>
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-[var(--shell-subtext)]">{label}</span>
     </label>
   );
 }
@@ -245,14 +245,14 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">{label}</label>
       {children}
     </div>
   );
 }
 
 const inp = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400";
-const sel = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 bg-white";
+const sel = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 bg-[var(--shell-card-bg)]";
 
 // ─── CurrencyInput ────────────────────────────────────────────────────────────
 
@@ -263,7 +263,7 @@ function CurrencyInput({
 }) {
   return (
     <div className="flex w-full items-center rounded-lg border focus-within:border-slate-400 overflow-hidden">
-      <span className="pl-3 text-sm text-gray-400 select-none shrink-0">R$</span>
+      <span className="pl-3 text-sm text-[var(--shell-subtext)] select-none shrink-0">R$</span>
       <input
         key={value}
         defaultValue={fmtBRL(value)}
@@ -332,7 +332,7 @@ function RoomCard({
   }
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden">
+    <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
       {/* ── Header (always visible) ── */}
       <div className="flex items-center gap-2 px-3 py-2.5">
         <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 shrink-0">
@@ -347,7 +347,7 @@ function RoomCard({
             schedule({ label: e.target.value, sizeM2: sizeM2 || null, notes: notes || null });
           }}
           onClick={(e) => e.stopPropagation()}
-          className="min-w-0 flex-1 rounded border border-transparent px-1.5 py-0.5 text-sm font-medium bg-transparent hover:border-gray-200 focus:border-slate-300 outline-none"
+          className="min-w-0 flex-1 rounded border border-transparent px-1.5 py-0.5 text-sm font-medium bg-transparent hover:border-[var(--shell-card-border)] focus:border-slate-300 outline-none"
           placeholder="Nome do cômodo"
         />
 
@@ -360,12 +360,12 @@ function RoomCard({
           }}
           onClick={(e) => e.stopPropagation()}
           placeholder="m²"
-          className="w-16 shrink-0 rounded border border-transparent px-1.5 py-0.5 text-xs text-gray-500 bg-transparent hover:border-gray-200 focus:border-slate-300 outline-none text-right"
+          className="w-16 shrink-0 rounded border border-transparent px-1.5 py-0.5 text-xs text-[var(--shell-subtext)] bg-transparent hover:border-[var(--shell-card-border)] focus:border-slate-300 outline-none text-right"
         />
 
         {/* Photo count badge */}
         {room.images.length > 0 && (
-          <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+          <span className="shrink-0 rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-xs text-[var(--shell-subtext)]">
             {room.images.length} foto{room.images.length !== 1 ? "s" : ""}
           </span>
         )}
@@ -374,7 +374,7 @@ function RoomCard({
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 transition-colors"
+          className="shrink-0 rounded p-1 text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors"
           title={expanded ? "Recolher" : "Expandir"}
         >
           <svg
@@ -400,7 +400,7 @@ function RoomCard({
 
       {/* ── Expanded body ── */}
       {expanded && (
-        <div className="border-t px-4 py-3 space-y-3 bg-gray-50/50">
+        <div className="border-t px-4 py-3 space-y-3 bg-[var(--shell-bg)]/50">
           <Field label="Observações">
             <textarea
               value={notes}
@@ -416,10 +416,10 @@ function RoomCard({
 
           {/* Photos */}
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Fotos</p>
+            <p className="text-xs font-medium text-[var(--shell-subtext)] mb-2">Fotos</p>
             <div className="flex flex-wrap gap-2">
               {room.images.map((img) => (
-                <div key={img.id} className="relative group h-20 w-20 rounded-lg overflow-hidden border bg-gray-50 shrink-0">
+                <div key={img.id} className="relative group h-20 w-20 rounded-lg overflow-hidden border bg-[var(--shell-bg)] shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={img.url} alt="" className="h-full w-full object-cover" />
                   <button
@@ -434,15 +434,15 @@ function RoomCard({
                   </button>
                 </div>
               ))}
-              <label className="h-20 w-20 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-200 hover:border-slate-300 cursor-pointer shrink-0 transition-colors">
+              <label className="h-20 w-20 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-[var(--shell-card-border)] hover:border-slate-300 cursor-pointer shrink-0 transition-colors">
                 {uploading ? (
-                  <span className="text-xs text-gray-400">...</span>
+                  <span className="text-xs text-[var(--shell-subtext)]">...</span>
                 ) : (
                   <>
                     <svg className="h-5 w-5 text-gray-300 mb-0.5" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
                     </svg>
-                    <span className="text-xs text-gray-400">Foto</span>
+                    <span className="text-xs text-[var(--shell-subtext)]">Foto</span>
                   </>
                 )}
                 <input
@@ -494,19 +494,19 @@ function OwnerCard({
   const showSpouse = owner.maritalStatus === "CASADO" || owner.maritalStatus === "UNIAO_ESTAVEL";
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden">
+    <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
       {/* Compact header */}
       <div className="flex items-center gap-2 px-3 py-2.5">
-        <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 truncate">{owner.name}</span>
-        {owner.cpf && <span className="text-xs text-gray-400 shrink-0">{owner.cpf}</span>}
-        {owner.phone && <span className="text-xs text-gray-400 shrink-0">{owner.phone}</span>}
+        <span className="flex-1 min-w-0 text-sm font-medium text-[var(--shell-text)] truncate">{owner.name}</span>
+        {owner.cpf && <span className="text-xs text-[var(--shell-subtext)] shrink-0">{owner.cpf}</span>}
+        {owner.phone && <span className="text-xs text-[var(--shell-subtext)] shrink-0">{owner.phone}</span>}
         {owner.documents.length > 0 && (
-          <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+          <span className="shrink-0 rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-xs text-[var(--shell-subtext)]">
             {owner.documents.length} doc{owner.documents.length !== 1 ? "s" : ""}
           </span>
         )}
         <button type="button" onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 transition-colors">
+          className="shrink-0 rounded p-1 text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
           <svg className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
@@ -520,32 +520,32 @@ function OwnerCard({
       </div>
 
       {expanded && (
-        <div className="border-t px-4 py-3 space-y-4 bg-gray-50/50">
+        <div className="border-t px-4 py-3 space-y-4 bg-[var(--shell-bg)]/50">
           {/* Dados pessoais */}
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Dados pessoais</p>
+            <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Dados pessoais</p>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-              {owner.rg && <><dt className="text-gray-500">RG</dt><dd className="text-gray-800">{owner.rg}</dd></>}
-              {owner.email && <><dt className="text-gray-500">E-mail</dt><dd className="text-gray-800 truncate">{owner.email}</dd></>}
-              {owner.maritalStatus && <><dt className="text-gray-500">Estado civil</dt><dd className="text-gray-800">{MARITAL_LABELS[owner.maritalStatus] ?? owner.maritalStatus}</dd></>}
+              {owner.rg && <><dt className="text-[var(--shell-subtext)]">RG</dt><dd className="text-[var(--shell-text)]">{owner.rg}</dd></>}
+              {owner.email && <><dt className="text-[var(--shell-subtext)]">E-mail</dt><dd className="text-[var(--shell-text)] truncate">{owner.email}</dd></>}
+              {owner.maritalStatus && <><dt className="text-[var(--shell-subtext)]">Estado civil</dt><dd className="text-[var(--shell-text)]">{MARITAL_LABELS[owner.maritalStatus] ?? owner.maritalStatus}</dd></>}
             </dl>
           </div>
 
           {showSpouse && (owner.spouseName || owner.spouseCpf) && (
             <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Cônjuge</p>
+              <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Cônjuge</p>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                {owner.spouseName && <><dt className="text-gray-500">Nome</dt><dd className="text-gray-800">{owner.spouseName}</dd></>}
-                {owner.spouseCpf && <><dt className="text-gray-500">CPF</dt><dd className="text-gray-800">{owner.spouseCpf}</dd></>}
-                {owner.spouseEmail && <><dt className="text-gray-500">E-mail</dt><dd className="text-gray-800 truncate">{owner.spouseEmail}</dd></>}
+                {owner.spouseName && <><dt className="text-[var(--shell-subtext)]">Nome</dt><dd className="text-[var(--shell-text)]">{owner.spouseName}</dd></>}
+                {owner.spouseCpf && <><dt className="text-[var(--shell-subtext)]">CPF</dt><dd className="text-[var(--shell-text)]">{owner.spouseCpf}</dd></>}
+                {owner.spouseEmail && <><dt className="text-[var(--shell-subtext)]">E-mail</dt><dd className="text-[var(--shell-text)] truncate">{owner.spouseEmail}</dd></>}
               </dl>
             </div>
           )}
 
           {(owner.city || owner.street) && (
             <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Endereço</p>
-              <p className="text-sm text-gray-700">
+              <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Endereço</p>
+              <p className="text-sm text-[var(--shell-subtext)]">
                 {[owner.street, owner.streetNumber, owner.complement].filter(Boolean).join(", ")}
                 {owner.neighborhood && ` — ${owner.neighborhood}`}
                 {owner.city && `, ${owner.city}`}
@@ -557,12 +557,12 @@ function OwnerCard({
 
           {/* Documentos */}
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Documentos</p>
+            <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Documentos</p>
             <div className="flex flex-wrap gap-2 mb-3">
               {OWNER_DOC_TYPES.map((dt) => (
                 <button key={dt.value} type="button" onClick={() => triggerUpload(dt.value)}
                   disabled={uploadingType !== null}
-                  className="rounded-lg border bg-white px-2.5 py-1.5 text-xs hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 transition-colors">
+                  className="rounded-lg border bg-[var(--shell-card-bg)] px-2.5 py-1.5 text-xs hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 transition-colors">
                   {uploadingType === dt.value ? "Enviando..." : `+ ${dt.label}`}
                 </button>
               ))}
@@ -570,7 +570,7 @@ function OwnerCard({
             <input ref={fileRef} type="file" accept=".pdf,image/*" className="sr-only" onChange={handleFile} />
 
             {owner.documents.length > 0 && (
-              <ul className="divide-y rounded-lg border bg-white">
+              <ul className="divide-y rounded-lg border bg-[var(--shell-card-bg)]">
                 {owner.documents.map((doc) => (
                   <li key={doc.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                     <a href={doc.url} target="_blank" rel="noreferrer"
@@ -663,38 +663,38 @@ function NewOwnerForm({
   }
 
   const inp2 = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400";
-  const sel2 = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 bg-white";
+  const sel2 = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 bg-[var(--shell-card-bg)]";
 
   return (
     <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 space-y-4">
-      <p className="text-sm font-semibold text-gray-700">Novo proprietário</p>
+      <p className="text-sm font-semibold text-[var(--shell-subtext)]">Novo proprietário</p>
 
       {err && <p className="text-xs text-red-600 rounded bg-red-50 border border-red-200 px-3 py-2">{err}</p>}
 
       {/* Dados pessoais */}
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Nome completo *</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Nome completo *</label>
           <input value={form.name} onChange={(e) => fo({ name: e.target.value })} className={inp2} placeholder="Nome completo" required />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">CPF</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">CPF</label>
           <input value={form.cpf} onChange={(e) => fo({ cpf: e.target.value })} className={inp2} placeholder="000.000.000-00" />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">RG</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">RG</label>
           <input value={form.rg} onChange={(e) => fo({ rg: e.target.value })} className={inp2} placeholder="00.000.000-0" />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">E-mail</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">E-mail</label>
           <input type="email" value={form.email} onChange={(e) => fo({ email: e.target.value })} className={inp2} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Telefone / WhatsApp</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Telefone / WhatsApp</label>
           <input value={form.phone} onChange={(e) => fo({ phone: e.target.value })} className={inp2} placeholder="(11) 90000-0000" />
         </div>
         <div className="col-span-2">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Estado civil</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Estado civil</label>
           <select value={form.maritalStatus} onChange={(e) => fo({ maritalStatus: e.target.value })} className={sel2}>
             <option value="">-</option>
             {Object.entries(MARITAL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -704,19 +704,19 @@ function NewOwnerForm({
 
       {/* Cônjuge */}
       {showSpouse && (
-        <div className="rounded-lg border bg-white p-3 space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cônjuge</p>
+        <div className="rounded-lg border bg-[var(--shell-card-bg)] p-3 space-y-3">
+          <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Cônjuge</p>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-600">Nome do cônjuge</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Nome do cônjuge</label>
               <input value={form.spouseName} onChange={(e) => fo({ spouseName: e.target.value })} className={inp2} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">CPF do cônjuge</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">CPF do cônjuge</label>
               <input value={form.spouseCpf} onChange={(e) => fo({ spouseCpf: e.target.value })} className={inp2} placeholder="000.000.000-00" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">E-mail do cônjuge</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">E-mail do cônjuge</label>
               <input type="email" value={form.spouseEmail} onChange={(e) => fo({ spouseEmail: e.target.value })} className={inp2} />
             </div>
           </div>
@@ -724,37 +724,37 @@ function NewOwnerForm({
       )}
 
       {/* Endereço */}
-      <div className="rounded-lg border bg-white p-3 space-y-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Endereço</p>
+      <div className="rounded-lg border bg-[var(--shell-card-bg)] p-3 space-y-3">
+        <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Endereço</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">CEP</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">CEP</label>
             <input value={form.zipCode} onChange={(e) => fo({ zipCode: e.target.value })}
               onBlur={(e) => fetchCepOwner(e.target.value)} className={inp2} placeholder="00000-000" />
           </div>
           <div />
           <div className="col-span-2">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Rua</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Rua</label>
             <input value={form.street} onChange={(e) => fo({ street: e.target.value })} className={inp2} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Número</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Número</label>
             <input value={form.streetNumber} onChange={(e) => fo({ streetNumber: e.target.value })} className={inp2} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Complemento</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Complemento</label>
             <input value={form.complement} onChange={(e) => fo({ complement: e.target.value })} className={inp2} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Bairro</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Bairro</label>
             <input value={form.neighborhood} onChange={(e) => fo({ neighborhood: e.target.value })} className={inp2} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Cidade</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Cidade</label>
             <input value={form.city} onChange={(e) => fo({ city: e.target.value })} className={inp2} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Estado (UF)</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Estado (UF)</label>
             <input value={form.state} onChange={(e) => fo({ state: e.target.value })} maxLength={2} className={inp2} placeholder="SP" />
           </div>
         </div>
@@ -766,7 +766,7 @@ function NewOwnerForm({
           {saving ? "Salvando..." : "Criar proprietário"}
         </button>
         <button type="button" onClick={onCancel}
-          className="rounded-lg border px-4 py-2 text-sm hover:bg-white">
+          className="rounded-lg border px-4 py-2 text-sm hover:bg-[var(--shell-card-bg)]">
           Cancelar
         </button>
       </div>
@@ -1474,14 +1474,14 @@ export default function ProductEditPage() {
           {/* Header */}
           <div className="mb-6 flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-gray-900">{headerTitle}</h1>
-              <p className="text-xs text-gray-400 mt-0.5">ID: {id}</p>
+              <h1 className="text-xl font-semibold text-[var(--shell-text)]">{headerTitle}</h1>
+              <p className="text-xs text-[var(--shell-subtext)] mt-0.5">ID: {id}</p>
             </div>
             <div className="flex items-center gap-2">
               {userRole === "AGENT" ? (
                 <span
                   title="Corretores não podem excluir produtos. Solicite ao gerente ou proprietário."
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-300 cursor-not-allowed"
+                  className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-gray-300 cursor-not-allowed"
                 >
                   Excluir produto
                 </span>
@@ -1497,7 +1497,7 @@ export default function ProductEditPage() {
               )}
               <Link
                 href="/products"
-                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)]"
               >
                 Voltar
               </Link>
@@ -1507,15 +1507,15 @@ export default function ProductEditPage() {
           {/* Delete confirmation modal */}
           {showDeleteConfirm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-                <h2 className="text-base font-semibold text-gray-900 mb-2">Excluir produto?</h2>
-                <p className="text-sm text-gray-500 mb-6">Esta ação não pode ser desfeita.</p>
+              <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl">
+                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-2">Excluir produto?</h2>
+                <p className="text-sm text-[var(--shell-subtext)] mb-6">Esta ação não pode ser desfeita.</p>
                 <div className="flex gap-3 justify-end">
                   <button
                     type="button"
                     onClick={() => setShowDeleteConfirm(false)}
                     disabled={deleting}
-                    className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50"
                   >
                     Cancelar
                   </button>
@@ -1554,8 +1554,8 @@ export default function ProductEditPage() {
                       placeholder={isEmpreendimento ? "Ex.: Residencial Vista Verde" : computedTitle || "Será gerado automaticamente"}
                       className={inp} disabled={loading} />
                     {!isEmpreendimento && (
-                      <p className="mt-1 text-xs text-gray-400">
-                        Título automático: <span className="text-gray-500">{computedTitle || "preencha os dados abaixo"}</span>
+                      <p className="mt-1 text-xs text-[var(--shell-subtext)]">
+                        Título automático: <span className="text-[var(--shell-subtext)]">{computedTitle || "preencha os dados abaixo"}</span>
                       </p>
                     )}
                   </Field>
@@ -1630,8 +1630,8 @@ export default function ProductEditPage() {
               </div>
               {(form.type === "APARTAMENTO" || form.type === "CASA") && (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5">
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
-                    Copiar dados de outro imóvel similar <span className="font-normal text-gray-400">(opcional)</span>
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
+                    Copiar dados de outro imóvel similar <span className="font-normal text-[var(--shell-subtext)]">(opcional)</span>
                   </label>
                   <select
                     className={`${sel} text-sm`}
@@ -1714,7 +1714,7 @@ export default function ProductEditPage() {
                   <CurrencyInput value={form.iptu} onChange={(v) => f({ iptu: v })} disabled={loading} />
                 </Field>
                 <Field label="IPTU mensal (calculado)">
-                  <div className={`${inp} bg-gray-50 text-gray-500`}>
+                  <div className={`${inp} bg-[var(--shell-bg)] text-[var(--shell-subtext)]`}>
                     {iptuMonthly ? `R$ ${iptuMonthly}` : "-"}
                   </div>
                 </Field>
@@ -1732,7 +1732,7 @@ export default function ProductEditPage() {
             {!isEmpreendimento && <Section id="comodos" title="4. Cômodos" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
 
               {roomsLoading ? (
-                <p className="text-sm text-gray-400">Carregando cômodos...</p>
+                <p className="text-sm text-[var(--shell-subtext)]">Carregando cômodos...</p>
               ) : (
                 <div className="space-y-3">
                   {rooms.map((room) => (
@@ -1751,7 +1751,7 @@ export default function ProductEditPage() {
                     <button
                       type="button"
                       onClick={() => setAddStep("type")}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-3 text-sm text-gray-500 hover:border-slate-300 hover:text-gray-700 transition-colors"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-3 text-sm text-[var(--shell-subtext)] hover:border-slate-300 hover:text-[var(--shell-subtext)] transition-colors"
                     >
                       <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
@@ -1760,14 +1760,14 @@ export default function ProductEditPage() {
                     </button>
                   ) : addStep === "type" ? (
                     <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 space-y-3">
-                      <p className="text-sm font-medium text-gray-700">Selecionar tipo de cômodo:</p>
+                      <p className="text-sm font-medium text-[var(--shell-subtext)]">Selecionar tipo de cômodo:</p>
                       <div className="grid grid-cols-3 gap-2">
                         {ROOM_TYPE_CONFIG.map((rt) => (
                           <button
                             key={rt.value}
                             type="button"
                             onClick={() => startAddType(rt.value)}
-                            className="rounded-lg border bg-white px-3 py-2 text-sm hover:border-slate-400 hover:bg-slate-50 transition-colors text-left"
+                            className="rounded-lg border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:border-slate-400 hover:bg-slate-50 transition-colors text-left"
                           >
                             {rt.label}
                           </button>
@@ -1776,7 +1776,7 @@ export default function ProductEditPage() {
                       <button
                         type="button"
                         onClick={() => setAddStep("closed")}
-                        className="text-xs text-gray-400 hover:text-gray-600"
+                        className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]"
                       >
                         Cancelar
                       </button>
@@ -1784,7 +1784,7 @@ export default function ProductEditPage() {
                   ) : (
                     // addStep === "label"
                     <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 space-y-3">
-                      <p className="text-sm font-medium text-gray-700">
+                      <p className="text-sm font-medium text-[var(--shell-subtext)]">
                         Nome para <span className="font-semibold">{addTypeConfig?.label}</span>:
                       </p>
 
@@ -1799,7 +1799,7 @@ export default function ProductEditPage() {
                               className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                                 addLabel === s
                                   ? "border-slate-700 bg-slate-700 text-white"
-                                  : "border-gray-200 bg-white text-gray-600 hover:border-slate-400"
+                                  : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
                               }`}
                             >
                               {s}
@@ -1837,7 +1837,7 @@ export default function ProductEditPage() {
                         <button
                           type="button"
                           onClick={() => setAddStep("type")}
-                          className="rounded-lg border px-4 py-2 text-sm hover:bg-white"
+                          className="rounded-lg border px-4 py-2 text-sm hover:bg-[var(--shell-card-bg)]"
                         >
                           Voltar
                         </button>
@@ -1851,7 +1851,7 @@ export default function ProductEditPage() {
             {/* ── S5: Comodidades ───────────────────────────────────────── */}
             {!isEmpreendimento && <Section id="comodidades" title="5. Comodidades" open={open.has("comodidades")} onToggle={() => toggle("comodidades")}>
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Internas</p>
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Internas</p>
                 <div className="grid grid-cols-3 gap-y-2 gap-x-3">
                   {INTERNAL_FEATURES.map((feat) => (
                     <label key={feat} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -1859,7 +1859,7 @@ export default function ProductEditPage() {
                         type="checkbox"
                         checked={form.internalFeatures.includes(feat)}
                         onChange={() => toggleFeature("internalFeatures", feat)}
-                        className="h-4 w-4 rounded border-gray-300"
+                        className="h-4 w-4 rounded border-[var(--shell-card-border)]"
                         disabled={loading}
                       />
                       {feat}
@@ -1868,7 +1868,7 @@ export default function ProductEditPage() {
                 </div>
               </div>
               <div className="pt-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Condomínio</p>
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Condomínio</p>
                 <div className="grid grid-cols-3 gap-y-2 gap-x-3">
                   {CONDO_FEATURES.map((feat) => (
                     <label key={feat} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -1876,7 +1876,7 @@ export default function ProductEditPage() {
                         type="checkbox"
                         checked={form.condoFeatures.includes(feat)}
                         onChange={() => toggleFeature("condoFeatures", feat)}
-                        className="h-4 w-4 rounded border-gray-300"
+                        className="h-4 w-4 rounded border-[var(--shell-card-border)]"
                         disabled={loading}
                       />
                       {feat}
@@ -1890,7 +1890,7 @@ export default function ProductEditPage() {
             {!isEmpreendimento && <Section id="proprietarios" title="6. Proprietários" open={open.has("proprietarios")} onToggle={() => toggle("proprietarios")}>
 
               {ownersLoading ? (
-                <p className="text-sm text-gray-400">Carregando proprietários...</p>
+                <p className="text-sm text-[var(--shell-subtext)]">Carregando proprietários...</p>
               ) : (
                 <div className="space-y-2">
                   {productOwners.map((owner) => (
@@ -1916,13 +1916,13 @@ export default function ProductEditPage() {
                     className={inp}
                   />
                   {ownerSuggestions.length > 0 && (
-                    <ul className="absolute z-10 mt-1 w-full rounded-lg border bg-white shadow-md divide-y">
+                    <ul className="absolute z-10 mt-1 w-full rounded-lg border bg-[var(--shell-card-bg)] shadow-md divide-y">
                       {ownerSuggestions.map((o) => (
                         <li key={o.id}>
                           <button type="button" onClick={() => handleLinkOwner(o.id)}
-                            className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-gray-50">
-                            <span className="font-medium text-gray-800">{o.name}</span>
-                            <span className="text-xs text-gray-400">{o.cpf ?? ""}</span>
+                            className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-[var(--shell-bg)]">
+                            <span className="font-medium text-[var(--shell-text)]">{o.name}</span>
+                            <span className="text-xs text-[var(--shell-subtext)]">{o.cpf ?? ""}</span>
                           </button>
                         </li>
                       ))}
@@ -1936,7 +1936,7 @@ export default function ProductEditPage() {
                 <NewOwnerForm onCreated={handleOwnerCreated} onCancel={() => setShowNewOwner(false)} />
               ) : (
                 <button type="button" onClick={() => setShowNewOwner(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-3 text-sm text-gray-500 hover:border-slate-300 hover:text-gray-700 transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-3 text-sm text-[var(--shell-subtext)] hover:border-slate-300 hover:text-[var(--shell-subtext)] transition-colors">
                   <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
                   </svg>
@@ -1979,10 +1979,10 @@ export default function ProductEditPage() {
 
               {/* Fotos */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fotos</p>
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Fotos</p>
 
                 {/* Upload form */}
-                <div className="rounded-lg border bg-gray-50 p-3 space-y-2 mb-4">
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-2 mb-4">
                   <p className="text-[11px] text-blue-500">Clique no ícone ↓ azul para baixar cada imagem</p>
                   <Field label="Nome da imagem">
                     <input
@@ -1996,9 +1996,9 @@ export default function ProductEditPage() {
                   <label className="block">
                     <input type="file" accept="image/*" disabled={imgUploading || loading}
                       onChange={(e) => onUploadImage(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-50" />
+                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
                   </label>
-                  {imgUploading && <p className="text-xs text-gray-400">Enviando...</p>}
+                  {imgUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
                 </div>
 
                 {productImages.length > 0 && (
@@ -2009,7 +2009,7 @@ export default function ProductEditPage() {
                       const isCover = img.isPrimary === true;
                       const displayName = img.customLabel || img.title || "";
                       return (
-                        <div key={img.id ?? url} className={`relative overflow-hidden rounded-lg border bg-gray-50 ${isCover ? "ring-2 ring-amber-400" : ""}`}>
+                        <div key={img.id ?? url} className={`relative overflow-hidden rounded-lg border bg-[var(--shell-bg)] ${isCover ? "ring-2 ring-amber-400" : ""}`}>
                           <a href={url ?? undefined} target="_blank" rel="noreferrer">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={url ?? undefined} alt={displayName} className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
@@ -2030,8 +2030,8 @@ export default function ProductEditPage() {
                           {!isCover && (
                             <button type="button" onClick={() => onSetPrimaryImage(img.id)}
                               title="Definir como capa do produto"
-                              className="absolute top-1 left-1 rounded-full bg-white/90 p-1 shadow hover:bg-amber-50 transition-colors">
-                              <svg className="h-3.5 w-3.5 text-gray-400 hover:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                              className="absolute top-1 left-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-amber-50 transition-colors">
+                              <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)] hover:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
                                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                               </svg>
                             </button>
@@ -2040,7 +2040,7 @@ export default function ProductEditPage() {
                           {url && (
                             <button type="button" onClick={() => downloadImage(url, displayName || `imagem-${img.id}`)}
                               title="Baixar imagem"
-                              className="absolute top-1 right-11 rounded-full bg-white/90 p-1 shadow hover:bg-blue-50 transition-colors">
+                              className="absolute top-1 right-11 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-blue-50 transition-colors">
                               <svg className="h-3.5 w-3.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
                                 <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                               </svg>
@@ -2049,13 +2049,13 @@ export default function ProductEditPage() {
                           {/* Toggle público/privado (olho) */}
                           <button type="button" onClick={() => handleToggleImagePublic(img.id, isPublic)}
                             title={isPublic ? "Pública (divulgada) — clique para uso interno" : "Interna — clique para divulgar"}
-                            className="absolute top-1 right-6 rounded-full bg-white/90 p-1 shadow hover:bg-white transition-colors">
+                            className="absolute top-1 right-6 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-[var(--shell-card-bg)] transition-colors">
                             {isPublic ? (
                               <svg className="h-3.5 w-3.5 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
                                 <path d="M10 3C5 3 1.73 7.11 1.05 8.45a1 1 0 000 1.1C1.73 10.89 5 15 10 15s8.27-4.11 8.95-5.45a1 1 0 000-1.1C18.27 7.11 15 3 10 3zm0 10a4 4 0 110-8 4 4 0 010 8zm0-6a2 2 0 100 4 2 2 0 000-4z" />
                               </svg>
                             ) : (
-                              <svg className="h-3.5 w-3.5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                              <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)]" viewBox="0 0 20 20" fill="currentColor">
                                 <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
                                 <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
                               </svg>
@@ -2064,7 +2064,7 @@ export default function ProductEditPage() {
                           {/* Excluir */}
                           <button type="button" onClick={() => onDeleteImage(img.id)}
                             title="Excluir imagem"
-                            className="absolute top-1 right-1 rounded-full bg-white/90 p-1 shadow hover:bg-red-50 transition-colors">
+                            className="absolute top-1 right-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-red-50 transition-colors">
                             <svg className="h-3.5 w-3.5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                               <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                             </svg>
@@ -2078,8 +2078,8 @@ export default function ProductEditPage() {
 
               {/* Documentos */}
               <div className="border-t pt-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Documentos</p>
-                <div className="rounded-lg border bg-gray-50 p-3 space-y-3">
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Documentos</p>
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Tipo">
                       <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)} className={sel}>
@@ -2103,24 +2103,24 @@ export default function ProductEditPage() {
                   <label className="block">
                     <input type="file" accept=".pdf,image/*" disabled={docUploading}
                       onChange={(e) => onUploadDoc(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-50" />
+                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
                   </label>
-                  {docUploading && <p className="text-xs text-gray-400">Enviando...</p>}
+                  {docUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
                 </div>
 
                 {docsLoading ? (
-                  <p className="mt-3 text-xs text-gray-400">Carregando...</p>
+                  <p className="mt-3 text-xs text-[var(--shell-subtext)]">Carregando...</p>
                 ) : docs.length > 0 ? (
-                  <ul className="mt-3 divide-y rounded-lg border bg-white">
+                  <ul className="mt-3 divide-y rounded-lg border bg-[var(--shell-card-bg)]">
                     {docs.map((d: any) => (
                       <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
                         <div>
-                          <span className="font-medium text-gray-800">{d.title || d.type || "-"}</span>
-                          <span className="ml-2 text-xs text-gray-400">{d.visibility}</span>
+                          <span className="font-medium text-[var(--shell-text)]">{d.title || d.type || "-"}</span>
+                          <span className="ml-2 text-xs text-[var(--shell-subtext)]">{d.visibility}</span>
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
                           <button type="button" onClick={() => onDownloadDoc(d)}
-                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50">Baixar</button>
+                            className="rounded border px-2 py-1 text-xs hover:bg-[var(--shell-bg)]">Baixar</button>
                           <button type="button" onClick={() => onDeleteDoc(d.id)}
                             className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">Excluir</button>
                         </div>
@@ -2128,7 +2128,7 @@ export default function ProductEditPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-xs text-gray-400">Nenhum documento.</p>
+                  <p className="mt-2 text-xs text-[var(--shell-subtext)]">Nenhum documento.</p>
                 )}
               </div>
             </Section>
@@ -2136,13 +2136,13 @@ export default function ProductEditPage() {
           </div>
 
           {/* ── Fixed save footer ─────────────────────────────────────── */}
-          <div className="sticky bottom-0 mt-4 flex items-center justify-between gap-3 rounded-xl border bg-white px-5 py-3 shadow-md">
-            <div className="text-xs text-gray-400">
+          <div className="sticky bottom-0 mt-4 flex items-center justify-between gap-3 rounded-xl border bg-[var(--shell-card-bg)] px-5 py-3 shadow-md">
+            <div className="text-xs text-[var(--shell-subtext)]">
               {loading ? "Carregando..." : `${form.title || "Sem título"} · ${form.status}`}
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={load} disabled={loading || saving}
-                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
+                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50">
                 Recarregar
               </button>
               <button type="submit" disabled={loading || saving || !form.title.trim()}

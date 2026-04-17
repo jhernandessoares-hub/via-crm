@@ -33,7 +33,7 @@ const ROLE_LABELS: Record<Role, string> = {
 const ROLE_COLORS: Record<Role, string> = {
   OWNER: "bg-purple-100 text-purple-700",
   MANAGER: "bg-blue-100 text-blue-700",
-  AGENT: "bg-gray-100 text-gray-700",
+  AGENT: "bg-[var(--shell-hover)] text-[var(--shell-subtext)]",
 };
 
 export default function EquipePage() {
@@ -250,7 +250,7 @@ export default function EquipePage() {
                   rrConfig.incluirGerentes ? "bg-slate-900" : "bg-gray-200"
                 }`}
               >
-                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${
                   rrConfig.incluirGerentes ? "translate-x-4" : "translate-x-1"
                 }`} />
               </button>
@@ -265,7 +265,7 @@ export default function EquipePage() {
                   rrConfig.incluirOwner ? "bg-slate-900" : "bg-gray-200"
                 }`}
               >
-                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${
                   rrConfig.incluirOwner ? "translate-x-4" : "translate-x-1"
                 }`} />
               </button>
@@ -319,7 +319,7 @@ export default function EquipePage() {
                         m.recebeLeads && m.ativo ? "bg-emerald-500" : "bg-gray-200"
                       }`}
                     >
-                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${
                         m.recebeLeads ? "translate-x-4" : "translate-x-1"
                       }`} />
                     </button>
@@ -409,7 +409,7 @@ export default function EquipePage() {
 
               {/* Recebe leads */}
               <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
-                <input type="checkbox" className="h-4 w-4 rounded border-gray-300"
+                <input type="checkbox" className="h-4 w-4 rounded border-[var(--shell-card-border)]"
                   checked={inviteForm.recebeLeads}
                   onChange={(e) => setInviteForm({ ...inviteForm, recebeLeads: e.target.checked })} />
                 <span className="text-sm text-[var(--shell-subtext)]">Participar da roleta de leads</span>
@@ -484,7 +484,7 @@ export default function EquipePage() {
 
               {/* Recebe leads */}
               <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
-                <input type="checkbox" className="h-4 w-4 rounded border-gray-300"
+                <input type="checkbox" className="h-4 w-4 rounded border-[var(--shell-card-border)]"
                   checked={editForm.recebeLeads}
                   onChange={(e) => setEditForm({ ...editForm, recebeLeads: e.target.checked })} />
                 <span className="text-sm text-[var(--shell-subtext)]">Participar da roleta de leads</span>

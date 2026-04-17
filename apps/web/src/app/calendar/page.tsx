@@ -82,7 +82,7 @@ const EVENT_STATUS_OPTIONS: { value: EventStatus; label: string }[] = [
 ];
 
 const STATUS_BADGE_CLASS: Record<EventStatus, string> = {
-  AGENDADO: "bg-gray-100 text-gray-500",
+  AGENDADO: "bg-[var(--shell-hover)] text-[var(--shell-subtext)]",
   CONFIRMADO: "bg-emerald-100 text-emerald-700",
   REALIZADO: "bg-slate-100 text-slate-600",
   NO_SHOW: "bg-red-100 text-red-600",
@@ -566,7 +566,7 @@ export default function CalendarPage() {
               {eventsOnDay(anchor).length === 0 ? (
                 <button
                   onClick={() => openCreate(anchor)}
-                  className="w-full rounded-lg border-2 border-dashed border-[var(--shell-card-border)] py-12 text-sm text-[var(--shell-subtext)] hover:border-gray-300 hover:text-[var(--shell-text)] transition"
+                  className="w-full rounded-lg border-2 border-dashed border-[var(--shell-card-border)] py-12 text-sm text-[var(--shell-subtext)] hover:border-[var(--shell-card-border)] hover:text-[var(--shell-text)] transition"
                 >
                   Nenhum evento hoje. Clique para criar.
                 </button>
@@ -601,7 +601,7 @@ export default function CalendarPage() {
                   ))}
                   <button
                     onClick={() => openCreate(anchor)}
-                    className="w-full rounded-lg border-2 border-dashed border-[var(--shell-card-border)] py-3 text-xs text-[var(--shell-subtext)] hover:border-gray-300 transition"
+                    className="w-full rounded-lg border-2 border-dashed border-[var(--shell-card-border)] py-3 text-xs text-[var(--shell-subtext)] hover:border-[var(--shell-card-border)] transition"
                   >
                     + Adicionar evento
                   </button>
@@ -695,7 +695,7 @@ export default function CalendarPage() {
                   id="allDay"
                   checked={form.allDay}
                   onChange={(e) => setForm((p) => ({ ...p, allDay: e.target.checked }))}
-                  className="h-4 w-4 rounded border-gray-300"
+                  className="h-4 w-4 rounded border-[var(--shell-card-border)]"
                 />
                 <label htmlFor="allDay" className="text-sm text-[var(--shell-subtext)] cursor-pointer">
                   Dia inteiro

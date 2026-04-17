@@ -121,7 +121,7 @@ function OrgNode({ agent, selectedId, onSelect, depth = 0 }: {
           <p className={`text-sm font-semibold leading-snug ${sel || agent.isOrchestrator ? "text-white" : "text-[var(--shell-text)]"}`}>
             {agent.title}
           </p>
-          <span className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${agent.active ? "bg-emerald-400" : "bg-gray-300"}`} />
+          <span className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${agent.active ? "bg-emerald-400" : "bg-[var(--shell-card-border)]"}`} />
         </div>
         <p className={`mt-1 text-xs ${sel || agent.isOrchestrator ? "text-slate-300" : "text-[var(--shell-subtext)]"}`}>
           {(agent as any).agentType === "OPERACIONAL"
@@ -498,14 +498,14 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
                 </div>
                 <div className="flex flex-col justify-end gap-3 pb-1">
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`relative w-10 h-5 rounded-full transition-colors ${active ? "bg-slate-900" : "bg-gray-200"}`}
+                    <div className={`relative w-10 h-5 rounded-full transition-colors ${active ? "bg-slate-900" : "bg-[var(--shell-card-border)]"}`}
                       onClick={() => setActive(!active)}>
                       <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
                     </div>
                     <span className="text-sm text-[var(--shell-subtext)]">Ativo</span>
                   </label>
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <div className={`relative w-10 h-5 rounded-full transition-colors ${isOrchestrator ? "bg-amber-500" : "bg-gray-200"}`}
+                    <div className={`relative w-10 h-5 rounded-full transition-colors ${isOrchestrator ? "bg-amber-500" : "bg-[var(--shell-card-border)]"}`}
                       onClick={() => setIsOrchestrator(!isOrchestrator)}>
                       <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${isOrchestrator ? "translate-x-5" : "translate-x-0.5"}`} />
                     </div>
@@ -870,7 +870,7 @@ function Panel({ agent, isNew, allAgents, allKbs, tenantId, onSave, onDelete, on
               {!isNew && tools.filter(t => t.type === "WEBHOOK").length === 0 && !showToolForm && (
                 <div className="rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-6 text-center">
                   <p className="text-sm text-[var(--shell-subtext)]">Nenhum tool personalizado ainda.</p>
-                  <p className="text-xs text-gray-300 mt-1">Tools via webhook permitem o agente chamar APIs externas.</p>
+                  <p className="text-xs text-[var(--shell-subtext)] mt-1">Tools via webhook permitem o agente chamar APIs externas.</p>
                 </div>
               )}
 
