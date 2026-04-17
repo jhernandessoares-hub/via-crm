@@ -377,34 +377,37 @@ export default function CalendarPage() {
         <div className="flex items-center gap-3 flex-shrink-0">
           <button
             onClick={goToday}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+            style={{ borderColor: "var(--shell-card-border)" }}
           >
             Hoje
           </button>
           <button
             onClick={() => navigate(-1)}
-            className="rounded-md border px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+            className="rounded-md border px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+            style={{ borderColor: "var(--shell-card-border)" }}
           >
             ‹
           </button>
           <button
             onClick={() => navigate(1)}
-            className="rounded-md border px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+            className="rounded-md border px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+            style={{ borderColor: "var(--shell-card-border)" }}
           >
             ›
           </button>
-          <h2 className="text-sm font-semibold text-gray-900 flex-1 capitalize">{headerLabel}</h2>
+          <h2 className="text-sm font-semibold text-[var(--shell-text)] flex-1 capitalize">{headerLabel}</h2>
 
-          {loading && <span className="text-xs text-gray-400">Carregando...</span>}
+          {loading && <span className="text-xs text-[var(--shell-subtext)]">Carregando...</span>}
 
           {/* View tabs */}
-          <div className="flex rounded-md border overflow-hidden text-xs">
+          <div className="flex rounded-md border overflow-hidden text-xs" style={{ borderColor: "var(--shell-card-border)" }}>
             {(["month", "week", "day"] as View[]).map((v) => (
               <button
                 key={v}
                 onClick={() => { setView(v); if (v !== "month") setAnchor(today); }}
                 className={`px-3 py-1.5 font-medium transition ${
-                  view === v ? "bg-slate-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                  view === v ? "bg-slate-900 text-white" : "bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
                 }`}
               >
                 {v === "month" ? "Mês" : v === "week" ? "Semana" : "Dia"}
@@ -422,11 +425,11 @@ export default function CalendarPage() {
 
         {/* ── Month View ── */}
         {view === "month" && (
-          <div className="flex-1 overflow-hidden rounded-xl border bg-white flex flex-col">
+          <div className="flex-1 overflow-hidden rounded-xl border bg-[var(--shell-card-bg)] flex flex-col" style={{ borderColor: "var(--shell-card-border)" }}>
             {/* Day headers */}
-            <div className="grid grid-cols-7 border-b text-center">
+            <div className="grid grid-cols-7 border-b text-center" style={{ borderColor: "var(--shell-card-border)" }}>
               {WEEKDAYS_SHORT.map((d) => (
-                <div key={d} className="py-2 text-xs font-semibold text-gray-500">
+                <div key={d} className="py-2 text-xs font-semibold text-[var(--shell-subtext)]">
                   {d}
                 </div>
               ))}
@@ -443,9 +446,10 @@ export default function CalendarPage() {
                   <div
                     key={idx}
                     onClick={() => openCreate(day)}
-                    className={`border-r border-b p-1 cursor-pointer hover:bg-gray-50 transition min-h-0 flex flex-col ${
-                      !isCurrentMonth ? "bg-gray-50/60" : ""
+                    className={`border-r border-b p-1 cursor-pointer hover:bg-[var(--shell-hover)] transition min-h-0 flex flex-col ${
+                      !isCurrentMonth ? "opacity-40" : ""
                     } ${idx % 7 === 6 ? "border-r-0" : ""}`}
+                    style={{ borderColor: "var(--shell-card-border)" }}
                   >
                     {/* Date number */}
                     <div className="flex justify-end mb-1">
@@ -454,8 +458,8 @@ export default function CalendarPage() {
                           isToday
                             ? "bg-slate-900 text-white"
                             : isCurrentMonth
-                            ? "text-gray-800"
-                            : "text-gray-300"
+                            ? "text-[var(--shell-text)]"
+                            : "text-[var(--shell-subtext)]"
                         }`}
                       >
                         {day.getDate()}
@@ -477,7 +481,7 @@ export default function CalendarPage() {
                         </button>
                       ))}
                       {dayEvents.length > 3 && (
-                        <span className="text-[10px] text-gray-400 px-1">
+                        <span className="text-[10px] text-[var(--shell-subtext)] px-1">
                           +{dayEvents.length - 3} mais
                         </span>
                       )}
@@ -491,22 +495,23 @@ export default function CalendarPage() {
 
         {/* ── Week View ── */}
         {view === "week" && (
-          <div className="flex-1 overflow-auto rounded-xl border bg-white">
-            <div className="grid grid-cols-7 border-b sticky top-0 bg-white z-10">
+          <div className="flex-1 overflow-auto rounded-xl border bg-[var(--shell-card-bg)]" style={{ borderColor: "var(--shell-card-border)" }}>
+            <div className="grid grid-cols-7 border-b sticky top-0 bg-[var(--shell-card-bg)] z-10" style={{ borderColor: "var(--shell-card-border)" }}>
               {weekDays.map((d) => {
                 const isToday = isSameDay(d, today);
                 return (
                   <div
                     key={d.toISOString()}
                     onClick={() => openCreate(d)}
-                    className="border-r last:border-r-0 py-2 text-center cursor-pointer hover:bg-gray-50"
+                    className="border-r last:border-r-0 py-2 text-center cursor-pointer hover:bg-[var(--shell-hover)]"
+                    style={{ borderColor: "var(--shell-card-border)" }}
                   >
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-[var(--shell-subtext)]">
                       {WEEKDAYS_SHORT[d.getDay()]}
                     </div>
                     <div
                       className={`mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
-                        isToday ? "bg-slate-900 text-white" : "text-gray-800"
+                        isToday ? "bg-slate-900 text-white" : "text-[var(--shell-text)]"
                       }`}
                     >
                       {d.getDate()}
@@ -516,14 +521,14 @@ export default function CalendarPage() {
               })}
             </div>
 
-            <div className="grid grid-cols-7 divide-x min-h-64">
+            <div className="grid grid-cols-7 divide-x min-h-64" style={{ borderColor: "var(--shell-card-border)" }}>
               {weekDays.map((d) => {
                 const dayEvents = eventsOnDay(d);
                 return (
                   <div
                     key={d.toISOString()}
                     onClick={() => openCreate(d)}
-                    className="p-1 flex flex-col gap-1 cursor-pointer hover:bg-gray-50/50 min-h-32"
+                    className="p-1 flex flex-col gap-1 cursor-pointer hover:bg-[var(--shell-hover)] min-h-32"
                   >
                     {dayEvents.map((ev) => (
                       <button
@@ -548,9 +553,9 @@ export default function CalendarPage() {
 
         {/* ── Day View ── */}
         {view === "day" && (
-          <div className="flex-1 overflow-auto rounded-xl border bg-white">
-            <div className="border-b px-4 py-3 sticky top-0 bg-white z-10">
-              <h3 className="text-sm font-semibold text-gray-900 capitalize">
+          <div className="flex-1 overflow-auto rounded-xl border bg-[var(--shell-card-bg)]" style={{ borderColor: "var(--shell-card-border)" }}>
+            <div className="border-b px-4 py-3 sticky top-0 bg-[var(--shell-card-bg)] z-10" style={{ borderColor: "var(--shell-card-border)" }}>
+              <h3 className="text-sm font-semibold text-[var(--shell-text)] capitalize">
                 {anchor.toLocaleDateString("pt-BR", {
                   weekday: "long", day: "2-digit", month: "long",
                 })}
@@ -561,7 +566,7 @@ export default function CalendarPage() {
               {eventsOnDay(anchor).length === 0 ? (
                 <button
                   onClick={() => openCreate(anchor)}
-                  className="w-full rounded-lg border-2 border-dashed border-gray-200 py-12 text-sm text-gray-400 hover:border-gray-300 hover:text-gray-500 transition"
+                  className="w-full rounded-lg border-2 border-dashed border-[var(--shell-card-border)] py-12 text-sm text-[var(--shell-subtext)] hover:border-gray-300 hover:text-[var(--shell-text)] transition"
                 >
                   Nenhum evento hoje. Clique para criar.
                 </button>
@@ -596,7 +601,7 @@ export default function CalendarPage() {
                   ))}
                   <button
                     onClick={() => openCreate(anchor)}
-                    className="w-full rounded-lg border-2 border-dashed border-gray-200 py-3 text-xs text-gray-400 hover:border-gray-300 transition"
+                    className="w-full rounded-lg border-2 border-dashed border-[var(--shell-card-border)] py-3 text-xs text-[var(--shell-subtext)] hover:border-gray-300 transition"
                   >
                     + Adicionar evento
                   </button>
@@ -609,16 +614,16 @@ export default function CalendarPage() {
 
       {/* ── Modal criar/editar ── */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="w-full max-w-md rounded-xl shadow-xl bg-[var(--shell-card-bg)]">
             {/* Modal header */}
-            <div className="flex items-center justify-between border-b px-5 py-4">
-              <h2 className="text-base font-semibold text-gray-900">
+            <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <h2 className="text-base font-semibold text-[var(--shell-text)]">
                 {editingEvent ? "Editar evento" : "Novo evento"}
               </h2>
               <button
                 onClick={closeModal}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none"
               >
                 ×
               </button>
@@ -628,7 +633,7 @@ export default function CalendarPage() {
             <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
               {/* Type selector */}
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-600">Tipo</label>
+                <label className="mb-1.5 block text-xs font-medium text-[var(--shell-subtext)]">Tipo</label>
                 <div className="flex flex-wrap gap-1.5">
                   {EVENT_TYPE_OPTIONS.map((t) => (
                     <button
@@ -638,7 +643,7 @@ export default function CalendarPage() {
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                         form.eventType === t.value
                           ? `${COLOR_CLASS[t.color] || COLOR_CLASS.blue} ring-2 ring-offset-1 ring-slate-700`
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          : "bg-[var(--shell-hover)] text-[var(--shell-subtext)] hover:opacity-80"
                       }`}
                     >
                       {t.label}
@@ -648,35 +653,38 @@ export default function CalendarPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                   Título <span className="text-red-400">*</span>
                 </label>
                 <input
                   value={form.title}
                   onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   placeholder="Nome do evento"
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Descrição</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Descrição</label>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
                   rows={2}
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   placeholder="Detalhes opcionais"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Local</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Local</label>
                 <input
                   value={form.location}
                   onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   placeholder="Endereço ou local do evento"
                 />
               </div>
@@ -689,14 +697,14 @@ export default function CalendarPage() {
                   onChange={(e) => setForm((p) => ({ ...p, allDay: e.target.checked }))}
                   className="h-4 w-4 rounded border-gray-300"
                 />
-                <label htmlFor="allDay" className="text-sm text-gray-700 cursor-pointer">
+                <label htmlFor="allDay" className="text-sm text-[var(--shell-subtext)] cursor-pointer">
                   Dia inteiro
                 </label>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                     Início <span className="text-red-400">*</span>
                   </label>
                   <input
@@ -709,10 +717,11 @@ export default function CalendarPage() {
                       }))
                     }
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                     Fim <span className="text-red-400">*</span>
                   </label>
                   <input
@@ -725,13 +734,14 @@ export default function CalendarPage() {
                       }))
                     }
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   />
                 </div>
               </div>
 
               {/* Status */}
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Status</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Status</label>
                 <div className="flex flex-wrap gap-1.5">
                   {EVENT_STATUS_OPTIONS.map((s) => (
                     <button
@@ -741,7 +751,7 @@ export default function CalendarPage() {
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                         form.status === s.value
                           ? `${STATUS_BADGE_CLASS[s.value]} ring-2 ring-offset-1 ring-slate-700`
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          : "bg-[var(--shell-hover)] text-[var(--shell-subtext)] hover:opacity-80"
                       }`}
                     >
                       {s.label}
@@ -752,7 +762,7 @@ export default function CalendarPage() {
 
               {/* Color picker */}
               <div>
-                <label className="mb-2 block text-xs font-medium text-gray-600">Cor</label>
+                <label className="mb-2 block text-xs font-medium text-[var(--shell-subtext)]">Cor</label>
                 <div className="flex gap-2 flex-wrap">
                   {COLOR_OPTIONS.map((c) => (
                     <button
@@ -772,28 +782,30 @@ export default function CalendarPage() {
               {/* Campo dinâmico por tipo */}
               {(form.eventType === "VISITA" || form.eventType === "CAPTACAO") && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                     {form.eventType === "VISITA" ? "Imóvel da visita" : "Imóvel em captação"}
-                    {" "}<span className="font-normal text-gray-400">(ID opcional)</span>
+                    {" "}<span className="font-normal text-[var(--shell-subtext)] opacity-60">(ID opcional)</span>
                   </label>
                   <input
                     value={form.productId}
                     onChange={(e) => setForm((p) => ({ ...p, productId: e.target.value }))}
                     className="w-full rounded-md border px-3 py-2 text-sm font-mono outline-none focus:border-slate-400"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     placeholder="UUID do imóvel"
                   />
                 </div>
               )}
               {(form.eventType === "REUNIAO" || form.eventType === "FOLLOW_UP" || form.eventType === "TAREFA") && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                     Lead vinculado{" "}
-                    <span className="font-normal text-gray-400">(ID opcional)</span>
+                    <span className="font-normal text-[var(--shell-subtext)] opacity-60">(ID opcional)</span>
                   </label>
                   <input
                     value={form.leadId}
                     onChange={(e) => setForm((p) => ({ ...p, leadId: e.target.value }))}
                     className="w-full rounded-md border px-3 py-2 text-sm font-mono outline-none focus:border-slate-400"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     placeholder="UUID do lead"
                   />
                 </div>
@@ -817,7 +829,7 @@ export default function CalendarPage() {
                   </button>
                   <button
                     onClick={() => setConfirmDelete(false)}
-                    className="text-xs text-gray-500 hover:text-gray-700"
+                    className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
                   >
                     Cancelar
                   </button>
@@ -826,7 +838,7 @@ export default function CalendarPage() {
             </div>
 
             {/* Modal footer */}
-            <div className="flex items-center justify-between border-t px-5 py-4">
+            <div className="flex items-center justify-between border-t px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
               <div>
                 {editingEvent && !confirmDelete && (
                   <button
@@ -840,7 +852,8 @@ export default function CalendarPage() {
               <div className="flex gap-2">
                 <button
                   onClick={closeModal}
-                  className="rounded-md border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                  className="rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                  style={{ borderColor: "var(--shell-card-border)" }}
                 >
                   Cancelar
                 </button>

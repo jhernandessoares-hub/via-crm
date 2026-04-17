@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s --max-time 3 http://localhost:3000/health)",
+      "Bash(curl:*)",
+      "Bash(npx prisma:*)",
+      "Bash(node:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(timeout 60 node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(xargs grep:*)",
+      "Bash(timeout 30 node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(timeout 20 node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(npm install:*)"
+    ]
+  }
+}

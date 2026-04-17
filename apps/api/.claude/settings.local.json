@@ -63,7 +63,14 @@
       "Bash(find /c/Users/User/documents/via-crm -type f \\\\\\( -name \"*.prisma\" -o -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -l \"enum LeadStatus\\\\|LeadStatus.*=\" {} \\\\;)",
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(echo \"API EXIT:$?\")"
+      "Bash(echo \"API EXIT:$?\")",
+      "Bash(wc *)",
+      "Bash(/c/Users/User/AppData/Roaming/Claude/claude.exe config *)",
+      "Bash(claude.cmd config *)",
+      "Read(//mnt/c/Users/User/documents/via-crm/apps/web/src/app/**)",
+      "Read(//mnt/c/Users/User/documents/via-crm/apps/web/src/**)",
+      "Bash(npx next *)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

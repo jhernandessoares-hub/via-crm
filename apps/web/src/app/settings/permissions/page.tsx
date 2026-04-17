@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { apiFetch } from "@/lib/api";
 import { PERMISSION_MODULES, PermissionsConfig, PermissionRole } from "@/lib/permissions";
 
@@ -33,13 +35,7 @@ export default function PermissionsPage() {
       const current = prev[role]?.[module]?.[action] ?? false;
       return {
         ...prev,
-        [role]: {
-          ...prev[role],
-          [module]: {
-            ...prev[role]?.[module],
-            [action]: !current,
-          },
-        },
+        [role]: { ...prev[role], [module]: { ...prev[role]?.[module], [action]: !current } },
       };
     });
     setSaved(false);
@@ -55,7 +51,6 @@ export default function PermissionsPage() {
         body: JSON.stringify(config),
       });
       setConfig(updated);
-      // Atualiza cache local para MANAGER/AGENT
       localStorage.setItem("tenantPermissions", JSON.stringify(updated));
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -71,18 +66,14 @@ export default function PermissionsPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Permissões por papel</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h1 className="text-xl font-semibold text-[var(--shell-text)]">Permissões por papel</h1>
+            <p className="text-sm text-[var(--shell-subtext)] mt-0.5">
               Configure o que cada membro da equipe pode fazer no sistema.
             </p>
           </div>
-          <button
-            onClick={save}
-            disabled={saving || loading}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-50"
-          >
+          <Button onClick={save} loading={saving} disabled={loading}>
             {saving ? "Salvando..." : saved ? "Salvo ✓" : "Salvar alterações"}
-          </button>
+          </Button>
         </div>
 
         {error && (
@@ -92,87 +83,79 @@ export default function PermissionsPage() {
         )}
 
         {loading ? (
-          <div className="text-sm text-gray-400">Carregando...</div>
+          <div className="text-sm text-[var(--shell-subtext)]">Carregando...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {ROLES.map((role) => (
-              <div key={role} className="bg-white border rounded-xl overflow-hidden">
-                {/* Header do card */}
-                <div className="px-5 py-4 border-b bg-slate-50">
-                  <h2 className="font-semibold text-gray-800">{ROLE_LABELS[role]} pode:</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">
+              <Card key={role} className="overflow-hidden">
+                <CardHeader>
+                  <h2 className="font-semibold text-[var(--shell-text)]">{ROLE_LABELS[role]} pode:</h2>
+                  <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
                     Proprietário sempre tem acesso total.
                   </p>
-                </div>
+                </CardHeader>
+                <CardBody className="p-0">
+                  <div className="divide-y" style={{ borderColor: "var(--shell-card-border)" }}>
+                    {PERMISSION_MODULES.map((mod) => {
+                      const modPerms = config?.[role]?.[mod.key] ?? {};
+                      const allOn = mod.actions.every((a) => modPerms[a.key]);
 
-                {/* Módulos */}
-                <div className="divide-y">
-                  {PERMISSION_MODULES.map((mod) => {
-                    const modPerms = config?.[role]?.[mod.key] ?? {};
-                    const allOn = mod.actions.every((a) => modPerms[a.key]);
-                    const allOff = mod.actions.every((a) => !modPerms[a.key]);
-
-                    return (
-                      <div key={mod.key} className="px-5 py-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-700">{mod.label}</span>
-                          {/* Toggle tudo de uma vez */}
-                          {mod.actions.length > 1 && (
-                            <button
-                              onClick={() => {
-                                const newVal = !allOn;
-                                mod.actions.forEach((a) => {
-                                  setConfig((prev) => {
-                                    if (!prev) return prev;
-                                    return {
-                                      ...prev,
-                                      [role]: {
-                                        ...prev[role],
-                                        [mod.key]: {
-                                          ...prev[role]?.[mod.key],
-                                          [a.key]: newVal,
-                                        },
-                                      },
-                                    };
-                                  });
-                                });
-                                setSaved(false);
-                              }}
-                              className="text-[11px] text-gray-400 hover:text-gray-600"
-                            >
-                              {allOn ? "Desmarcar tudo" : "Marcar tudo"}
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {mod.actions.map((action) => {
-                            const enabled = modPerms[action.key] ?? false;
-                            return (
+                      return (
+                        <div key={mod.key} className="px-5 py-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-[var(--shell-text)]">{mod.label}</span>
+                            {mod.actions.length > 1 && (
                               <button
-                                key={action.key}
-                                onClick={() => toggle(role, mod.key, action.key)}
-                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-all ${
-                                  enabled
-                                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                    : "bg-gray-50 border-gray-200 text-gray-400"
-                                }`}
+                                onClick={() => {
+                                  const newVal = !allOn;
+                                  mod.actions.forEach((a) => {
+                                    setConfig((prev) => {
+                                      if (!prev) return prev;
+                                      return {
+                                        ...prev,
+                                        [role]: { ...prev[role], [mod.key]: { ...prev[role]?.[mod.key], [a.key]: newVal } },
+                                      };
+                                    });
+                                  });
+                                  setSaved(false);
+                                }}
+                                className="text-[11px] text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
                               >
-                                <span className={`w-1.5 h-1.5 rounded-full ${enabled ? "bg-emerald-500" : "bg-gray-300"}`} />
-                                {action.label}
+                                {allOn ? "Desmarcar tudo" : "Marcar tudo"}
                               </button>
-                            );
-                          })}
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {mod.actions.map((action) => {
+                              const enabled = modPerms[action.key] ?? false;
+                              return (
+                                <button
+                                  key={action.key}
+                                  onClick={() => toggle(role, mod.key, action.key)}
+                                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-all ${
+                                    enabled
+                                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                      : "border-[var(--shell-card-border)] text-[var(--shell-subtext)]"
+                                  }`}
+                                  style={!enabled ? { background: "var(--shell-bg)" } : undefined}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${enabled ? "bg-emerald-500" : "bg-[var(--shell-card-border)]"}`} />
+                                  {action.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                      );
+                    })}
+                  </div>
+                </CardBody>
+              </Card>
             ))}
           </div>
         )}
 
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-[var(--shell-subtext)]">
           As permissões entram em vigor na próxima vez que o usuário fizer login ou atualizar a página.
         </p>
       </div>

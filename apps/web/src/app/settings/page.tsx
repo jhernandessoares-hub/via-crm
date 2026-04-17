@@ -24,16 +24,16 @@ export default function SettingsPage() {
   return (
     <AppShell title="Configurações">
       <div className="max-w-xl mx-auto space-y-4">
-        <h1 className="text-xl font-semibold">Configurações</h1>
+        <h1 className="text-xl font-semibold text-[var(--shell-text)]">Configurações</h1>
         <div className="space-y-2">
           {items.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="block border rounded-lg p-4 hover:bg-gray-50"
+              className="block border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] rounded-lg p-4 hover:bg-[var(--shell-hover)] transition-colors"
             >
-              <div className="font-medium text-sm">{item.title}</div>
-              <div className="text-xs text-gray-500">{item.desc}</div>
+              <div className="font-medium text-sm text-[var(--shell-text)]">{item.title}</div>
+              <div className="text-xs text-[var(--shell-subtext)] mt-0.5">{item.desc}</div>
             </Link>
           ))}
         </div>

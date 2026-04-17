@@ -317,8 +317,8 @@ export default function ProductsPage() {
         {/* HEADER */}
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Produtos</h1>
-            <p className="text-sm text-neutral-500">
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--shell-text)]">Produtos</h1>
+            <p className="text-sm text-[var(--shell-subtext)]">
               {loading ? "Carregando..." : `${total} produto(s)`}
             </p>
           </div>
@@ -326,7 +326,8 @@ export default function ProductsPage() {
           <div className="flex gap-2">
             <button
               onClick={load}
-              className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-neutral-50"
+              className="rounded-lg border px-4 py-2 text-sm font-medium shadow-sm hover:bg-[var(--shell-hover)] bg-[var(--shell-card-bg)]"
+              style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
               disabled={loading}
             >
               {loading ? "Atualizando..." : "Recarregar"}
@@ -342,20 +343,22 @@ export default function ProductsPage() {
         </div>
 
         {/* FILTROS */}
-        <div className="mb-6 grid gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm sm:grid-cols-6">
+        <div className="mb-6 grid gap-3 rounded-xl border p-4 shadow-sm sm:grid-cols-6 bg-[var(--shell-card-bg)]" style={{ borderColor: "var(--shell-card-border)" }}>
           <input
             type="text"
             placeholder="Buscar por nome..."
             value={filterName}
             onChange={(e) => setFilterName(e.target.value)}
-            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+            className="rounded-lg border px-3 py-2 text-sm"
+            style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
           />
 
           {/* Macro (B - primeiro) */}
           <select
             value={filterMacroType}
             onChange={(e) => setFilterMacroType(e.target.value as MacroOrigin)}
-            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+            className="rounded-lg border px-3 py-2 text-sm"
+            style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
           >
             <option value="">Macro tipo (todos)</option>
             <option value="DEVELOPMENT">Empreendimento/Loteamento</option>
@@ -367,7 +370,8 @@ export default function ProductsPage() {
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+            className="rounded-lg border px-3 py-2 text-sm"
+            style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
             disabled={!filterMacroType || typeOptions.length === 0}
             title={!filterMacroType ? "Escolha o Macro tipo primeiro" : undefined}
           >
@@ -384,7 +388,8 @@ export default function ProductsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+            className="rounded-lg border px-3 py-2 text-sm"
+            style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
           >
             <option value="">Status (todos)</option>
             <option value="ACTIVE">Ativo</option>
@@ -400,7 +405,8 @@ export default function ProductsPage() {
             placeholder="Bairro..."
             value={filterNeighborhood}
             onChange={(e) => setFilterNeighborhood(e.target.value)}
-            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+            className="rounded-lg border px-3 py-2 text-sm"
+            style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
           />
 
           <div className="flex items-center justify-end gap-2">
@@ -409,8 +415,9 @@ export default function ProductsPage() {
               className={`rounded-lg px-3 py-2 text-xs font-medium ${
                 view === "cards"
                   ? "bg-neutral-900 text-white"
-                  : "border border-neutral-200 bg-white"
+                  : "border bg-[var(--shell-card-bg)]"
               }`}
+              style={view !== "cards" ? { borderColor: "var(--shell-card-border)", color: "var(--shell-text)" } : undefined}
             >
               Cards
             </button>
@@ -419,8 +426,9 @@ export default function ProductsPage() {
               className={`rounded-lg px-3 py-2 text-xs font-medium ${
                 view === "table"
                   ? "bg-neutral-900 text-white"
-                  : "border border-neutral-200 bg-white"
+                  : "border bg-[var(--shell-card-bg)]"
               }`}
+              style={view !== "table" ? { borderColor: "var(--shell-card-border)", color: "var(--shell-text)" } : undefined}
             >
               Lista
             </button>
@@ -431,7 +439,8 @@ export default function ProductsPage() {
             placeholder="Endereço..."
             value={filterAddress}
             onChange={(e) => setFilterAddress(e.target.value)}
-            className="rounded-lg border border-neutral-200 px-3 py-2 text-sm sm:col-span-3"
+            className="rounded-lg border px-3 py-2 text-sm sm:col-span-3"
+            style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
           />
 
           {/* Preço min/max */}
@@ -441,7 +450,8 @@ export default function ProductsPage() {
               placeholder="Valor a partir de (R$)"
               value={filterPriceMin}
               onChange={(e) => setFilterPriceMin(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+              style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
               min={0}
             />
             <input
@@ -449,7 +459,8 @@ export default function ProductsPage() {
               placeholder="Valor até (R$)"
               value={filterPriceMax}
               onChange={(e) => setFilterPriceMax(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+              style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
               min={0}
             />
           </div>
@@ -465,11 +476,11 @@ export default function ProductsPage() {
         {view === "cards" && (
           <>
             {loading ? (
-              <div className="rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600 shadow-sm">
+              <div className="rounded-xl border p-6 text-sm shadow-sm bg-[var(--shell-card-bg)] text-[var(--shell-subtext)]" style={{ borderColor: "var(--shell-card-border)" }}>
                 Carregando...
               </div>
             ) : filteredItems.length === 0 ? (
-              <div className="rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600 shadow-sm">
+              <div className="rounded-xl border p-6 text-sm shadow-sm bg-[var(--shell-card-bg)] text-[var(--shell-subtext)]" style={{ borderColor: "var(--shell-card-border)" }}>
                 Nenhum produto encontrado.
               </div>
             ) : (
@@ -497,15 +508,16 @@ export default function ProductsPage() {
                     <Link
                       key={p.id}
                       href={`/products/${p.id}`}
-                      className="rounded-xl border border-neutral-200 bg-white shadow-sm hover:shadow-md overflow-hidden transition-shadow"
+                      className="rounded-xl border shadow-sm hover:shadow-md overflow-hidden transition-shadow bg-[var(--shell-card-bg)]"
+                      style={{ borderColor: "var(--shell-card-border)" }}
                     >
                       {/* Imagem */}
-                      <div className="h-36 w-full bg-neutral-100">
+                      <div className="h-36 w-full bg-[var(--shell-bg)]">
                         {img ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={img} alt={title || "Produto"} className="h-36 w-full object-cover" />
                         ) : (
-                          <div className="flex h-36 w-full items-center justify-center text-xs text-neutral-400">
+                          <div className="flex h-36 w-full items-center justify-center text-xs text-[var(--shell-subtext)]">
                             Sem imagem
                           </div>
                         )}
@@ -523,29 +535,29 @@ export default function ProductsPage() {
                         </div>
 
                         {/* Nome */}
-                        <div className="mb-1.5 text-sm font-semibold text-neutral-900 leading-snug line-clamp-2">
+                        <div className="mb-1.5 text-sm font-semibold text-[var(--shell-text)] leading-snug line-clamp-2">
                           {title || "(Sem título)"}
                         </div>
 
                         {/* Localização */}
                         {(city || neighborhood) && (
-                          <div className="mb-2 text-xs text-neutral-500 leading-relaxed">
+                          <div className="mb-2 text-xs text-[var(--shell-subtext)] leading-relaxed">
                             {city && state ? `${city} — ${state}` : city || state}
                             {neighborhood && (city || state) ? ` · ${neighborhood}` : neighborhood}
                           </div>
                         )}
 
                         {/* Preço */}
-                        <div className="text-sm font-semibold text-neutral-900">
+                        <div className="text-sm font-semibold text-[var(--shell-text)]">
                           {price !== null
                             ? <>{["EMPREENDIMENTO", "LOTEAMENTO"].includes(type) ? "A partir de " : ""}{formatBRL(price)}</>
-                            : <span className="font-normal text-neutral-400">Preço não definido</span>
+                            : <span className="font-normal text-[var(--shell-subtext)]">Preço não definido</span>
                           }
                         </div>
 
                         {/* Data atualização */}
                         {p.updatedAt && (
-                          <div className="mt-2 text-[11px] text-neutral-400">
+                          <div className="mt-2 text-[11px] text-[var(--shell-subtext)]">
                             Atualizado {new Date(p.updatedAt).toLocaleDateString("pt-BR")}
                           </div>
                         )}
@@ -560,8 +572,8 @@ export default function ProductsPage() {
 
         {/* TABELA */}
         {view === "table" && (
-          <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-            <div className="grid grid-cols-12 gap-0 border-b border-neutral-200 bg-neutral-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-neutral-600">
+          <div className="overflow-hidden rounded-xl border shadow-sm bg-[var(--shell-card-bg)]" style={{ borderColor: "var(--shell-card-border)" }}>
+            <div className="grid grid-cols-12 gap-0 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide bg-[var(--shell-bg)] text-[var(--shell-subtext)]" style={{ borderColor: "var(--shell-card-border)" }}>
               <div className="col-span-4">Título</div>
               <div className="col-span-2">Macro</div>
               <div className="col-span-2">Tipo</div>
@@ -571,11 +583,11 @@ export default function ProductsPage() {
             </div>
 
             {loading ? (
-              <div className="p-6 text-sm text-neutral-600">Carregando...</div>
+              <div className="p-6 text-sm text-[var(--shell-subtext)]">Carregando...</div>
             ) : filteredItems.length === 0 ? (
-              <div className="p-6 text-sm text-neutral-600">Nenhum produto encontrado.</div>
+              <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum produto encontrado.</div>
             ) : (
-              <div className="divide-y divide-neutral-100">
+              <div className="divide-y" style={{ borderColor: "var(--shell-card-border)" }}>
                 {filteredItems.map((p: any) => {
                   const origin = getString(p, ["origin"]);
                   const type = getString(p, ["type"]);
@@ -590,10 +602,10 @@ export default function ProductsPage() {
                   return (
                     <div key={p.id} className="grid grid-cols-12 items-center px-4 py-4 text-sm">
                       <div className="col-span-4">
-                        <div className="font-medium text-neutral-900">
+                        <div className="font-medium text-[var(--shell-text)]">
                           {title || "(Sem título)"}
                         </div>
-                        <div className="mt-1 text-xs text-neutral-500">{address}</div>
+                        <div className="mt-1 text-xs text-[var(--shell-subtext)]">{address}</div>
                       </div>
 
                       <div className="col-span-2">
@@ -610,16 +622,17 @@ export default function ProductsPage() {
                         </Badge>
                       </div>
 
-                      <div className="col-span-1 text-neutral-700">{bairro || "-"}</div>
+                      <div className="col-span-1 text-[var(--shell-subtext)]">{bairro || "-"}</div>
 
-                      <div className="col-span-1 text-right text-neutral-700">
+                      <div className="col-span-1 text-right text-[var(--shell-subtext)]">
                         {price !== null ? formatBRL(price) : "-"}
                       </div>
 
                       <div className="col-span-12 mt-2 flex justify-end">
                         <Link
                           href={`/products/${p.id}`}
-                          className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium shadow-sm hover:bg-neutral-50"
+                          className="rounded-lg border px-3 py-2 text-xs font-medium shadow-sm hover:bg-[var(--shell-hover)] bg-[var(--shell-card-bg)]"
+                          style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
                         >
                           Editar
                         </Link>

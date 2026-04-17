@@ -126,6 +126,36 @@ body {
   background: rgba(107, 122, 153, 0.45);
 }
 
+/* ── Dark mode compat — sobrescreve classes Tailwind hardcoded nas páginas ── */
+html.dark .bg-white        { background-color: var(--shell-card-bg) !important; }
+html.dark .bg-gray-50      { background-color: var(--shell-bg) !important; }
+html.dark .bg-gray-100     { background-color: #1A2A4A !important; }
+html.dark .bg-gray-200     { background-color: #1E3A5F !important; }
+
+html.dark .text-gray-900,
+html.dark .text-gray-800   { color: var(--shell-text) !important; }
+html.dark .text-gray-700   { color: #C8CDD6 !important; }
+html.dark .text-gray-600,
+html.dark .text-gray-500   { color: var(--shell-subtext) !important; }
+html.dark .text-gray-400   { color: #6B7A99 !important; }
+
+html.dark .border-gray-100,
+html.dark .border-gray-200,
+html.dark .border-gray-300 { border-color: var(--shell-card-border) !important; }
+
+html.dark .divide-gray-200 > * + * { border-color: var(--shell-card-border) !important; }
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: var(--shell-input-bg);
+  color: var(--shell-input-text);
+  border-color: var(--shell-input-border);
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: var(--via-muted); }
+
 /* Focus ring consistente */
 :focus-visible {
   outline: 2px solid var(--via-teal);

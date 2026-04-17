@@ -220,8 +220,8 @@ export default function EquipePage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Gestão de Equipe</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Gerencie os membros e a distribuição de leads</p>
+            <h1 className="text-xl font-semibold text-[var(--shell-text)]">Gestão de Equipe</h1>
+            <p className="text-sm text-[var(--shell-subtext)] mt-0.5">Gerencie os membros e a distribuição de leads</p>
           </div>
           <button onClick={openInvite} className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700">
             + Novo membro
@@ -229,15 +229,15 @@ export default function EquipePage() {
         </div>
 
         {/* ── Painel de Distribuição de Leads ── */}
-        <div className="bg-white rounded-lg border p-5">
+        <div className="bg-[var(--shell-card-bg)] rounded-lg border p-5" style={{ borderColor: "var(--shell-card-border)" }}>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Distribuição de Leads (Roleta)</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <h2 className="text-sm font-semibold text-[var(--shell-text)]">Distribuição de Leads (Roleta)</h2>
+              <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
                 Leads novos são distribuídos automaticamente para quem está habilitado a receber
               </p>
             </div>
-            {rrSaving && <span className="text-xs text-gray-400">Salvando...</span>}
+            {rrSaving && <span className="text-xs text-[var(--shell-subtext)]">Salvando...</span>}
             {rrOk && <span className="text-xs text-emerald-600">Salvo ✓</span>}
           </div>
 
@@ -254,7 +254,7 @@ export default function EquipePage() {
                   rrConfig.incluirGerentes ? "translate-x-4" : "translate-x-1"
                 }`} />
               </button>
-              <span className="text-sm text-gray-700">Gerentes podem receber leads</span>
+              <span className="text-sm text-[var(--shell-subtext)]">Gerentes podem receber leads</span>
             </label>
 
             <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -269,30 +269,30 @@ export default function EquipePage() {
                   rrConfig.incluirOwner ? "translate-x-4" : "translate-x-1"
                 }`} />
               </button>
-              <span className="text-sm text-gray-700">Proprietário pode receber leads</span>
+              <span className="text-sm text-[var(--shell-subtext)]">Proprietário pode receber leads</span>
             </label>
           </div>
 
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="text-xs text-[var(--shell-subtext)] mt-3">
             O sistema atribui o próximo lead ao membro habilitado que há mais tempo não recebe um lead (round-robin).
           </p>
         </div>
 
         {/* ── Lista de membros ── */}
         {loading ? (
-          <div className="text-sm text-gray-400">Carregando...</div>
+          <div className="text-sm text-[var(--shell-subtext)]">Carregando...</div>
         ) : (
-          <div className="bg-white rounded-lg border divide-y">
+          <div className="bg-[var(--shell-card-bg)] rounded-lg border divide-y" style={{ borderColor: "var(--shell-card-border)" }}>
             {members.length === 0 && (
-              <div className="px-6 py-10 text-center text-sm text-gray-400">Nenhum membro encontrado.</div>
+              <div className="px-6 py-10 text-center text-sm text-[var(--shell-subtext)]">Nenhum membro encontrado.</div>
             )}
             {members.map((m) => (
               <div key={m.id} className="flex items-center gap-4 px-6 py-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-gray-900 text-sm">{m.nome}</span>
+                    <span className="font-medium text-[var(--shell-text)] text-sm">{m.nome}</span>
                     {currentUserId === m.id && (
-                      <span className="text-[11px] text-gray-400">(você)</span>
+                      <span className="text-[11px] text-[var(--shell-subtext)]">(você)</span>
                     )}
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${ROLE_COLORS[m.role]}`}>
                       {ROLE_LABELS[m.role]}
@@ -303,9 +303,9 @@ export default function EquipePage() {
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
+                  <div className="text-xs text-[var(--shell-subtext)] mt-0.5">
                     {m.email}
-                    {m.branchId && <span className="ml-2 text-gray-400">· {branchName(m.branchId)}</span>}
+                    {m.branchId && <span className="ml-2">· {branchName(m.branchId)}</span>}
                   </div>
                 </div>
 
@@ -323,7 +323,7 @@ export default function EquipePage() {
                         m.recebeLeads ? "translate-x-4" : "translate-x-1"
                       }`} />
                     </button>
-                    <span className="text-xs text-gray-500 w-20">
+                    <span className="text-xs text-[var(--shell-subtext)] w-20">
                       {m.recebeLeads ? "Na roleta" : "Fora"}
                     </span>
                   </div>
@@ -343,7 +343,8 @@ export default function EquipePage() {
                     </button>
                     <button
                       onClick={() => openEdit(m)}
-                      className="text-xs rounded px-2 py-1 border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      className="text-xs rounded px-2 py-1 border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                      style={{ borderColor: "var(--shell-card-border)" }}
                     >
                       Editar
                     </button>
@@ -364,36 +365,41 @@ export default function EquipePage() {
       {/* ── Invite Modal ─────────────────────────────────────────── */}
       {showInvite && (
         <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Novo membro</h2>
+          <div className="rounded-xl shadow-xl w-full max-w-md mx-4 p-6 bg-[var(--shell-card-bg)]">
+            <h2 className="text-lg font-semibold text-[var(--shell-text)] mb-4">Novo membro</h2>
             <form onSubmit={submitInvite} className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nome *</label>
+                <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome *</label>
                 <input className="w-full border rounded-md px-3 py-2 text-sm" value={inviteForm.nome}
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   onChange={(e) => setInviteForm({ ...inviteForm, nome: e.target.value })} required />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">E-mail *</label>
+                <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">E-mail *</label>
                 <input type="email" className="w-full border rounded-md px-3 py-2 text-sm" value={inviteForm.email}
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })} required />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Senha inicial *</label>
+                <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Senha inicial *</label>
                 <input type="password" className="w-full border rounded-md px-3 py-2 text-sm" value={inviteForm.senha}
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   onChange={(e) => setInviteForm({ ...inviteForm, senha: e.target.value })} required />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Papel</label>
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Papel</label>
                   <select className="w-full border rounded-md px-3 py-2 text-sm" value={inviteForm.role}
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}>
                     <option value="AGENT">Corretor</option>
                     <option value="MANAGER">Gerente</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Equipe / Filial</label>
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Equipe / Filial</label>
                   <select className="w-full border rounded-md px-3 py-2 text-sm" value={inviteForm.branchId}
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     onChange={(e) => setInviteForm({ ...inviteForm, branchId: e.target.value })}>
                     <option value="">Nenhuma</option>
                     {branches.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
@@ -406,13 +412,14 @@ export default function EquipePage() {
                 <input type="checkbox" className="h-4 w-4 rounded border-gray-300"
                   checked={inviteForm.recebeLeads}
                   onChange={(e) => setInviteForm({ ...inviteForm, recebeLeads: e.target.checked })} />
-                <span className="text-sm text-gray-700">Participar da roleta de leads</span>
+                <span className="text-sm text-[var(--shell-subtext)]">Participar da roleta de leads</span>
               </label>
 
               {inviteError && <p className="text-xs text-red-600">{inviteError}</p>}
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setShowInvite(false)}
-                  className="flex-1 rounded-md border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  className="flex-1 rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                  style={{ borderColor: "var(--shell-card-border)" }}>
                   Cancelar
                 </button>
                 <button type="submit" disabled={inviteLoading}
@@ -428,26 +435,29 @@ export default function EquipePage() {
       {/* ── Edit Modal ───────────────────────────────────────────── */}
       {editMember && (
         <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Editar membro</h2>
+          <div className="rounded-xl shadow-xl w-full max-w-md mx-4 p-6 bg-[var(--shell-card-bg)]">
+            <h2 className="text-lg font-semibold text-[var(--shell-text)] mb-4">Editar membro</h2>
             <form onSubmit={submitEdit} className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nome</label>
+                <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome</label>
                 <input className="w-full border rounded-md px-3 py-2 text-sm" value={editForm.nome}
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Papel</label>
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Papel</label>
                   <select className="w-full border rounded-md px-3 py-2 text-sm" value={editForm.role}
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
                     <option value="AGENT">Corretor</option>
                     <option value="MANAGER">Gerente</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Status</label>
                   <select className="w-full border rounded-md px-3 py-2 text-sm"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     value={editForm.ativo ? "true" : "false"}
                     onChange={(e) => setEditForm({ ...editForm, ativo: e.target.value === "true" })}>
                     <option value="true">Ativo</option>
@@ -456,16 +466,18 @@ export default function EquipePage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Equipe / Filial</label>
+                <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Equipe / Filial</label>
                 <select className="w-full border rounded-md px-3 py-2 text-sm" value={editForm.branchId}
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   onChange={(e) => setEditForm({ ...editForm, branchId: e.target.value })}>
                   <option value="">Nenhuma</option>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nova senha (opcional)</label>
+                <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nova senha (opcional)</label>
                 <input type="password" className="w-full border rounded-md px-3 py-2 text-sm"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   placeholder="Deixe em branco para não alterar" value={editForm.senha}
                   onChange={(e) => setEditForm({ ...editForm, senha: e.target.value })} />
               </div>
@@ -475,13 +487,14 @@ export default function EquipePage() {
                 <input type="checkbox" className="h-4 w-4 rounded border-gray-300"
                   checked={editForm.recebeLeads}
                   onChange={(e) => setEditForm({ ...editForm, recebeLeads: e.target.checked })} />
-                <span className="text-sm text-gray-700">Participar da roleta de leads</span>
+                <span className="text-sm text-[var(--shell-subtext)]">Participar da roleta de leads</span>
               </label>
 
               {editError && <p className="text-xs text-red-600">{editError}</p>}
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setEditMember(null)}
-                  className="flex-1 rounded-md border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  className="flex-1 rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                  style={{ borderColor: "var(--shell-card-border)" }}>
                   Cancelar
                 </button>
                 <button type="submit" disabled={editLoading}
@@ -497,12 +510,13 @@ export default function EquipePage() {
       {/* ── Remove confirm ───────────────────────────────────────── */}
       {removingId && (
         <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-2">Remover membro?</h2>
-            <p className="text-sm text-gray-500 mb-4">Esta ação remove o usuário permanentemente. Não é possível desfazer.</p>
+          <div className="rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 bg-[var(--shell-card-bg)]">
+            <h2 className="text-base font-semibold text-[var(--shell-text)] mb-2">Remover membro?</h2>
+            <p className="text-sm text-[var(--shell-subtext)] mb-4">Esta ação remove o usuário permanentemente. Não é possível desfazer.</p>
             <div className="flex gap-2">
               <button onClick={() => setRemovingId(null)}
-                className="flex-1 rounded-md border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                className="flex-1 rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                style={{ borderColor: "var(--shell-card-border)" }}>
                 Cancelar
               </button>
               <button onClick={() => confirmRemove(removingId)}

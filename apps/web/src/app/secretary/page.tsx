@@ -262,7 +262,7 @@ export default function SecretaryPage() {
       <div className="flex flex-col gap-0" style={{ height: "calc(100vh - 8.5rem)" }}>
 
         {/* Abas */}
-        <div className="flex border-b bg-white mb-3 flex-shrink-0">
+        <div className="flex border-b bg-[var(--shell-card-bg)] mb-3 flex-shrink-0" style={{ borderColor: "var(--shell-card-border)" }}>
           {([
             { key: "chat",         label: "Chat" },
             { key: "biblioteca",   label: `Biblioteca${notes.length > 0 ? ` (${notes.length})` : ""}` },
@@ -270,7 +270,7 @@ export default function SecretaryPage() {
           ] as { key: Tab; label: string }[]).map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                tab === t.key ? "border-slate-900 text-slate-900" : "border-transparent text-gray-400 hover:text-gray-600"
+                tab === t.key ? "border-slate-900 text-slate-900" : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
               }`}>
               {t.label}
             </button>
@@ -279,20 +279,20 @@ export default function SecretaryPage() {
 
         {/* ── ABA CHAT ── */}
         {tab === "chat" && (
-          <div className="flex-1 flex flex-col rounded-xl border bg-white overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          <div className="flex-1 flex flex-col rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden" style={{ borderColor: "var(--shell-card-border)" }}>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[var(--shell-bg)]">
               {historyLoading ? (
-                <p className="text-center text-xs text-gray-400 mt-8">Carregando histórico...</p>
+                <p className="text-center text-xs text-[var(--shell-subtext)] mt-8">Carregando histórico...</p>
               ) : messages.length === 0 ? (
-                <p className="text-center text-xs text-gray-400 mt-8">Nenhuma mensagem ainda. Envie a primeira!</p>
+                <p className="text-center text-xs text-[var(--shell-subtext)] mt-8">Nenhuma mensagem ainda. Envie a primeira!</p>
               ) : (
                 messages.map((m) => (
                   <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[70%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
-                      m.role === "user" ? "bg-slate-900 text-white" : "bg-white border text-gray-800"
-                    }`}>
+                      m.role === "user" ? "bg-slate-900 text-white" : "bg-[var(--shell-card-bg)] border text-[var(--shell-text)]"
+                    }`} style={m.role !== "user" ? { borderColor: "var(--shell-card-border)" } : undefined}>
                       <p className="whitespace-pre-wrap">{m.content}</p>
-                      <p className={`mt-1 text-[10px] ${m.role === "user" ? "text-slate-400" : "text-gray-400"}`}>
+                      <p className={`mt-1 text-[10px] ${m.role === "user" ? "text-slate-400" : "text-[var(--shell-subtext)]"}`}>
                         {formatTime(m.createdAt)}
                       </p>
                     </div>
@@ -301,12 +301,12 @@ export default function SecretaryPage() {
               )}
               {sending && (
                 <div className="flex justify-start">
-                  <div className="rounded-xl border bg-white px-4 py-2.5 text-sm text-gray-400">digitando...</div>
+                  <div className="rounded-xl border bg-[var(--shell-card-bg)] px-4 py-2.5 text-sm text-[var(--shell-subtext)]" style={{ borderColor: "var(--shell-card-border)" }}>digitando...</div>
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
-            <div className="border-t p-3 flex items-center gap-2 bg-white">
+            <div className="border-t p-3 flex items-center gap-2 bg-[var(--shell-card-bg)]" style={{ borderColor: "var(--shell-card-border)" }}>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -315,16 +315,17 @@ export default function SecretaryPage() {
                 placeholder="Digite uma mensagem... (Enter para enviar, Shift+Enter para nova linha)"
                 disabled={sending}
                 className="flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:opacity-50"
+                style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
               />
               <div className="flex flex-col gap-1">
                 <button onMouseDown={startRecording} onMouseUp={stopRecording} onTouchStart={startRecording} onTouchEnd={stopRecording}
                   title="Segure para gravar"
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-base transition-colors ${recording ? "bg-red-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-base transition-colors ${recording ? "bg-red-500 text-white" : "bg-[var(--shell-hover)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
                   🎙
                 </button>
                 <button onClick={() => setMuted((v) => !v)}
                   title={muted ? "Áudio silenciado" : "Áudio ativo"}
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-base transition-colors ${muted ? "bg-amber-100 text-amber-600 hover:bg-amber-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-base transition-colors ${muted ? "bg-amber-100 text-amber-600 hover:bg-amber-200" : "bg-[var(--shell-hover)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
                   {muted ? "🔇" : "🔊"}
                 </button>
                 <button onClick={() => sendMessage(input)} disabled={sending || !input.trim()}
@@ -349,6 +350,7 @@ export default function SecretaryPage() {
                   onKeyDown={(e) => { if (e.key === "Enter") loadNotes(noteCatFilter, noteSearch); }}
                   placeholder="Buscar notas..."
                   className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                 />
                 <button onClick={() => setShowNoteForm(true)}
                   className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
@@ -359,12 +361,12 @@ export default function SecretaryPage() {
               {/* Filtro de categorias */}
               <div className="flex flex-wrap gap-1.5">
                 <button onClick={() => { setNoteCatFilter(""); loadNotes("", noteSearch); }}
-                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${!noteCatFilter ? "bg-slate-900 text-white border-slate-900" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
+                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${!noteCatFilter ? "bg-slate-900 text-white border-slate-900" : "bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] border-[var(--shell-card-border)] hover:border-gray-400"}`}>
                   Todas
                 </button>
                 {CATEGORIES.map((c) => (
                   <button key={c.key} onClick={() => { setNoteCatFilter(c.key); loadNotes(c.key, noteSearch); }}
-                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${noteCatFilter === c.key ? "bg-slate-900 text-white border-slate-900" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>
+                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${noteCatFilter === c.key ? "bg-slate-900 text-white border-slate-900" : "bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] border-[var(--shell-card-border)] hover:border-gray-400"}`}>
                     {c.label}
                   </button>
                 ))}
@@ -373,23 +375,23 @@ export default function SecretaryPage() {
               {/* Lista de notas */}
               <div className="flex-1 overflow-y-auto space-y-2">
                 {notesLoading ? (
-                  <p className="text-center text-xs text-gray-400 mt-8">Carregando...</p>
+                  <p className="text-center text-xs text-[var(--shell-subtext)] mt-8">Carregando...</p>
                 ) : filteredNotes.length === 0 ? (
-                  <p className="text-center text-xs text-gray-400 mt-8">Nenhuma nota encontrada.</p>
+                  <p className="text-center text-xs text-[var(--shell-subtext)] mt-8">Nenhuma nota encontrada.</p>
                 ) : (
                   filteredNotes.map((n) => (
                     <button key={n.id} onClick={() => setSelectedNote(n)}
-                      className={`w-full text-left rounded-xl border p-3 transition-all ${selectedNote?.id === n.id ? "border-slate-900 bg-slate-50" : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"}`}>
+                      className={`w-full text-left rounded-xl border p-3 transition-all ${selectedNote?.id === n.id ? "border-slate-900 bg-[var(--shell-hover)]" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] hover:border-gray-300 hover:shadow-sm"}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-gray-900 truncate">{n.title || n.content.slice(0, 40)}</p>
+                        <p className="text-sm font-medium text-[var(--shell-text)] truncate">{n.title || n.content.slice(0, 40)}</p>
                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${catColor(n.category)}`}>
                           {catLabel(n.category)}
                         </span>
                       </div>
                       {n.title && (
-                        <p className="mt-1 text-xs text-gray-400 truncate">{n.content.slice(0, 60)}</p>
+                        <p className="mt-1 text-xs text-[var(--shell-subtext)] truncate">{n.content.slice(0, 60)}</p>
                       )}
-                      <p className="mt-1.5 text-[11px] text-gray-300">{formatDate(n.createdAt)}</p>
+                      <p className="mt-1.5 text-[11px] text-[var(--shell-subtext)] opacity-60">{formatDate(n.createdAt)}</p>
                     </button>
                   ))
                 )}
@@ -397,17 +399,17 @@ export default function SecretaryPage() {
             </div>
 
             {/* Detalhe */}
-            <div className="flex-1 rounded-xl border bg-white overflow-hidden flex flex-col">
+            <div className="flex-1 rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden flex flex-col" style={{ borderColor: "var(--shell-card-border)" }}>
               {selectedNote ? (
                 <>
-                  <div className="flex items-start justify-between px-6 py-4 border-b">
+                  <div className="flex items-start justify-between px-6 py-4 border-b" style={{ borderColor: "var(--shell-card-border)" }}>
                     <div>
-                      <h2 className="text-base font-semibold text-gray-900">{selectedNote.title || "Sem título"}</h2>
+                      <h2 className="text-base font-semibold text-[var(--shell-text)]">{selectedNote.title || "Sem título"}</h2>
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${catColor(selectedNote.category)}`}>
                           {catLabel(selectedNote.category)}
                         </span>
-                        <span className="text-xs text-gray-400">{formatDate(selectedNote.createdAt)}</span>
+                        <span className="text-xs text-[var(--shell-subtext)]">{formatDate(selectedNote.createdAt)}</span>
                       </div>
                     </div>
                     <button onClick={() => deleteNote(selectedNote.id)}
@@ -416,11 +418,11 @@ export default function SecretaryPage() {
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto px-6 py-4">
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedNote.content}</p>
+                    <p className="text-sm text-[var(--shell-subtext)] whitespace-pre-wrap leading-relaxed">{selectedNote.content}</p>
                     {selectedNote.tags?.length > 0 && (
                       <div className="mt-4 flex flex-wrap gap-1.5">
                         {selectedNote.tags.map((tag) => (
-                          <span key={tag} className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-500">#{tag}</span>
+                          <span key={tag} className="rounded-full bg-[var(--shell-hover)] px-2.5 py-0.5 text-xs text-[var(--shell-subtext)]">#{tag}</span>
                         ))}
                       </div>
                     )}
@@ -428,7 +430,7 @@ export default function SecretaryPage() {
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center">
-                  <p className="text-sm text-gray-400">Selecione uma nota para visualizar</p>
+                  <p className="text-sm text-[var(--shell-subtext)]">Selecione uma nota para visualizar</p>
                 </div>
               )}
             </div>
@@ -440,64 +442,69 @@ export default function SecretaryPage() {
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-lg space-y-6">
               {profile && (
-                <div className="rounded-xl border bg-white px-5 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Usuário</p>
-                  <div className="text-sm font-medium text-gray-900">{profile.nome}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{profile.email}</div>
+                <div className="rounded-xl border bg-[var(--shell-card-bg)] px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-[var(--shell-subtext)] mb-3">Usuário</p>
+                  <div className="text-sm font-medium text-[var(--shell-text)]">{profile.nome}</div>
+                  <div className="text-xs text-[var(--shell-subtext)] mt-0.5">{profile.email}</div>
                 </div>
               )}
 
-              <div className="rounded-xl border bg-white px-5 py-5 space-y-5">
-                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Personalidade da secretária</p>
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] px-5 py-5 space-y-5" style={{ borderColor: "var(--shell-card-border)" }}>
+                <p className="text-xs font-semibold uppercase tracking-widest text-[var(--shell-subtext)]">Personalidade da secretária</p>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Nome da secretária</label>
+                  <label className="mb-1.5 block text-sm font-medium text-[var(--shell-subtext)]">Nome da secretária</label>
                   <input value={secretaryBotNameInput} onChange={(e) => setSecretaryBotNameInput(e.target.value)}
                     className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-slate-400"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     placeholder='Ex: "Sofia", "Ana"' />
-                  <p className="mt-1 text-xs text-gray-400">Como a secretária se identifica. Se vazio, usa "Secretária".</p>
+                  <p className="mt-1 text-xs text-[var(--shell-subtext)]">Como a secretária se identifica. Se vazio, usa "Secretária".</p>
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Como ela deve te chamar</label>
+                  <label className="mb-1.5 block text-sm font-medium text-[var(--shell-subtext)]">Como ela deve te chamar</label>
                   <input value={secretaryNameInput} onChange={(e) => setSecretaryNameInput(e.target.value)}
                     className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-slate-400"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     placeholder='Ex: "João", "Dr. Silva", "Chefe"' />
-                  <p className="mt-1 text-xs text-gray-400">Se vazio, usa o seu nome de cadastro.</p>
+                  <p className="mt-1 text-xs text-[var(--shell-subtext)]">Se vazio, usa o seu nome de cadastro.</p>
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Gênero / Voz</label>
+                  <label className="mb-1.5 block text-sm font-medium text-[var(--shell-subtext)]">Gênero / Voz</label>
                   <div className="flex gap-2">
                     {GENDER_OPTIONS.map((g) => (
                       <button key={g.value} type="button" onClick={() => setSecretaryGenderInput(g.value)}
                         className={`flex-1 rounded-xl border py-2.5 text-sm font-medium transition ${
-                          secretaryGenderInput === g.value ? "border-slate-900 bg-slate-900 text-white" : "text-gray-600 hover:bg-gray-50"
-                        }`}>
+                          secretaryGenderInput === g.value ? "border-slate-900 bg-slate-900 text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                        }`}
+                        style={secretaryGenderInput !== g.value ? { borderColor: "var(--shell-card-border)" } : undefined}>
                         <div>{g.label}</div>
-                        <div className={`text-[11px] mt-0.5 ${secretaryGenderInput === g.value ? "text-slate-300" : "text-gray-400"}`}>{g.hint}</div>
+                        <div className={`text-[11px] mt-0.5 ${secretaryGenderInput === g.value ? "text-slate-300" : "text-[var(--shell-subtext)]"}`}>{g.hint}</div>
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl border bg-white px-5 py-5 space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">WhatsApp</p>
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] px-5 py-5 space-y-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                <p className="text-xs font-semibold uppercase tracking-widest text-[var(--shell-subtext)]">WhatsApp</p>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">Número vinculado</label>
+                  <label className="mb-1.5 block text-sm font-medium text-[var(--shell-subtext)]">Número vinculado</label>
                   <div className="flex gap-2">
                     <input value={whatsappInput} onChange={(e) => setWhatsappInput(e.target.value)}
                       className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-slate-400"
+                      style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                       placeholder="+55 11 99999-9999" />
                     {whatsappInput && (
                       <button type="button" onClick={() => setWhatsappInput("")}
-                        className="rounded-xl border px-3 py-2 text-xs text-red-500 hover:bg-red-50">
+                        className="rounded-xl border px-3 py-2 text-xs text-red-500 hover:bg-red-50"
+                        style={{ borderColor: "var(--shell-card-border)" }}>
                         Remover
                       </button>
                     )}
                   </div>
-                  <p className="mt-1 text-xs text-gray-400">
+                  <p className="mt-1 text-xs text-[var(--shell-subtext)]">
                     Vincula seu número para usar a Secretária pelo WhatsApp.
                   </p>
                 </div>
@@ -521,20 +528,20 @@ export default function SecretaryPage() {
 
       {/* Modal nova nota */}
       {showNoteForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b px-5 py-4">
-              <h2 className="text-base font-semibold text-gray-900">Nova nota</h2>
-              <button onClick={() => setShowNoteForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="w-full max-w-md rounded-xl shadow-xl bg-[var(--shell-card-bg)]">
+            <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <h2 className="text-base font-semibold text-[var(--shell-text)]">Nova nota</h2>
+              <button onClick={() => setShowNoteForm(false)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl">×</button>
             </div>
             <div className="px-5 py-4 space-y-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Categoria</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Categoria</label>
                 <div className="flex flex-wrap gap-1.5">
                   {CATEGORIES.map((c) => (
                     <button key={c.key} type="button" onClick={() => setNoteCategory(c.key)}
                       className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                        noteCategory === c.key ? "bg-slate-900 text-white border-slate-900" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                        noteCategory === c.key ? "bg-slate-900 text-white border-slate-900" : "bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] border-[var(--shell-card-border)] hover:border-gray-400"
                       }`}>
                       {c.label}
                     </button>
@@ -542,21 +549,24 @@ export default function SecretaryPage() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Título (opcional)</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Título (opcional)</label>
                 <input value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)}
                   className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   placeholder="Ex: Contato do arquiteto" />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Conteúdo *</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Conteúdo *</label>
                 <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)} rows={5}
                   className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-slate-400 resize-none"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   placeholder="Digite o conteúdo da nota..." />
               </div>
             </div>
-            <div className="flex justify-end gap-2 border-t px-5 py-4">
+            <div className="flex justify-end gap-2 border-t px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
               <button onClick={() => setShowNoteForm(false)}
-                className="rounded-xl border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                className="rounded-xl border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                style={{ borderColor: "var(--shell-card-border)" }}>
                 Cancelar
               </button>
               <button onClick={saveNote} disabled={savingNote || !noteContent.trim()}

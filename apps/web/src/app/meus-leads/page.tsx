@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { apiFetch } from "@/lib/api";
 
 type PipelineStage = {
@@ -82,11 +84,8 @@ export default function MeusLeadsPage() {
     for (const g of GROUPS) map[g.key] = [];
     for (const l of filtered) {
       const group = l.stageId ? stageMap[l.stageId]?.group : null;
-      if (group && map[group]) {
-        map[group].push(l);
-      } else {
-        map["PRE_ATENDIMENTO"].push(l);
-      }
+      if (group && map[group]) map[group].push(l);
+      else map["PRE_ATENDIMENTO"].push(l);
     }
     return map;
   }, [filtered, stageMap]);
@@ -95,40 +94,41 @@ export default function MeusLeadsPage() {
     <AppShell title="Meus Leads">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Meus Leads</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-2xl font-semibold text-[var(--shell-text)]">Meus Leads</h1>
+          <p className="text-sm text-[var(--shell-subtext)] mt-0.5">
             Leads atribuídos a você · {filtered.length} leads
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border bg-white p-1">
-            <button
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${view === "KANBAN" ? "bg-gray-100 font-medium" : ""}`}
-              onClick={() => setView("KANBAN")}
-            >
-              Kanban
-            </button>
-            <button
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${view === "LISTA" ? "bg-gray-100 font-medium" : ""}`}
-              onClick={() => setView("LISTA")}
-            >
-              Lista
-            </button>
+          <div
+            className="inline-flex rounded-lg border p-1 gap-0.5"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
+          >
+            {(["KANBAN", "LISTA"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className="px-3 py-1.5 text-sm rounded-md transition-colors"
+                style={{
+                  background: view === v ? "var(--shell-hover)" : "transparent",
+                  color: view === v ? "var(--shell-text)" : "var(--shell-subtext)",
+                  fontWeight: view === v ? 600 : 400,
+                }}
+              >
+                {v === "KANBAN" ? "Kanban" : "Lista"}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
       <div className="mt-4 flex items-center gap-3">
-        <button
-          onClick={load}
-          disabled={loading}
-          className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-        >
+        <Button variant="outline" size="sm" onClick={load} loading={loading}>
           {loading ? "Carregando..." : "Atualizar"}
-        </button>
-        <input
-          className="w-64 rounded-md border bg-white p-2 text-sm"
+        </Button>
+        <Input
+          className="w-64"
           placeholder="Buscar por nome ou telefone..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -142,14 +142,18 @@ export default function MeusLeadsPage() {
             {GROUPS.map((g) => {
               const items = groupedLeads[g.key] ?? [];
               return (
-                <div key={g.key} className="w-[260px] shrink-0 flex flex-col rounded-xl border bg-white overflow-hidden">
+                <div
+                  key={g.key}
+                  className="w-[260px] shrink-0 flex flex-col rounded-xl border overflow-hidden"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
+                >
                   <div className={`border-b px-3 py-2.5 ${g.color}`}>
                     <div className="text-sm font-semibold">{g.label}</div>
                     <div className="text-xs opacity-70 mt-0.5">{items.length} leads</div>
                   </div>
                   <div className="max-h-[72vh] overflow-y-auto space-y-2 p-2">
                     {items.length === 0 ? (
-                      <p className="p-2 text-xs text-gray-400">Nenhum lead</p>
+                      <p className="p-2 text-xs text-[var(--shell-subtext)]">Nenhum lead</p>
                     ) : (
                       items.map((l) => {
                         const stageName = l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null) ?? "—";
@@ -157,12 +161,18 @@ export default function MeusLeadsPage() {
                           <Link
                             key={l.id}
                             href={`/leads/${l.id}`}
-                            className="block rounded-lg border border-gray-100 bg-gray-50 p-3 hover:bg-white hover:border-gray-200 transition-colors"
+                            className="block rounded-lg border p-3 transition-colors"
+                            style={{
+                              borderColor: "var(--shell-card-border)",
+                              background: "var(--shell-bg)",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--shell-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--shell-bg)")}
                           >
-                            <div className="text-sm font-medium text-gray-900 truncate">
+                            <div className="text-sm font-medium text-[var(--shell-text)] truncate">
                               {l.nome || "Sem nome"}
                             </div>
-                            <div className="mt-0.5 text-xs text-gray-500 truncate">
+                            <div className="mt-0.5 text-xs text-[var(--shell-subtext)] truncate">
                               {l.telefone || l.whatsapp || "Sem telefone"}
                             </div>
                             <div className="mt-2">
@@ -184,8 +194,14 @@ export default function MeusLeadsPage() {
 
       {/* LISTA */}
       {view === "LISTA" && (
-        <div className="mt-5 overflow-hidden rounded-xl border bg-white">
-          <div className="grid grid-cols-12 gap-2 border-b bg-gray-50 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        <div
+          className="mt-5 overflow-hidden rounded-xl border"
+          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
+        >
+          <div
+            className="grid grid-cols-12 gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)" }}
+          >
             <div className="col-span-4">Lead</div>
             <div className="col-span-3">Telefone</div>
             <div className="col-span-2">Grupo</div>
@@ -193,7 +209,7 @@ export default function MeusLeadsPage() {
           </div>
 
           {filtered.length === 0 ? (
-            <div className="p-6 text-sm text-gray-500">Nenhum lead atribuído a você.</div>
+            <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead atribuído a você.</div>
           ) : (
             filtered.map((l) => {
               const stageInfo = l.stageId ? stageMap[l.stageId] : null;
@@ -204,14 +220,15 @@ export default function MeusLeadsPage() {
               return (
                 <div
                   key={l.id}
-                  className="grid grid-cols-12 items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-gray-50 transition-colors"
+                  className="grid grid-cols-12 items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
+                  style={{ borderColor: "var(--shell-card-border)" }}
                 >
                   <div className="col-span-4">
-                    <Link href={`/leads/${l.id}`} className="font-medium text-gray-900 hover:underline">
+                    <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline">
                       {l.nome || "Sem nome"}
                     </Link>
                   </div>
-                  <div className="col-span-3 text-sm text-gray-600">
+                  <div className="col-span-3 text-sm text-[var(--shell-subtext)]">
                     {l.telefone || l.whatsapp || "—"}
                   </div>
                   <div className="col-span-2">
@@ -219,7 +236,7 @@ export default function MeusLeadsPage() {
                       {groupLabel}
                     </span>
                   </div>
-                  <div className="col-span-3 text-sm text-gray-700">
+                  <div className="col-span-3 text-sm text-[var(--shell-subtext)]">
                     {stageName}
                   </div>
                 </div>

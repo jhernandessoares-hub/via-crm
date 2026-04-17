@@ -129,12 +129,12 @@ function BarChart({ data }: { data: { label: string; value: number; color: strin
     <div className="flex items-end gap-2 h-24">
       {data.map((d) => (
         <div key={d.label} className="flex flex-col items-center gap-1 flex-1">
-          <span className="text-[10px] text-gray-500 font-medium">{fmt(d.value)}</span>
+          <span className="text-[10px] text-[var(--shell-subtext)] font-medium">{fmt(d.value)}</span>
           <div
             className="w-full rounded-t"
             style={{ height: `${(d.value / max) * 64}px`, backgroundColor: d.color, minHeight: d.value > 0 ? 4 : 0 }}
           />
-          <span className="text-[10px] text-gray-400 truncate w-full text-center">{d.label}</span>
+          <span className="text-[10px] text-[var(--shell-subtext)] truncate w-full text-center">{d.label}</span>
         </div>
       ))}
     </div>
@@ -145,10 +145,10 @@ function BarChart({ data }: { data: { label: string; value: number; color: strin
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border bg-white p-4">
-      <p className="text-xs text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-gray-400">{sub}</p>}
+    <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+      <p className="text-xs text-[var(--shell-subtext)]">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-[var(--shell-text)]">{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-[var(--shell-subtext)]">{sub}</p>}
     </div>
   );
 }
@@ -272,7 +272,7 @@ export default function ChannelsPage() {
 
   /* ── Dashboard ── */
   const renderDashboard = () => {
-    if (!stats) return <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>;
+    if (!stats) return <p className="text-sm text-[var(--shell-subtext)] text-center py-12">Carregando...</p>;
     const { geral, canais, semOrigem } = stats;
 
     const chartData = canais
@@ -308,51 +308,51 @@ export default function ChannelsPage() {
 
         {/* Gráfico */}
         {chartData.length > 0 && (
-          <div className="rounded-xl border bg-white p-4">
-            <p className="text-sm font-medium text-gray-700 mb-4">Leads por canal (total)</p>
+          <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+            <p className="text-sm font-medium text-[var(--shell-subtext)] mb-4">Leads por canal (total)</p>
             <BarChart data={chartData} />
           </div>
         )}
 
         {/* Tabela por canal */}
-        <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden" style={{ borderColor: "var(--shell-card-border)" }}>
           <table className="w-full text-xs">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-[var(--shell-bg)] border-b" style={{ borderColor: "var(--shell-card-border)" }}>
               <tr>
-                <th className="text-left px-4 py-3 text-gray-500 font-medium">Canal</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Hoje</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Semana</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Mês</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Total</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Invest./mês</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">CPL</th>
-                <th className="text-right px-4 py-3 text-gray-500 font-medium">Conv.</th>
+                <th className="text-left px-4 py-3 text-[var(--shell-subtext)] font-medium">Canal</th>
+                <th className="text-right px-4 py-3 text-[var(--shell-subtext)] font-medium">Hoje</th>
+                <th className="text-right px-4 py-3 text-[var(--shell-subtext)] font-medium">Semana</th>
+                <th className="text-right px-4 py-3 text-[var(--shell-subtext)] font-medium">Mês</th>
+                <th className="text-right px-4 py-3 text-[var(--shell-subtext)] font-medium">Total</th>
+                <th className="text-right px-4 py-3 text-[var(--shell-subtext)] font-medium">Invest./mês</th>
+                <th className="text-right px-4 py-3 text-[var(--shell-subtext)] font-medium">CPL</th>
+                <th className="text-right px-4 py-3 text-[var(--shell-subtext)] font-medium">Conv.</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y" style={{ borderColor: "var(--shell-card-border)" }}>
               {canais.map((c) => (
-                <tr key={c.type} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800 flex items-center gap-2">
+                <tr key={c.type} className="hover:bg-[var(--shell-hover)]">
+                  <td className="px-4 py-3 font-medium text-[var(--shell-text)] flex items-center gap-2">
                     <span>{CHANNEL_ICONS[c.type] || "📡"}</span>
                     {c.name}
-                    {!c.active && <span className="text-gray-400 font-normal">(inativo)</span>}
+                    {!c.active && <span className="text-[var(--shell-subtext)] font-normal">(inativo)</span>}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{c.hoje}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{c.semana}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{c.mes}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-800">{c.total}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">
-                    {c.budget != null ? fmtBrl(c.budget) : <span className="text-gray-300">—</span>}
+                  <td className="px-4 py-3 text-right text-[var(--shell-subtext)]">{c.hoje}</td>
+                  <td className="px-4 py-3 text-right text-[var(--shell-subtext)]">{c.semana}</td>
+                  <td className="px-4 py-3 text-right text-[var(--shell-subtext)]">{c.mes}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-[var(--shell-text)]">{c.total}</td>
+                  <td className="px-4 py-3 text-right text-[var(--shell-subtext)]">
+                    {c.budget != null ? fmtBrl(c.budget) : <span className="text-[var(--shell-subtext)] opacity-50">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">
-                    {c.cpl != null ? fmtBrl(c.cpl) : <span className="text-gray-300">—</span>}
+                  <td className="px-4 py-3 text-right text-[var(--shell-subtext)]">
+                    {c.cpl != null ? fmtBrl(c.cpl) : <span className="text-[var(--shell-subtext)] opacity-50">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{c.convRate.toFixed(1)}%</td>
+                  <td className="px-4 py-3 text-right text-[var(--shell-subtext)]">{c.convRate.toFixed(1)}%</td>
                 </tr>
               ))}
               {canais.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-gray-400">
+                  <td colSpan={8} className="text-center py-8 text-[var(--shell-subtext)]">
                     Nenhum canal com dados ainda.
                   </td>
                 </tr>
@@ -370,17 +370,18 @@ export default function ChannelsPage() {
       {channels.map((ch) => (
         <div
           key={ch.type}
-          className={`rounded-xl border bg-white p-4 flex flex-col gap-3 ${
-            ch.active ? "border-slate-200" : "border-gray-200 opacity-70"
+          className={`rounded-xl border bg-[var(--shell-card-bg)] p-4 flex flex-col gap-3 ${
+            ch.active ? "" : "opacity-70"
           }`}
+          style={{ borderColor: "var(--shell-card-border)" }}
         >
           {/* Header */}
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xl">{CHANNEL_ICONS[ch.type] || "📡"}</span>
               <div>
-                <p className="text-sm font-semibold text-gray-900">{ch.name}</p>
-                <p className="text-xs text-gray-400">{ch.description}</p>
+                <p className="text-sm font-semibold text-[var(--shell-text)]">{ch.name}</p>
+                <p className="text-xs text-[var(--shell-subtext)]">{ch.description}</p>
               </div>
             </div>
             <button
@@ -399,7 +400,7 @@ export default function ChannelsPage() {
 
           {/* Stats */}
           {ch.configured && (
-            <div className="flex gap-4 text-xs text-gray-500">
+            <div className="flex gap-4 text-xs text-[var(--shell-subtext)]">
               <span>{ch.leadsCount} leads</span>
               {ch.monthlyBudget != null && (
                 <span>Invest: {fmtBrl(ch.monthlyBudget)}</span>
@@ -412,7 +413,8 @@ export default function ChannelsPage() {
           {ch.configured && ch.webhookToken && !["LANDING_PAGE", "FORMULARIO_INTERNO"].includes(ch.type) && (
             <button
               onClick={() => copyWebhook(ch)}
-              className="flex items-center gap-2 rounded-md bg-gray-50 border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 text-left"
+              className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] text-left"
+              style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
             >
               <span className="flex-1 font-mono truncate text-[10px]">
                 {API_BASE}/webhooks/channel/{ch.webhookToken.slice(0, 10)}...
@@ -438,7 +440,8 @@ export default function ChannelsPage() {
           <div className="flex gap-2 mt-auto">
             <button
               onClick={() => openModal(ch)}
-              className="flex-1 rounded-md border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+              className="flex-1 rounded-md border px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+              style={{ borderColor: "var(--shell-card-border)" }}
             >
               {ch.configured ? "Configurar" : "Conectar"}
             </button>
@@ -446,7 +449,8 @@ export default function ChannelsPage() {
               <button
                 onClick={() => fetchCost(ch.type)}
                 disabled={fetchingCost === ch.type}
-                className="rounded-md border px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="rounded-md border px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50"
+                style={{ borderColor: "var(--shell-card-border)" }}
                 title="Buscar custo automaticamente"
               >
                 {fetchingCost === ch.type ? "..." : "💰"}
@@ -469,7 +473,7 @@ export default function ChannelsPage() {
   return (
     <AppShell title="Canais">
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b">
+      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: "var(--shell-card-border)" }}>
         {(["dashboard", "canais"] as const).map((t) => (
           <button
             key={t}
@@ -477,7 +481,7 @@ export default function ChannelsPage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t
                 ? "border-slate-900 text-slate-900"
-                : "border-transparent text-gray-400 hover:text-gray-600"
+                : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
             }`}
           >
             {t === "dashboard" ? "Dashboard" : "Canais"}
@@ -486,7 +490,7 @@ export default function ChannelsPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+        <p className="text-sm text-[var(--shell-subtext)] text-center py-12">Carregando...</p>
       ) : tab === "dashboard" ? (
         renderDashboard()
       ) : (
@@ -495,77 +499,82 @@ export default function ChannelsPage() {
 
       {/* Modal configuração */}
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b px-5 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="w-full max-w-md rounded-xl shadow-xl max-h-[90vh] overflow-y-auto" style={{ background: "var(--shell-card-bg)" }}>
+            <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
               <div className="flex items-center gap-2">
                 <span className="text-lg">{CHANNEL_ICONS[modal.type] || "📡"}</span>
-                <h2 className="text-base font-semibold text-gray-900">{modal.name}</h2>
+                <h2 className="text-base font-semibold text-[var(--shell-text)]">{modal.name}</h2>
               </div>
-              <button onClick={() => setModal(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              <button onClick={() => setModal(null)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl">×</button>
             </div>
 
             <div className="px-5 py-4 space-y-4">
               {/* Webhook URL */}
               {modal.webhookToken && !["LANDING_PAGE", "FORMULARIO_INTERNO"].includes(modal.type) && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">URL do Webhook</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">URL do Webhook</label>
                   <div className="flex gap-2">
                     <input
                       readOnly
                       value={`${API_BASE}/webhooks/channel/${modal.webhookToken}`}
-                      className="flex-1 rounded-md border bg-gray-50 px-3 py-2 text-xs font-mono outline-none text-gray-600"
+                      className="flex-1 rounded-md border px-3 py-2 text-xs font-mono outline-none text-[var(--shell-subtext)]"
+                      style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     />
                     <button
                       onClick={() => copyWebhook(modal)}
-                      className="rounded-md border px-3 py-2 text-xs hover:bg-gray-50"
+                      className="rounded-md border px-3 py-2 text-xs hover:bg-[var(--shell-hover)]"
+                      style={{ borderColor: "var(--shell-card-border)" }}
                     >
                       {copied === modal.type + "_wh" ? "✅" : "Copiar"}
                     </button>
                   </div>
-                  <p className="mt-1 text-[11px] text-gray-400">Cole esta URL no painel do canal.</p>
+                  <p className="mt-1 text-[11px] text-[var(--shell-subtext)]">Cole esta URL no painel do canal.</p>
                 </div>
               )}
 
               {/* Landing page link */}
               {modal.webhookToken && ["LANDING_PAGE", "FORMULARIO_INTERNO"].includes(modal.type) && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Link público do formulário</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Link público do formulário</label>
                   <div className="flex gap-2">
                     <input
                       readOnly
                       value={`${typeof window !== "undefined" ? window.location.origin : ""}/lp/${modal.webhookToken}`}
-                      className="flex-1 rounded-md border bg-gray-50 px-3 py-2 text-xs font-mono outline-none text-gray-600"
+                      className="flex-1 rounded-md border px-3 py-2 text-xs font-mono outline-none"
+                      style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     />
                     <button
                       onClick={() => copyFormLink(modal)}
-                      className="rounded-md border px-3 py-2 text-xs hover:bg-gray-50"
+                      className="rounded-md border px-3 py-2 text-xs hover:bg-[var(--shell-hover)]"
+                      style={{ borderColor: "var(--shell-card-border)" }}
                     >
                       {copied === modal.type + "_lp" ? "✅" : "Copiar"}
                     </button>
                   </div>
-                  <p className="mt-1 text-[11px] text-gray-400">Compartilhe este link. Não requer login.</p>
+                  <p className="mt-1 text-[11px] text-[var(--shell-subtext)]">Compartilhe este link. Não requer login.</p>
                 </div>
               )}
 
               {/* Config fields */}
               {(CONFIG_FIELDS[modal.type] || []).map((field) => (
                 <div key={field.key}>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">{field.label}</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">{field.label}</label>
                   <input
                     type={field.type}
                     value={configValues[field.key] || ""}
                     onChange={(e) => setConfigValues((p) => ({ ...p, [field.key]: e.target.value }))}
                     className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                     placeholder={field.hint}
                   />
-                  {field.hint && <p className="mt-1 text-[11px] text-gray-400">{field.hint}</p>}
+                  {field.hint && <p className="mt-1 text-[11px] text-[var(--shell-subtext)]">{field.hint}</p>}
                 </div>
               ))}
 
               {/* Orçamento mensal */}
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                   Investimento mensal (R$)
                   {canAutoFetch(modal.type) && (
                     <span className="ml-2 text-blue-500">— ou busque automaticamente após salvar</span>
@@ -578,19 +587,20 @@ export default function ChannelsPage() {
                   value={budget}
                   onChange={(e) => setBudget(e.target.value)}
                   className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   placeholder="0,00"
                 />
               </div>
 
               {(CONFIG_FIELDS[modal.type] || []).length === 0 && !modal.webhookToken && (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-[var(--shell-subtext)]">
                   Este canal não requer configuração extra. Após conectar, copie a URL do webhook e cole no portal.
                 </p>
               )}
             </div>
 
-            <div className="flex justify-end gap-2 border-t px-5 py-4">
-              <button onClick={() => setModal(null)} className="rounded-md border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+            <div className="flex justify-end gap-2 border-t px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <button onClick={() => setModal(null)} className="rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]" style={{ borderColor: "var(--shell-card-border)" }}>
                 Cancelar
               </button>
               <button
