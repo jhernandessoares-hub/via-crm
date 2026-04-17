@@ -360,9 +360,6 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
         {role === "OWNER" && (
           <NavItem href="/my-site" label="Meu Site" icon={Globe} mode="prefix" />
         )}
-        {role === "OWNER" && (
-          <NavItem href="/settings/branding" label="Personalização" icon={Palette} />
-        )}
       </nav>
 
       {/* Logout */}

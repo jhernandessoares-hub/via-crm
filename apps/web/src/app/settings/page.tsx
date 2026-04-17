@@ -19,6 +19,11 @@ export default function SettingsPage() {
       title: "Notificações",
       desc: "Escolha quais eventos e etapas te notificam pelo WhatsApp",
     },
+    {
+      href: "/settings/branding",
+      title: "Personalização",
+      desc: "Logo, favicon e paleta de cores da sua imobiliária",
+    },
   ];
 
   return (
