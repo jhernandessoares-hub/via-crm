@@ -1524,50 +1524,51 @@ export class LeadsService {
       POS_VENDA: 'Pós-venda',
     };
 
-    // IDs dos leads criados no período
-    const leadsNoPeriodo = await this.prisma.lead.findMany({
-      where: periodWhere,
-      select: { id: true },
-    });
-    const leadIdsPeriodo = leadsNoPeriodo.map((l) => l.id);
-
-    // Todas as stages do tenant para mapear stageId → group
-    const todasStages = await this.prisma.pipelineStage.findMany({
-      where: { pipeline: { tenantId } },
-      select: { id: true, group: true },
-    });
-    const stageGroupMap: Record<string, string> = {};
-    for (const s of todasStages) { if (s.group) stageGroupMap[s.id] = s.group; }
-
-    // Para cada lead do período, quais grupos ele alcançou?
-    // Fonte 1: stage atual
-    const leadsComStageAtual = await this.prisma.lead.findMany({
-      where: { id: { in: leadIdsPeriodo }, stageId: { not: null } },
+    // Funil: todos os leads ativos do tenant (sem filtro de período)
+    const todosLeads = await this.prisma.lead.findMany({
+      where: baseWhere,
       select: { id: true, stageId: true },
     });
-    // Fonte 2: histórico de transições (toStage = stageId que o lead visitou)
-    const transicoes = leadIdsPeriodo.length > 0
-      ? await this.prisma.leadTransitionLog.findMany({
-          where: { tenantId, leadId: { in: leadIdsPeriodo } },
-          select: { leadId: true, toStage: true },
-        })
-      : [];
+    const todosLeadIds = todosLeads.map((l) => l.id);
+
+    // Todas as stages do tenant para mapear stageId → group e stageName → group
+    const todasStages = await this.prisma.pipelineStage.findMany({
+      where: { pipeline: { tenantId } },
+      select: { id: true, name: true, group: true },
+    });
+    const stageGroupMap: Record<string, string> = {};
+    const stageNameGroupMap: Record<string, string> = {};
+    for (const s of todasStages) {
+      if (s.group) {
+        stageGroupMap[s.id] = s.group;
+        if (s.name) stageNameGroupMap[s.name.toLowerCase()] = s.group;
+      }
+    }
 
     // Monta set de (leadId, group) que o lead atingiu
     const leadGrupos = new Map<string, Set<string>>();
-    const addGrupo = (leadId: string, stageId: string) => {
-      const g = stageGroupMap[stageId];
+    const addGrupo = (leadId: string, stageRef: string) => {
+      // stageRef pode ser UUID (stageId) ou nome (toStage no log)
+      const g = stageGroupMap[stageRef] ?? stageNameGroupMap[stageRef.toLowerCase()];
       if (!g) return;
       if (!leadGrupos.has(leadId)) leadGrupos.set(leadId, new Set());
       leadGrupos.get(leadId)!.add(g);
     };
 
-    // Todos os leads do período chegaram ao menos em PRE_ATENDIMENTO
-    for (const l of leadsNoPeriodo) {
+    // Todos os leads começam em PRE_ATENDIMENTO
+    for (const l of todosLeads) {
       if (!leadGrupos.has(l.id)) leadGrupos.set(l.id, new Set());
       leadGrupos.get(l.id)!.add('PRE_ATENDIMENTO');
+      if (l.stageId) addGrupo(l.id, l.stageId);
     }
-    for (const l of leadsComStageAtual) addGrupo(l.id, l.stageId!);
+
+    // Histórico de transições (toStage = nome da etapa no log)
+    const transicoes = todosLeadIds.length > 0
+      ? await this.prisma.leadTransitionLog.findMany({
+          where: { tenantId, leadId: { in: todosLeadIds } },
+          select: { leadId: true, toStage: true },
+        })
+      : [];
     for (const t of transicoes) addGrupo(t.leadId, t.toStage);
 
     // Conta distintos por grupo
