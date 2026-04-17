@@ -52,36 +52,54 @@ function formatDateTime(iso: string) {
     " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-// Funil visual em trapézio
+// Funil visual
 function FunnelChart({ data }: { data: { key: string; label: string; count: number }[] }) {
   const filtered = data.filter((d) => FUNIL_KEYS.includes(d.key));
+  const total = filtered[0]?.count ?? 0; // topo = entrada total
   const max = Math.max(...filtered.map((d) => d.count), 1);
 
   return (
-    <div className="space-y-1">
+    <div className="w-full space-y-0">
+      {/* Total de entrada */}
+      <div className="flex items-center justify-center mb-3">
+        <span className="text-xs text-[var(--shell-subtext)] mr-1">Total de entradas:</span>
+        <span className="text-sm font-bold text-[var(--shell-text)]">{total}</span>
+      </div>
+
       {filtered.map((item, i) => {
-        const pct = max > 0 ? Math.max((item.count / max) * 100, item.count > 0 ? 8 : 2) : 2;
+        const barPct = Math.max((item.count / max) * 100, item.count > 0 ? 10 : 3);
+        const totalPct = total > 0 ? Math.round((item.count / total) * 100) : 0;
         const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
-        const convPct = i > 0 && filtered[i - 1].count > 0
-          ? Math.round((item.count / filtered[i - 1].count) * 100)
-          : null;
 
         return (
-          <div key={item.key} className="flex flex-col items-center">
-            {/* Barra trapézio centrada */}
-            <div className="relative flex items-center justify-center h-10 rounded-sm" style={{ width: `${pct}%`, background: color, minWidth: 60, transition: "width 0.5s" }}>
-              <span className="text-[11px] font-semibold text-white drop-shadow truncate px-2">
+          <div key={item.key}>
+            {/* Linha da etapa */}
+            <div className="flex items-center gap-2">
+              {/* Label à esquerda — largura fixa para não truncar */}
+              <span className="text-xs text-[var(--shell-subtext)] text-right shrink-0" style={{ width: 120 }}>
                 {item.label}
               </span>
-              <span className="absolute right-2 text-[11px] font-bold text-white">{item.count}</span>
+
+              {/* Barra centrada */}
+              <div className="flex-1 flex justify-center">
+                <div
+                  className="h-8 rounded-sm flex items-center justify-center transition-all duration-500"
+                  style={{ width: `${barPct}%`, background: color, minWidth: 32 }}
+                >
+                  <span className="text-[11px] font-bold text-white px-1">{item.count}</span>
+                </div>
+              </div>
+
+              {/* Percentual do total à direita */}
+              <span className="text-xs font-semibold shrink-0" style={{ width: 36, color, textAlign: "right" }}>
+                {totalPct}%
+              </span>
             </div>
-            {/* Seta de conversão entre etapas */}
+
+            {/* Separador entre etapas */}
             {i < filtered.length - 1 && (
-              <div className="flex flex-col items-center my-0.5">
-                <div className="h-3 w-px" style={{ background: "var(--shell-card-border)" }} />
-                {convPct !== null && (
-                  <span className="text-[10px] text-[var(--shell-subtext)]">{convPct}%</span>
-                )}
+              <div className="flex justify-center my-0.5">
+                <div className="h-2 w-px" style={{ background: "var(--shell-card-border)" }} />
               </div>
             )}
           </div>
