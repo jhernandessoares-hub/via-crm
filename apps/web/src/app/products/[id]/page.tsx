@@ -1166,15 +1166,21 @@ ${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.vi
 
 // ─── Image Detail Modal ───────────────────────────────────────────────────────
 
-function ImageDetailModal({ img, onClose, onSave, onDelete, onSetPrimary, onTogglePublic, onAnalyze }: {
+function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary, onTogglePublic, onAnalyze, onNavigate }: {
   img: any;
+  images: any[];
   onClose: () => void;
   onSave: (imgId: string, roomType: string, roomLabel: string, features: string[], customLabel: string) => Promise<void>;
   onDelete: (imgId: string) => void;
   onSetPrimary: (imgId: string) => void;
   onTogglePublic: (imgId: string, current: boolean) => void;
   onAnalyze: (imgId: string) => void;
+  onNavigate: (img: any) => void;
 }) {
+  const currentIndex = images.findIndex((i: any) => i.id === img.id);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < images.length - 1;
+
   const [roomType, setRoomType] = useState(img.aiRoomType || "OUTRO");
   const [roomLabel, setRoomLabel] = useState(img.aiRoomLabel || "");
   const [features, setFeatures] = useState<string[]>(
@@ -1214,10 +1220,35 @@ function ImageDetailModal({ img, onClose, onSave, onDelete, onSetPrimary, onTogg
           ✕
         </button>
 
-        {/* Imagem */}
-        <div className="flex-1 bg-black flex items-center justify-center min-h-[400px] overflow-hidden">
+        {/* Imagem + navegação */}
+        <div className="flex-1 bg-black flex items-center justify-center min-h-[400px] overflow-hidden relative group">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={url ?? undefined} alt={customLabel || "Foto"} className="max-h-[90vh] max-w-full object-contain" />
+
+          {/* Anterior */}
+          {hasPrev && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); onNavigate(images[currentIndex - 1]); }}
+              className="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/75 transition-all">
+              ‹
+            </button>
+          )}
+
+          {/* Próxima */}
+          {hasNext && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); onNavigate(images[currentIndex + 1]); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/75 transition-all">
+              ›
+            </button>
+          )}
+
+          {/* Contador */}
+          {images.length > 1 && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
+              {currentIndex + 1} / {images.length}
+            </div>
+          )}
         </div>
 
         {/* Painel direito */}
@@ -2145,12 +2176,14 @@ export default function ProductEditPage() {
           {imageModalImg && (
             <ImageDetailModal
               img={imageModalImg}
+              images={productImages}
               onClose={() => setImageModalImg(null)}
               onSave={handleImageModalSave}
               onDelete={(imgId) => { onDeleteImage(imgId); setImageModalImg(null); }}
               onSetPrimary={(imgId) => { onSetPrimaryImage(imgId); setImageModalImg(null); }}
               onTogglePublic={(imgId, cur) => handleToggleImagePublic(imgId, cur)}
               onAnalyze={(imgId) => { handleAnalyzeImage(imgId); setImageModalImg(null); }}
+              onNavigate={(img) => setImageModalImg(img)}
             />
           )}
 
