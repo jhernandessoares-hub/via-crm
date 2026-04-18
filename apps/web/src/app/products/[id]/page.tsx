@@ -1874,81 +1874,8 @@ export default function ProductEditPage() {
               </Field>
             </Section>
 
-            {/* ── S2: Localização ──────────────────────────────────────── */}
-            <Section id="localizacao" title="2. Localização" open={open.has("localizacao")} onToggle={() => toggle("localizacao")}>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="CEP">
-                  <input value={form.zipCode}
-                    onChange={(e) => f({ zipCode: e.target.value })}
-                    onBlur={(e) => fetchCep(e.target.value)}
-                    placeholder="00000-000" className={inp} disabled={loading} />
-                </Field>
-                <div />
-                <div className="col-span-2">
-                  <Field label="Rua / Logradouro">
-                    <input value={form.street} onChange={(e) => f({ street: e.target.value })}
-                      className={inp} disabled={loading} />
-                  </Field>
-                </div>
-                <Field label="Número">
-                  <input value={form.streetNumber} onChange={(e) => f({ streetNumber: e.target.value })}
-                    className={inp} disabled={loading} />
-                </Field>
-                <Field label="Complemento">
-                  <input value={form.complement} onChange={(e) => f({ complement: e.target.value })}
-                    placeholder="Apto, bloco..." className={inp} disabled={loading} />
-                </Field>
-                <Field label="Bairro">
-                  <input value={form.neighborhood} onChange={(e) => f({ neighborhood: e.target.value })}
-                    className={inp} disabled={loading} />
-                </Field>
-                <Field label="Cidade">
-                  <input value={form.city} onChange={(e) => f({ city: e.target.value })}
-                    className={inp} disabled={loading} />
-                </Field>
-                <Field label="Estado (UF)">
-                  <input value={form.state} onChange={(e) => f({ state: e.target.value })}
-                    placeholder="SP" maxLength={2} className={inp} disabled={loading} />
-                </Field>
-                <div className="col-span-2">
-                  <Field label="Nome do condomínio / empreendimento">
-                    <input value={form.condominiumName} onChange={(e) => f({ condominiumName: e.target.value })}
-                      placeholder="Ex.: Residencial das Flores" className={inp} disabled={loading} />
-                  </Field>
-                </div>
-              </div>
-              <Toggle checked={form.hideAddress} onChange={(v) => f({ hideAddress: v })} label="Ocultar endereço completo no site" />
-            </Section>
-
-            {/* ── S3: Valores ──────────────────────────────────────────── */}
-            <Section id="valores" title="3. Valores" open={open.has("valores")} onToggle={() => toggle("valores")}>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Preço de venda">
-                  <CurrencyInput value={form.price} onChange={(v) => f({ price: v })} disabled={loading} />
-                </Field>
-                <Field label="Preço de locação (por mês)">
-                  <CurrencyInput value={form.rentPrice} onChange={(v) => f({ rentPrice: v })} disabled={loading} />
-                </Field>
-                <Field label="IPTU anual">
-                  <CurrencyInput value={form.iptu} onChange={(v) => f({ iptu: v })} disabled={loading} />
-                </Field>
-                <Field label="IPTU mensal (calculado)">
-                  <div className={`${inp} bg-[var(--shell-bg)] text-[var(--shell-subtext)]`}>
-                    {iptuMonthly ? `R$ ${iptuMonthly}` : "-"}
-                  </div>
-                </Field>
-                <Field label="Condomínio mensal">
-                  <CurrencyInput value={form.condominiumFee} onChange={(v) => f({ condominiumFee: v })} disabled={loading} />
-                </Field>
-              </div>
-              <div className="flex flex-col gap-3 pt-1">
-                <Toggle checked={form.acceptsFinancing} onChange={(v) => f({ acceptsFinancing: v })} label="Aceita financiamento" />
-                <Toggle checked={form.acceptsExchange} onChange={(v) => f({ acceptsExchange: v })} label="Aceita permuta" />
-              </div>
-            </Section>
-
-            {/* ── S4: Mídia ────────────────────────────────────────────── */}
-            {!isEmpreendimento && <Section id="midia" title="4. Mídia" open={open.has("midia")} onToggle={() => { toggle("midia"); if (!open.has("midia")) loadDocs(); }}>
+            {/* ── S2: Fotos e Detalhes ────────────────────────────────────────────── */}
+            {!isEmpreendimento && <Section id="midia" title="2. Fotos e Detalhes" open={open.has("midia")} onToggle={() => { toggle("midia"); if (!open.has("midia")) loadDocs(); }}>
 
               {/* Upload */}
               <div>
@@ -2154,8 +2081,8 @@ export default function ProductEditPage() {
               </div>
             </Section>}
 
-            {/* ── S5: Ambientes & Características ───────────────────────── */}
-            {!isEmpreendimento && <Section id="comodos" title="5. Ambientes & Características" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
+            {/* ── S3: Ambientes & Características ───────────────────────── */}
+            {!isEmpreendimento && <Section id="comodos" title="3. Ambientes & Características" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
 
               {roomsLoading ? (
                 <p className="text-sm text-[var(--shell-subtext)]">Carregando cômodos...</p>
@@ -2299,8 +2226,81 @@ export default function ProductEditPage() {
               </div>
             </Section>}
 
-            {/* ── S6: Proprietários ─────────────────────────────────────── */}
-            {!isEmpreendimento && <Section id="proprietarios" title="6. Proprietários" open={open.has("proprietarios")} onToggle={() => toggle("proprietarios")}>
+            {/* ── S4: Localização ──────────────────────────────────────── */}
+            <Section id="localizacao" title="4. Localização" open={open.has("localizacao")} onToggle={() => toggle("localizacao")}>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="CEP">
+                  <input value={form.zipCode}
+                    onChange={(e) => f({ zipCode: e.target.value })}
+                    onBlur={(e) => fetchCep(e.target.value)}
+                    placeholder="00000-000" className={inp} disabled={loading} />
+                </Field>
+                <div />
+                <div className="col-span-2">
+                  <Field label="Rua / Logradouro">
+                    <input value={form.street} onChange={(e) => f({ street: e.target.value })}
+                      className={inp} disabled={loading} />
+                  </Field>
+                </div>
+                <Field label="Número">
+                  <input value={form.streetNumber} onChange={(e) => f({ streetNumber: e.target.value })}
+                    className={inp} disabled={loading} />
+                </Field>
+                <Field label="Complemento">
+                  <input value={form.complement} onChange={(e) => f({ complement: e.target.value })}
+                    placeholder="Apto, bloco..." className={inp} disabled={loading} />
+                </Field>
+                <Field label="Bairro">
+                  <input value={form.neighborhood} onChange={(e) => f({ neighborhood: e.target.value })}
+                    className={inp} disabled={loading} />
+                </Field>
+                <Field label="Cidade">
+                  <input value={form.city} onChange={(e) => f({ city: e.target.value })}
+                    className={inp} disabled={loading} />
+                </Field>
+                <Field label="Estado (UF)">
+                  <input value={form.state} onChange={(e) => f({ state: e.target.value })}
+                    placeholder="SP" maxLength={2} className={inp} disabled={loading} />
+                </Field>
+                <div className="col-span-2">
+                  <Field label="Nome do condomínio / empreendimento">
+                    <input value={form.condominiumName} onChange={(e) => f({ condominiumName: e.target.value })}
+                      placeholder="Ex.: Residencial das Flores" className={inp} disabled={loading} />
+                  </Field>
+                </div>
+              </div>
+              <Toggle checked={form.hideAddress} onChange={(v) => f({ hideAddress: v })} label="Ocultar endereço completo no site" />
+            </Section>
+
+            {/* ── S5: Valores ──────────────────────────────────────────── */}
+            <Section id="valores" title="5. Valores" open={open.has("valores")} onToggle={() => toggle("valores")}>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Preço de venda">
+                  <CurrencyInput value={form.price} onChange={(v) => f({ price: v })} disabled={loading} />
+                </Field>
+                <Field label="Preço de locação (por mês)">
+                  <CurrencyInput value={form.rentPrice} onChange={(v) => f({ rentPrice: v })} disabled={loading} />
+                </Field>
+                <Field label="IPTU anual">
+                  <CurrencyInput value={form.iptu} onChange={(v) => f({ iptu: v })} disabled={loading} />
+                </Field>
+                <Field label="IPTU mensal (calculado)">
+                  <div className={`${inp} bg-[var(--shell-bg)] text-[var(--shell-subtext)]`}>
+                    {iptuMonthly ? `R$ ${iptuMonthly}` : "-"}
+                  </div>
+                </Field>
+                <Field label="Condomínio mensal">
+                  <CurrencyInput value={form.condominiumFee} onChange={(v) => f({ condominiumFee: v })} disabled={loading} />
+                </Field>
+              </div>
+              <div className="flex flex-col gap-3 pt-1">
+                <Toggle checked={form.acceptsFinancing} onChange={(v) => f({ acceptsFinancing: v })} label="Aceita financiamento" />
+                <Toggle checked={form.acceptsExchange} onChange={(v) => f({ acceptsExchange: v })} label="Aceita permuta" />
+              </div>
+            </Section>
+
+            {/* ── S6: Proprietário ─────────────────────────────────────── */}
+            {!isEmpreendimento && <Section id="proprietarios" title="6. Proprietário" open={open.has("proprietarios")} onToggle={() => toggle("proprietarios")}>
 
               {ownersLoading ? (
                 <p className="text-sm text-[var(--shell-subtext)]">Carregando proprietários...</p>

@@ -25,7 +25,8 @@
       "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/products/\\\\[id\\\\]/loteamento)",
       "Bash(cp /c/Users/User/documents/via-crm/apps/web/src/app/products/\\\\[id\\\\]/empreendimento/page.tsx /c/Users/User/documents/via-crm/apps/web/src/app/products/\\\\[id\\\\]/loteamento/page.tsx)",
       "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/products/new/loteamento)",
-      "Bash(cp /c/Users/User/documents/via-crm/apps/web/src/app/products/new/empreendimento/page.tsx /c/Users/User/documents/via-crm/apps/web/src/app/products/new/loteamento/page.tsx)"
+      "Bash(cp /c/Users/User/documents/via-crm/apps/web/src/app/products/new/empreendimento/page.tsx /c/Users/User/documents/via-crm/apps/web/src/app/products/new/loteamento/page.tsx)",
+      "Bash(grep -v \"//\")"
     ]
   }
 }
