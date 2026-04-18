@@ -849,6 +849,63 @@ function AiEditPanel({ img, onConfirm, onCancel }: {
   );
 }
 
+// ─── TagInput ─────────────────────────────────────────────────────────────────
+
+const FEATURE_SUGGESTIONS = [
+  "Armário embutido", "Closet", "Banheira", "Churrasqueira", "Piscina",
+  "Sacada", "Vista mar", "Vista cidade", "Vista campo", "Janela ampla",
+  "Pia dupla", "Porcelanato", "Piso madeira", "Teto alto", "Iluminação natural",
+  "Área gourmet", "Varanda", "Lavabo", "Copa", "Área de serviço",
+  "Automação residencial", "Ar condicionado", "Aquecimento solar",
+];
+
+function TagInput({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [input, setInput] = useState("");
+
+  function add(tag: string) {
+    const t = tag.trim();
+    if (t && !value.includes(t)) onChange([...value, t]);
+    setInput("");
+  }
+
+  function remove(tag: string) {
+    onChange(value.filter((v) => v !== tag));
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {value.map((tag) => (
+          <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+            {tag}
+            <button type="button" onClick={() => remove(tag)} className="ml-0.5 opacity-60 hover:opacity-100 leading-none">×</button>
+          </span>
+        ))}
+      </div>
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ";") { e.preventDefault(); add(input); }
+          if (e.key === "Backspace" && !input && value.length) remove(value[value.length - 1]);
+        }}
+        placeholder="Digite e pressione Enter..."
+        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2.5 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-slate-400"
+      />
+      {FEATURE_SUGGESTIONS.filter((s) => !value.includes(s)).length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {FEATURE_SUGGESTIONS.filter((s) => !value.includes(s)).map((s) => (
+            <button key={s} type="button" onClick={() => add(s)}
+              className="rounded-full border border-dashed border-[var(--shell-card-border)] px-2 py-0.5 text-[11px] text-[var(--shell-subtext)] hover:border-slate-400 hover:text-[var(--shell-text)] transition-colors">
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Image Detail Modal ───────────────────────────────────────────────────────
 
 function ImageDetailModal({ img, onClose, onSave, onDelete, onSetPrimary, onTogglePublic, onAnalyze }: {
@@ -862,7 +919,11 @@ function ImageDetailModal({ img, onClose, onSave, onDelete, onSetPrimary, onTogg
 }) {
   const [roomType, setRoomType] = useState(img.aiRoomType || "OUTRO");
   const [roomLabel, setRoomLabel] = useState(img.aiRoomLabel || "");
-  const [features, setFeatures] = useState<string[]>(img.aiFeatures || []);
+  const [features, setFeatures] = useState<string[]>(
+    (img.aiFeatures || []).map((f: string) =>
+      f === f.toUpperCase() ? f.toLowerCase().replace(/_/g, " ") : f
+    )
+  );
   const [customLabel, setCustomLabel] = useState(img.customLabel || img.title || "");
   const [saving, setSaving] = useState(false);
 
@@ -957,15 +1018,7 @@ function ImageDetailModal({ img, onClose, onSave, onDelete, onSetPrimary, onTogg
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Características</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {AI_FEATURES.map(f => (
-                      <label key={f} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input type="checkbox" checked={features.includes(f)} onChange={() => toggleFeat(f)}
-                          className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
-                        {f.toLowerCase().replace(/_/g, " ")}
-                      </label>
-                    ))}
-                  </div>
+                  <TagInput value={features} onChange={setFeatures} />
                 </div>
               </div>
             </div>
