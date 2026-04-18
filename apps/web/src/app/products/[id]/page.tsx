@@ -1423,12 +1423,12 @@ export default function ProductEditPage() {
   // Auto-title for non-development types
   const isEmpreendimento = form.type === "EMPREENDIMENTO" || form.type === "LOTEAMENTO";
 
-  const computedTitle = useMemo(() => {
+  const computedTitle = (() => {
     if (isEmpreendimento) return form.title;
     const typeLabel = PRODUCT_TYPES.find((t) => t.value === form.type)?.label ?? form.type;
     const parts: string[] = [typeLabel];
-    const beds = parseInt(form.bedrooms);
-    const suites = parseInt(form.suites);
+    const beds = parseInt(form.bedrooms) || 0;
+    const suites = parseInt(form.suites) || 0;
     if (beds > 0) parts.push(`${beds} ${beds === 1 ? "quarto" : "quartos"}${suites > 0 ? ` (${suites} ${suites === 1 ? "suíte" : "suítes"})` : ""}`);
     else if (suites > 0) parts.push(`${suites} ${suites === 1 ? "suíte" : "suítes"}`);
     if (form.condominiumName.trim()) parts.push(`Cond. ${form.condominiumName.trim()}`);
@@ -1438,7 +1438,7 @@ export default function ProductEditPage() {
     const dealMap: Record<string, string> = { SALE: 'Venda', RENT: 'Locação', BOTH: 'Venda/Locação' };
     if (form.dealType && dealMap[form.dealType]) parts.push(dealMap[form.dealType]);
     return parts.join(' • ');
-  }, [isEmpreendimento, form.type, form.title, form.bedrooms, form.suites, form.neighborhood, form.condominiumName, form.price, form.dealType]);
+  })();
 
   // ── ViaCEP ──────────────────────────────────────────────────────────────────
   async function fetchCep(cep: string) {
@@ -2092,10 +2092,7 @@ export default function ProductEditPage() {
     return [...new Set(productImages.map((i) => normalizeImageUrl(i)).filter(Boolean))] as string[];
   }, [productImages]);
 
-  const headerTitle = useMemo(() => {
-    if (loading) return "Produto";
-    return computedTitle || "Novo imóvel";
-  }, [loading, computedTitle]);
+  const headerTitle = loading ? "Produto" : (computedTitle || "Novo imóvel");
 
   // ── Add room panel helpers ────────────────────────────────────────────────────
   const addTypeConfig = ROOM_TYPE_CONFIG.find((r) => r.value === addType);
