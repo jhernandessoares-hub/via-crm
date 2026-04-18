@@ -2325,6 +2325,33 @@ export default function ProductEditPage() {
                   </select>
                 </Field>
               </div>
+              {/* Características físicas */}
+              <div className="border-t border-[var(--shell-card-border)] pt-4">
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Características</p>
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+                  <Field label="Quartos">
+                    <input value={form.bedrooms} onChange={(e) => f({ bedrooms: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Suítes">
+                    <input value={form.suites} onChange={(e) => f({ suites: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Banheiros">
+                    <input value={form.bathrooms} onChange={(e) => f({ bathrooms: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Vagas">
+                    <input value={form.parkingSpaces} onChange={(e) => f({ parkingSpaces: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Área (m²)">
+                    <input value={form.areaM2} onChange={(e) => f({ areaM2: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                </div>
+              </div>
+
               {(form.type === "APARTAMENTO" || form.type === "CASA") && (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5">
                   <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
