@@ -109,22 +109,35 @@ function FunnelChart({ data }: { data: { key: string; label: string; count: numb
   );
 }
 
+function toDateInput(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
 export default function DashboardPage() {
   const now = new Date();
+  const [mode, setMode] = useState<"mes" | "custom">("mes");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
+  const [customFrom, setCustomFrom] = useState(toDateInput(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [customTo, setCustomTo] = useState(toDateInput(now));
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    const from = new Date(year, month, 1, 0, 0, 0).toISOString();
-    const to = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    let from: string, to: string;
+    if (mode === "mes") {
+      from = new Date(year, month, 1, 0, 0, 0).toISOString();
+      to = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    } else {
+      from = new Date(customFrom + "T00:00:00").toISOString();
+      to = new Date(customTo + "T23:59:59").toISOString();
+    }
     apiFetch(`/leads/dashboard?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
       .then((d) => setData(d as DashData))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [year, month]);
+  }, [year, month, mode, customFrom, customTo]);
 
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear((y) => y - 1); }
@@ -138,23 +151,63 @@ export default function DashboardPage() {
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
   const cards = data?.cards;
 
+  const inputStyle: React.CSSProperties = {
+    background: "var(--shell-input-bg)",
+    border: "1px solid var(--shell-card-border)",
+    color: "var(--shell-text)",
+    borderRadius: "8px",
+    padding: "0 10px",
+    height: "32px",
+    fontSize: "13px",
+    outline: "none",
+  };
+
   return (
     <AppShell title="Dashboard">
       <div className="space-y-6">
 
         {/* ── Seletor de período ─────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <h1 className="text-xl font-bold text-[var(--shell-text)]">Dashboard</h1>
-          <div className="flex items-center gap-2">
-            <button onClick={prevMonth}
-              className="h-8 w-8 flex items-center justify-center rounded-lg border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors"
-              style={{ borderColor: "var(--shell-card-border)" }}>‹</button>
-            <span className="text-sm font-semibold text-[var(--shell-text)] min-w-[140px] text-center">
-              {MONTHS[month]} {year}
-            </span>
-            <button onClick={nextMonth} disabled={isCurrentMonth}
-              className="h-8 w-8 flex items-center justify-center rounded-lg border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              style={{ borderColor: "var(--shell-card-border)" }}>›</button>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Toggle modo */}
+            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--shell-card-border)" }}>
+              {(["mes", "custom"] as const).map((m) => (
+                <button key={m} onClick={() => setMode(m)}
+                  className="px-3 h-8 text-xs font-medium transition-colors"
+                  style={{
+                    background: mode === m ? "var(--brand-accent)" : "var(--shell-input-bg)",
+                    color: mode === m ? "#fff" : "var(--shell-subtext)",
+                  }}>
+                  {m === "mes" ? "Mês" : "Personalizado"}
+                </button>
+              ))}
+            </div>
+
+            {mode === "mes" ? (
+              <>
+                <button onClick={prevMonth}
+                  className="h-8 w-8 flex items-center justify-center rounded-lg border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors"
+                  style={{ borderColor: "var(--shell-card-border)" }}>‹</button>
+                <span className="text-sm font-semibold text-[var(--shell-text)] min-w-[130px] text-center">
+                  {MONTHS[month]} {year}
+                </span>
+                <button onClick={nextMonth} disabled={isCurrentMonth}
+                  className="h-8 w-8 flex items-center justify-center rounded-lg border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{ borderColor: "var(--shell-card-border)" }}>›</button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input type="date" value={customFrom} max={customTo}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  style={inputStyle} />
+                <span className="text-xs text-[var(--shell-subtext)]">até</span>
+                <input type="date" value={customTo} min={customFrom} max={toDateInput(now)}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  style={inputStyle} />
+              </div>
+            )}
           </div>
         </div>
 
