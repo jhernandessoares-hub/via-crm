@@ -1244,12 +1244,15 @@ export default function ProductEditPage() {
           title: list.length === 1 && imgTitle.trim() ? imgTitle.trim() : undefined,
           customLabel: list.length === 1 && imgTitle.trim() ? imgTitle.trim() : undefined,
         });
-        const uploadedId = uploaded?.image?.id ?? uploaded?.id;
+        const newImg = uploaded?.image;
+        const uploadedId = newImg?.id ?? uploaded?.id;
         if (uploadedId) uploadedIds.push(uploadedId);
+        if (newImg) {
+          setProduct((prev: any) => prev ? { ...prev, images: [...(prev.images ?? []), newImg] } : prev);
+        }
         setUploadProgress({ done: i + 1, total: list.length });
       }
       setImgTitle("");
-      await load();
       setSuccess(`${list.length} foto${list.length > 1 ? "s" : ""} enviada${list.length > 1 ? "s" : ""}. Analisando com IA...`);
       for (const imgId of uploadedIds) handleAnalyzeImage(imgId);
     } catch (e: any) {

@@ -556,7 +556,8 @@ export default function EmpreendimentoEditPage() {
         customLabel: imgTitle.trim() || undefined,
       });
       setImgTitle("");
-      if (res?.image) setProductImages((prev) => [...prev, res.image]);
+      const newImg = res?.image ?? res;
+      if (newImg?.id) setProductImages((prev) => [...prev, newImg]);
       else await load();
       setSuccess("Imagem enviada.");
     } catch (e: any) {
