@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 import { Logger } from '../logger';
+import { resolveWhatsappCreds, sendWhatsappText } from '../whatsapp/whatsapp-creds';
 
 const logger = new Logger('ProductsService');
 import OpenAI from 'openai';
@@ -194,12 +195,13 @@ export class ProductsService {
         images: { orderBy: this.imagesOrderBy() },
         videos: { orderBy: this.videosOrderBy() },
         documents: { orderBy: this.documentsOrderBy() },
+        capturedBy: true,
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async getById(user: any, id: string) {
+  async getById(user: any, id: string): Promise<any> {
     const product = await this.prisma.product.findFirst({
       where: {
         id,
@@ -209,6 +211,7 @@ export class ProductsService {
         images: { orderBy: this.imagesOrderBy() },
         videos: { orderBy: this.videosOrderBy() },
         documents: { orderBy: this.documentsOrderBy() },
+        capturedBy: true,
       },
     });
 
@@ -375,6 +378,81 @@ export class ProductsService {
 
     await this.prisma.product.delete({ where: { id } });
     return { ok: true };
+  }
+
+  async requestDelete(user: any, id: string) {
+    if (user.role !== 'AGENT') {
+      throw new ForbiddenException('OWNER e MANAGER podem excluir diretamente.');
+    }
+    const product = await this.getById(user, id);
+    const userId = user.id || user.sub;
+    if (product.capturedByUserId !== userId) {
+      throw new ForbiddenException('Você só pode solicitar exclusão de produtos que você cadastrou.');
+    }
+    if ((product as any).deletionRequestedAt) {
+      throw new BadRequestException('Solicitação de exclusão já está pendente.');
+    }
+
+    await this.prisma.product.update({
+      where: { id },
+      data: { deletionRequestedAt: new Date(), deletionRequestedById: userId },
+    });
+
+    this.notifyDeletionRequest(user, product).catch(() => {});
+    return { ok: true };
+  }
+
+  async approveDelete(user: any, id: string) {
+    if (user.role === 'AGENT') throw new ForbiddenException('Sem permissão.');
+    const product = await this.getById(user, id);
+    if (!(product as any).deletionRequestedAt) {
+      throw new BadRequestException('Não há solicitação de exclusão pendente.');
+    }
+    await this.prisma.product.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  async rejectDelete(user: any, id: string) {
+    if (user.role === 'AGENT') throw new ForbiddenException('Sem permissão.');
+    await this.getById(user, id);
+    await this.prisma.product.update({
+      where: { id },
+      data: { deletionRequestedAt: null, deletionRequestedById: null },
+    });
+    return { ok: true };
+  }
+
+  async pendingDeletionsCount(user: any) {
+    if (user.role === 'AGENT') return { count: 0 };
+    const count = await this.prisma.product.count({
+      where: { tenantId: user.tenantId, deletionRequestedAt: { not: null } },
+    });
+    return { count };
+  }
+
+  private async notifyDeletionRequest(user: any, product: any) {
+    const managers: any[] = await this.prisma.user.findMany({
+      where: {
+        tenantId: user.tenantId,
+        role: { in: ['OWNER', 'MANAGER'] },
+        ativo: true,
+      } as any,
+      select: { telefone: true } as any,
+    });
+    if (!managers.length) return;
+
+    const requester = await this.prisma.user.findFirst({
+      where: { id: user.id || user.sub },
+      select: { nome: true, apelido: true },
+    });
+    const nome = (requester as any)?.apelido || requester?.nome || 'Corretor';
+    const msg = `🏠 *Solicitação de exclusão de produto*\n\n*Produto:* ${product.title}\n*Solicitado por:* ${nome}\n\nAcesse o sistema para aprovar ou rejeitar a exclusão.`;
+
+    const creds = await resolveWhatsappCreds(this.prisma, user.tenantId);
+    if (!creds) return;
+    for (const m of managers) {
+      if (m.telefone) await sendWhatsappText(creds, m.telefone, msg).catch(() => {});
+    }
   }
 
   async addImage(

@@ -18,7 +18,14 @@
       "Bash(sort -t' ' -k3 -n)",
       "Bash(xargs grep *)",
       "Bash(find apps/api/src -name \"*.controller.ts\" -exec grep -l \"stats\\\\|report\\\\|analytics\\\\|counts\\\\|getBy\" {} \\\\;)",
-      "Bash(find apps/api/src/leads -name \"*.dto.ts\" -exec cat {} \\\\;)"
+      "Bash(find apps/api/src/leads -name \"*.dto.ts\" -exec cat {} \\\\;)",
+      "Bash(git *)",
+      "Bash(node_modules/.bin/prisma db *)",
+      "Bash(node_modules/.bin/prisma generate *)",
+      "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/products/\\\\[id\\\\]/loteamento)",
+      "Bash(cp /c/Users/User/documents/via-crm/apps/web/src/app/products/\\\\[id\\\\]/empreendimento/page.tsx /c/Users/User/documents/via-crm/apps/web/src/app/products/\\\\[id\\\\]/loteamento/page.tsx)",
+      "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/products/new/loteamento)",
+      "Bash(cp /c/Users/User/documents/via-crm/apps/web/src/app/products/new/empreendimento/page.tsx /c/Users/User/documents/via-crm/apps/web/src/app/products/new/loteamento/page.tsx)"
     ]
   }
 }

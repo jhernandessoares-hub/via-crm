@@ -82,7 +82,6 @@ type FormData = {
   title: string;
   condition: DevCondition | "";
   standard: DevStandard | "";
-  socialPrograms: string[];
   // S2 - localização
   zipCode: string;
   street: string;
@@ -97,10 +96,6 @@ type FormData = {
   totalUnits: string;
   totalTowers: string;
   floorsPerTower: string;
-  privateAreaMinM2: string;
-  privateAreaMaxM2: string;
-  parkingMin: string;
-  parkingMax: string;
   deliveryForecast: string;
   landAreaM2: string;
   unitTypes: string[];
@@ -124,11 +119,10 @@ type FormData = {
 };
 
 const EMPTY: FormData = {
-  title: "", condition: "", standard: "", socialPrograms: [],
+  title: "", condition: "", standard: "",
   zipCode: "", street: "", streetNumber: "", complement: "",
   neighborhood: "", city: "", state: "", referencePoint: "",
   developer: "", totalUnits: "", totalTowers: "", floorsPerTower: "",
-  privateAreaMinM2: "", privateAreaMaxM2: "", parkingMin: "", parkingMax: "",
   deliveryForecast: "", landAreaM2: "", unitTypes: [], condoFeatures: [],
   technicalDescription: "", commercialDescription: "",
   price: "", minBuyerIncome: "", buyerIncomeLimit: "",
@@ -150,11 +144,7 @@ const SOCIAL_PROGRAMS = [
 
 const TRADE_IN_TYPES = ["Carro", "Imóvel", "Terreno"];
 
-const UNIT_TYPE_SUGGESTIONS = [
-  "Apartamento", "Casa", "Casa em condomínio", "Kitnet",
-  "Studio", "Loft", "Duplex", "Cobertura", "Sala comercial",
-  "Loja", "Barracão Industrial",
-];
+const UNIT_TYPES_LOTEAMENTO = ["Residencial", "Comercial", "Industrial", "Mista", "Rural"];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -356,7 +346,7 @@ function TagInput({ value, onChange, suggestions, ai, onClearAI, disabled }: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function EmpreendimentoEditPage() {
+export default function LoteamentoEditPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
   const router = useRouter();
@@ -382,6 +372,8 @@ export default function EmpreendimentoEditPage() {
   const [imgTitle, setImgTitle] = useState("");
   const [capturedByUserId, setCapturedByUserId] = useState<string | null>(null);
   const [capturedBy, setCapturedBy] = useState<any | null>(null);
+  const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
+  const [requestingDelete, setRequestingDelete] = useState(false);
 
   // Plant upload state
   const [plantName, setPlantName] = useState("");
@@ -404,9 +396,6 @@ export default function EmpreendimentoEditPage() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
-  const [requestingDelete, setRequestingDelete] = useState(false);
 
   // Role
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -434,7 +423,7 @@ export default function EmpreendimentoEditPage() {
     setUnitSpecs((prev) => prev.map((s) => s._key === key ? { ...s, ...patch } : s));
   }
 
-  function toggleArr(field: "condoFeatures" | "socialPrograms" | "tradeInTypes", val: string) {
+  function toggleArr(field: "condoFeatures" | "unitTypes" | "tradeInTypes", val: string) {
     setForm((p) => {
       const arr = p[field] as string[];
       return { ...p, [field]: arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val] };
@@ -449,19 +438,18 @@ export default function EmpreendimentoEditPage() {
       const p = await getProduct(id);
       const pa = p as any;
 
-      if (pa.type !== "EMPREENDIMENTO") {
-        if (pa.type === "LOTEAMENTO") router.replace(`/products/${id}/loteamento`);
+      if (pa.type !== "LOTEAMENTO") {
+        if (pa.type === "EMPREENDIMENTO") router.replace(`/products/${id}/empreendimento`);
         else router.replace(`/products/${id}`);
         return;
       }
 
-      setProductType("EMPREENDIMENTO");
+      setProductType("LOTEAMENTO");
 
       setForm({
         title: pa.title ?? "",
         condition: pa.condition ?? "",
         standard: pa.standard ?? "",
-        socialPrograms: Array.isArray(pa.socialPrograms) ? pa.socialPrograms : [],
         zipCode: pa.zipCode ?? "",
         street: pa.street ?? "",
         streetNumber: pa.streetNumber ?? "",
@@ -474,10 +462,6 @@ export default function EmpreendimentoEditPage() {
         totalUnits: pa.totalUnits != null ? String(pa.totalUnits) : "",
         totalTowers: pa.totalTowers != null ? String(pa.totalTowers) : "",
         floorsPerTower: pa.floorsPerTower != null ? String(pa.floorsPerTower) : "",
-        privateAreaMinM2: pa.privateAreaMinM2 != null ? String(pa.privateAreaMinM2) : "",
-        privateAreaMaxM2: pa.privateAreaMaxM2 != null ? String(pa.privateAreaMaxM2) : "",
-        parkingMin: pa.parkingMin != null ? String(pa.parkingMin) : "",
-        parkingMax: pa.parkingMax != null ? String(pa.parkingMax) : "",
         deliveryForecast: pa.deliveryForecast ?? "",
         landAreaM2: pa.landAreaM2 != null ? String(pa.landAreaM2) : "",
         unitTypes: Array.isArray(pa.unitTypes) ? pa.unitTypes : [],
@@ -659,7 +643,6 @@ export default function EmpreendimentoEditPage() {
         title: form.title.trim(),
         condition: form.condition || null,
         standard: form.standard || null,
-        socialPrograms: form.socialPrograms,
         zipCode: form.zipCode || null,
         street: form.street || null,
         streetNumber: form.streetNumber || null,
@@ -672,10 +655,6 @@ export default function EmpreendimentoEditPage() {
         totalUnits: form.totalUnits ? parseInt(form.totalUnits) : null,
         totalTowers: form.totalTowers ? parseInt(form.totalTowers) : null,
         floorsPerTower: form.floorsPerTower ? parseInt(form.floorsPerTower) : null,
-        privateAreaMinM2: form.privateAreaMinM2 ? parseInt(form.privateAreaMinM2) : null,
-        privateAreaMaxM2: form.privateAreaMaxM2 ? parseInt(form.privateAreaMaxM2) : null,
-        parkingMin: form.parkingMin ? parseInt(form.parkingMin) : null,
-        parkingMax: form.parkingMax ? parseInt(form.parkingMax) : null,
         deliveryForecast: form.deliveryForecast || null,
         landAreaM2: form.landAreaM2 ? parseInt(form.landAreaM2) : null,
         unitTypes: form.unitTypes,
@@ -837,10 +816,6 @@ export default function EmpreendimentoEditPage() {
     applyInt("totalUnits", s.totalUnits);
     applyInt("totalTowers", s.totalTowers);
     applyInt("floorsPerTower", s.floorsPerTower);
-    applyInt("privateAreaMinM2", s.privateAreaMinM2);
-    applyInt("privateAreaMaxM2", s.privateAreaMaxM2);
-    applyInt("parkingMin", s.parkingMin);
-    applyInt("parkingMax", s.parkingMax);
     applyStr("deliveryForecast", s.deliveryForecast);
     applyInt("landAreaM2", s.landAreaM2);
     applyNum("price", s.price);
@@ -885,7 +860,7 @@ export default function EmpreendimentoEditPage() {
   // ── Derived ──────────────────────────────────────────────────────────────────
   const commercialDocs = docs.filter((d) => ["BOOK", "MEMORIAL", "TABELA", "OUTROS"].includes(d.type ?? ""));
   const plants = docs.filter((d) => d.type === "PLANTA");
-  const typeLabel = "Empreendimento";
+  const typeLabel = "Loteamento";
 
   if (loading) {
     return (
@@ -1064,7 +1039,7 @@ export default function EmpreendimentoEditPage() {
                   <div className="col-span-2">
                     <Field label={`Nome do ${typeLabel.toLowerCase()} *`}>
                       <input value={form.title} onChange={(e) => f({ title: e.target.value })}
-                        placeholder="Ex.: Residencial Vista Verde" className={inp} disabled={loading} required />
+                        placeholder="Ex.: Loteamento Recanto Verde" className={inp} disabled={loading} required />
                     </Field>
                   </div>
                   <Field label="Estado do imóvel">
@@ -1086,22 +1061,6 @@ export default function EmpreendimentoEditPage() {
                   </Field>
                 </div>
 
-                {/* Programas sociais */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-[var(--shell-subtext)]">Programas sociais</label>
-                  <div className="flex flex-wrap gap-2">
-                    {SOCIAL_PROGRAMS.map((prog) => (
-                      <button key={prog} type="button" onClick={() => toggleArr("socialPrograms", prog)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                          form.socialPrograms.includes(prog)
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
-                        }`}>
-                        {prog}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </Section>
 
               {/* ── S2: Documentação Comercial ─────────────────────────────── */}
@@ -1232,7 +1191,7 @@ export default function EmpreendimentoEditPage() {
               </Section>
 
               {/* ── S3: Informações do Empreendimento ──────────────────────── */}
-              <Section title="3. Informações do Empreendimento" open={open.has("informacoes")} onToggle={() => toggle("informacoes")}>
+              <Section title="3. Informações do Loteamento" open={open.has("informacoes")} onToggle={() => toggle("informacoes")}>
                 <div className="space-y-4">
                     {/* Construtora */}
                     <Field label="Construtora / Incorporadora" ai={aiFields.has("developer")} onClearAI={() => clearAI("developer")}>
@@ -1302,22 +1261,6 @@ export default function EmpreendimentoEditPage() {
                         <input value={form.landAreaM2} onChange={(e) => { f({ landAreaM2: e.target.value }); clearAI("landAreaM2"); }}
                           inputMode="numeric" placeholder="Ex.: 5000" className={inp} />
                       </Field>
-                      <Field label="Área privativa de (m²)" ai={aiFields.has("privateAreaMinM2")} onClearAI={() => clearAI("privateAreaMinM2")}>
-                        <input value={form.privateAreaMinM2} onChange={(e) => { f({ privateAreaMinM2: e.target.value }); clearAI("privateAreaMinM2"); }}
-                          inputMode="numeric" placeholder="Ex.: 45" className={inp} />
-                      </Field>
-                      <Field label="Área privativa até (m²)" ai={aiFields.has("privateAreaMaxM2")} onClearAI={() => clearAI("privateAreaMaxM2")}>
-                        <input value={form.privateAreaMaxM2} onChange={(e) => { f({ privateAreaMaxM2: e.target.value }); clearAI("privateAreaMaxM2"); }}
-                          inputMode="numeric" placeholder="Ex.: 92" className={inp} />
-                      </Field>
-                      <Field label="Vagas mínimas por unidade" ai={aiFields.has("parkingMin")} onClearAI={() => clearAI("parkingMin")}>
-                        <input value={form.parkingMin} onChange={(e) => { f({ parkingMin: e.target.value }); clearAI("parkingMin"); }}
-                          inputMode="numeric" placeholder="Ex.: 1" className={inp} />
-                      </Field>
-                      <Field label="Vagas máximas por unidade" ai={aiFields.has("parkingMax")} onClearAI={() => clearAI("parkingMax")}>
-                        <input value={form.parkingMax} onChange={(e) => { f({ parkingMax: e.target.value }); clearAI("parkingMax"); }}
-                          inputMode="numeric" placeholder="Ex.: 2" className={inp} />
-                      </Field>
                       <div className="col-span-2">
                         <Field label="Previsão de entrega" ai={aiFields.has("deliveryForecast")} onClearAI={() => clearAI("deliveryForecast")}>
                           <input value={form.deliveryForecast} onChange={(e) => { f({ deliveryForecast: e.target.value }); clearAI("deliveryForecast"); }}
@@ -1326,15 +1269,22 @@ export default function EmpreendimentoEditPage() {
                       </div>
                     </div>
 
-                    {/* Tipos de unidades */}
-                    <Field label="Tipos de unidades" ai={aiFields.has("unitTypes")} onClearAI={() => clearAI("unitTypes")}>
-                      <TagInput
-                        value={form.unitTypes}
-                        onChange={(v) => { f({ unitTypes: v }); clearAI("unitTypes"); }}
-                        suggestions={UNIT_TYPE_SUGGESTIONS}
-                        ai={aiFields.has("unitTypes")}
-                      />
-                    </Field>
+                    {/* Tipo de loteamento */}
+                    <div>
+                      <label className="mb-2 block text-xs font-medium text-[var(--shell-subtext)]">Tipo de loteamento</label>
+                      <div className="flex flex-wrap gap-2">
+                        {UNIT_TYPES_LOTEAMENTO.map((t) => (
+                          <button key={t} type="button" onClick={() => toggleArr("unitTypes", t)}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                              form.unitTypes.includes(t)
+                                ? "border-slate-900 bg-slate-900 text-white"
+                                : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
+                            }`}>
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
                     {/* Lazer */}
                     <Field label="Lazer e infraestrutura" ai={aiFields.has("condoFeatures")} onClearAI={() => clearAI("condoFeatures")}>
@@ -1351,7 +1301,7 @@ export default function EmpreendimentoEditPage() {
                     <Field label="Descrição técnica" ai={aiFields.has("technicalDescription")} onClearAI={() => clearAI("technicalDescription")}>
                       <textarea value={form.technicalDescription}
                         onChange={(e) => { f({ technicalDescription: e.target.value }); clearAI("technicalDescription"); }}
-                        rows={4} placeholder="Descrição técnica do empreendimento..."
+                        rows={4} placeholder="Descrição técnica do loteamento..."
                         className={`${inp} resize-y`} />
                     </Field>
 

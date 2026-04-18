@@ -70,6 +70,26 @@ export class ProductsController {
     return this.productsService.remove(req.user, id);
   }
 
+  @Get('pending-deletions/count')
+  async pendingDeletionsCount(@Req() req: any) {
+    return this.productsService.pendingDeletionsCount(req.user);
+  }
+
+  @Post(':id/request-delete')
+  async requestDelete(@Req() req: any, @Param('id') id: string) {
+    return this.productsService.requestDelete(req.user, id);
+  }
+
+  @Post(':id/approve-delete')
+  async approveDelete(@Req() req: any, @Param('id') id: string) {
+    return this.productsService.approveDelete(req.user, id);
+  }
+
+  @Post(':id/reject-delete')
+  async rejectDelete(@Req() req: any, @Param('id') id: string) {
+    return this.productsService.rejectDelete(req.user, id);
+  }
+
   @Post(':id/ai/extract')
   async extractInfo(@Req() req: any, @Param('id') id: string) {
     return this.productsService.extractInfoWithAI(req.user, id);

@@ -8,9 +8,8 @@ import { createProduct } from "@/lib/products.service";
 
 const inp = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-400";
 
-function NewEmpreendimentoForm() {
+export default function NewLoteamentoPage() {
   const router = useRouter();
-  const typeLabel = "Empreendimento";
 
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
@@ -29,14 +28,14 @@ function NewEmpreendimentoForm() {
     try {
       const created = await createProduct({
         title: name.trim(),
-        type: "EMPREENDIMENTO",
+        type: "LOTEAMENTO",
         status: "ACTIVE",
         origin: "DEVELOPMENT",
         city: city.trim() || undefined,
         neighborhood: neighborhood.trim() || undefined,
         state: state.trim() || undefined,
       });
-      router.push(`/products/${created.id}/empreendimento`);
+      router.push(`/products/${created.id}/loteamento`);
     } catch (e: any) {
       setError(e?.message ?? "Erro ao criar");
       setSaving(false);
@@ -44,14 +43,14 @@ function NewEmpreendimentoForm() {
   }
 
   return (
-    <AppShell title={`Novo ${typeLabel.toLowerCase()}`}>
+    <AppShell title="Novo loteamento">
     <div className="mx-auto w-full max-w-lg">
       <div className="mb-6">
         <Link href="/products/new" className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">
           ← Voltar
         </Link>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">
-          Novo {typeLabel.toLowerCase()}
+          Novo loteamento
         </h1>
         <p className="mt-1 text-sm text-neutral-500">
           Informe o nome e a localização para começar.
@@ -66,8 +65,8 @@ function NewEmpreendimentoForm() {
 
       <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-neutral-200 bg-[var(--shell-card-bg)] p-6 shadow-sm">
         <div className="flex items-center gap-2 mb-1">
-          <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-            {typeLabel}
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            Loteamento
           </span>
         </div>
 
@@ -78,7 +77,7 @@ function NewEmpreendimentoForm() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex.: Residencial Vista Verde"
+            placeholder="Ex.: Loteamento Recanto Verde"
             className={inp}
             autoFocus
             required
@@ -113,8 +112,4 @@ function NewEmpreendimentoForm() {
     </div>
     </AppShell>
   );
-}
-
-export default function NewEmpreendimentoPage() {
-  return <NewEmpreendimentoForm />;
 }

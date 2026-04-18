@@ -21,6 +21,7 @@ interface HeaderProps {
   theme: "light" | "dark";
   onToggleTheme: () => void;
   onOpenMeusDados: () => void;
+  pendingDeletions?: number;
 }
 
 export function Header({
@@ -32,6 +33,7 @@ export function Header({
   theme,
   onToggleTheme,
   onOpenMeusDados,
+  pendingDeletions = 0,
 }: HeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -110,8 +112,9 @@ export function Header({
             )}
           </button>
 
-          {/* Notificações (placeholder) */}
-          <button
+          {/* Notificações */}
+          <a
+            href="/products"
             className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors"
             style={{ color: "var(--shell-subtext)" }}
             onMouseEnter={(e) => {
@@ -122,11 +125,16 @@ export function Header({
               e.currentTarget.style.background = "transparent";
               e.currentTarget.style.color = "var(--shell-subtext)";
             }}
-            title="Notificações"
+            title={pendingDeletions > 0 ? `${pendingDeletions} solicitação(ões) de exclusão pendente(s)` : "Notificações"}
             aria-label="Notificações"
           >
             <Bell className="h-[18px] w-[18px]" />
-          </button>
+            {pendingDeletions > 0 && (
+              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
+                {pendingDeletions > 9 ? "9+" : pendingDeletions}
+              </span>
+            )}
+          </a>
 
           <div
             className="w-px h-6 mx-2"

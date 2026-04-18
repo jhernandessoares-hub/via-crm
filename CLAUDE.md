@@ -329,14 +329,19 @@ NEXT_PUBLIC_API_URL=
 - Logout admin: remove `adminToken`, `adminUser` → redireciona `/admin/login`.
 - **EnvBanner** (`components/EnvBanner.tsx`): faixa de aviso de ambiente — laranja em local, âmbar em dev, invisível em produção. Incluída no `AppShell` e no shell admin.
 
-### Páginas de detalhe de produto — DUAS páginas, sempre atualizar ambas
+### Páginas de produto — três tipos independentes
 
-| Página | Rota | Tipo de produto |
-|--------|------|-----------------|
-| `app/products/[id]/page.tsx` | `/products/:id` | Imóvel simples |
-| `app/products/[id]/empreendimento/page.tsx` | `/products/:id/empreendimento` | Empreendimento (condomínio, lançamento) |
+| Página de edição | Página de criação | Tipo |
+|------------------|-------------------|------|
+| `app/products/[id]/page.tsx` | `app/products/new/imovel/page.tsx` | Imóvel (casa, apto, lote, barracão…) |
+| `app/products/[id]/empreendimento/page.tsx` | `app/products/new/empreendimento/page.tsx` | Empreendimento (condomínio, lançamento) |
+| `app/products/[id]/loteamento/page.tsx` | `app/products/new/loteamento/page.tsx` | Loteamento |
 
-**Regra:** qualquer mudança visual ou funcional na tela de produto deve ser replicada nas **duas** páginas.
+**Seletor:** `app/products/new/page.tsx` — tela de escolha entre os 3 tipos.
+
+**Redirecionamentos:** cada página verifica o `type` do produto ao carregar e redireciona para a página correta se necessário.
+
+**Regra:** cada tipo tem formulário independente. Mudanças só precisam ser replicadas se a funcionalidade for comum aos três tipos.
 - `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
 - `/meus-leads` → leads atribuídos ao usuário logado (todos os roles) — usa `GET /leads/my`.
 - `/settings/permissions` → permissões por role (OWNER only) — toggles ver/criar/editar/excluir por módulo para MANAGER e AGENT. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.

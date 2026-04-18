@@ -4,6 +4,7 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { useEffect, useMemo, useState } from "react";
 import { listProducts, Product, normalizeImageUrl } from "@/lib/products.service";
+import { apiFetch } from "@/lib/api";
 
 type ViewMode = "table" | "cards";
 
@@ -189,6 +190,16 @@ export default function ProductsPage() {
   const [items, setItems] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("cards");
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) { const u = JSON.parse(raw); setUserRole(u.role ?? null); setUserId(u.id ?? null); }
+    } catch {}
+  }, []);
 
   // filtros
   const [filterName, setFilterName] = useState("");
@@ -217,6 +228,33 @@ export default function ProductsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  async function handleApproveDelete(id: string, e: React.MouseEvent) {
+    e.preventDefault();
+    if (!confirm("Confirmar exclusão do produto?")) return;
+    setActionLoading(id);
+    try {
+      await apiFetch(`/products/${id}/approve-delete`, { method: "POST" });
+      setItems((prev) => prev.filter((p: any) => p.id !== id));
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao aprovar exclusão");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleRejectDelete(id: string, e: React.MouseEvent) {
+    e.preventDefault();
+    setActionLoading(id);
+    try {
+      await apiFetch(`/products/${id}/reject-delete`, { method: "POST" });
+      setItems((prev) => prev.map((p: any) => p.id === id ? { ...p, deletionRequestedAt: null } : p));
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao rejeitar solicitação");
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   // Quando troca macro, reseta o type para evitar filtro inválido
   useEffect(() => {
@@ -504,65 +542,92 @@ export default function ProductsPage() {
                   // Publicação como status primário: Rascunho se DRAFT, senão usa status operacional
                   const isDraft = pubStatus === "DRAFT";
 
+                  const hasPendingDeletion = !!(p as any).deletionRequestedAt;
+                  const canApprove = hasPendingDeletion && (userRole === "OWNER" || userRole === "MANAGER");
+                  const isActioning = actionLoading === p.id;
+
                   return (
-                    <Link
-                      key={p.id}
-                      href={`/products/${p.id}`}
-                      className="rounded-xl border shadow-sm hover:shadow-md overflow-hidden transition-shadow bg-[var(--shell-card-bg)]"
-                      style={{ borderColor: "var(--shell-card-border)" }}
-                    >
-                      {/* Imagem */}
-                      <div className="h-36 w-full bg-[var(--shell-bg)]">
-                        {img ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={img} alt={title || "Produto"} className="h-36 w-full object-cover" />
-                        ) : (
-                          <div className="flex h-36 w-full items-center justify-center text-xs text-[var(--shell-subtext)]">
-                            Sem imagem
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-4">
-                        {/* Badges: tipo + condição + status */}
-                        <div className="mb-2.5 flex flex-wrap gap-1.5">
-                          {type && <Badge tone="neutral">{labelType(type)}</Badge>}
-                          {condLabel && <Badge tone="neutral">{condLabel}</Badge>}
-                          {isDraft
-                            ? <Badge tone="warning">Rascunho</Badge>
-                            : <Badge tone={toneByStatus(status, active) as any}>{labelStatus(status, active)}</Badge>
-                          }
+                    <div key={p.id} className={`rounded-xl border shadow-sm overflow-hidden bg-[var(--shell-card-bg)] ${hasPendingDeletion ? "border-red-300 ring-1 ring-red-200" : ""}`} style={{ borderColor: hasPendingDeletion ? undefined : "var(--shell-card-border)" }}>
+                      <Link href={`/products/${p.id}`} className="block hover:opacity-95 transition-opacity">
+                        {/* Imagem */}
+                        <div className="h-36 w-full bg-[var(--shell-bg)] relative">
+                          {img ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={img} alt={title || "Produto"} className="h-36 w-full object-cover" />
+                          ) : (
+                            <div className="flex h-36 w-full items-center justify-center text-xs text-[var(--shell-subtext)]">
+                              Sem imagem
+                            </div>
+                          )}
+                          {hasPendingDeletion && (
+                            <div className="absolute top-2 right-2 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+                              Exclusão pendente
+                            </div>
+                          )}
                         </div>
 
-                        {/* Nome */}
-                        <div className="mb-1.5 text-sm font-semibold text-[var(--shell-text)] leading-snug line-clamp-2">
-                          {title || "(Sem título)"}
-                        </div>
-
-                        {/* Localização */}
-                        {(city || neighborhood) && (
-                          <div className="mb-2 text-xs text-[var(--shell-subtext)] leading-relaxed">
-                            {city && state ? `${city} — ${state}` : city || state}
-                            {neighborhood && (city || state) ? ` · ${neighborhood}` : neighborhood}
+                        <div className="p-4">
+                          {/* Badges */}
+                          <div className="mb-2.5 flex flex-wrap gap-1.5">
+                            {type && <Badge tone="neutral">{labelType(type)}</Badge>}
+                            {condLabel && <Badge tone="neutral">{condLabel}</Badge>}
+                            {isDraft
+                              ? <Badge tone="warning">Rascunho</Badge>
+                              : <Badge tone={toneByStatus(status, active) as any}>{labelStatus(status, active)}</Badge>
+                            }
                           </div>
-                        )}
 
-                        {/* Preço */}
-                        <div className="text-sm font-semibold text-[var(--shell-text)]">
-                          {price !== null
-                            ? <>{["EMPREENDIMENTO", "LOTEAMENTO"].includes(type) ? "A partir de " : ""}{formatBRL(price)}</>
-                            : <span className="font-normal text-[var(--shell-subtext)]">Preço não definido</span>
-                          }
-                        </div>
-
-                        {/* Data atualização */}
-                        {p.updatedAt && (
-                          <div className="mt-2 text-[11px] text-[var(--shell-subtext)]">
-                            Atualizado {new Date(p.updatedAt).toLocaleDateString("pt-BR")}
+                          {/* Nome */}
+                          <div className="mb-1.5 text-sm font-semibold text-[var(--shell-text)] leading-snug line-clamp-2">
+                            {title || "(Sem título)"}
                           </div>
-                        )}
-                      </div>
-                    </Link>
+
+                          {/* Localização */}
+                          {(city || neighborhood) && (
+                            <div className="mb-2 text-xs text-[var(--shell-subtext)] leading-relaxed">
+                              {city && state ? `${city} — ${state}` : city || state}
+                              {neighborhood && (city || state) ? ` · ${neighborhood}` : neighborhood}
+                            </div>
+                          )}
+
+                          {/* Preço */}
+                          <div className="text-sm font-semibold text-[var(--shell-text)]">
+                            {price !== null
+                              ? <>{["EMPREENDIMENTO", "LOTEAMENTO"].includes(type) ? "A partir de " : ""}{formatBRL(price)}</>
+                              : <span className="font-normal text-[var(--shell-subtext)]">Preço não definido</span>
+                            }
+                          </div>
+
+                          {/* Data atualização */}
+                          {p.updatedAt && (
+                            <div className="mt-2 text-[11px] text-[var(--shell-subtext)]">
+                              Atualizado {new Date(p.updatedAt).toLocaleDateString("pt-BR")}
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+
+                      {/* Ações de exclusão pendente */}
+                      {canApprove && (
+                        <div className="border-t border-red-200 px-4 py-2.5 flex gap-2 bg-red-50">
+                          <p className="flex-1 text-xs text-red-700 font-medium leading-tight self-center">Corretor solicitou exclusão</p>
+                          <button
+                            onClick={(e) => handleRejectDelete(p.id, e)}
+                            disabled={isActioning}
+                            className="rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-1 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors"
+                          >
+                            Rejeitar
+                          </button>
+                          <button
+                            onClick={(e) => handleApproveDelete(p.id, e)}
+                            disabled={isActioning}
+                            className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                          >
+                            {isActioning ? "..." : "Aprovar"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

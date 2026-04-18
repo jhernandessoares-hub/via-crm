@@ -866,6 +866,8 @@ export default function ProductEditPage() {
   // Delete
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
+  const [requestingDelete, setRequestingDelete] = useState(false);
 
   // Role
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -988,11 +990,8 @@ export default function ProductEditPage() {
       setProduct(p);
       const pa = p as any;
 
-      // Redirect empreendimentos to their dedicated page
-      if (pa.type === "EMPREENDIMENTO" || pa.type === "LOTEAMENTO") {
-        router.replace(`/products/${id}/empreendimento`);
-        return;
-      }
+      if (pa.type === "EMPREENDIMENTO") { router.replace(`/products/${id}/empreendimento`); return; }
+      if (pa.type === "LOTEAMENTO") { router.replace(`/products/${id}/loteamento`); return; }
 
       setForm({
         title: pa.title ?? "",
@@ -1145,6 +1144,21 @@ export default function ProductEditPage() {
       setShowDeleteConfirm(false);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleRequestDelete() {
+    if (!id) return;
+    setRequestingDelete(true);
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      await apiFetch(`/products/${id}/request-delete`, { method: "POST" });
+      setSuccess("Solicitação enviada. MANAGER ou OWNER receberão a notificação.");
+      setShowRequestDeleteModal(false);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao solicitar exclusão");
+    } finally {
+      setRequestingDelete(false);
     }
   }
 
@@ -1602,12 +1616,18 @@ export default function ProductEditPage() {
               <p className="text-xs text-[var(--shell-subtext)] mt-0.5">ID: {id}</p>
             </div>
             <div className="flex items-center gap-2">
-              {userRole === "AGENT" ? (
-                <span
-                  title="Corretores não podem excluir produtos. Solicite ao gerente ou proprietário."
-                  className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-gray-300 cursor-not-allowed"
+              {userRole === "AGENT" && (product as any)?.capturedByUserId === userId ? (
+                <button
+                  type="button"
+                  onClick={() => setShowRequestDeleteModal(true)}
+                  disabled={loading || !!(product as any)?.deletionRequestedAt}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
                 >
-                  Excluir produto
+                  {(product as any)?.deletionRequestedAt ? "Exclusão solicitada" : "Solicitar exclusão"}
+                </button>
+              ) : userRole === "AGENT" ? (
+                <span className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-gray-300 cursor-not-allowed">
+                  Sem permissão
                 </span>
               ) : (
                 <button
@@ -1627,6 +1647,26 @@ export default function ProductEditPage() {
               </Link>
             </div>
           </div>
+
+          {/* Modal solicitar exclusão (AGENT) */}
+          {showRequestDeleteModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+              <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl">
+                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-2">Solicitar exclusão do produto?</h2>
+                <p className="text-sm text-[var(--shell-subtext)] mb-6">Um MANAGER ou OWNER será notificado para aprovar ou rejeitar a exclusão.</p>
+                <div className="flex gap-3 justify-end">
+                  <button type="button" onClick={() => setShowRequestDeleteModal(false)} disabled={requestingDelete}
+                    className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={handleRequestDelete} disabled={requestingDelete}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                    {requestingDelete ? "Enviando..." : "Solicitar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Delete confirmation modal */}
           {showDeleteConfirm && (
@@ -1667,7 +1707,41 @@ export default function ProductEditPage() {
             </div>
           )}
 
+          {/* Aviso de somente leitura para AGENT em produto alheio */}
+          {userRole === "AGENT" && (product as any)?.capturedByUserId && (product as any)?.capturedByUserId !== userId && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Você está visualizando um produto cadastrado por outro corretor. Edição não permitida.
+            </div>
+          )}
+
           <div className="space-y-3">
+
+            {/* ── Captação ─────────────────────────────────────────────── */}
+            {(product as any)?.capturedBy && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-3">Captação</p>
+                <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+                  <div>
+                    <span className="text-xs text-[var(--shell-subtext)]">Cadastrado por</span>
+                    <p className="font-medium text-[var(--shell-text)]">
+                      {(product as any).capturedBy.apelido || (product as any).capturedBy.nome}
+                    </p>
+                  </div>
+                  {(product as any).capturedBy.telefone && (
+                    <div>
+                      <span className="text-xs text-[var(--shell-subtext)]">Telefone</span>
+                      <p className="font-medium text-[var(--shell-text)]">{(product as any).capturedBy.telefone}</p>
+                    </div>
+                  )}
+                  {(product as any).capturedBy.email && (
+                    <div>
+                      <span className="text-xs text-[var(--shell-subtext)]">E-mail</span>
+                      <p className="font-medium text-[var(--shell-text)]">{(product as any).capturedBy.email}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* ── S1: Identificação ─────────────────────────────────────── */}
             <Section id="identificacao" title="1. Identificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")}>

@@ -59,6 +59,7 @@ function AppShellInner({
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [modalOpen, setModalOpen] = useState(false);
   const [counts, setCounts] = useState<Counts | null>(null);
+  const [pendingDeletions, setPendingDeletions] = useState(0);
   const [branding, setBranding] = useState<TenantBranding>({});
 
   useEffect(() => {
@@ -99,6 +100,9 @@ function AppShellInner({
     function fetchCounts() {
       apiFetch("/leads/counts")
         .then((data) => setCounts(data as Counts))
+        .catch(() => null);
+      apiFetch("/products/pending-deletions/count")
+        .then((data: any) => setPendingDeletions(data?.count ?? 0))
         .catch(() => null);
     }
     fetchCounts();
@@ -150,6 +154,7 @@ function AppShellInner({
             theme={theme}
             onToggleTheme={toggleTheme}
             onOpenMeusDados={() => setModalOpen(true)}
+            pendingDeletions={pendingDeletions}
           />
           <main className="flex-1 p-6 overflow-y-auto">{children}</main>
         </div>

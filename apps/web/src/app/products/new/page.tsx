@@ -45,7 +45,7 @@ export default function NewProductPage() {
         {/* Loteamento */}
         <button
           type="button"
-          onClick={() => router.push("/products/new/empreendimento?type=LOTEAMENTO")}
+          onClick={() => router.push("/products/new/loteamento")}
           className="group flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-200 bg-[var(--shell-card-bg)] p-7 text-center hover:border-emerald-400 hover:shadow-md transition-all"
         >
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 group-hover:bg-emerald-100 transition-colors">

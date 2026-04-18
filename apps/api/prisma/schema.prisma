@@ -177,6 +177,7 @@ model User {
   notificationSettings     Json?             // { events: string[], stages: string[] }
   uploadedProductDocuments ProductDocument[] @relation("ProductDocumentUploadedBy")
   capturedProducts         Product[]         @relation("ProductCapturedBy")
+  productDeletionRequests  Product[]         @relation("ProductDeletionRequest")
   branch                   Branch?           @relation(fields: [branchId], references: [id])
   tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   refreshTokens            RefreshToken[]
@@ -421,6 +422,10 @@ model Product {
   installmentEntryMonths Int?
   paymentConditions      String?
 
+  // ── Solicitação de exclusão (AGENT solicita, MANAGER/OWNER aprova) ──
+  deletionRequestedAt    DateTime?
+  deletionRequestedById  String?
+
   documents          ProductDocument[]
   images             ProductImage[]
   videos             ProductVideo[]
@@ -428,6 +433,7 @@ model Product {
   owners             ProductOwner[]
   branch             Branch?                   @relation(fields: [branchId], references: [id])
   capturedBy         User?                     @relation("ProductCapturedBy", fields: [capturedByUserId], references: [id])
+  deletionRequestedBy User?                    @relation("ProductDeletionRequest", fields: [deletionRequestedById], references: [id])
   tenant             Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status])
