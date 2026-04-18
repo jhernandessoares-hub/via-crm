@@ -425,6 +425,7 @@ NEXT_PUBLIC_API_URL=
 - Monitoramento de erros por tenant (token WhatsApp expirado, etc.)
 - Permissões configuráveis ainda não são aplicadas nas páginas do frontend além de produtos — `usePermissions()` existe mas falta integrar em leads, agenda, KB, etc.
 - Convite de membro por e-mail (atualmente cria com senha inicial definida pelo OWNER)
+- Permissões de exclusão de produtos (hoje hardcoded): mover regras de quem pode excluir/solicitar exclusão de produto para o sistema de `permissionsConfig` do tenant (OWNER configura via `/settings/permissions`), assim como já existe para leads/agenda/KB
 
 ---
 
