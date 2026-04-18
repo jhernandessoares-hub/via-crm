@@ -2262,20 +2262,24 @@ export default function ProductEditPage() {
               {/* Resumo dos ambientes identificados nas fotos */}
               <div className="mb-4">
                 <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Ambientes identificados nas fotos</p>
-                {roomsLoading ? (
-                  <p className="text-xs text-[var(--shell-subtext)]">Carregando...</p>
-                ) : rooms.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {rooms.map((room) => (
-                      <span key={room.id} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2.5 py-1 text-xs text-[var(--shell-text)]">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                        {room.label || room.type}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-[var(--shell-subtext)]">Nenhum ambiente confirmado ainda. Confirme a análise das fotos em <strong>Fotos e Detalhes</strong>.</p>
-                )}
+                {(() => {
+                  const confirmed = productImages.filter((img: any) => img.aiConfirmed && (img.aiRoomLabel || img.aiRoomType));
+                  return confirmed.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {confirmed.map((img: any) => (
+                        <span key={img.id} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2.5 py-1 text-xs text-[var(--shell-text)]">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                          {img.aiRoomLabel || img.aiRoomType}
+                          {img.aiFeatures?.length > 0 && (
+                            <span className="text-[var(--shell-subtext)]">· {(img.aiFeatures as string[]).slice(0, 2).join(", ")}</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[var(--shell-subtext)]">Nenhum ambiente confirmado ainda. Confirme a análise das fotos em <strong>Fotos e Detalhes</strong>.</p>
+                  );
+                })()}
               </div>
 
               {/* Comodidades internas */}
