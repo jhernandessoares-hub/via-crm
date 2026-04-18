@@ -1427,19 +1427,18 @@ export default function ProductEditPage() {
     if (isEmpreendimento) return form.title;
     const typeLabel = PRODUCT_TYPES.find((t) => t.value === form.type)?.label ?? form.type;
     const parts: string[] = [typeLabel];
-    if (form.bedrooms) parts.push(`${form.bedrooms} quartos`);
-    if (form.condominiumName.trim()) parts.push(`Condomínio ${form.condominiumName.trim()}`);
+    const beds = parseInt(form.bedrooms);
+    const suites = parseInt(form.suites);
+    if (beds > 0) parts.push(`${beds} ${beds === 1 ? "quarto" : "quartos"}${suites > 0 ? ` (${suites} ${suites === 1 ? "suíte" : "suítes"})` : ""}`);
+    else if (suites > 0) parts.push(`${suites} ${suites === 1 ? "suíte" : "suítes"}`);
+    if (form.condominiumName.trim()) parts.push(`Cond. ${form.condominiumName.trim()}`);
     else if (form.neighborhood.trim()) parts.push(form.neighborhood.trim());
     const priceNum = parseFloat(form.price);
     if (priceNum && !isNaN(priceNum)) parts.push(`R$ ${priceNum.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`);
     const dealMap: Record<string, string> = { SALE: 'Venda', RENT: 'Locação', BOTH: 'Venda/Locação' };
     if (form.dealType && dealMap[form.dealType]) parts.push(dealMap[form.dealType]);
-    if (product?.updatedAt) {
-      const d = new Date(product.updatedAt);
-      parts.push(`Atualizado em: ${d.toLocaleDateString('pt-BR')}`);
-    }
     return parts.join(' • ');
-  }, [isEmpreendimento, form.type, form.title, form.bedrooms, form.neighborhood, form.condominiumName, form.price, form.dealType, product]);
+  }, [isEmpreendimento, form.type, form.title, form.bedrooms, form.suites, form.neighborhood, form.condominiumName, form.price, form.dealType]);
 
   // ── ViaCEP ──────────────────────────────────────────────────────────────────
   async function fetchCep(cep: string) {
