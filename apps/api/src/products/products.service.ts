@@ -482,7 +482,7 @@ export class ProductsService {
     const product = await this.getById(user, productId);
 
     const currentCount = product.images?.length ?? 0;
-    if (currentCount >= 20) throw new BadRequestException('Limite de 20 imagens por produto atingido');
+    if (currentCount >= 50) throw new BadRequestException('Limite de 50 imagens por produto atingido');
 
     const isPrimary = !!opts?.isPrimary;
 
