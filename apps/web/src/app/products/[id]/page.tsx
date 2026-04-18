@@ -100,6 +100,8 @@ const INTERNAL_FEATURES = [
   "Sala 2 ambientes", "Cozinha americana", "Despensa",
   "Ar condicionado", "Aquecimento solar", "Aquecimento a gás",
   "Piso porcelanato", "Piso madeira",
+  "Piscina", "Deck", "Área gourmet", "Churrasqueira",
+  "Clareira", "Claraboia", "Jardim",
 ];
 
 const CONDO_FEATURES = [
