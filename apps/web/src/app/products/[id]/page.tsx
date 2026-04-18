@@ -859,8 +859,13 @@ const FEATURE_SUGGESTIONS = [
   "Automação residencial", "Ar condicionado", "Aquecimento solar",
 ];
 
-function TagInput({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+function TagInput({ value, onChange, suggestions }: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  suggestions?: string[];
+}) {
   const [input, setInput] = useState("");
+  const pool = suggestions ?? FEATURE_SUGGESTIONS;
 
   function add(tag: string) {
     const t = tag.trim();
@@ -892,9 +897,9 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (v: string[]
         placeholder="Digite e pressione Enter..."
         className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2.5 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-slate-400"
       />
-      {FEATURE_SUGGESTIONS.filter((s) => !value.includes(s)).length > 0 && (
+      {pool.filter((s) => !value.includes(s)).length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
-          {FEATURE_SUGGESTIONS.filter((s) => !value.includes(s)).map((s) => (
+          {pool.filter((s) => !value.includes(s)).map((s) => (
             <button key={s} type="button" onClick={() => add(s)}
               className="rounded-full border border-dashed border-[var(--shell-card-border)] px-2 py-0.5 text-[11px] text-[var(--shell-subtext)] hover:border-slate-400 hover:text-[var(--shell-text)] transition-colors">
               + {s}
@@ -2254,145 +2259,43 @@ export default function ProductEditPage() {
             {/* ── S3: Ambientes & Características ───────────────────────── */}
             {!isEmpreendimento && <Section id="comodos" title="3. Ambientes & Características" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
 
-              {roomsLoading ? (
-                <p className="text-sm text-[var(--shell-subtext)]">Carregando cômodos...</p>
-              ) : (
-                <div className="space-y-3">
-                  {rooms.map((room) => (
-                    <RoomCard
-                      key={room.id}
-                      room={room}
-                      onDelete={handleDeleteRoom}
-                      onUpdate={handleUpdateRoom}
-                      onAddImage={handleAddRoomImage}
-                      onDeleteImage={handleDeleteRoomImage}
-                    />
-                  ))}
+              {/* Resumo dos ambientes identificados nas fotos */}
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Ambientes identificados nas fotos</p>
+                {roomsLoading ? (
+                  <p className="text-xs text-[var(--shell-subtext)]">Carregando...</p>
+                ) : rooms.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {rooms.map((room) => (
+                      <span key={room.id} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2.5 py-1 text-xs text-[var(--shell-text)]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                        {room.label || room.type}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--shell-subtext)]">Nenhum ambiente confirmado ainda. Confirme a análise das fotos em <strong>Fotos e Detalhes</strong>.</p>
+                )}
+              </div>
 
-                  {/* Add room panel */}
-                  {addStep === "closed" ? (
-                    <button
-                      type="button"
-                      onClick={() => setAddStep("type")}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] py-3 text-sm text-[var(--shell-subtext)] hover:border-slate-300 hover:text-[var(--shell-subtext)] transition-colors"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                      </svg>
-                      Adicionar cômodo
-                    </button>
-                  ) : addStep === "type" ? (
-                    <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 space-y-3">
-                      <p className="text-sm font-medium text-[var(--shell-subtext)]">Selecionar tipo de cômodo:</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {ROOM_TYPE_CONFIG.map((rt) => (
-                          <button
-                            key={rt.value}
-                            type="button"
-                            onClick={() => startAddType(rt.value)}
-                            className="rounded-lg border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:border-slate-400 hover:bg-slate-50 transition-colors text-left"
-                          >
-                            {rt.label}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setAddStep("closed")}
-                        className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    // addStep === "label"
-                    <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 space-y-3">
-                      <p className="text-sm font-medium text-[var(--shell-subtext)]">
-                        Nome para <span className="font-semibold">{addTypeConfig?.label}</span>:
-                      </p>
+              {/* Comodidades internas */}
+              <div className="border-t pt-4">
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Comodidades internas</p>
+                <TagInput
+                  value={form.internalFeatures}
+                  onChange={(v) => f({ internalFeatures: v })}
+                  suggestions={INTERNAL_FEATURES}
+                />
+              </div>
 
-                      {/* Suggestions (for non-free-label types) */}
-                      {!addTypeConfig?.freeLabel && addTypeConfig!.suggestions.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {addTypeConfig!.suggestions.map((s) => (
-                            <button
-                              key={s}
-                              type="button"
-                              onClick={() => setAddLabel(s)}
-                              className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                                addLabel === s
-                                  ? "border-slate-700 bg-slate-700 text-white"
-                                  : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
-                              }`}
-                            >
-                              {s}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Always-editable label input */}
-                      <input
-                        value={addLabel}
-                        onChange={(e) => setAddLabel(e.target.value)}
-                        placeholder={
-                          addTypeConfig?.freeLabel
-                            ? 'Ex.: "Coberta", "Descoberta", "Moto"'
-                            : "Editar nome..."
-                        }
-                        className={inp}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") { e.preventDefault(); handleAddRoom(); }
-                          if (e.key === "Escape") setAddStep("type");
-                        }}
-                      />
-
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleAddRoom}
-                          disabled={!addLabel.trim() || addingRoom}
-                          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                        >
-                          {addingRoom ? "Criando..." : "Adicionar"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAddStep("type")}
-                          className="rounded-lg border px-4 py-2 text-sm hover:bg-[var(--shell-card-bg)]"
-                        >
-                          Voltar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              {/* Comodidades integradas */}
+              {/* Condomínio */}
               <div className="border-t pt-4 mt-2">
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Comodidades internas</p>
-                <div className="grid grid-cols-3 gap-y-2 gap-x-3">
-                  {INTERNAL_FEATURES.map((feat) => (
-                    <label key={feat} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={form.internalFeatures.includes(feat)}
-                        onChange={() => toggleFeature("internalFeatures", feat)}
-                        className="h-4 w-4 rounded border-[var(--shell-card-border)]" disabled={loading} />
-                      {feat}
-                    </label>
-                  ))}
-                </div>
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2 mt-4">Condomínio</p>
-                <div className="grid grid-cols-3 gap-y-2 gap-x-3">
-                  {CONDO_FEATURES.map((feat) => (
-                    <label key={feat} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={form.condoFeatures.includes(feat)}
-                        onChange={() => toggleFeature("condoFeatures", feat)}
-                        className="h-4 w-4 rounded border-[var(--shell-card-border)]" disabled={loading} />
-                      {feat}
-                    </label>
-                  ))}
-                </div>
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Condomínio</p>
+                <TagInput
+                  value={form.condoFeatures}
+                  onChange={(v) => f({ condoFeatures: v })}
+                  suggestions={CONDO_FEATURES}
+                />
               </div>
             </Section>}
 
