@@ -203,21 +203,23 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
 
-const inp = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400";
-const sel = "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-slate-400 bg-[var(--shell-card-bg)]";
+const inp = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500/20 placeholder:text-[var(--shell-subtext)]/60";
+const sel = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500/20";
 
 
 function Section({ title, open, onToggle, children }: {
   title: string; open: boolean; onToggle: () => void; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden">
+    <div className={`rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden transition-shadow ${open ? "shadow-md" : "shadow-sm"}`}>
       <button type="button" onClick={onToggle}
-        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-[var(--shell-bg)] transition-colors">
-        <span className="text-sm font-semibold text-[var(--shell-text)]">{title}</span>
-        <span className="text-[var(--shell-subtext)] text-xs">{open ? "▲" : "▼"}</span>
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left hover:bg-[var(--shell-hover)] transition-colors">
+        <span className="text-sm font-semibold text-[var(--shell-text)] tracking-tight">{title}</span>
+        <svg className={`h-4 w-4 shrink-0 text-[var(--shell-subtext)] transition-transform duration-200 ${open ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
       </button>
-      {open && <div className="border-t px-5 py-5 space-y-4">{children}</div>}
+      {open && <div className="border-t border-[var(--shell-card-border)] px-5 py-5 space-y-4">{children}</div>}
     </div>
   );
 }
@@ -226,9 +228,9 @@ function Field({ label, ai, onClearAI, children }: {
   label: string; ai?: boolean; onClearAI?: () => void; children: React.ReactNode;
 }) {
   return (
-    <div>
-      <div className="mb-1 flex items-center gap-2">
-        <label className="text-xs font-medium text-[var(--shell-subtext)]">{label}</label>
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-semibold text-[var(--shell-subtext)] tracking-wide">{label}</label>
         {ai && (
           <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
             ✦ IA
@@ -247,7 +249,7 @@ function CurrencyInput({ value, onChange, placeholder = "0,00", disabled }: {
   value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean;
 }) {
   return (
-    <div className="flex w-full items-center rounded-lg border focus-within:border-slate-400 overflow-hidden">
+    <div className="flex w-full items-center rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] focus-within:border-slate-500 focus-within:ring-1 focus-within:ring-slate-500/20 overflow-hidden transition-colors">
       <span className="pl-3 text-sm text-[var(--shell-subtext)] select-none shrink-0">R$</span>
       <input
         key={value}
@@ -270,11 +272,13 @@ function CurrencyInput({ value, onChange, placeholder = "0,00", disabled }: {
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button type="button" onClick={() => onChange(!checked)}
-      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-        checked ? "border-slate-900 bg-slate-900 text-white" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400"
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all duration-150 ${
+        checked
+          ? "border-slate-800 bg-slate-800 text-white shadow-sm"
+          : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:border-slate-400 hover:bg-[var(--shell-hover)]"
       }`}>
-      <span className={`inline-block w-3.5 h-3.5 rounded-sm border ${checked ? "bg-[var(--shell-card-bg)] border-white" : "border-gray-400"}`}>
-        {checked && <span className="block w-full h-full flex items-center justify-center text-slate-900 text-[9px] font-bold leading-none">✓</span>}
+      <span className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors ${checked ? "border-white/60 bg-white/20" : "border-[var(--shell-subtext)]/40"}`}>
+        {checked && <span className="text-white text-[9px] font-bold leading-none">✓</span>}
       </span>
       {label}
     </button>
@@ -303,19 +307,22 @@ function TagInput({ value, onChange, suggestions, ai, onClearAI, disabled }: {
   }
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {value.map((tag) => (
-          <span key={tag} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
-            ai ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-700"
-          }`}>
-            {tag}
-            {!disabled && (
-              <button type="button" onClick={() => remove(tag)} className="ml-0.5 opacity-60 hover:opacity-100 leading-none">×</button>
-            )}
-          </span>
-        ))}
-      </div>
+    <div className="space-y-2">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((tag) => (
+            <span key={tag} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
+              ai ? "border-violet-200 bg-violet-50 text-violet-800" : "border-[var(--shell-card-border)] bg-[var(--shell-bg)] text-[var(--shell-text)]"
+            }`}>
+              {tag}
+              {!disabled && (
+                <button type="button" onClick={() => remove(tag)}
+                  className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[var(--shell-subtext)] hover:bg-slate-200 hover:text-slate-800 transition-colors leading-none">×</button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
       {!disabled && (
         <>
           <input
@@ -329,10 +336,10 @@ function TagInput({ value, onChange, suggestions, ai, onClearAI, disabled }: {
             className={inp}
           />
           {suggestions && suggestions.filter((s) => !value.includes(s)).length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
+            <div className="flex flex-wrap gap-1">
               {suggestions.filter((s) => !value.includes(s)).map((s) => (
                 <button key={s} type="button" onClick={() => add(s)}
-                  className="rounded-full border border-dashed px-2 py-0.5 text-xs text-[var(--shell-subtext)] hover:border-slate-400 hover:text-[var(--shell-subtext)]">
+                  className="rounded-full border border-dashed border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2.5 py-0.5 text-[11px] text-[var(--shell-subtext)] hover:border-slate-500 hover:bg-[var(--shell-hover)] hover:text-[var(--shell-text)] transition-colors">
                   + {s}
                 </button>
               ))}
@@ -1799,7 +1806,7 @@ export default function LoteamentoEditPage() {
           </div>
 
           {/* Bottom save bar */}
-          <div className="mt-6 flex items-center justify-end gap-3 rounded-xl border bg-[var(--shell-card-bg)] px-5 py-4">
+          <div className="mt-6 flex items-center justify-end gap-3 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]/95 backdrop-blur-sm px-5 py-4 shadow-lg sticky bottom-0">
             <button type="submit" disabled={saving || loading}
               className="rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
               {saving ? "Salvando..." : "Salvar"}
