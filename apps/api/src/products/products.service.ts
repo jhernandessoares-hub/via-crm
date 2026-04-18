@@ -358,8 +358,15 @@ export class ProductsService {
     const product = await this.getById(user, id);
 
     if (user.role === 'AGENT') {
+      const userId = user.id || user.sub;
+      const isDraft = product.publicationStatus === 'DRAFT';
+      const isOwner = product.capturedByUserId === userId;
+      if (isDraft && isOwner) {
+        await this.prisma.product.delete({ where: { id } });
+        return { ok: true };
+      }
       throw new ForbiddenException(
-        'Corretores não podem excluir produtos. Solicite ao gerente ou proprietário.',
+        'Corretores só podem excluir diretamente produtos em rascunho que eles cadastraram.',
       );
     }
 
@@ -388,6 +395,9 @@ export class ProductsService {
     const userId = user.id || user.sub;
     if (product.capturedByUserId !== userId) {
       throw new ForbiddenException('Você só pode solicitar exclusão de produtos que você cadastrou.');
+    }
+    if (product.publicationStatus === 'DRAFT') {
+      throw new BadRequestException('Produtos em rascunho podem ser excluídos diretamente pelo corretor.');
     }
     if ((product as any).deletionRequestedAt) {
       throw new BadRequestException('Solicitação de exclusão já está pendente.');

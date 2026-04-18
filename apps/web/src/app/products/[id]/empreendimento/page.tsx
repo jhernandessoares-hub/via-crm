@@ -364,6 +364,7 @@ export default function EmpreendimentoEditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [productType, setProductType] = useState("EMPREENDIMENTO");
+  const [publicationStatus, setPublicationStatus] = useState<"DRAFT" | "PUBLISHED">("DRAFT");
   const [form, setForm] = useState<FormData>(EMPTY);
   const [unitSpecs, setUnitSpecs] = useState<UnitSpec[]>([]);
   const [minimizedSpecs, setMinimizedSpecs] = useState<Set<string>>(new Set());
@@ -456,6 +457,7 @@ export default function EmpreendimentoEditPage() {
       }
 
       setProductType("EMPREENDIMENTO");
+      setPublicationStatus(pa.publicationStatus === "PUBLISHED" ? "PUBLISHED" : "DRAFT");
 
       setForm({
         title: pa.title ?? "",
@@ -916,7 +918,12 @@ export default function EmpreendimentoEditPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {userRole === "AGENT" && capturedByUserId === userId ? (
+              {userRole === "AGENT" && capturedByUserId === userId && publicationStatus === "DRAFT" ? (
+                <button type="button" onClick={() => setShowDeleteConfirm(true)}
+                  className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+                  Excluir
+                </button>
+              ) : userRole === "AGENT" && capturedByUserId === userId ? (
                 <button type="button" onClick={() => setShowRequestDeleteModal(true)}
                   className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors">
                   Solicitar exclusão

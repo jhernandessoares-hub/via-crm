@@ -1616,7 +1616,16 @@ export default function ProductEditPage() {
               <p className="text-xs text-[var(--shell-subtext)] mt-0.5">ID: {id}</p>
             </div>
             <div className="flex items-center gap-2">
-              {userRole === "AGENT" && (product as any)?.capturedByUserId === userId ? (
+              {userRole === "AGENT" && (product as any)?.capturedByUserId === userId && form.publicationStatus === "DRAFT" ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={loading || deleting}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                >
+                  Excluir produto
+                </button>
+              ) : userRole === "AGENT" && (product as any)?.capturedByUserId === userId ? (
                 <button
                   type="button"
                   onClick={() => setShowRequestDeleteModal(true)}
