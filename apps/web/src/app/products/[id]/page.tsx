@@ -925,6 +925,13 @@ function PropertyReportModal({ product, form, productImages, onClose }: {
   const coverImg = publicImages.find((img: any) => img.isPrimary) ?? publicImages[0];
   const confirmedRooms = productImages.filter((img: any) => img.aiConfirmed && (img.aiRoomLabel || img.aiRoomType));
 
+  // Agrupar ambientes por label com contagem
+  const roomGroups: Record<string, number> = {};
+  confirmedRooms.forEach((img: any) => {
+    const key = img.aiRoomLabel || img.aiRoomType || "Ambiente";
+    roomGroups[key] = (roomGroups[key] || 0) + 1;
+  });
+
   const DEAL_LABEL: Record<string, string> = { SALE: "Venda", RENT: "Locação", BOTH: "Venda e Locação" };
   const CONDITION_LABEL: Record<string, string> = { NOVO: "Novo", USADO: "Usado", EM_CONSTRUCAO: "Em construção", NA_PLANTA: "Na planta" };
   const STANDARD_LABEL: Record<string, string> = { ECONOMICO: "Econômico", MEDIO: "Médio", ALTO: "Alto", LUXO: "Luxo" };
@@ -953,7 +960,7 @@ function PropertyReportModal({ product, form, productImages, onClose }: {
   h1{font-size:18px;font-weight:700;margin-bottom:4px}
   h2{font-size:13px;font-weight:700;margin:16px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px;color:#333}
   .badge{display:inline-block;border:1px solid #ccc;border-radius:20px;padding:2px 10px;font-size:11px;margin-right:4px;margin-bottom:4px}
-  .cover{width:100%;height:auto;border-radius:8px;margin-bottom:12px;display:block}
+  .cover{width:100%;max-height:220px;object-fit:contain;border-radius:8px;margin-bottom:12px;display:block;background:#f8f8f8}
   .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:12px}
   .grid img{width:100%;height:65px;object-fit:cover;border-radius:4px}
   .row{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:8px}
@@ -999,7 +1006,7 @@ ${imgs.filter((i: any) => i !== coverImg).length > 0 ? `<div class="grid">${imgs
 </div>
 ${form.acceptsFinancing || form.acceptsExchange ? `<div>${form.acceptsFinancing ? '<span class="badge">Aceita financiamento</span>' : ""}${form.acceptsExchange ? '<span class="badge">Aceita permuta</span>' : ""}</div>` : ""}
 
-${confirmedRooms.length > 0 ? `<h2>Ambientes</h2><div>${confirmedRooms.map((img: any) => `<span class="pill"><span class="dot"></span>${img.aiRoomLabel || img.aiRoomType}</span>`).join("")}</div>` : ""}
+${Object.keys(roomGroups).length > 0 ? `<h2>Ambientes</h2><div>${Object.entries(roomGroups).map(([label, count]) => `<span class="pill"><span class="dot"></span><strong>${count}</strong>&nbsp;${label}</span>`).join("")}</div>` : ""}
 
 ${(form.internalFeatures?.length || form.condoFeatures?.length) ? `<h2>Comodidades</h2>
 ${form.internalFeatures?.length ? `<p style="font-size:11px;color:#555;margin-bottom:4px">Internas</p><div>${form.internalFeatures.map((f: string) => `<span class="tag">${f}</span>`).join("")}</div>` : ""}
@@ -1049,7 +1056,8 @@ ${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.vi
               {coverImg && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={normalizeImageUrl(coverImg) ?? undefined} alt="Capa"
-                  className="w-full h-auto rounded-lg mb-2 object-contain" />
+                  className="w-full rounded-lg mb-2 object-contain bg-[var(--shell-bg)]"
+                  style={{ maxHeight: "200px" }} />
               )}
               {publicImages.filter(i => i !== coverImg).length > 0 && (
                 <div className="grid grid-cols-4 gap-1.5">
@@ -1102,14 +1110,14 @@ ${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.vi
           </div>
 
           {/* Ambientes */}
-          {confirmedRooms.length > 0 && (
+          {Object.keys(roomGroups).length > 0 && (
             <div className="rounded-lg border border-[var(--shell-card-border)] p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-2">Ambientes</p>
               <div className="flex flex-wrap gap-1.5">
-                {confirmedRooms.map((img: any) => (
-                  <span key={img.id} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-card-border)] px-2.5 py-1 text-xs">
+                {Object.entries(roomGroups).map(([label, count]) => (
+                  <span key={label} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-card-border)] px-2.5 py-1 text-xs">
                     <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                    {img.aiRoomLabel || img.aiRoomType}
+                    <span className="font-semibold">{count}</span> {label}
                   </span>
                 ))}
               </div>
