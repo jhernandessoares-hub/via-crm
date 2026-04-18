@@ -849,6 +849,141 @@ function AiEditPanel({ img, onConfirm, onCancel }: {
   );
 }
 
+// ─── Image Detail Modal ───────────────────────────────────────────────────────
+
+function ImageDetailModal({ img, onClose, onSave, onDelete, onSetPrimary, onTogglePublic, onAnalyze }: {
+  img: any;
+  onClose: () => void;
+  onSave: (imgId: string, roomType: string, roomLabel: string, features: string[], customLabel: string) => Promise<void>;
+  onDelete: (imgId: string) => void;
+  onSetPrimary: (imgId: string) => void;
+  onTogglePublic: (imgId: string, current: boolean) => void;
+  onAnalyze: (imgId: string) => void;
+}) {
+  const [roomType, setRoomType] = useState(img.aiRoomType || "OUTRO");
+  const [roomLabel, setRoomLabel] = useState(img.aiRoomLabel || "");
+  const [features, setFeatures] = useState<string[]>(img.aiFeatures || []);
+  const [customLabel, setCustomLabel] = useState(img.customLabel || img.title || "");
+  const [saving, setSaving] = useState(false);
+
+  const url = normalizeImageUrl(img);
+  const isPublic = img.publishSite !== false;
+  const isCover = img.isPrimary === true;
+
+  function toggleFeat(f: string) {
+    setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(img.id, roomType, roomLabel || AI_ROOM_TYPES.find(t => t.value === roomType)?.label || roomType, features, customLabel);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
+      <div className="relative w-full max-w-4xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] flex overflow-hidden shadow-2xl max-h-[90vh]"
+        onClick={e => e.stopPropagation()}>
+
+        {/* Fechar */}
+        <button type="button" onClick={onClose}
+          className="absolute top-3 right-3 z-10 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors leading-none">
+          ✕
+        </button>
+
+        {/* Imagem */}
+        <div className="flex-1 bg-black flex items-center justify-center min-h-[400px] overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url ?? undefined} alt={customLabel || "Foto"} className="max-h-[90vh] max-w-full object-contain" />
+        </div>
+
+        {/* Painel direito */}
+        <div className="w-72 shrink-0 flex flex-col border-l border-[var(--shell-card-border)] overflow-y-auto">
+          <div className="px-4 py-4 space-y-4 flex-1">
+
+            {/* Ações */}
+            <div className="flex flex-wrap gap-1.5">
+              {isCover
+                ? <span className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-700">★ Capa</span>
+                : <button type="button" onClick={() => { onSetPrimary(img.id); onClose(); }}
+                    className="rounded-lg border px-2.5 py-1 text-xs text-[var(--shell-subtext)] hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 transition-colors">
+                    ★ Definir capa
+                  </button>
+              }
+              <button type="button" onClick={() => onTogglePublic(img.id, isPublic)}
+                className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${isPublic ? "text-slate-600 hover:bg-slate-50" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                {isPublic ? "👁 Pública" : "🔒 Interna"}
+              </button>
+              <button type="button" onClick={() => { onDelete(img.id); onClose(); }}
+                className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors ml-auto">
+                Excluir
+              </button>
+            </div>
+
+            {/* Nome da foto */}
+            <div>
+              <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome da foto</label>
+              <input value={customLabel} onChange={e => setCustomLabel(e.target.value)}
+                placeholder="Ex.: Fachada, Piscina, Área Gourmet..."
+                className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2.5 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400" />
+            </div>
+
+            {/* Análise IA */}
+            <div className="border-t border-[var(--shell-card-border)] pt-3">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Análise IA</p>
+                <button type="button" onClick={() => onAnalyze(img.id)}
+                  className="rounded border border-[var(--shell-card-border)] px-2 py-0.5 text-[11px] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
+                  ↺ Reanalisar
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Tipo de ambiente</label>
+                  <select value={roomType} onChange={e => setRoomType(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)] outline-none">
+                    {AI_ROOM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome do ambiente</label>
+                  <input value={roomLabel} onChange={e => setRoomLabel(e.target.value)}
+                    placeholder="Ex.: Suíte Master, Sala de Estar..."
+                    className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2.5 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-slate-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Características</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {AI_FEATURES.map(f => (
+                      <label key={f} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input type="checkbox" checked={features.includes(f)} onChange={() => toggleFeat(f)}
+                          className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
+                        {f.toLowerCase().replace(/_/g, " ")}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Salvar */}
+          <div className="border-t border-[var(--shell-card-border)] px-4 py-3">
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="w-full rounded-lg bg-[var(--brand-accent)] py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProductEditPage() {
@@ -915,6 +1050,7 @@ export default function ProductEditPage() {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [analyzingImageIds, setAnalyzingImageIds] = useState<Set<string>>(new Set());
   const [editingAiImg, setEditingAiImg] = useState<string | null>(null);
+  const [imageModalImg, setImageModalImg] = useState<any | null>(null);
 
   // Rooms state
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -1295,6 +1431,29 @@ export default function ProductEditPage() {
     }
   }
 
+  async function handleImageModalSave(imgId: string, roomType: string, roomLabel: string, features: string[], customLabel: string) {
+    if (!id) return;
+    const { apiFetch } = await import("@/lib/api");
+    await apiFetch(`/products/${id}/images/${imgId}/confirm-room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomType, roomLabel, features }),
+    });
+    await apiFetch(`/products/${id}/images/${imgId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customLabel: customLabel.trim() || null, title: customLabel.trim() || null }),
+    });
+    setProduct((prev: any) => prev ? {
+      ...prev,
+      images: (prev.images ?? []).map((img: any) => img.id === imgId
+        ? { ...img, aiRoomType: roomType, aiRoomLabel: roomLabel, aiFeatures: features, aiConfirmed: true, customLabel: customLabel.trim() || null }
+        : img)
+    } : prev);
+    await loadRooms();
+    setSuccess("Foto salva.");
+  }
+
   async function downloadImage(url: string, filename: string) {
     try {
       const res = await fetch(url);
@@ -1660,6 +1819,19 @@ export default function ProductEditPage() {
             </div>
           </div>
 
+          {/* Modal detalhe de imagem */}
+          {imageModalImg && (
+            <ImageDetailModal
+              img={imageModalImg}
+              onClose={() => setImageModalImg(null)}
+              onSave={handleImageModalSave}
+              onDelete={(imgId) => { onDeleteImage(imgId); setImageModalImg(null); }}
+              onSetPrimary={(imgId) => { onSetPrimaryImage(imgId); setImageModalImg(null); }}
+              onTogglePublic={(imgId, cur) => handleToggleImagePublic(imgId, cur)}
+              onAnalyze={(imgId) => { handleAnalyzeImage(imgId); setImageModalImg(null); }}
+            />
+          )}
+
           {/* Modal solicitar exclusão (AGENT) */}
           {showRequestDeleteModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
@@ -1897,10 +2069,10 @@ export default function ProductEditPage() {
                         return (
                           <div key={img.id ?? url} className="space-y-1">
                             <div className={`relative overflow-hidden rounded-lg border bg-[var(--shell-bg)] ${isCover ? "ring-2 ring-amber-400" : ""}`}>
-                              <a href={url ?? undefined} target="_blank" rel="noreferrer">
+                              <button type="button" onClick={() => setImageModalImg(img)} className="block w-full" title="Clique para editar">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={url ?? undefined} alt={displayName} className={`h-28 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
-                              </a>
+                                <img src={url ?? undefined} alt={displayName} className={`h-28 w-full object-cover transition-opacity cursor-pointer hover:opacity-90 ${isPublic ? "" : "opacity-40"}`} />
+                              </button>
                               {/* Capa badge */}
                               {isCover && (
                                 <div className="absolute top-1 left-1 rounded-full bg-amber-400 px-1.5 py-0.5">
@@ -1957,37 +2129,12 @@ export default function ProductEditPage() {
                                 </div>
                               )}
                             </div>
-                            {/* Ações IA abaixo da foto */}
+                            {/* Indicador — clique na foto para editar */}
                             {!isAnalyzing && img.aiAnalyzed && !img.aiConfirmed && (
-                              <div className="flex gap-1">
-                                <button type="button"
-                                  onClick={() => handleConfirmAiRoom(img.id, img.aiRoomType || "OUTRO", img.aiRoomLabel || "Ambiente", img.aiFeatures || [])}
-                                  className="flex-1 rounded-md border border-green-300 bg-green-50 py-0.5 text-[11px] font-medium text-green-700 hover:bg-green-100 transition-colors">
-                                  ✓ Confirmar
-                                </button>
-                                <button type="button" onClick={() => setEditingAiImg(isEditingAi ? null : img.id)}
-                                  className="flex-1 rounded-md border border-[var(--shell-card-border)] py-0.5 text-[11px] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
-                                  ✏️ Editar
-                                </button>
-                                <button type="button" onClick={() => handleAnalyzeImage(img.id)}
-                                  className="rounded-md border border-[var(--shell-card-border)] px-2 py-0.5 text-[11px] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
-                                  ↺
-                                </button>
-                              </div>
-                            )}
-                            {!isAnalyzing && img.aiAnalyzed && img.aiConfirmed && (
-                              <button type="button" onClick={() => setEditingAiImg(isEditingAi ? null : img.id)}
-                                className="w-full rounded-md border border-[var(--shell-card-border)] py-0.5 text-[11px] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
-                                ✏️ Editar classificação
+                              <button type="button" onClick={() => setImageModalImg(img)}
+                                className="w-full rounded-md border border-amber-200 bg-amber-50 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 transition-colors">
+                                IA pendente · clique para revisar
                               </button>
-                            )}
-                            {/* Painel de edição IA */}
-                            {isEditingAi && (
-                              <AiEditPanel
-                                img={img}
-                                onConfirm={(rt, rl, feats) => handleConfirmAiRoom(img.id, rt, rl, feats)}
-                                onCancel={() => setEditingAiImg(null)}
-                              />
                             )}
                           </div>
                         );
