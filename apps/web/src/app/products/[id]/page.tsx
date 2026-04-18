@@ -2175,6 +2175,7 @@ export default function ProductEditPage() {
           {/* Modal detalhe de imagem */}
           {imageModalImg && (
             <ImageDetailModal
+              key={imageModalImg.id}
               img={imageModalImg}
               images={productImages}
               onClose={() => setImageModalImg(null)}
