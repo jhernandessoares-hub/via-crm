@@ -913,6 +913,237 @@ function TagInput({ value, onChange, suggestions }: {
   );
 }
 
+// ─── Property Report Modal ────────────────────────────────────────────────────
+
+function PropertyReportModal({ product, form, productImages, onClose }: {
+  product: any;
+  form: any;
+  productImages: any[];
+  onClose: () => void;
+}) {
+  const publicImages = productImages.filter((img: any) => img.publishSite !== false);
+  const coverImg = publicImages.find((img: any) => img.isPrimary) ?? publicImages[0];
+  const confirmedRooms = productImages.filter((img: any) => img.aiConfirmed && (img.aiRoomLabel || img.aiRoomType));
+
+  const DEAL_LABEL: Record<string, string> = { SALE: "Venda", RENT: "Locação", BOTH: "Venda e Locação" };
+  const CONDITION_LABEL: Record<string, string> = { NOVO: "Novo", USADO: "Usado", EM_CONSTRUCAO: "Em construção", NA_PLANTA: "Na planta" };
+  const STANDARD_LABEL: Record<string, string> = { ECONOMICO: "Econômico", MEDIO: "Médio", ALTO: "Alto", LUXO: "Luxo" };
+  const TYPE_LABEL: Record<string, string> = {
+    CASA: "Casa", APARTAMENTO: "Apartamento", KITNET: "Kitnet", SOBRADO: "Sobrado",
+    TERRENO: "Terreno", SALA_COMERCIAL: "Sala Comercial", LOJA: "Loja",
+    SALAO_COMERCIAL: "Salão Comercial", BARRACAO: "Barracão", OUTRO: "Outro",
+  };
+
+  function fmtBRL(v: any) {
+    const n = Number(v);
+    if (!v || isNaN(n)) return null;
+    return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+
+  function printReport() {
+    const imgs = publicImages.slice(0, 12);
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Relatório — ${form.type ? (TYPE_LABEL[form.type] ?? form.type) : "Imóvel"}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff;padding:20px}
+  h1{font-size:18px;font-weight:700;margin-bottom:4px}
+  h2{font-size:13px;font-weight:700;margin:16px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px;color:#333}
+  .badge{display:inline-block;border:1px solid #ccc;border-radius:20px;padding:2px 10px;font-size:11px;margin-right:4px;margin-bottom:4px}
+  .cover{width:100%;max-height:300px;object-fit:cover;border-radius:8px;margin-bottom:12px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+  .grid img{width:100%;height:80px;object-fit:cover;border-radius:4px}
+  .row{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:8px}
+  .cell{flex:1;min-width:120px}
+  .label{font-size:10px;color:#666;margin-bottom:2px}
+  .value{font-size:12px;font-weight:600}
+  .tag{display:inline-block;background:#f1f5f9;border-radius:12px;padding:2px 8px;font-size:11px;margin:2px}
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #e2e8f0;border-radius:20px;padding:3px 10px;font-size:11px;margin:2px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block}
+  .footer{margin-top:20px;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px}
+  @media print{body{padding:10px}}
+</style>
+</head>
+<body>
+<h1>${TYPE_LABEL[form.type] ?? form.type ?? "Imóvel"}${form.dealType ? " — " + (DEAL_LABEL[form.dealType] ?? "") : ""}${form.referenceCode ? " · " + form.referenceCode : ""}</h1>
+${form.neighborhood || form.city ? `<p style="color:#555;margin-bottom:12px">${[form.neighborhood, form.city, form.state].filter(Boolean).join(", ")}</p>` : ""}
+${coverImg ? `<img class="cover" src="${normalizeImageUrl(coverImg)}" alt="Capa"/>` : ""}
+${imgs.filter((i: any) => i !== coverImg).length > 0 ? `<div class="grid">${imgs.filter((i: any) => i !== coverImg).map((img: any) => `<img src="${normalizeImageUrl(img)}" alt="${img.customLabel || img.aiRoomLabel || ""}" title="${img.customLabel || img.aiRoomLabel || ""}"/>`).join("")}</div>` : ""}
+
+<h2>Dados do imóvel</h2>
+<div class="row">
+  ${form.type ? `<div class="cell"><div class="label">Tipo</div><div class="value">${TYPE_LABEL[form.type] ?? form.type}</div></div>` : ""}
+  ${form.dealType ? `<div class="cell"><div class="label">Finalidade</div><div class="value">${DEAL_LABEL[form.dealType] ?? form.dealType}</div></div>` : ""}
+  ${form.condition ? `<div class="cell"><div class="label">Estado</div><div class="value">${CONDITION_LABEL[form.condition] ?? form.condition}</div></div>` : ""}
+  ${form.standard ? `<div class="cell"><div class="label">Padrão</div><div class="value">${STANDARD_LABEL[form.standard] ?? form.standard}</div></div>` : ""}
+</div>
+
+<h2>Localização</h2>
+<div class="row">
+  ${form.neighborhood ? `<div class="cell"><div class="label">Bairro</div><div class="value">${form.neighborhood}</div></div>` : ""}
+  ${form.city ? `<div class="cell"><div class="label">Cidade</div><div class="value">${form.city}${form.state ? " — " + form.state : ""}</div></div>` : ""}
+  ${form.condominiumName ? `<div class="cell"><div class="label">Condomínio</div><div class="value">${form.condominiumName}</div></div>` : ""}
+</div>
+
+<h2>Valores</h2>
+<div class="row">
+  ${fmtBRL(form.price) ? `<div class="cell"><div class="label">Preço de venda</div><div class="value">${fmtBRL(form.price)}</div></div>` : ""}
+  ${fmtBRL(form.rentPrice) ? `<div class="cell"><div class="label">Locação / mês</div><div class="value">${fmtBRL(form.rentPrice)}</div></div>` : ""}
+  ${fmtBRL(form.iptu) ? `<div class="cell"><div class="label">IPTU anual</div><div class="value">${fmtBRL(form.iptu)}</div></div>` : ""}
+  ${fmtBRL(form.condominiumFee) ? `<div class="cell"><div class="label">Condomínio / mês</div><div class="value">${fmtBRL(form.condominiumFee)}</div></div>` : ""}
+</div>
+${form.acceptsFinancing || form.acceptsExchange ? `<div>${form.acceptsFinancing ? '<span class="badge">Aceita financiamento</span>' : ""}${form.acceptsExchange ? '<span class="badge">Aceita permuta</span>' : ""}</div>` : ""}
+
+${confirmedRooms.length > 0 ? `<h2>Ambientes</h2><div>${confirmedRooms.map((img: any) => `<span class="pill"><span class="dot"></span>${img.aiRoomLabel || img.aiRoomType}</span>`).join("")}</div>` : ""}
+
+${(form.internalFeatures?.length || form.condoFeatures?.length) ? `<h2>Comodidades</h2>
+${form.internalFeatures?.length ? `<p style="font-size:11px;color:#555;margin-bottom:4px">Internas</p><div>${form.internalFeatures.map((f: string) => `<span class="tag">${f}</span>`).join("")}</div>` : ""}
+${form.condoFeatures?.length ? `<p style="font-size:11px;color:#555;margin:8px 0 4px">Condomínio</p><div>${form.condoFeatures.map((f: string) => `<span class="tag">${f}</span>`).join("")}</div>` : ""}` : ""}
+
+${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.virtualTourUrl}</p>` : ""}
+
+<div class="footer">Relatório gerado em ${new Date().toLocaleString("pt-BR")} · Uso interno — endereço omitido</div>
+</body></html>`;
+
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="relative w-full max-w-2xl max-h-[85vh] rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--shell-card-border)]">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--shell-text)]">Relatório do imóvel</h2>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Endereço oculto · Uso interno</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={printReport}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors flex items-center gap-2">
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a1 1 0 001 1h8a1 1 0 001-1v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a1 1 0 00-1-1H6a1 1 0 00-1 1zm2 0h6v3H7V4zm-1 9v-2h8v2H6zm8-4a1 1 0 110 2 1 1 0 010-2z" clipRule="evenodd" />
+              </svg>
+              Imprimir
+            </button>
+            <button type="button" onClick={onClose}
+              className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors">
+              Fechar
+            </button>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-4 text-sm">
+          {/* Fotos */}
+          {publicImages.length > 0 && (
+            <div>
+              {coverImg && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={normalizeImageUrl(coverImg) ?? undefined} alt="Capa"
+                  className="w-full h-48 object-cover rounded-lg mb-2" />
+              )}
+              {publicImages.filter(i => i !== coverImg).length > 0 && (
+                <div className="grid grid-cols-4 gap-1.5">
+                  {publicImages.filter(i => i !== coverImg).slice(0, 8).map((img: any) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={img.id} src={normalizeImageUrl(img) ?? undefined} alt=""
+                      className="h-16 w-full object-cover rounded" />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Dados */}
+          <div className="rounded-lg border border-[var(--shell-card-border)] p-3 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Dados do imóvel</p>
+            <div className="grid grid-cols-2 gap-2">
+              {form.type && <div><span className="text-xs text-[var(--shell-subtext)]">Tipo</span><p className="font-medium">{form.type}</p></div>}
+              {form.dealType && <div><span className="text-xs text-[var(--shell-subtext)]">Finalidade</span><p className="font-medium">{({"SALE":"Venda","RENT":"Locação","BOTH":"Venda e Locação"} as any)[form.dealType] ?? form.dealType}</p></div>}
+              {form.condition && <div><span className="text-xs text-[var(--shell-subtext)]">Estado</span><p className="font-medium">{({"NOVO":"Novo","USADO":"Usado","EM_CONSTRUCAO":"Em construção","NA_PLANTA":"Na planta"} as any)[form.condition] ?? form.condition}</p></div>}
+              {form.standard && <div><span className="text-xs text-[var(--shell-subtext)]">Padrão</span><p className="font-medium">{({"ECONOMICO":"Econômico","MEDIO":"Médio","ALTO":"Alto","LUXO":"Luxo"} as any)[form.standard] ?? form.standard}</p></div>}
+            </div>
+          </div>
+
+          {/* Localização */}
+          <div className="rounded-lg border border-[var(--shell-card-border)] p-3 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Localização</p>
+            <p className="text-xs text-amber-600">⚠ Endereço completo oculto</p>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              {form.neighborhood && <div><span className="text-xs text-[var(--shell-subtext)]">Bairro</span><p className="font-medium">{form.neighborhood}</p></div>}
+              {form.city && <div><span className="text-xs text-[var(--shell-subtext)]">Cidade</span><p className="font-medium">{form.city}{form.state ? ` — ${form.state}` : ""}</p></div>}
+              {form.condominiumName && <div><span className="text-xs text-[var(--shell-subtext)]">Condomínio</span><p className="font-medium">{form.condominiumName}</p></div>}
+            </div>
+          </div>
+
+          {/* Valores */}
+          <div className="rounded-lg border border-[var(--shell-card-border)] p-3 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Valores</p>
+            <div className="grid grid-cols-2 gap-2">
+              {fmtBRL(form.price) && <div><span className="text-xs text-[var(--shell-subtext)]">Preço de venda</span><p className="font-semibold text-[var(--shell-text)]">{fmtBRL(form.price)}</p></div>}
+              {fmtBRL(form.rentPrice) && <div><span className="text-xs text-[var(--shell-subtext)]">Locação / mês</span><p className="font-semibold">{fmtBRL(form.rentPrice)}</p></div>}
+              {fmtBRL(form.iptu) && <div><span className="text-xs text-[var(--shell-subtext)]">IPTU anual</span><p className="font-medium">{fmtBRL(form.iptu)}</p></div>}
+              {fmtBRL(form.condominiumFee) && <div><span className="text-xs text-[var(--shell-subtext)]">Condomínio / mês</span><p className="font-medium">{fmtBRL(form.condominiumFee)}</p></div>}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {form.acceptsFinancing && <span className="rounded-full border px-2.5 py-0.5 text-xs">Aceita financiamento</span>}
+              {form.acceptsExchange && <span className="rounded-full border px-2.5 py-0.5 text-xs">Aceita permuta</span>}
+            </div>
+          </div>
+
+          {/* Ambientes */}
+          {confirmedRooms.length > 0 && (
+            <div className="rounded-lg border border-[var(--shell-card-border)] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-2">Ambientes</p>
+              <div className="flex flex-wrap gap-1.5">
+                {confirmedRooms.map((img: any) => (
+                  <span key={img.id} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-card-border)] px-2.5 py-1 text-xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    {img.aiRoomLabel || img.aiRoomType}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Comodidades */}
+          {(form.internalFeatures?.length > 0 || form.condoFeatures?.length > 0) && (
+            <div className="rounded-lg border border-[var(--shell-card-border)] p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Comodidades</p>
+              {form.internalFeatures?.length > 0 && (
+                <div>
+                  <p className="text-xs text-[var(--shell-subtext)] mb-1">Internas</p>
+                  <div className="flex flex-wrap gap-1">{form.internalFeatures.map((f: string) => <span key={f} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">{f}</span>)}</div>
+                </div>
+              )}
+              {form.condoFeatures?.length > 0 && (
+                <div>
+                  <p className="text-xs text-[var(--shell-subtext)] mb-1">Condomínio</p>
+                  <div className="flex flex-wrap gap-1">{form.condoFeatures.map((f: string) => <span key={f} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">{f}</span>)}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {form.virtualTourUrl && (
+            <div className="rounded-lg border border-[var(--shell-card-border)] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-1">Tour Virtual</p>
+              <a href={form.virtualTourUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline break-all">{form.virtualTourUrl}</a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Image Detail Modal ───────────────────────────────────────────────────────
 
 function ImageDetailModal({ img, onClose, onSave, onDelete, onSetPrimary, onTogglePublic, onAnalyze }: {
@@ -1111,6 +1342,7 @@ export default function ProductEditPage() {
   const [analyzingImageIds, setAnalyzingImageIds] = useState<Set<string>>(new Set());
   const [editingAiImg, setEditingAiImg] = useState<string | null>(null);
   const [imageModalImg, setImageModalImg] = useState<any | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   // Rooms state
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -1830,7 +2062,7 @@ export default function ProductEditPage() {
   return (
     <AppShell title="Produto">
       <form onSubmit={onSave}>
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="mx-auto w-full max-w-6xl">
           {/* Header */}
           <div className="mb-6 flex items-center justify-between gap-4">
             <div>
@@ -1878,6 +2110,16 @@ export default function ProductEditPage() {
               </Link>
             </div>
           </div>
+
+          {/* Modal relatório */}
+          {showReport && (
+            <PropertyReportModal
+              product={product}
+              form={form}
+              productImages={productImages}
+              onClose={() => setShowReport(false)}
+            />
+          )}
 
           {/* Modal detalhe de imagem */}
           {imageModalImg && (
@@ -1967,34 +2209,10 @@ export default function ProductEditPage() {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="flex gap-5 items-start">
 
-            {/* ── Captação ─────────────────────────────────────────────── */}
-            {(product as any)?.capturedBy && (
-              <div className="rounded-xl border bg-[var(--shell-card-bg)] px-5 py-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-3">Captação</p>
-                <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
-                  <div>
-                    <span className="text-xs text-[var(--shell-subtext)]">Cadastrado por</span>
-                    <p className="font-medium text-[var(--shell-text)]">
-                      {(product as any).capturedBy.apelido || (product as any).capturedBy.nome}
-                    </p>
-                  </div>
-                  {(product as any).capturedBy.telefone && (
-                    <div>
-                      <span className="text-xs text-[var(--shell-subtext)]">Telefone</span>
-                      <p className="font-medium text-[var(--shell-text)]">{(product as any).capturedBy.telefone}</p>
-                    </div>
-                  )}
-                  {(product as any).capturedBy.email && (
-                    <div>
-                      <span className="text-xs text-[var(--shell-subtext)]">E-mail</span>
-                      <p className="font-medium text-[var(--shell-text)]">{(product as any).capturedBy.email}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+          {/* ── Coluna principal ─────────────────────────────────────────── */}
+          <div className="flex-1 min-w-0 space-y-3">
 
             {/* ── S1: Identificação ─────────────────────────────────────── */}
             <Section id="identificacao" title="1. Identificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")}>
@@ -2622,7 +2840,54 @@ export default function ProductEditPage() {
               </div>
             </Section>}
 
-          </div>
+          </div>{/* fim coluna principal */}
+
+          {/* ── Coluna direita (sidebar) ────────────────────────────────── */}
+          <div className="w-64 shrink-0 space-y-3 sticky top-4">
+
+            {/* Captação */}
+            {(product as any)?.capturedBy && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-3">Captação</p>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-xs text-[var(--shell-subtext)]">Cadastrado por</span>
+                    <p className="font-medium text-[var(--shell-text)]">
+                      {(product as any).capturedBy.apelido || (product as any).capturedBy.nome}
+                    </p>
+                  </div>
+                  {(product as any).capturedBy.telefone && (
+                    <div>
+                      <span className="text-xs text-[var(--shell-subtext)]">Telefone</span>
+                      <p className="font-medium text-[var(--shell-text)]">{(product as any).capturedBy.telefone}</p>
+                    </div>
+                  )}
+                  {(product as any).capturedBy.email && (
+                    <div>
+                      <span className="text-xs text-[var(--shell-subtext)]">E-mail</span>
+                      <p className="font-medium text-[var(--shell-text)]">{(product as any).capturedBy.email}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Relatório */}
+            <div className="rounded-xl border bg-[var(--shell-card-bg)] px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-2">Relatório</p>
+              <p className="text-xs text-[var(--shell-subtext)] mb-3">Resumo do imóvel para apoio ao corretor. Endereço oculto.</p>
+              <button type="button" onClick={() => setShowReport(true)} disabled={loading}
+                className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                </svg>
+                Ver relatório
+              </button>
+            </div>
+
+          </div>{/* fim sidebar */}
+
+          </div>{/* fim flex 2 colunas */}
 
           {/* ── Fixed save footer ─────────────────────────────────────── */}
           <div className="sticky bottom-0 mt-4 flex items-center gap-2 rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 shadow-md flex-wrap">
