@@ -910,6 +910,7 @@ export default function ProductEditPage() {
   const [docUploading, setDocUploading] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
   const [imgTitle, setImgTitle] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [analyzingImageIds, setAnalyzingImageIds] = useState<Set<string>>(new Set());
   const [editingAiImg, setEditingAiImg] = useState<string | null>(null);
 
@@ -1214,24 +1215,35 @@ export default function ProductEditPage() {
   }
 
   // ── Image upload ─────────────────────────────────────────────────────────────
-  async function onUploadImage(file: File | null) {
-    if (!id || !file) return;
+  async function onUploadImage(files: FileList | File | null) {
+    if (!id || !files) return;
+    const list: File[] = files instanceof FileList ? Array.from(files) : [files];
+    if (list.length === 0) return;
     setImgUploading(true);
     setError(null);
+    setUploadProgress({ done: 0, total: list.length });
+    const uploadedIds: string[] = [];
     try {
-      const uploaded = await uploadProductImage(id, file, {
-        title: imgTitle.trim() || undefined,
-        customLabel: imgTitle.trim() || undefined,
-      });
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i];
+        const uploaded = await uploadProductImage(id, file, {
+          title: list.length === 1 && imgTitle.trim() ? imgTitle.trim() : undefined,
+          customLabel: list.length === 1 && imgTitle.trim() ? imgTitle.trim() : undefined,
+        });
+        const uploadedId = uploaded?.image?.id ?? uploaded?.id;
+        if (uploadedId) uploadedIds.push(uploadedId);
+        setUploadProgress({ done: i + 1, total: list.length });
+      }
       setImgTitle("");
       await load();
-      setSuccess("Imagem enviada. Analisando com IA...");
-      // Auto-trigger AI analysis
-      const uploadedId = uploaded?.image?.id ?? uploaded?.id;
-      if (uploadedId) handleAnalyzeImage(uploadedId);
+      setSuccess(`${list.length} foto${list.length > 1 ? "s" : ""} enviada${list.length > 1 ? "s" : ""}. Analisando com IA...`);
+      for (const imgId of uploadedIds) handleAnalyzeImage(imgId);
     } catch (e: any) {
       setError(e?.message ?? "Erro no upload");
-    } finally { setImgUploading(false); }
+    } finally {
+      setImgUploading(false);
+      setUploadProgress(null);
+    }
   }
 
   async function handleAnalyzeImage(imgId: string) {
@@ -1846,19 +1858,39 @@ export default function ProductEditPage() {
               {/* Upload */}
               <div>
                 <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Fotos</p>
-                <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-2 mb-4">
-                  <p className="text-[11px] text-[var(--brand-accent)]">Após o upload a IA identifica automaticamente o ambiente e as características visíveis na foto.</p>
-                  <Field label="Nome da imagem (opcional)">
-                    <input value={imgTitle} onChange={(e) => setImgTitle(e.target.value)}
-                      placeholder="Ex: Suíte Master, Fachada, Área Gourmet..." className={inp} disabled={imgUploading} />
-                  </Field>
-                  <label className="block">
-                    <input type="file" accept="image/*" disabled={imgUploading || loading}
-                      onChange={(e) => onUploadImage(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
-                  </label>
-                  {imgUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
-                </div>
+                <label
+                  className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-6 mb-4 cursor-pointer hover:border-[var(--brand-accent)] hover:bg-[var(--shell-hover)] transition-colors"
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--brand-accent)"; }}
+                  onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; }}
+                  onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; onUploadImage(e.dataTransfer.files); }}
+                >
+                  <input type="file" accept="image/*" multiple disabled={imgUploading || loading}
+                    onChange={(e) => onUploadImage(e.target.files)}
+                    className="sr-only" />
+                  {imgUploading && uploadProgress ? (
+                    <div className="text-center space-y-2 w-full">
+                      <p className="text-sm font-medium text-[var(--shell-text)]">
+                        Enviando {uploadProgress.done}/{uploadProgress.total}...
+                      </p>
+                      <div className="w-full rounded-full bg-[var(--shell-card-border)] h-2">
+                        <div className="h-2 rounded-full bg-[var(--brand-accent)] transition-all"
+                          style={{ width: `${(uploadProgress.done / uploadProgress.total) * 100}%` }} />
+                      </div>
+                      <p className="text-xs text-[var(--shell-subtext)]">A IA analisará cada foto automaticamente</p>
+                    </div>
+                  ) : (
+                    <>
+                      <svg className="h-8 w-8 text-[var(--shell-subtext)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                      </svg>
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-[var(--shell-text)]">Clique ou arraste fotos aqui</p>
+                        <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Selecione várias de uma vez · JPG, PNG, WEBP</p>
+                        <p className="text-xs text-[var(--brand-accent)] mt-1">IA identifica o ambiente e características automaticamente</p>
+                      </div>
+                    </>
+                  )}
+                </label>
 
                 {productImages.length > 0 && (
                   <div className="space-y-2">
