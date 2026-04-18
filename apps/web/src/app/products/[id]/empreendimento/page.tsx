@@ -945,7 +945,20 @@ export default function EmpreendimentoEditPage() {
           </div>
 
           {/* Alerts */}
-          {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
+          {error && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.45)" }}>
+              <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl">
+                <h2 className="text-base font-semibold text-red-600 mb-3">Atenção</h2>
+                <p className="text-sm text-[var(--shell-text)] mb-5">{error}</p>
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => setError(null)}
+                    className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800">
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {success && <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{success}</div>}
 
           {/* AI suggestions modal */}
