@@ -448,6 +448,7 @@ model ProductImage {
   tenantId      String
   productId     String
   url           String
+  publicId      String?
   isPrimary     Boolean           @default(false)
   sortOrder     Int               @default(0)
   createdAt     DateTime          @default(now())
@@ -456,6 +457,11 @@ model ProductImage {
   publishSite   Boolean           @default(true)
   publishSocial Boolean           @default(false)
   title         String?
+  aiRoomType    String?
+  aiRoomLabel   String?
+  aiFeatures    String[]
+  aiAnalyzed    Boolean           @default(false)
+  aiConfirmed   Boolean           @default(false)
   product       Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
   tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

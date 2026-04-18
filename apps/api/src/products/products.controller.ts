@@ -145,6 +145,25 @@ export class ProductsController {
     return this.productsService.updateImage(req.user, id, imageId, body);
   }
 
+  @Post(':id/images/:imageId/analyze')
+  async analyzeImage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('imageId') imageId: string,
+  ) {
+    return this.productsService.analyzeImage(req.user, id, imageId);
+  }
+
+  @Post(':id/images/:imageId/confirm-room')
+  async confirmImageRoom(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('imageId') imageId: string,
+    @Body() body: { roomType: string; roomLabel: string; features: string[] },
+  ) {
+    return this.productsService.confirmImageRoom(req.user, id, imageId, body);
+  }
+
   // =========================
   // 🎥 VÍDEOS
   // =========================

@@ -941,6 +941,94 @@ export class ProductsService {
   }
 
   // =========================
+  // AI IMAGE ANALYSIS
+  // =========================
+
+  async analyzeImage(user: any, productId: string, imageId: string) {
+    const img = await this.prisma.productImage.findFirst({
+      where: { id: imageId, tenantId: user.tenantId, productId },
+    });
+    if (!img) throw new NotFoundException('Imagem não encontrada');
+
+    const modelName = await resolveAiModel(this.prisma, 'DOC_CLASSIFICATION', { allowDefaultFallback: false })
+      .catch(() => 'claude-haiku-4-5-20251001');
+
+    const client = new Anthropic();
+
+    const prompt = `Você é um assistente especializado em análise de fotos de imóveis residenciais brasileiros.
+Analise esta foto e retorne SOMENTE um JSON válido, sem texto adicional, com este formato exato:
+{
+  "roomType": "um dos valores: QUARTO, SUITE, BANHEIRO, LAVABO, CLOSET, SALA_ESTAR, SALA_JANTAR, COZINHA, VARANDA, AREA_GOURMET, AREA_SERVICO, ESCRITORIO, GARAGEM, PISCINA, QUINTAL, FACHADA, CORREDOR, LAVANDERIA, DEPOSITO, OUTRO",
+  "roomLabel": "nome descritivo em português, ex: Suíte Master, Sala de Estar, Varanda Gourmet, Fachada",
+  "features": ["lista de características visíveis, escolha entre: ARMARIO_EMBUTIDO, CLOSET, BANHEIRA, CHURRASQUEIRA, PISCINA, SACADA, VISTA_MAR, VISTA_CIDADE, VISTA_CAMPO, JANELA_AMPLA, PIA_DUPLA, LAVABO_EMBUTIDO, PORCELANATO, PISO_MADEIRA, TETO_ALTO, ILUMINACAO_NATURAL, AREA_GOURMET"]
+}`;
+
+    try {
+      const response = await client.messages.create({
+        model: modelName,
+        max_tokens: 300,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'url', url: img.url } },
+              { type: 'text', text: prompt },
+            ],
+          },
+        ],
+      });
+
+      const raw = (response.content[0] as any)?.text ?? '';
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('Resposta inválida da IA');
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const roomType = String(parsed.roomType ?? 'OUTRO').toUpperCase();
+      const roomLabel = String(parsed.roomLabel ?? '').trim() || roomType;
+      const features: string[] = Array.isArray(parsed.features) ? parsed.features.map(String) : [];
+
+      await this.prisma.productImage.update({
+        where: { id: imageId },
+        data: { aiRoomType: roomType, aiRoomLabel: roomLabel, aiFeatures: features, aiAnalyzed: true, aiConfirmed: false },
+      });
+
+      return { ok: true, roomType, roomLabel, features };
+    } catch (err) {
+      logger.error('analyzeImage error', err);
+      await this.prisma.productImage.update({
+        where: { id: imageId },
+        data: { aiAnalyzed: true, aiRoomType: 'OUTRO', aiRoomLabel: 'Não identificado', aiFeatures: [] },
+      });
+      return { ok: false, roomType: 'OUTRO', roomLabel: 'Não identificado', features: [] };
+    }
+  }
+
+  async confirmImageRoom(
+    user: any,
+    productId: string,
+    imageId: string,
+    body: { roomType: string; roomLabel: string; features: string[] },
+  ) {
+    const img = await this.prisma.productImage.findFirst({
+      where: { id: imageId, tenantId: user.tenantId, productId },
+    });
+    if (!img) throw new NotFoundException('Imagem não encontrada');
+
+    await this.prisma.productImage.update({
+      where: { id: imageId },
+      data: {
+        aiRoomType: body.roomType,
+        aiRoomLabel: body.roomLabel,
+        aiFeatures: body.features,
+        aiConfirmed: true,
+        title: img.title || body.roomLabel,
+      },
+    });
+
+    return { ok: true };
+  }
+
+  // =========================
   // DOCUMENTS - DOWNLOAD
   // =========================
 

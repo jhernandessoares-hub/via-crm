@@ -774,6 +774,81 @@ function NewOwnerForm({
   );
 }
 
+// ─── AI Edit Panel ───────────────────────────────────────────────────────────
+
+const AI_ROOM_TYPES = [
+  { value: "QUARTO", label: "Quarto" }, { value: "SUITE", label: "Suíte" },
+  { value: "BANHEIRO", label: "Banheiro" }, { value: "LAVABO", label: "Lavabo" },
+  { value: "CLOSET", label: "Closet" }, { value: "SALA_ESTAR", label: "Sala de Estar" },
+  { value: "SALA_JANTAR", label: "Sala de Jantar" }, { value: "COZINHA", label: "Cozinha" },
+  { value: "VARANDA", label: "Varanda" }, { value: "AREA_GOURMET", label: "Área Gourmet" },
+  { value: "AREA_SERVICO", label: "Área de Serviço" }, { value: "ESCRITORIO", label: "Escritório" },
+  { value: "GARAGEM", label: "Garagem" }, { value: "PISCINA", label: "Piscina" },
+  { value: "QUINTAL", label: "Quintal" }, { value: "FACHADA", label: "Fachada" },
+  { value: "LAVANDERIA", label: "Lavanderia" }, { value: "DEPOSITO", label: "Depósito" },
+  { value: "CORREDOR", label: "Corredor" }, { value: "OUTRO", label: "Outro" },
+];
+
+const AI_FEATURES = [
+  "ARMARIO_EMBUTIDO", "CLOSET", "BANHEIRA", "CHURRASQUEIRA", "PISCINA",
+  "SACADA", "VISTA_MAR", "VISTA_CIDADE", "VISTA_CAMPO", "JANELA_AMPLA",
+  "PIA_DUPLA", "PORCELANATO", "PISO_MADEIRA", "TETO_ALTO", "ILUMINACAO_NATURAL", "AREA_GOURMET",
+];
+
+function AiEditPanel({ img, onConfirm, onCancel }: {
+  img: any;
+  onConfirm: (roomType: string, roomLabel: string, features: string[]) => void;
+  onCancel: () => void;
+}) {
+  const [roomType, setRoomType] = useState(img.aiRoomType || "OUTRO");
+  const [roomLabel, setRoomLabel] = useState(img.aiRoomLabel || "");
+  const [features, setFeatures] = useState<string[]>(img.aiFeatures || []);
+
+  function toggleFeat(f: string) {
+    setFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-3 space-y-3 text-sm">
+      <div>
+        <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Tipo de ambiente</label>
+        <select value={roomType} onChange={(e) => setRoomType(e.target.value)}
+          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)]">
+          {AI_ROOM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome do ambiente</label>
+        <input value={roomLabel} onChange={(e) => setRoomLabel(e.target.value)}
+          placeholder="Ex: Suíte Master, Sala de Estar..."
+          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)]" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Características visíveis</label>
+        <div className="grid grid-cols-2 gap-1">
+          {AI_FEATURES.map(f => (
+            <label key={f} className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox" checked={features.includes(f)} onChange={() => toggleFeat(f)}
+                className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
+              {f.toLowerCase().replace(/_/g, " ")}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button type="button" onClick={() => onConfirm(roomType, roomLabel || AI_ROOM_TYPES.find(t => t.value === roomType)?.label || roomType, features)}
+          className="flex-1 rounded-lg bg-[var(--brand-accent)] py-1.5 text-xs font-medium text-white hover:opacity-90 transition-opacity">
+          Confirmar
+        </button>
+        <button type="button" onClick={onCancel}
+          className="rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProductEditPage() {
@@ -835,6 +910,8 @@ export default function ProductEditPage() {
   const [docUploading, setDocUploading] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
   const [imgTitle, setImgTitle] = useState("");
+  const [analyzingImageIds, setAnalyzingImageIds] = useState<Set<string>>(new Set());
+  const [editingAiImg, setEditingAiImg] = useState<string | null>(null);
 
   // Rooms state
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -1142,16 +1219,51 @@ export default function ProductEditPage() {
     setImgUploading(true);
     setError(null);
     try {
-      await uploadProductImage(id, file, {
+      const uploaded = await uploadProductImage(id, file, {
         title: imgTitle.trim() || undefined,
         customLabel: imgTitle.trim() || undefined,
       });
       setImgTitle("");
       await load();
-      setSuccess("Imagem enviada.");
+      setSuccess("Imagem enviada. Analisando com IA...");
+      // Auto-trigger AI analysis
+      const uploadedId = uploaded?.image?.id ?? uploaded?.id;
+      if (uploadedId) handleAnalyzeImage(uploadedId);
     } catch (e: any) {
       setError(e?.message ?? "Erro no upload");
     } finally { setImgUploading(false); }
+  }
+
+  async function handleAnalyzeImage(imgId: string) {
+    if (!id) return;
+    setAnalyzingImageIds(prev => new Set(prev).add(imgId));
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      await apiFetch(`/products/${id}/images/${imgId}/analyze`, { method: "POST" });
+      await load();
+    } catch {
+      // silently ignore — image stays without AI badge
+    } finally {
+      setAnalyzingImageIds(prev => { const s = new Set(prev); s.delete(imgId); return s; });
+    }
+  }
+
+  async function handleConfirmAiRoom(imgId: string, roomType: string, roomLabel: string, features: string[]) {
+    if (!id) return;
+    try {
+      const { apiFetch } = await import("@/lib/api");
+      await apiFetch(`/products/${id}/images/${imgId}/confirm-room`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomType, roomLabel, features }),
+      });
+      setSuccess(`Ambiente "${roomLabel}" confirmado.`);
+      await load();
+      await loadRooms();
+      setEditingAiImg(null);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao confirmar ambiente");
+    }
   }
 
   async function downloadImage(url: string, filename: string) {
@@ -1728,8 +1840,195 @@ export default function ProductEditPage() {
               </div>
             </Section>
 
-            {/* ── S4: Cômodos ───────────────────────────────────────────── */}
-            {!isEmpreendimento && <Section id="comodos" title="4. Cômodos" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
+            {/* ── S4: Mídia ────────────────────────────────────────────── */}
+            {!isEmpreendimento && <Section id="midia" title="4. Mídia" open={open.has("midia")} onToggle={() => { toggle("midia"); if (!open.has("midia")) loadDocs(); }}>
+
+              {/* Upload */}
+              <div>
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Fotos</p>
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-2 mb-4">
+                  <p className="text-[11px] text-[var(--brand-accent)]">Após o upload a IA identifica automaticamente o ambiente e as características visíveis na foto.</p>
+                  <Field label="Nome da imagem (opcional)">
+                    <input value={imgTitle} onChange={(e) => setImgTitle(e.target.value)}
+                      placeholder="Ex: Suíte Master, Fachada, Área Gourmet..." className={inp} disabled={imgUploading} />
+                  </Field>
+                  <label className="block">
+                    <input type="file" accept="image/*" disabled={imgUploading || loading}
+                      onChange={(e) => onUploadImage(e.target.files?.[0] ?? null)}
+                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
+                  </label>
+                  {imgUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
+                </div>
+
+                {productImages.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      {productImages.map((img: any) => {
+                        const url = normalizeImageUrl(img);
+                        const isPublic = img.publishSite !== false;
+                        const isCover = img.isPrimary === true;
+                        const displayName = img.customLabel || img.title || img.aiRoomLabel || "";
+                        const isAnalyzing = analyzingImageIds.has(img.id);
+                        const isEditingAi = editingAiImg === img.id;
+                        return (
+                          <div key={img.id ?? url} className="space-y-1">
+                            <div className={`relative overflow-hidden rounded-lg border bg-[var(--shell-bg)] ${isCover ? "ring-2 ring-amber-400" : ""}`}>
+                              <a href={url ?? undefined} target="_blank" rel="noreferrer">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={url ?? undefined} alt={displayName} className={`h-28 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
+                              </a>
+                              {/* Capa badge */}
+                              {isCover && (
+                                <div className="absolute top-1 left-1 rounded-full bg-amber-400 px-1.5 py-0.5">
+                                  <p className="text-[9px] font-bold text-white leading-none">CAPA</p>
+                                </div>
+                              )}
+                              {/* Botão definir capa */}
+                              {!isCover && (
+                                <button type="button" onClick={() => onSetPrimaryImage(img.id)} title="Definir como capa"
+                                  className="absolute top-1 left-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-amber-50 transition-colors">
+                                  <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)]" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                </button>
+                              )}
+                              {/* Download */}
+                              {url && (
+                                <button type="button" onClick={() => downloadImage(url, displayName || `imagem-${img.id}`)} title="Baixar"
+                                  className="absolute top-1 right-9 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-blue-50 transition-colors">
+                                  <svg className="h-3.5 w-3.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                                  </svg>
+                                </button>
+                              )}
+                              {/* Toggle público/privado */}
+                              <button type="button" onClick={() => handleToggleImagePublic(img.id, isPublic)} title={isPublic ? "Pública — clique para uso interno" : "Interna — clique para divulgar"}
+                                className="absolute top-1 right-5 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-[var(--shell-card-bg)] transition-colors">
+                                {isPublic
+                                  ? <svg className="h-3.5 w-3.5 text-slate-600" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3C5 3 1.73 7.11 1.05 8.45a1 1 0 000 1.1C1.73 10.89 5 15 10 15s8.27-4.11 8.95-5.45a1 1 0 000-1.1C18.27 7.11 15 3 10 3zm0 10a4 4 0 110-8 4 4 0 010 8zm0-6a2 2 0 100 4 2 2 0 000-4z" /></svg>
+                                  : <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)]" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" /><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" /></svg>
+                                }
+                              </button>
+                              {/* Excluir */}
+                              <button type="button" onClick={() => onDeleteImage(img.id)} title="Excluir"
+                                className="absolute top-1 right-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-red-50 transition-colors">
+                                <svg className="h-3.5 w-3.5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                              {/* IA Badge */}
+                              {isAnalyzing && (
+                                <div className="absolute bottom-0 left-0 right-0 bg-blue-600/85 px-1.5 py-1">
+                                  <p className="text-[10px] text-white">⏳ Analisando com IA...</p>
+                                </div>
+                              )}
+                              {!isAnalyzing && img.aiAnalyzed && (
+                                <div className={`absolute bottom-0 left-0 right-0 px-1.5 py-1 ${img.aiConfirmed ? "bg-green-700/80" : "bg-black/75"}`}>
+                                  <p className="text-[10px] text-white font-semibold truncate">
+                                    {img.aiConfirmed ? "✓ " : "IA: "}{img.aiRoomLabel || img.aiRoomType || "Não identificado"}
+                                  </p>
+                                  {img.aiFeatures?.length > 0 && (
+                                    <p className="text-[9px] text-white/70 truncate">{(img.aiFeatures as string[]).slice(0, 2).join(", ").toLowerCase().replace(/_/g, " ")}</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {/* Ações IA abaixo da foto */}
+                            {!isAnalyzing && img.aiAnalyzed && !img.aiConfirmed && (
+                              <div className="flex gap-1">
+                                <button type="button"
+                                  onClick={() => handleConfirmAiRoom(img.id, img.aiRoomType || "OUTRO", img.aiRoomLabel || "Ambiente", img.aiFeatures || [])}
+                                  className="flex-1 rounded-md border border-green-300 bg-green-50 py-0.5 text-[11px] font-medium text-green-700 hover:bg-green-100 transition-colors">
+                                  ✓ Confirmar
+                                </button>
+                                <button type="button" onClick={() => setEditingAiImg(isEditingAi ? null : img.id)}
+                                  className="flex-1 rounded-md border border-[var(--shell-card-border)] py-0.5 text-[11px] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
+                                  ✏️ Editar
+                                </button>
+                                <button type="button" onClick={() => handleAnalyzeImage(img.id)}
+                                  className="rounded-md border border-[var(--shell-card-border)] px-2 py-0.5 text-[11px] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
+                                  ↺
+                                </button>
+                              </div>
+                            )}
+                            {!isAnalyzing && img.aiAnalyzed && img.aiConfirmed && (
+                              <button type="button" onClick={() => setEditingAiImg(isEditingAi ? null : img.id)}
+                                className="w-full rounded-md border border-[var(--shell-card-border)] py-0.5 text-[11px] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
+                                ✏️ Editar classificação
+                              </button>
+                            )}
+                            {/* Painel de edição IA */}
+                            {isEditingAi && (
+                              <AiEditPanel
+                                img={img}
+                                onConfirm={(rt, rl, feats) => handleConfirmAiRoom(img.id, rt, rl, feats)}
+                                onCancel={() => setEditingAiImg(null)}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Documentos */}
+              <div className="border-t pt-4">
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Documentos</p>
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Tipo">
+                      <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)} className={sel}>
+                        <option value="BOOK">Book</option>
+                        <option value="MEMORIAL">Memorial</option>
+                        <option value="TABELA">Tabela</option>
+                      </select>
+                    </Field>
+                    <Field label="Visibilidade">
+                      <select value={docVisibility} onChange={(e) => setDocVisibility(e.target.value as DocVisibility)} className={sel}>
+                        <option value="INTERNAL">Interno</option>
+                        <option value="SHAREABLE">Compartilhável</option>
+                      </select>
+                    </Field>
+                    <div className="col-span-2">
+                      <Field label="Título (opcional)">
+                        <input value={docTitle} onChange={(e) => setDocTitle(e.target.value)} className={inp} />
+                      </Field>
+                    </div>
+                  </div>
+                  <label className="block">
+                    <input type="file" accept=".pdf,image/*" disabled={docUploading}
+                      onChange={(e) => onUploadDoc(e.target.files?.[0] ?? null)}
+                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
+                  </label>
+                  {docUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
+                </div>
+                {docsLoading ? (
+                  <p className="mt-3 text-xs text-[var(--shell-subtext)]">Carregando...</p>
+                ) : docs.length > 0 ? (
+                  <ul className="mt-3 divide-y rounded-lg border bg-[var(--shell-card-bg)]">
+                    {docs.map((d: any) => (
+                      <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                        <div>
+                          <span className="font-medium text-[var(--shell-text)]">{d.title || d.type || "-"}</span>
+                          <span className="ml-2 text-xs text-[var(--shell-subtext)]">{d.visibility}</span>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button type="button" onClick={() => onDownloadDoc(d)} className="rounded border px-2 py-1 text-xs hover:bg-[var(--shell-bg)]">Baixar</button>
+                          <button type="button" onClick={() => onDeleteDoc(d.id)} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">Excluir</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-[var(--shell-subtext)]">Nenhum documento.</p>
+                )}
+              </div>
+            </Section>}
+
+            {/* ── S5: Ambientes & Características ───────────────────────── */}
+            {!isEmpreendimento && <Section id="comodos" title="5. Ambientes & Características" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
 
               {roomsLoading ? (
                 <p className="text-sm text-[var(--shell-subtext)]">Carregando cômodos...</p>
@@ -1846,39 +2145,26 @@ export default function ProductEditPage() {
                   )}
                 </div>
               )}
-            </Section>}
-
-            {/* ── S5: Comodidades ───────────────────────────────────────── */}
-            {!isEmpreendimento && <Section id="comodidades" title="5. Comodidades" open={open.has("comodidades")} onToggle={() => toggle("comodidades")}>
-              <div>
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Internas</p>
+              {/* Comodidades integradas */}
+              <div className="border-t pt-4 mt-2">
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Comodidades internas</p>
                 <div className="grid grid-cols-3 gap-y-2 gap-x-3">
                   {INTERNAL_FEATURES.map((feat) => (
                     <label key={feat} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.internalFeatures.includes(feat)}
+                      <input type="checkbox" checked={form.internalFeatures.includes(feat)}
                         onChange={() => toggleFeature("internalFeatures", feat)}
-                        className="h-4 w-4 rounded border-[var(--shell-card-border)]"
-                        disabled={loading}
-                      />
+                        className="h-4 w-4 rounded border-[var(--shell-card-border)]" disabled={loading} />
                       {feat}
                     </label>
                   ))}
                 </div>
-              </div>
-              <div className="pt-2">
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Condomínio</p>
+                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2 mt-4">Condomínio</p>
                 <div className="grid grid-cols-3 gap-y-2 gap-x-3">
                   {CONDO_FEATURES.map((feat) => (
                     <label key={feat} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.condoFeatures.includes(feat)}
+                      <input type="checkbox" checked={form.condoFeatures.includes(feat)}
                         onChange={() => toggleFeature("condoFeatures", feat)}
-                        className="h-4 w-4 rounded border-[var(--shell-card-border)]"
-                        disabled={loading}
-                      />
+                        className="h-4 w-4 rounded border-[var(--shell-card-border)]" disabled={loading} />
                       {feat}
                     </label>
                   ))}
@@ -1971,11 +2257,8 @@ export default function ProductEditPage() {
               <Toggle checked={form.hasExclusivity} onChange={(v) => f({ hasExclusivity: v })} label="Exclusividade" />
             </Section>
 
-            {/* ── S8: Mídia ────────────────────────────────────────────── */}
-            <Section id="midia" title="8. Mídia ↓" open={open.has("midia")} onToggle={() => {
-              toggle("midia");
-              if (!open.has("midia")) loadDocs();
-            }}>
+            {/* S8 movida para S4 acima */}
+            {false && <Section id="midia-removed" title="" open={false} onToggle={() => {}}>
 
               {/* Fotos */}
               <div>
@@ -2131,7 +2414,7 @@ export default function ProductEditPage() {
                   <p className="mt-2 text-xs text-[var(--shell-subtext)]">Nenhum documento.</p>
                 )}
               </div>
-            </Section>
+            </Section>}
 
           </div>
 
