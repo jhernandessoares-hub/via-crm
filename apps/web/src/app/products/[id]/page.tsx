@@ -1766,19 +1766,15 @@ export default function ProductEditPage() {
 
             {/* ── S1: Identificação ─────────────────────────────────────── */}
             <Section id="identificacao" title="1. Identificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")}>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Field label={isEmpreendimento ? "Nome do empreendimento *" : "Nome do imóvel"}>
-                    <input value={form.title} onChange={(e) => f({ title: e.target.value })}
-                      placeholder={isEmpreendimento ? "Ex.: Residencial Vista Verde" : computedTitle || "Será gerado automaticamente"}
-                      className={inp} disabled={loading} />
-                    {!isEmpreendimento && (
-                      <p className="mt-1 text-xs text-[var(--shell-subtext)]">
-                        Título automático: <span className="text-[var(--shell-subtext)]">{computedTitle || "preencha os dados abaixo"}</span>
-                      </p>
-                    )}
-                  </Field>
+              {/* Nome para publicação — somente leitura, composto automaticamente */}
+              <div className="mb-4">
+                <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Nome para publicação</label>
+                <div className={`${inp} bg-[var(--shell-bg)] text-[var(--shell-text)] select-none`}>
+                  {computedTitle || <span className="text-[var(--shell-subtext)]">Preencha os dados abaixo para gerar automaticamente</span>}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <Field label="Tipo *">
                   <select
                     value={form.type}
@@ -1791,23 +1787,6 @@ export default function ProductEditPage() {
                     disabled={loading}
                   >
                     {PRODUCT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </Field>
-                <Field label="Status">
-                  <select value={form.status} onChange={(e) => f({ status: e.target.value })} className={sel} disabled={loading}>
-                    <option value="ACTIVE">Ativo</option>
-                    <option value="INACTIVE">Inativo</option>
-                    <option value="RESERVED">Reservado</option>
-                    <option value="SOLD">Vendido</option>
-                    <option value="SOLD_OUT">Esgotado</option>
-                    <option value="ARCHIVED">Arquivado</option>
-                  </select>
-                </Field>
-                <Field label="Publicação">
-                  <select value={form.publicationStatus} onChange={(e) => f({ publicationStatus: e.target.value })} className={sel} disabled={loading}>
-                    <option value="DRAFT">Rascunho</option>
-                    <option value="PUBLISHED">Publicado</option>
-                    <option value="UNPUBLISHED">Despublicado</option>
                   </select>
                 </Field>
                 <Field label="Finalidade">
@@ -1834,10 +1813,6 @@ export default function ProductEditPage() {
                     <option value="ALTO">Alto</option>
                     <option value="LUXO">Luxo</option>
                   </select>
-                </Field>
-                <Field label="Código interno">
-                  <input value={form.referenceCode} onChange={(e) => f({ referenceCode: e.target.value })}
-                    placeholder="Ex.: AP-001" className={inp} disabled={loading} />
                 </Field>
                 <Field label="Origem">
                   <select value={form.origin} onChange={(e) => f({ origin: e.target.value })} className={sel} disabled={loading}>
@@ -1868,10 +1843,6 @@ export default function ProductEditPage() {
                   </select>
                 </div>
               )}
-              <Field label="Descrição">
-                <textarea value={form.description} onChange={(e) => f({ description: e.target.value })}
-                  rows={3} className={`${inp} resize-y`} placeholder="Descrição do imóvel..." disabled={loading} />
-              </Field>
             </Section>
 
             {/* ── S2: Fotos e Detalhes ────────────────────────────────────────────── */}
@@ -2546,16 +2517,31 @@ export default function ProductEditPage() {
           </div>
 
           {/* ── Fixed save footer ─────────────────────────────────────── */}
-          <div className="sticky bottom-0 mt-4 flex items-center justify-between gap-3 rounded-xl border bg-[var(--shell-card-bg)] px-5 py-3 shadow-md">
-            <div className="text-xs text-[var(--shell-subtext)]">
-              {loading ? "Carregando..." : `${form.title || "Sem título"} · ${form.status}`}
-            </div>
-            <div className="flex gap-2">
+          <div className="sticky bottom-0 mt-4 flex items-center gap-2 rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 shadow-md flex-wrap">
+            <select value={form.status} onChange={(e) => f({ status: e.target.value })} disabled={loading}
+              className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400">
+              <option value="ACTIVE">Ativo</option>
+              <option value="INACTIVE">Inativo</option>
+              <option value="RESERVED">Reservado</option>
+              <option value="SOLD">Vendido</option>
+              <option value="SOLD_OUT">Esgotado</option>
+              <option value="ARCHIVED">Arquivado</option>
+            </select>
+            <select value={form.publicationStatus} onChange={(e) => f({ publicationStatus: e.target.value })} disabled={loading}
+              className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400">
+              <option value="DRAFT">Rascunho</option>
+              <option value="PUBLISHED">Publicado</option>
+              <option value="UNPUBLISHED">Despublicado</option>
+            </select>
+            <input value={form.referenceCode} onChange={(e) => f({ referenceCode: e.target.value })}
+              placeholder="Código interno" disabled={loading}
+              className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400 w-32" />
+            <div className="ml-auto flex gap-2">
               <button type="button" onClick={load} disabled={loading || saving}
                 className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50">
                 Recarregar
               </button>
-              <button type="submit" disabled={loading || saving || !form.title.trim()}
+              <button type="submit" disabled={loading || saving}
                 className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
                 {saving ? "Salvando..." : "Salvar"}
               </button>
