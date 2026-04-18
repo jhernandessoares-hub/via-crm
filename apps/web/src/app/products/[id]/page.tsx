@@ -1817,7 +1817,6 @@ export default function ProductEditPage() {
                 <Field label="Origem">
                   <select value={form.origin} onChange={(e) => f({ origin: e.target.value })} className={sel} disabled={loading}>
                     <option value="THIRD_PARTY">Imóvel de terceiros</option>
-                    <option value="DEVELOPMENT">Empreendimento/Loteamento</option>
                     <option value="OWN">Próprio</option>
                   </select>
                 </Field>
