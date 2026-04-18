@@ -953,9 +953,9 @@ function PropertyReportModal({ product, form, productImages, onClose }: {
   h1{font-size:18px;font-weight:700;margin-bottom:4px}
   h2{font-size:13px;font-weight:700;margin:16px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px;color:#333}
   .badge{display:inline-block;border:1px solid #ccc;border-radius:20px;padding:2px 10px;font-size:11px;margin-right:4px;margin-bottom:4px}
-  .cover{width:100%;max-height:300px;object-fit:cover;border-radius:8px;margin-bottom:12px}
-  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
-  .grid img{width:100%;height:80px;object-fit:cover;border-radius:4px}
+  .cover{width:100%;height:auto;border-radius:8px;margin-bottom:12px;display:block}
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:12px}
+  .grid img{width:100%;height:65px;object-fit:cover;border-radius:4px}
   .row{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:8px}
   .cell{flex:1;min-width:120px}
   .label{font-size:10px;color:#666;margin-bottom:2px}
@@ -983,8 +983,10 @@ ${imgs.filter((i: any) => i !== coverImg).length > 0 ? `<div class="grid">${imgs
 
 <h2>Localização</h2>
 <div class="row">
+  ${form.street ? `<div class="cell"><div class="label">Endereço</div><div class="value">${form.street}${form.streetNumber ? ", " + form.streetNumber : ""}${form.complement ? " — " + form.complement : ""}</div></div>` : ""}
   ${form.neighborhood ? `<div class="cell"><div class="label">Bairro</div><div class="value">${form.neighborhood}</div></div>` : ""}
   ${form.city ? `<div class="cell"><div class="label">Cidade</div><div class="value">${form.city}${form.state ? " — " + form.state : ""}</div></div>` : ""}
+  ${form.zipCode ? `<div class="cell"><div class="label">CEP</div><div class="value">${form.zipCode}</div></div>` : ""}
   ${form.condominiumName ? `<div class="cell"><div class="label">Condomínio</div><div class="value">${form.condominiumName}</div></div>` : ""}
 </div>
 
@@ -1047,7 +1049,7 @@ ${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.vi
               {coverImg && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={normalizeImageUrl(coverImg) ?? undefined} alt="Capa"
-                  className="w-full h-48 object-cover rounded-lg mb-2" />
+                  className="w-full h-auto rounded-lg mb-2 object-contain" />
               )}
               {publicImages.filter(i => i !== coverImg).length > 0 && (
                 <div className="grid grid-cols-4 gap-1.5">
@@ -1073,12 +1075,13 @@ ${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.vi
           </div>
 
           {/* Localização */}
-          <div className="rounded-lg border border-[var(--shell-card-border)] p-3 space-y-1">
+          <div className="rounded-lg border border-[var(--shell-card-border)] p-3 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Localização</p>
-            <p className="text-xs text-amber-600">⚠ Endereço completo oculto</p>
-            <div className="grid grid-cols-2 gap-2 mt-1">
+            <div className="grid grid-cols-2 gap-2">
+              {form.street && <div className="col-span-2"><span className="text-xs text-[var(--shell-subtext)]">Endereço</span><p className="font-medium text-sm">{form.street}{form.streetNumber ? `, ${form.streetNumber}` : ""}{form.complement ? ` — ${form.complement}` : ""}</p></div>}
               {form.neighborhood && <div><span className="text-xs text-[var(--shell-subtext)]">Bairro</span><p className="font-medium">{form.neighborhood}</p></div>}
               {form.city && <div><span className="text-xs text-[var(--shell-subtext)]">Cidade</span><p className="font-medium">{form.city}{form.state ? ` — ${form.state}` : ""}</p></div>}
+              {form.zipCode && <div><span className="text-xs text-[var(--shell-subtext)]">CEP</span><p className="font-medium">{form.zipCode}</p></div>}
               {form.condominiumName && <div><span className="text-xs text-[var(--shell-subtext)]">Condomínio</span><p className="font-medium">{form.condominiumName}</p></div>}
             </div>
           </div>
@@ -2484,20 +2487,32 @@ export default function ProductEditPage() {
                 <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Ambientes identificados nas fotos</p>
                 {(() => {
                   const confirmed = productImages.filter((img: any) => img.aiConfirmed && (img.aiRoomLabel || img.aiRoomType));
-                  return confirmed.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {confirmed.map((img: any) => (
-                        <span key={img.id} className="inline-flex items-center gap-1.5 rounded-full border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2.5 py-1 text-xs text-[var(--shell-text)]">
-                          <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                          {img.aiRoomLabel || img.aiRoomType}
-                          {img.aiFeatures?.length > 0 && (
-                            <span className="text-[var(--shell-subtext)]">· {(img.aiFeatures as string[]).slice(0, 2).join(", ")}</span>
-                          )}
-                        </span>
+                  if (confirmed.length === 0) return (
+                    <p className="text-xs text-[var(--shell-subtext)]">Nenhum ambiente confirmado ainda. Confirme a análise das fotos em <strong>Fotos e Detalhes</strong>.</p>
+                  );
+                  // Agrupar por label
+                  const groups: Record<string, any[]> = {};
+                  confirmed.forEach((img: any) => {
+                    const key = img.aiRoomLabel || img.aiRoomType || "Ambiente";
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(img);
+                  });
+                  return (
+                    <div className="space-y-1.5">
+                      {Object.entries(groups).map(([label, imgs]) => (
+                        <div key={label} className="flex items-center gap-2 rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-1.5">
+                          <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                          <span className="text-sm text-[var(--shell-text)]">
+                            <span className="font-semibold">{imgs.length}</span> {label}
+                          </span>
+                          <button type="button" onClick={() => setImageModalImg(imgs[0])}
+                            title="Editar"
+                            className="ml-auto text-[11px] text-[var(--shell-subtext)] hover:text-[var(--shell-text)] border border-[var(--shell-card-border)] rounded px-1.5 py-0.5 hover:bg-[var(--shell-hover)] transition-colors">
+                            ✏️ Editar
+                          </button>
+                        </div>
                       ))}
                     </div>
-                  ) : (
-                    <p className="text-xs text-[var(--shell-subtext)]">Nenhum ambiente confirmado ainda. Confirme a análise das fotos em <strong>Fotos e Detalhes</strong>.</p>
                   );
                 })()}
               </div>
