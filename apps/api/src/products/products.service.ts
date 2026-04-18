@@ -354,6 +354,31 @@ export class ProductsService {
     });
   }
 
+  private async deleteProductCloudinaryAssets(productId: string) {
+    const images = await this.prisma.productImage.findMany({
+      where: { productId },
+      select: { publicId: true },
+    });
+    const docs = await this.prisma.productDocument.findMany({
+      where: { productId },
+      select: { publicId: true },
+    });
+    const roomImages = await this.prisma.productRoomImage.findMany({
+      where: { room: { productId } },
+      select: { publicId: true },
+    });
+
+    const publicIds = [
+      ...images.map((i) => i.publicId),
+      ...docs.map((d) => d.publicId),
+      ...roomImages.map((r) => r.publicId),
+    ].filter(Boolean) as string[];
+
+    for (const pid of publicIds) {
+      await this.cloudinary.deleteByPublicId(pid).catch(() => null);
+    }
+  }
+
   async remove(user: any, id: string) {
     const product = await this.getById(user, id);
 
@@ -362,6 +387,7 @@ export class ProductsService {
       const isDraft = product.publicationStatus === 'DRAFT';
       const isOwner = product.capturedByUserId === userId;
       if (isDraft && isOwner) {
+        await this.deleteProductCloudinaryAssets(id);
         await this.prisma.product.delete({ where: { id } });
         return { ok: true };
       }
@@ -371,7 +397,6 @@ export class ProductsService {
     }
 
     if (user.role === 'MANAGER' && product.capturedByUserId) {
-      // MANAGER não pode excluir produto de outro MANAGER ou do OWNER
       const owner = await this.prisma.user.findFirst({
         where: { id: product.capturedByUserId, tenantId: user.tenantId },
         select: { role: true },
@@ -383,6 +408,7 @@ export class ProductsService {
       }
     }
 
+    await this.deleteProductCloudinaryAssets(id);
     await this.prisma.product.delete({ where: { id } });
     return { ok: true };
   }
@@ -418,6 +444,7 @@ export class ProductsService {
     if (!(product as any).deletionRequestedAt) {
       throw new BadRequestException('Não há solicitação de exclusão pendente.');
     }
+    await this.deleteProductCloudinaryAssets(id);
     await this.prisma.product.delete({ where: { id } });
     return { ok: true };
   }
