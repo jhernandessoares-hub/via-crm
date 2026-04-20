@@ -617,7 +617,7 @@ export default function EmpreendimentoEditPage() {
     );
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3000";
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       await fetch(`${API}/products/${id}/images/${imageId}`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

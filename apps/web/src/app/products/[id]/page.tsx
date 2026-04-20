@@ -1423,22 +1423,24 @@ export default function ProductEditPage() {
   // Auto-title for non-development types
   const isEmpreendimento = form.type === "EMPREENDIMENTO" || form.type === "LOTEAMENTO";
 
-  const computedTitle = (() => {
-    if (isEmpreendimento) return form.title;
-    const typeLabel = PRODUCT_TYPES.find((t) => t.value === form.type)?.label ?? form.type;
+  function buildTitle(f: typeof form): string {
+    if (f.type === "EMPREENDIMENTO" || f.type === "LOTEAMENTO") return f.title;
+    const typeLabel = PRODUCT_TYPES.find((t) => t.value === f.type)?.label ?? f.type;
     const parts: string[] = [typeLabel];
-    const beds = parseInt(form.bedrooms) || 0;
-    const suites = parseInt(form.suites) || 0;
+    const beds = parseInt(f.bedrooms) || 0;
+    const suites = parseInt(f.suites) || 0;
     if (beds > 0) parts.push(`${beds} ${beds === 1 ? "quarto" : "quartos"}${suites > 0 ? ` (${suites} ${suites === 1 ? "suíte" : "suítes"})` : ""}`);
     else if (suites > 0) parts.push(`${suites} ${suites === 1 ? "suíte" : "suítes"}`);
-    if (form.condominiumName.trim()) parts.push(`Cond. ${form.condominiumName.trim()}`);
-    else if (form.neighborhood.trim()) parts.push(form.neighborhood.trim());
-    const priceNum = parseFloat(form.price);
+    if (f.condominiumName.trim()) parts.push(`Cond. ${f.condominiumName.trim()}`);
+    else if (f.neighborhood.trim()) parts.push(f.neighborhood.trim());
+    const priceNum = parseFloat(f.price);
     if (priceNum && !isNaN(priceNum)) parts.push(`R$ ${priceNum.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`);
     const dealMap: Record<string, string> = { SALE: 'Venda', RENT: 'Locação', BOTH: 'Venda/Locação' };
-    if (form.dealType && dealMap[form.dealType]) parts.push(dealMap[form.dealType]);
+    if (f.dealType && dealMap[f.dealType]) parts.push(dealMap[f.dealType]);
     return parts.join(' • ');
-  })();
+  }
+
+  const computedTitle = buildTitle(form);
 
   // ── ViaCEP ──────────────────────────────────────────────────────────────────
   async function fetchCep(cep: string) {
@@ -2274,6 +2276,19 @@ export default function ProductEditPage() {
                 </div>
               </div>
 
+              {/* Descrição e tags */}
+              <div className="mb-4 grid grid-cols-1 gap-3">
+                <Field label="Descrição do imóvel">
+                  <textarea value={form.description} onChange={(e) => f({ description: e.target.value })}
+                    placeholder="Descreva os principais destaques do imóvel..."
+                    rows={3} className={`${inp} resize-none`} disabled={loading} />
+                </Field>
+                <Field label="Tags (separadas por vírgula)">
+                  <input value={form.tags} onChange={(e) => f({ tags: e.target.value })}
+                    placeholder="Ex.: piscina, churrasqueira, vista mar" className={inp} disabled={loading} />
+                </Field>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Tipo *">
                   <select
@@ -2551,6 +2566,7 @@ export default function ProductEditPage() {
                   <p className="mt-2 text-xs text-[var(--shell-subtext)]">Nenhum documento.</p>
                 )}
               </div>
+
             </Section>}
 
             {/* ── S3: Ambientes & Características ───────────────────────── */}
@@ -2770,164 +2786,6 @@ export default function ProductEditPage() {
               <Toggle checked={form.hasExclusivity} onChange={(v) => f({ hasExclusivity: v })} label="Exclusividade" />
             </Section>
 
-            {/* S8 movida para S4 acima */}
-            {false && <Section id="midia-removed" title="" open={false} onToggle={() => {}}>
-
-              {/* Fotos */}
-              <div>
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Fotos</p>
-
-                {/* Upload form */}
-                <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-2 mb-4">
-                  <p className="text-[11px] text-blue-500">Clique no ícone ↓ azul para baixar cada imagem</p>
-                  <Field label="Nome da imagem">
-                    <input
-                      value={imgTitle}
-                      onChange={(e) => setImgTitle(e.target.value)}
-                      placeholder="Ex: Suíte Master, Fachada, Área Gourmet..."
-                      className={inp}
-                      disabled={imgUploading}
-                    />
-                  </Field>
-                  <label className="block">
-                    <input type="file" accept="image/*" disabled={imgUploading || loading}
-                      onChange={(e) => onUploadImage(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
-                  </label>
-                  {imgUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
-                </div>
-
-                {productImages.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2">
-                    {productImages.map((img: any) => {
-                      const url = normalizeImageUrl(img);
-                      const isPublic = img.publishSite !== false;
-                      const isCover = img.isPrimary === true;
-                      const displayName = img.customLabel || img.title || "";
-                      return (
-                        <div key={img.id ?? url} className={`relative overflow-hidden rounded-lg border bg-[var(--shell-bg)] ${isCover ? "ring-2 ring-amber-400" : ""}`}>
-                          <a href={url ?? undefined} target="_blank" rel="noreferrer">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={url ?? undefined} alt={displayName} className={`h-24 w-full object-cover transition-opacity ${isPublic ? "" : "opacity-40"}`} />
-                          </a>
-                          {/* Nome */}
-                          {displayName && (
-                            <div className="absolute bottom-0 left-0 right-0 bg-black/55 px-1.5 py-0.5">
-                              <p className="text-[10px] text-white truncate">{displayName}</p>
-                            </div>
-                          )}
-                          {/* Capa badge */}
-                          {isCover && (
-                            <div className="absolute top-1 left-1 rounded-full bg-amber-400 px-1.5 py-0.5">
-                              <p className="text-[9px] font-bold text-white leading-none">CAPA</p>
-                            </div>
-                          )}
-                          {/* Botão definir capa (estrela) */}
-                          {!isCover && (
-                            <button type="button" onClick={() => onSetPrimaryImage(img.id)}
-                              title="Definir como capa do produto"
-                              className="absolute top-1 left-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-amber-50 transition-colors">
-                              <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)] hover:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                              </svg>
-                            </button>
-                          )}
-                          {/* Download */}
-                          {url && (
-                            <button type="button" onClick={() => downloadImage(url, displayName || `imagem-${img.id}`)}
-                              title="Baixar imagem"
-                              className="absolute top-1 right-11 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-blue-50 transition-colors">
-                              <svg className="h-3.5 w-3.5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                              </svg>
-                            </button>
-                          )}
-                          {/* Toggle público/privado (olho) */}
-                          <button type="button" onClick={() => handleToggleImagePublic(img.id, isPublic)}
-                            title={isPublic ? "Pública (divulgada) — clique para uso interno" : "Interna — clique para divulgar"}
-                            className="absolute top-1 right-6 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-[var(--shell-card-bg)] transition-colors">
-                            {isPublic ? (
-                              <svg className="h-3.5 w-3.5 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M10 3C5 3 1.73 7.11 1.05 8.45a1 1 0 000 1.1C1.73 10.89 5 15 10 15s8.27-4.11 8.95-5.45a1 1 0 000-1.1C18.27 7.11 15 3 10 3zm0 10a4 4 0 110-8 4 4 0 010 8zm0-6a2 2 0 100 4 2 2 0 000-4z" />
-                              </svg>
-                            ) : (
-                              <svg className="h-3.5 w-3.5 text-[var(--shell-subtext)]" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
-                                <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
-                              </svg>
-                            )}
-                          </button>
-                          {/* Excluir */}
-                          <button type="button" onClick={() => onDeleteImage(img.id)}
-                            title="Excluir imagem"
-                            className="absolute top-1 right-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-red-50 transition-colors">
-                            <svg className="h-3.5 w-3.5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Documentos */}
-              <div className="border-t pt-4">
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Documentos</p>
-                <div className="rounded-lg border bg-[var(--shell-bg)] p-3 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Tipo">
-                      <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)} className={sel}>
-                        <option value="BOOK">Book</option>
-                        <option value="MEMORIAL">Memorial</option>
-                        <option value="TABELA">Tabela</option>
-                      </select>
-                    </Field>
-                    <Field label="Visibilidade">
-                      <select value={docVisibility} onChange={(e) => setDocVisibility(e.target.value as DocVisibility)} className={sel}>
-                        <option value="INTERNAL">Interno</option>
-                        <option value="SHAREABLE">Compartilhável</option>
-                      </select>
-                    </Field>
-                    <div className="col-span-2">
-                      <Field label="Título (opcional)">
-                        <input value={docTitle} onChange={(e) => setDocTitle(e.target.value)} className={inp} />
-                      </Field>
-                    </div>
-                  </div>
-                  <label className="block">
-                    <input type="file" accept=".pdf,image/*" disabled={docUploading}
-                      onChange={(e) => onUploadDoc(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm file:mr-3 file:rounded-lg file:border file:bg-[var(--shell-card-bg)] file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-[var(--shell-bg)]" />
-                  </label>
-                  {docUploading && <p className="text-xs text-[var(--shell-subtext)]">Enviando...</p>}
-                </div>
-
-                {docsLoading ? (
-                  <p className="mt-3 text-xs text-[var(--shell-subtext)]">Carregando...</p>
-                ) : docs.length > 0 ? (
-                  <ul className="mt-3 divide-y rounded-lg border bg-[var(--shell-card-bg)]">
-                    {docs.map((d: any) => (
-                      <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
-                        <div>
-                          <span className="font-medium text-[var(--shell-text)]">{d.title || d.type || "-"}</span>
-                          <span className="ml-2 text-xs text-[var(--shell-subtext)]">{d.visibility}</span>
-                        </div>
-                        <div className="flex gap-2 flex-shrink-0">
-                          <button type="button" onClick={() => onDownloadDoc(d)}
-                            className="rounded border px-2 py-1 text-xs hover:bg-[var(--shell-bg)]">Baixar</button>
-                          <button type="button" onClick={() => onDeleteDoc(d.id)}
-                            className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">Excluir</button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-xs text-[var(--shell-subtext)]">Nenhum documento.</p>
-                )}
-              </div>
-            </Section>}
 
           </div>{/* fim coluna principal */}
 
