@@ -1,6 +1,9 @@
 "use client";
 
+import JSZip from "jszip";
 import Link from "next/link";
+import { usePermissions } from "@/lib/permissions";
+import { inp, sel } from "@/lib/format";
 import AppShell from "@/components/AppShell";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -60,7 +63,6 @@ type FormData = {
   internalFeatures: string[]; condoFeatures: string[];
   registrationNumber: string; propertySituation: string;
   hasExclusivity: boolean; exclusivityUntil: string; virtualTourUrl: string;
-  description: string; tags: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -76,7 +78,6 @@ const EMPTY_FORM: FormData = {
   internalFeatures: [], condoFeatures: [],
   registrationNumber: "", propertySituation: "",
   hasExclusivity: false, exclusivityUntil: "", virtualTourUrl: "",
-  description: "", tags: "",
 };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -95,6 +96,25 @@ const PRODUCT_TYPES: { value: ProductType; label: string }[] = [
   { value: "BARRACAO", label: "Barracão / Galpão" },
   { value: "OUTRO", label: "Outro" },
 ];
+
+const ENTERPRISE_TYPES = new Set(["EMPREENDIMENTO", "LOTEAMENTO"]);
+
+const DEAL_LABEL: Record<string, string> = {
+  SALE: "Venda", RENT: "Locação", BOTH: "Venda e Locação",
+};
+
+const CONDITION_LABEL: Record<string, string> = {
+  NOVO: "Novo", USADO: "Usado", EM_CONSTRUCAO: "Em construção", NA_PLANTA: "Na planta",
+};
+
+const STANDARD_LABEL: Record<string, string> = {
+  ECONOMICO: "Econômico", MEDIO: "Médio", ALTO: "Alto", LUXO: "Luxo",
+};
+
+const ORIGIN_LABEL: Record<string, string> = {
+  THIRD_PARTY: "Imóvel de terceiros", OWN: "Próprio",
+  DEVELOPMENT: "Empreendimento", PARTNERSHIP: "Parceria com outra Imob/Corretor",
+};
 
 const INTERNAL_FEATURES = [
   "Sala 2 ambientes", "Cozinha americana", "Despensa",
@@ -259,8 +279,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inp = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500/20 placeholder:text-[var(--shell-subtext)]/60";
-const sel = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500/20";
 
 // ─── CurrencyInput ────────────────────────────────────────────────────────────
 
@@ -785,23 +803,178 @@ function NewOwnerForm({
 // ─── AI Edit Panel ───────────────────────────────────────────────────────────
 
 const AI_ROOM_TYPES = [
-  { value: "QUARTO", label: "Quarto" }, { value: "SUITE", label: "Suíte" },
-  { value: "BANHEIRO", label: "Banheiro" }, { value: "LAVABO", label: "Lavabo" },
-  { value: "CLOSET", label: "Closet" }, { value: "SALA_ESTAR", label: "Sala de Estar" },
-  { value: "SALA_JANTAR", label: "Sala de Jantar" }, { value: "COZINHA", label: "Cozinha" },
-  { value: "VARANDA", label: "Varanda" }, { value: "AREA_GOURMET", label: "Área Gourmet" },
-  { value: "AREA_SERVICO", label: "Área de Serviço" }, { value: "ESCRITORIO", label: "Escritório" },
-  { value: "GARAGEM", label: "Garagem" }, { value: "PISCINA", label: "Piscina" },
-  { value: "QUINTAL", label: "Quintal" }, { value: "FACHADA", label: "Fachada" },
-  { value: "LAVANDERIA", label: "Lavanderia" }, { value: "DEPOSITO", label: "Depósito" },
-  { value: "CORREDOR", label: "Corredor" }, { value: "OUTRO", label: "Outro" },
+  { value: "QUARTO",            label: "Quarto" },
+  { value: "SUITE",             label: "Suíte" },
+  { value: "SALA_ESTAR",        label: "Sala de Estar" },
+  { value: "SALA_JANTAR",       label: "Sala de Jantar" },
+  { value: "COZINHA",           label: "Cozinha" },
+  { value: "BANHEIRO",          label: "Banheiro" },
+  { value: "GARAGEM",           label: "Garagem" },
+  { value: "VARANDA",           label: "Varanda" },
+  { value: "SACADA",            label: "Sacada" },
+  { value: "AREA_GOURMET",      label: "Área Gourmet" },
+  { value: "QUINTAL",           label: "Quintal" },
+  { value: "ESCRITORIO",        label: "Escritório" },
+  { value: "HOME_OFFICE",       label: "Home Office" },
+  { value: "LAVABO",            label: "Lavabo" },
+  { value: "CLOSET",            label: "Closet" },
+  { value: "AREA_SERVICO",      label: "Área de Serviço" },
+  { value: "LAVANDERIA",        label: "Lavanderia" },
+  { value: "COPA",              label: "Copa" },
+  { value: "DESPENSA",          label: "Despensa" },
+  { value: "SALA_TV",           label: "Sala de TV" },
+  { value: "TERRAÇO",           label: "Terraço" },
+  { value: "HALL_ENTRADA",      label: "Hall de Entrada" },
+  { value: "QUARTO_EMPREGADA",  label: "Quarto de Empregada" },
+  { value: "BANHEIRO_EMPREGADA",label: "Banheiro de Empregada" },
+  { value: "ACADEMIA",          label: "Academia" },
+  { value: "SAUNA",             label: "Sauna" },
+  { value: "ADEGA",             label: "Adega" },
+  { value: "PISCINA",           label: "Piscina" },
+  { value: "FACHADA",           label: "Fachada" },
+  { value: "CORREDOR",          label: "Corredor" },
+  { value: "DEPOSITO",          label: "Depósito" },
+  { value: "OUTRO",             label: "Outro" },
 ];
 
-const AI_FEATURES = [
-  "ARMARIO_EMBUTIDO", "CLOSET", "BANHEIRA", "CHURRASQUEIRA", "PISCINA",
-  "SACADA", "VISTA_MAR", "VISTA_CIDADE", "VISTA_CAMPO", "JANELA_AMPLA",
-  "PIA_DUPLA", "PORCELANATO", "PISO_MADEIRA", "TETO_ALTO", "ILUMINACAO_NATURAL", "AREA_GOURMET",
+const AI_REVESTIMENTOS = [
+  { value: "PORCELANATO",            label: "Porcelanato" },
+  { value: "PISO_MADEIRA",           label: "Piso Madeira" },
+  { value: "PISO_LAMINADO",          label: "Piso Laminado" },
+  { value: "PISO_CERAMICO",          label: "Piso Cerâmico" },
+  { value: "PISO_MARMORE_GRANITO",   label: "Piso Mármore/Granito" },
+  { value: "PISO_VINILICO",          label: "Piso Vinílico" },
+  { value: "PAREDE_TIJOLO_APARENTE", label: "Parede Tijolo Aparente" },
+  { value: "PAREDE_CIMENTO_QUEIMADO",label: "Parede Cimento Queimado" },
 ];
+
+const REVESTIMENTO_VALUES = new Set([
+  ...AI_REVESTIMENTOS.map(r => r.value),
+  "CONTRA_PISO",
+  "CONTRA_PISO_AREA_MOLHAVEL",
+]);
+
+function RoomTypeCombobox({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = AI_ROOM_TYPES.find(t => t.value === value);
+  const filtered = query.trim()
+    ? AI_ROOM_TYPES.filter(t => t.label.toLowerCase().includes(query.toLowerCase()))
+    : AI_ROOM_TYPES;
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className={`relative ${className ?? ""}`}>
+      <input
+        value={open ? query : (selected?.label ?? value)}
+        onFocus={() => { setQuery(""); setOpen(true); }}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        placeholder="Buscar tipo..."
+        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-slate-400"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] shadow-lg text-xs">
+          {filtered.map(t => (
+            <li key={t.value}
+              onMouseDown={() => { onChange(t.value); setQuery(""); setOpen(false); }}
+              className={`cursor-pointer px-3 py-1.5 hover:bg-[var(--shell-hover)] ${t.value === value ? "font-semibold text-[var(--brand-accent)]" : "text-[var(--shell-text)]"}`}>
+              {t.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function isRevestimentoFeature(f: string) {
+  return REVESTIMENTO_VALUES.has(f.toUpperCase()) || f.toUpperCase().startsWith("OUTRO_REVESTIMENTO:");
+}
+
+function RevestimentosSection({ features, onChange }: { features: string[]; onChange: (v: string[]) => void }) {
+  const has = (v: string) => features.some(f => f.toUpperCase() === v.toUpperCase());
+  const toggle = (v: string) => {
+    if (has(v)) {
+      onChange(features.filter(f => f.toUpperCase() !== v.toUpperCase()));
+    } else {
+      onChange([...features, v]);
+    }
+  };
+  const contraPiso = has("CONTRA_PISO");
+  const outroEntry = features.find(f => f.toUpperCase().startsWith("OUTRO_REVESTIMENTO:"));
+  const outroChecked = !!outroEntry;
+  const outroText = outroEntry ? outroEntry.slice("OUTRO_REVESTIMENTO:".length) : "";
+
+  function handleOutroToggle() {
+    if (outroChecked) {
+      onChange(features.filter(f => !f.toUpperCase().startsWith("OUTRO_REVESTIMENTO:")));
+    } else {
+      onChange([...features, "OUTRO_REVESTIMENTO:"]);
+    }
+  }
+
+  function handleOutroText(text: string) {
+    onChange([
+      ...features.filter(f => !f.toUpperCase().startsWith("OUTRO_REVESTIMENTO:")),
+      `OUTRO_REVESTIMENTO:${text}`,
+    ]);
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Revestimentos</label>
+      <div className="mb-2 space-y-1">
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer font-medium text-[var(--shell-text)]">
+          <input type="checkbox" checked={contraPiso}
+            onChange={() => onChange(contraPiso
+              ? features.filter(x => x.toUpperCase() !== "CONTRA_PISO" && x.toUpperCase() !== "CONTRA_PISO_AREA_MOLHAVEL")
+              : [...features, "CONTRA_PISO"])}
+            className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
+          Contra Piso
+        </label>
+        {contraPiso && (
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer ml-4 text-[var(--shell-subtext)]">
+            <input type="checkbox" checked={has("CONTRA_PISO_AREA_MOLHAVEL")} onChange={() => toggle("CONTRA_PISO_AREA_MOLHAVEL")}
+              className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
+            Somente na Área Molhável
+          </label>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-1">
+        {AI_REVESTIMENTOS.map(r => (
+          <label key={r.value} className="flex items-center gap-1.5 text-xs cursor-pointer text-[var(--shell-text)]">
+            <input type="checkbox" checked={has(r.value)} onChange={() => toggle(r.value)}
+              className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
+            {r.label}
+          </label>
+        ))}
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer text-[var(--shell-text)]">
+          <input type="checkbox" checked={outroChecked} onChange={handleOutroToggle}
+            className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
+          Outro
+        </label>
+      </div>
+      {outroChecked && (
+        <input
+          value={outroText}
+          onChange={e => handleOutroText(e.target.value)}
+          placeholder="Descreva o revestimento..."
+          autoFocus
+          className="mt-2 w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-slate-400"
+        />
+      )}
+    </div>
+  );
+}
 
 function AiEditPanel({ img, onConfirm, onCancel }: {
   img: any;
@@ -820,10 +993,7 @@ function AiEditPanel({ img, onConfirm, onCancel }: {
     <div className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-3 space-y-3 text-sm">
       <div>
         <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Tipo de ambiente</label>
-        <select value={roomType} onChange={(e) => setRoomType(e.target.value)}
-          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)]">
-          {AI_ROOM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
+        <RoomTypeCombobox value={roomType} onChange={setRoomType} />
       </div>
       <div>
         <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome do ambiente</label>
@@ -831,17 +1001,14 @@ function AiEditPanel({ img, onConfirm, onCancel }: {
           placeholder="Ex: Suíte Master, Sala de Estar..."
           className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)]" />
       </div>
+      <RevestimentosSection features={features} onChange={setFeatures} />
       <div>
-        <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Características visíveis</label>
-        <div className="grid grid-cols-2 gap-1">
-          {AI_FEATURES.map(f => (
-            <label key={f} className="flex items-center gap-1.5 text-xs cursor-pointer">
-              <input type="checkbox" checked={features.includes(f)} onChange={() => toggleFeat(f)}
-                className="h-3 w-3 rounded border-[var(--shell-card-border)]" />
-              {f.toLowerCase().replace(/_/g, " ")}
-            </label>
-          ))}
-        </div>
+        <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Características do Ambiente</label>
+        <TagInput
+          value={features.filter(f => !isRevestimentoFeature(f))}
+          onChange={custom => setFeatures([...features.filter(f => isRevestimentoFeature(f)), ...custom])}
+          suggestions={FEATURE_SUGGESTIONS}
+        />
       </div>
       <div className="flex gap-2 pt-1">
         <button type="button" onClick={() => onConfirm(roomType, roomLabel || AI_ROOM_TYPES.find(t => t.value === roomType)?.label || roomType, features)}
@@ -860,11 +1027,11 @@ function AiEditPanel({ img, onConfirm, onCancel }: {
 // ─── TagInput ─────────────────────────────────────────────────────────────────
 
 const FEATURE_SUGGESTIONS = [
-  "Armário embutido", "Closet", "Banheira", "Churrasqueira", "Piscina",
-  "Sacada", "Vista mar", "Vista cidade", "Vista campo", "Janela ampla",
-  "Pia dupla", "Porcelanato", "Piso madeira", "Teto alto", "Iluminação natural",
-  "Área gourmet", "Varanda", "Lavabo", "Copa", "Área de serviço",
-  "Automação residencial", "Ar condicionado", "Aquecimento solar",
+  "Armário embutido", "Banheira", "Churrasqueira", "Blindex",
+  "Ar condicionado", "Aquecedor solar", "Piso aquecido",
+  "Janela ampla", "Claraboia", "Pia dupla", "Teto alto", "Iluminação natural",
+  "Vista mar", "Vista cidade", "Vista campo",
+  "Automação residencial", "Aquecimento solar",
 ];
 
 function TagInput({ value, onChange, suggestions }: {
@@ -941,9 +1108,6 @@ function PropertyReportModal({ product, form, productImages, onClose }: {
     roomGroups[key] = (roomGroups[key] || 0) + 1;
   });
 
-  const DEAL_LABEL: Record<string, string> = { SALE: "Venda", RENT: "Locação", BOTH: "Venda e Locação" };
-  const CONDITION_LABEL: Record<string, string> = { NOVO: "Novo", USADO: "Usado", EM_CONSTRUCAO: "Em construção", NA_PLANTA: "Na planta" };
-  const STANDARD_LABEL: Record<string, string> = { ECONOMICO: "Econômico", MEDIO: "Médio", ALTO: "Alto", LUXO: "Luxo" };
   const TYPE_LABEL: Record<string, string> = {
     CASA: "Casa", APARTAMENTO: "Apartamento", KITNET: "Kitnet", SOBRADO: "Sobrado",
     TERRENO: "Terreno", SALA_COMERCIAL: "Sala Comercial", LOJA: "Loja",
@@ -1085,9 +1249,9 @@ ${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.vi
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Dados do imóvel</p>
             <div className="grid grid-cols-2 gap-2">
               {form.type && <div><span className="text-xs text-[var(--shell-subtext)]">Tipo</span><p className="font-medium">{form.type}</p></div>}
-              {form.dealType && <div><span className="text-xs text-[var(--shell-subtext)]">Finalidade</span><p className="font-medium">{({"SALE":"Venda","RENT":"Locação","BOTH":"Venda e Locação"} as any)[form.dealType] ?? form.dealType}</p></div>}
-              {form.condition && <div><span className="text-xs text-[var(--shell-subtext)]">Estado</span><p className="font-medium">{({"NOVO":"Novo","USADO":"Usado","EM_CONSTRUCAO":"Em construção","NA_PLANTA":"Na planta"} as any)[form.condition] ?? form.condition}</p></div>}
-              {form.standard && <div><span className="text-xs text-[var(--shell-subtext)]">Padrão</span><p className="font-medium">{({"ECONOMICO":"Econômico","MEDIO":"Médio","ALTO":"Alto","LUXO":"Luxo"} as any)[form.standard] ?? form.standard}</p></div>}
+              {form.dealType && <div><span className="text-xs text-[var(--shell-subtext)]">Finalidade</span><p className="font-medium">{DEAL_LABEL[form.dealType] ?? form.dealType}</p></div>}
+              {form.condition && <div><span className="text-xs text-[var(--shell-subtext)]">Estado</span><p className="font-medium">{CONDITION_LABEL[form.condition] ?? form.condition}</p></div>}
+              {form.standard && <div><span className="text-xs text-[var(--shell-subtext)]">Padrão</span><p className="font-medium">{STANDARD_LABEL[form.standard] ?? form.standard}</p></div>}
             </div>
           </div>
 
@@ -1190,6 +1354,8 @@ function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary
   );
   const [customLabel, setCustomLabel] = useState(img.customLabel || img.title || "");
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const url = normalizeImageUrl(img);
   const isPublic = img.publishSite !== false;
@@ -1211,17 +1377,16 @@ function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
-      <div className="relative w-full max-w-4xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] flex overflow-hidden shadow-2xl max-h-[90vh]"
+      <div className="relative w-full max-w-5xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] flex overflow-hidden shadow-2xl max-h-[90vh]"
         onClick={e => e.stopPropagation()}>
-
-        {/* Fechar */}
-        <button type="button" onClick={onClose}
-          className="absolute top-3 right-3 z-10 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors leading-none">
-          ✕
-        </button>
 
         {/* Imagem + navegação */}
         <div className="flex-1 bg-black flex items-center justify-center min-h-[400px] overflow-hidden relative group">
+          {/* Fechar */}
+          <button type="button" onClick={onClose}
+            className="absolute top-3 right-3 z-10 rounded-full bg-white/20 backdrop-blur-sm p-2 text-white hover:bg-white/40 transition-colors leading-none text-base font-bold shadow">
+            ✕
+          </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={url ?? undefined} alt={customLabel || "Foto"} className="max-h-[90vh] max-w-full object-contain" />
 
@@ -1252,8 +1417,8 @@ function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary
         </div>
 
         {/* Painel direito */}
-        <div className="w-72 shrink-0 flex flex-col border-l border-[var(--shell-card-border)] overflow-y-auto">
-          <div className="px-4 py-4 space-y-4 flex-1">
+        <div className="w-96 shrink-0 flex flex-col border-l border-[var(--shell-card-border)]">
+          <div className="px-4 py-4 space-y-4 flex-1 overflow-y-auto">
 
             {/* Ações */}
             <div className="flex flex-wrap gap-1.5">
@@ -1268,18 +1433,6 @@ function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary
                 className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${isPublic ? "text-slate-600 hover:bg-slate-50" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
                 {isPublic ? "👁 Pública" : "🔒 Interna"}
               </button>
-              <button type="button" onClick={() => { onDelete(img.id); onClose(); }}
-                className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors ml-auto">
-                Excluir
-              </button>
-            </div>
-
-            {/* Nome da foto */}
-            <div>
-              <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome da foto</label>
-              <input value={customLabel} onChange={e => setCustomLabel(e.target.value)}
-                placeholder="Ex.: Fachada, Piscina, Área Gourmet..."
-                className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2.5 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400" />
             </div>
 
             {/* Análise IA */}
@@ -1294,10 +1447,7 @@ function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Tipo de ambiente</label>
-                  <select value={roomType} onChange={e => setRoomType(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)] outline-none">
-                    {AI_ROOM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
+                  <RoomTypeCombobox value={roomType} onChange={setRoomType} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Nome do ambiente</label>
@@ -1305,20 +1455,46 @@ function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary
                     placeholder="Ex.: Suíte Master, Sala de Estar..."
                     className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2.5 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-slate-400" />
                 </div>
+                <RevestimentosSection features={features} onChange={setFeatures} />
                 <div>
-                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Características</label>
-                  <TagInput value={features} onChange={setFeatures} />
+                  <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-2">Características do Ambiente</label>
+                  <TagInput
+                    value={features.filter(f => !isRevestimentoFeature(f))}
+                    onChange={custom => setFeatures([...features.filter(f => isRevestimentoFeature(f)), ...custom])}
+                    suggestions={FEATURE_SUGGESTIONS}
+                  />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Salvar */}
-          <div className="border-t border-[var(--shell-card-border)] px-4 py-3">
+          {/* Salvar + Excluir */}
+          <div className="border-t border-[var(--shell-card-border)] px-4 py-3 space-y-2">
             <button type="button" onClick={handleSave} disabled={saving}
               className="w-full rounded-lg bg-[var(--brand-accent)] py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
               {saving ? "Salvando..." : "Salvar"}
             </button>
+            {!confirmingDelete ? (
+              <button type="button" onClick={() => setConfirmingDelete(true)}
+                className="w-full rounded-lg border border-red-200 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors">
+                Excluir foto
+              </button>
+            ) : (
+              <div className="rounded-lg border border-red-300 bg-red-50 p-2 space-y-2">
+                <p className="text-xs text-red-700 text-center font-medium">Confirmar exclusão?</p>
+                <div className="flex gap-2">
+                  <button type="button" disabled={deleting}
+                    onClick={async () => { setDeleting(true); await onDelete(img.id); setDeleting(false); }}
+                    className="flex-1 rounded-lg bg-red-500 py-1.5 text-xs font-medium text-white hover:bg-red-600 disabled:opacity-60 transition-colors">
+                    {deleting ? "Excluindo..." : "Sim, excluir"}
+                  </button>
+                  <button type="button" disabled={deleting} onClick={() => setConfirmingDelete(false)}
+                    className="flex-1 rounded-lg border border-[var(--shell-card-border)] py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-40 transition-colors">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1346,7 +1522,8 @@ export default function ProductEditPage() {
   const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
   const [requestingDelete, setRequestingDelete] = useState(false);
 
-  // Role
+  // Role e permissões
+  const { can, userRole: permRole } = usePermissions();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   useEffect(() => {
@@ -1361,8 +1538,13 @@ export default function ProductEditPage() {
   }, []);
 
   // Copy from similar
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleCustomized, setTitleCustomized] = useState(false);
   const [copyProducts, setCopyProducts] = useState<any[]>([]);
   const [copyLoadedType, setCopyLoadedType] = useState<string | null>(null);
+  const [copyQuery, setCopyQuery] = useState("");
+  const [copyOpen, setCopyOpen] = useState(false);
+  const copyRef = useRef<HTMLDivElement>(null);
 
   // Accordion
   const [open, setOpen] = useState<Set<string>>(new Set(["identificacao"]));
@@ -1388,6 +1570,7 @@ export default function ProductEditPage() {
   const [docVisibility, setDocVisibility] = useState<DocVisibility>("INTERNAL");
   const [docUploading, setDocUploading] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [imgTitle, setImgTitle] = useState("");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [analyzingImageIds, setAnalyzingImageIds] = useState<Set<string>>(new Set());
@@ -1404,6 +1587,9 @@ export default function ProductEditPage() {
   const [ownersLoading, setOwnersLoading] = useState(false);
   const [allOwners, setAllOwners] = useState<OwnerProfile[]>([]);
   const [allOwnersLoaded, setAllOwnersLoaded] = useState(false);
+  const docsLoaded = useRef(false);
+  const roomsLoaded = useRef(false);
+  const productOwnersLoaded = useRef(false);
   const [ownerSearch, setOwnerSearch] = useState("");
   const [showNewOwner, setShowNewOwner] = useState(false);
 
@@ -1421,26 +1607,27 @@ export default function ProductEditPage() {
   }, [form.iptu]);
 
   // Auto-title for non-development types
-  const isEmpreendimento = form.type === "EMPREENDIMENTO" || form.type === "LOTEAMENTO";
+  const isEmpreendimento = ENTERPRISE_TYPES.has(form.type);
 
-  function buildTitle(f: typeof form): string {
-    if (f.type === "EMPREENDIMENTO" || f.type === "LOTEAMENTO") return f.title;
+  function buildTitle(f: typeof form, images: any[]): string {
+    if (ENTERPRISE_TYPES.has(f.type)) return f.title;
     const typeLabel = PRODUCT_TYPES.find((t) => t.value === f.type)?.label ?? f.type;
     const parts: string[] = [typeLabel];
-    const beds = parseInt(f.bedrooms) || 0;
-    const suites = parseInt(f.suites) || 0;
+    // Contar dos ambientes confirmados nas fotos; fallback para campos manuais
+    const confirmed = images.filter((img: any) => img.aiConfirmed);
+    const bedsFromPhotos = confirmed.filter((img: any) => img.aiRoomType === "QUARTO").length;
+    const suitesFromPhotos = confirmed.filter((img: any) => img.aiRoomType === "SUITE").length;
+    const beds = bedsFromPhotos || parseInt(f.bedrooms) || 0;
+    const suites = suitesFromPhotos || parseInt(f.suites) || 0;
     if (beds > 0) parts.push(`${beds} ${beds === 1 ? "quarto" : "quartos"}${suites > 0 ? ` (${suites} ${suites === 1 ? "suíte" : "suítes"})` : ""}`);
     else if (suites > 0) parts.push(`${suites} ${suites === 1 ? "suíte" : "suítes"}`);
     if (f.condominiumName.trim()) parts.push(`Cond. ${f.condominiumName.trim()}`);
     else if (f.neighborhood.trim()) parts.push(f.neighborhood.trim());
     const priceNum = parseFloat(f.price);
     if (priceNum && !isNaN(priceNum)) parts.push(`R$ ${priceNum.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`);
-    const dealMap: Record<string, string> = { SALE: 'Venda', RENT: 'Locação', BOTH: 'Venda/Locação' };
-    if (f.dealType && dealMap[f.dealType]) parts.push(dealMap[f.dealType]);
+    if (f.dealType && DEAL_LABEL[f.dealType]) parts.push(DEAL_LABEL[f.dealType]);
     return parts.join(' • ');
   }
-
-  const computedTitle = buildTitle(form);
 
   // ── ViaCEP ──────────────────────────────────────────────────────────────────
   async function fetchCep(cep: string) {
@@ -1472,6 +1659,10 @@ export default function ProductEditPage() {
 
       if (pa.type === "EMPREENDIMENTO") { router.replace(`/products/${id}/empreendimento`); return; }
       if (pa.type === "LOTEAMENTO") { router.replace(`/products/${id}/loteamento`); return; }
+
+      const defaultTypeLabel = PRODUCT_TYPES.find((t) => t.value === pa.type)?.label ?? pa.type ?? "";
+      const isCustomTitle = !!(pa.title && pa.title !== defaultTypeLabel);
+      setTitleCustomized(isCustomTitle);
 
       setForm({
         title: pa.title ?? "",
@@ -1518,8 +1709,6 @@ export default function ProductEditPage() {
         hasExclusivity: pa.hasExclusivity ?? false,
         exclusivityUntil: pa.exclusivityUntil ? pa.exclusivityUntil.split("T")[0] : "",
         virtualTourUrl: pa.virtualTourUrl ?? "",
-        description: pa.description ?? "",
-        tags: pa.tags ?? "",
       });
     } catch (e: any) {
       setError(e?.message ?? "Erro ao carregar produto");
@@ -1528,32 +1717,38 @@ export default function ProductEditPage() {
     }
   }
 
-  async function loadDocs() {
+  async function loadDocs(force = false) {
     if (!id) return;
+    if (docsLoaded.current && !force) return;
     setDocsLoading(true);
     try {
       const arr = await listProductDocuments(id);
       setDocs(Array.isArray(arr) ? arr : []);
+      docsLoaded.current = true;
     } catch { /* silent */ } finally { setDocsLoading(false); }
   }
 
-  async function loadRooms() {
+  async function loadRooms(force = false) {
     if (!id) return;
+    if (roomsLoaded.current && !force) return;
     setRoomsLoading(true);
     try {
       const res = await fetch(`${API_URL}/products/${id}/rooms`, { headers: authHeaders() });
       const data = await res.json();
       setRooms(Array.isArray(data.rooms) ? data.rooms : []);
+      roomsLoaded.current = true;
     } catch { /* silent */ } finally { setRoomsLoading(false); }
   }
 
-  async function loadProductOwners() {
+  async function loadProductOwners(force = false) {
     if (!id) return;
+    if (productOwnersLoaded.current && !force) return;
     setOwnersLoading(true);
     try {
       const res = await fetch(`${API_URL}/products/${id}/owners`, { headers: authHeaders() });
       const data = await res.json();
       setProductOwners(Array.isArray(data.owners) ? data.owners : []);
+      productOwnersLoaded.current = true;
     } catch { /* silent */ } finally { setOwnersLoading(false); }
   }
 
@@ -1695,8 +1890,6 @@ export default function ProductEditPage() {
         hasExclusivity: form.hasExclusivity,
         exclusivityUntil: form.exclusivityUntil || undefined,
         virtualTourUrl: form.virtualTourUrl.trim() || undefined,
-        description: form.description.trim() || undefined,
-        tags: form.tags.trim() || undefined,
       };
       const updated = await updateProduct(id, payload);
       setProduct(updated);
@@ -1740,6 +1933,7 @@ export default function ProductEditPage() {
     } finally {
       setImgUploading(false);
       setUploadProgress(null);
+      setShowUploadModal(false);
     }
   }
 
@@ -1768,7 +1962,7 @@ export default function ProductEditPage() {
       });
       setSuccess(`Ambiente "${roomLabel}" confirmado.`);
       await load();
-      await loadRooms();
+      await loadRooms(true);
       setEditingAiImg(null);
     } catch (e: any) {
       setError(e?.message ?? "Erro ao confirmar ambiente");
@@ -1814,16 +2008,52 @@ export default function ProductEditPage() {
     }
   }
 
-  async function onDeleteImage(imageId: string) {
-    if (!id || !confirm("Excluir esta imagem?")) return;
+  const [downloadingAll, setDownloadingAll] = useState(false);
+
+  async function downloadAllImages() {
+    if (!productImages.length) return;
+    setDownloadingAll(true);
+    try {
+      const zip = new JSZip();
+      const folder = zip.folder("fotos") ?? zip;
+      await Promise.all(
+        productImages.map(async (img: any, i: number) => {
+          const url = normalizeImageUrl(img);
+          if (!url) return;
+          const res = await fetch(url);
+          const blob = await res.blob();
+          const ext = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+          const name = img.customLabel || img.aiRoomLabel || img.title || `foto-${i + 1}`;
+          folder.file(`${String(i + 1).padStart(2, "0")}-${name}.${ext}`, blob);
+        })
+      );
+      const content = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(content);
+      a.download = `fotos-${(computedTitle || "imovel").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch {
+      setError("Erro ao baixar fotos");
+    } finally {
+      setDownloadingAll(false);
+    }
+  }
+
+  async function onDeleteImage(imageId: string): Promise<boolean> {
+    if (!id) return false;
     try {
       await deleteProductImage(id, imageId);
       setProduct((prev) => {
         if (!prev) return prev;
         return { ...prev, images: ((prev as any).images ?? []).filter((img: any) => img.id !== imageId) } as any;
       });
+      return true;
     } catch (e: any) {
       setError(e?.message ?? "Erro ao excluir imagem");
+      return false;
     }
   }
 
@@ -1858,7 +2088,7 @@ export default function ProductEditPage() {
       } as any);
       setDocTitle(""); setDocNotes("");
       setSuccess("Documento enviado.");
-      await loadDocs();
+      await loadDocs(true);
     } catch (e: any) {
       setError(e?.message ?? "Erro ao enviar documento");
     } finally { setDocUploading(false); }
@@ -1870,7 +2100,7 @@ export default function ProductEditPage() {
     try {
       await deleteProductDocument(id, docId);
       setSuccess("Documento removido.");
-      await loadDocs();
+      await loadDocs(true);
     } catch (e: any) { setError(e?.message ?? "Erro"); }
   }
 
@@ -1988,7 +2218,7 @@ export default function ProductEditPage() {
         body: JSON.stringify({ ownerId }),
       });
       if (!res.ok) throw new Error(await res.text());
-      await loadProductOwners();
+      await loadProductOwners(true);
       setOwnerSearch("");
     } catch (e: any) { setError(e?.message ?? "Erro ao vincular proprietário"); }
   }
@@ -2090,11 +2320,13 @@ export default function ProductEditPage() {
     return ((product as any)?.images ?? []) as any[];
   }, [product]);
 
+  const computedTitle = buildTitle(form, productImages);
+
   const imageUrls = useMemo(() => {
     return [...new Set(productImages.map((i) => normalizeImageUrl(i)).filter(Boolean))] as string[];
   }, [productImages]);
 
-  const headerTitle = loading ? "Produto" : (computedTitle || "Novo imóvel");
+  const headerTitle = loading ? "Produto" : ((titleCustomized && form.title.trim()) || computedTitle || "Novo imóvel");
 
   // ── Add room panel helpers ────────────────────────────────────────────────────
   const addTypeConfig = ROOM_TYPE_CONFIG.find((r) => r.value === addType);
@@ -2119,38 +2351,34 @@ export default function ProductEditPage() {
               <p className="text-xs text-[var(--shell-subtext)] mt-0.5">ID: {id}</p>
             </div>
             <div className="flex items-center gap-2">
-              {userRole === "AGENT" && (product as any)?.capturedByUserId === userId && form.publicationStatus === "DRAFT" ? (
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={loading || deleting}
-                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                >
-                  Excluir produto
-                </button>
-              ) : userRole === "AGENT" && (product as any)?.capturedByUserId === userId ? (
-                <button
-                  type="button"
-                  onClick={() => setShowRequestDeleteModal(true)}
-                  disabled={loading || !!(product as any)?.deletionRequestedAt}
-                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                >
-                  {(product as any)?.deletionRequestedAt ? "Exclusão solicitada" : "Solicitar exclusão"}
-                </button>
-              ) : userRole === "AGENT" ? (
-                <span className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-gray-300 cursor-not-allowed">
-                  Sem permissão
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={loading || deleting}
-                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
-                >
-                  Excluir produto
-                </button>
-              )}
+              {(() => {
+                const isMyProduct = (product as any)?.capturedByUserId === userId;
+                const isDraft = form.publicationStatus === "DRAFT";
+                const canDelete = userRole === "OWNER" || can("products", "delete");
+
+                if (canDelete) {
+                  if (userRole === "AGENT" && !isMyProduct) return null;
+                  return (
+                    <button type="button" onClick={() => setShowDeleteConfirm(true)}
+                      disabled={loading || deleting}
+                      className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors">
+                      Excluir produto
+                    </button>
+                  );
+                }
+
+                if (userRole === "AGENT" && isMyProduct) {
+                  return (
+                    <button type="button" onClick={() => setShowRequestDeleteModal(true)}
+                      disabled={loading || !!(product as any)?.deletionRequestedAt}
+                      className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors">
+                      {(product as any)?.deletionRequestedAt ? "Exclusão solicitada" : "Solicitar exclusão"}
+                    </button>
+                  );
+                }
+
+                return null;
+              })()}
               <Link
                 href="/products"
                 className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)]"
@@ -2178,7 +2406,7 @@ export default function ProductEditPage() {
               images={productImages}
               onClose={() => setImageModalImg(null)}
               onSave={handleImageModalSave}
-              onDelete={(imgId) => { onDeleteImage(imgId); setImageModalImg(null); }}
+              onDelete={async (imgId) => { const deleted = await onDeleteImage(imgId); if (deleted) setImageModalImg(null); }}
               onSetPrimary={(imgId) => { onSetPrimaryImage(imgId); setImageModalImg(null); }}
               onTogglePublic={(imgId, cur) => handleToggleImagePublic(imgId, cur)}
               onAnalyze={(imgId) => { handleAnalyzeImage(imgId); setImageModalImg(null); }}
@@ -2267,26 +2495,49 @@ export default function ProductEditPage() {
           <div className="flex-1 min-w-0 space-y-3">
 
             {/* ── S1: Identificação ─────────────────────────────────────── */}
-            <Section id="identificacao" title="1. Identificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")}>
-              {/* Nome para publicação — somente leitura, composto automaticamente */}
+            <Section id="identificacao" title="1. Identificação e Classificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")}>
+              {/* Nome para publicação */}
               <div className="mb-4">
                 <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Nome para publicação</label>
-                <div className={`${inp} bg-[var(--shell-bg)] text-[var(--shell-text)] select-none`}>
-                  {computedTitle || <span className="text-[var(--shell-subtext)]">Preencha os dados abaixo para gerar automaticamente</span>}
+                <div className="flex items-center gap-2">
+                  {editingTitle ? (
+                    <input
+                      autoFocus
+                      value={form.title}
+                      onChange={(e) => { f({ title: e.target.value }); setTitleCustomized(true); }}
+                      placeholder={computedTitle || "Nome para publicação..."}
+                      className="flex-1 rounded-lg border-2 border-blue-400 bg-[var(--shell-card-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none ring-2 ring-blue-100"
+                      disabled={loading}
+                      onBlur={() => setEditingTitle(false)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditingTitle(false); } }}
+                    />
+                  ) : (
+                    <div
+                      onClick={() => { if (!titleCustomized && computedTitle) f({ title: computedTitle }); setEditingTitle(true); }}
+                      className="flex-1 cursor-pointer rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-400 select-none dark:bg-slate-800 dark:border-slate-700 dark:text-slate-500"
+                    >
+                      {(titleCustomized ? form.title.trim() : null) || computedTitle || <span className="italic text-slate-300">Preencha os dados abaixo para gerar automaticamente</span>}
+                    </div>
+                  )}
+                  <button type="button" onClick={() => {
+                    if (!editingTitle && !titleCustomized && computedTitle) f({ title: computedTitle });
+                    setEditingTitle(!editingTitle);
+                  }} title={editingTitle ? "Fechar edição" : "Editar nome"}
+                    className={`shrink-0 rounded-lg border p-2 transition-colors ${
+                      editingTitle
+                        ? "border-blue-400 bg-blue-50 text-blue-500"
+                        : "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                    }`}>
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                    </svg>
+                  </button>
                 </div>
-              </div>
-
-              {/* Descrição e tags */}
-              <div className="mb-4 grid grid-cols-1 gap-3">
-                <Field label="Descrição do imóvel">
-                  <textarea value={form.description} onChange={(e) => f({ description: e.target.value })}
-                    placeholder="Descreva os principais destaques do imóvel..."
-                    rows={3} className={`${inp} resize-none`} disabled={loading} />
-                </Field>
-                <Field label="Tags (separadas por vírgula)">
-                  <input value={form.tags} onChange={(e) => f({ tags: e.target.value })}
-                    placeholder="Ex.: piscina, churrasqueira, vista mar" className={inp} disabled={loading} />
-                </Field>
+                {titleCustomized && computedTitle && (
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    Sugestão do sistema: <span className="italic text-slate-500">{computedTitle}</span>
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -2333,55 +2584,52 @@ export default function ProductEditPage() {
                   <select value={form.origin} onChange={(e) => f({ origin: e.target.value })} className={sel} disabled={loading}>
                     <option value="THIRD_PARTY">Imóvel de terceiros</option>
                     <option value="OWN">Próprio</option>
+                    <option value="PARTNERSHIP">Parceria com outra Imob/Corretor</option>
                   </select>
                 </Field>
               </div>
-              {/* Características físicas */}
-              <div className="border-t border-[var(--shell-card-border)] pt-4">
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Características</p>
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-                  <Field label="Quartos">
-                    <input value={form.bedrooms} onChange={(e) => f({ bedrooms: e.target.value })}
-                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
-                  </Field>
-                  <Field label="Suítes">
-                    <input value={form.suites} onChange={(e) => f({ suites: e.target.value })}
-                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
-                  </Field>
-                  <Field label="Banheiros">
-                    <input value={form.bathrooms} onChange={(e) => f({ bathrooms: e.target.value })}
-                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
-                  </Field>
-                  <Field label="Vagas">
-                    <input value={form.parkingSpaces} onChange={(e) => f({ parkingSpaces: e.target.value })}
-                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
-                  </Field>
-                  <Field label="Área (m²)">
-                    <input value={form.areaM2} onChange={(e) => f({ areaM2: e.target.value })}
-                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
-                  </Field>
-                </div>
-              </div>
-
               {(form.type === "APARTAMENTO" || form.type === "CASA") && (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5">
                   <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                     Copiar dados de outro imóvel similar <span className="font-normal text-[var(--shell-subtext)]">(opcional)</span>
                   </label>
-                  <select
-                    className={`${sel} text-sm`}
-                    defaultValue=""
-                    onChange={(e) => handleCopyFrom(e.target.value)}
-                    onFocus={() => loadCopyProducts(form.type)}
-                    disabled={loading}
-                  >
-                    <option value="">— selecionar imóvel —</option>
-                    {copyProducts.map((p: any) => (
-                      <option key={p.id} value={p.id}>
-                        {p.title || `${PRODUCT_TYPES.find((t) => t.value === p.type)?.label ?? p.type}${p.neighborhood ? ` - ${p.neighborhood}` : ""}`}
-                      </option>
-                    ))}
-                  </select>
+                  <div ref={copyRef} className="relative">
+                    <input
+                      value={copyQuery}
+                      disabled={loading}
+                      placeholder="Buscar por nome do condomínio..."
+                      className={`${inp} text-sm`}
+                      onFocus={() => { setCopyOpen(true); loadCopyProducts(form.type); }}
+                      onChange={(e) => { setCopyQuery(e.target.value); setCopyOpen(true); loadCopyProducts(form.type); }}
+                      onBlur={() => setTimeout(() => setCopyOpen(false), 150)}
+                    />
+                    {copyOpen && (() => {
+                      const q = copyQuery.trim().toLowerCase();
+                      const filtered = copyProducts.filter((p: any) => {
+                        const condo = (p.condominiumName ?? "").toLowerCase();
+                        const title = (p.title ?? "").toLowerCase();
+                        const neigh = (p.neighborhood ?? "").toLowerCase();
+                        return !q || condo.includes(q) || title.includes(q) || neigh.includes(q);
+                      });
+                      if (!filtered.length) return null;
+                      return (
+                        <ul className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] shadow-lg text-xs">
+                          {filtered.map((p: any) => {
+                            const label = p.condominiumName
+                              ? `${p.condominiumName}${p.neighborhood ? ` — ${p.neighborhood}` : ""}`
+                              : (p.title || `${PRODUCT_TYPES.find((t) => t.value === p.type)?.label ?? p.type}${p.neighborhood ? ` — ${p.neighborhood}` : ""}`);
+                            return (
+                              <li key={p.id}
+                                onMouseDown={() => { handleCopyFrom(p.id); setCopyQuery(label); setCopyOpen(false); }}
+                                className="cursor-pointer px-3 py-2 hover:bg-[var(--shell-hover)] text-[var(--shell-text)]">
+                                {label}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
             </Section>
@@ -2391,40 +2639,83 @@ export default function ProductEditPage() {
 
               {/* Upload */}
               <div>
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-3">Fotos</p>
-                <label
-                  className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-6 mb-4 cursor-pointer hover:border-slate-400 hover:bg-[var(--shell-hover)] transition-all duration-150"
-                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--brand-accent)"; }}
-                  onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; }}
-                  onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; onUploadImage(e.dataTransfer.files); }}
-                >
-                  <input type="file" accept="image/*" multiple disabled={imgUploading || loading}
-                    onChange={(e) => onUploadImage(e.target.files)}
-                    className="sr-only" />
-                  {imgUploading && uploadProgress ? (
-                    <div className="text-center space-y-2 w-full">
-                      <p className="text-sm font-medium text-[var(--shell-text)]">
-                        Enviando {uploadProgress.done}/{uploadProgress.total}...
-                      </p>
-                      <div className="w-full rounded-full bg-[var(--shell-card-border)] h-2">
-                        <div className="h-2 rounded-full bg-[var(--brand-accent)] transition-all"
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Fotos</p>
+                  {productImages.length > 0 && (
+                    <button type="button" onClick={downloadAllImages} disabled={downloadingAll}
+                      className="flex items-center gap-1 rounded-lg border border-[var(--shell-card-border)] px-2.5 py-1 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors">
+                      {downloadingAll ? "Gerando ZIP..." : "↓ Baixar todas"}
+                    </button>
+                  )}
+                </div>
+                <div className="mb-4 flex items-center gap-2">
+                  <button type="button" onClick={() => setShowUploadModal(true)}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    Adicionar fotos
+                  </button>
+                  {imgUploading && uploadProgress && (
+                    <div className="flex-1 space-y-1">
+                      <p className="text-xs text-[var(--shell-subtext)]">Enviando {uploadProgress.done}/{uploadProgress.total}...</p>
+                      <div className="w-full rounded-full bg-[var(--shell-card-border)] h-1.5">
+                        <div className="h-1.5 rounded-full bg-[var(--brand-accent)] transition-all"
                           style={{ width: `${(uploadProgress.done / uploadProgress.total) * 100}%` }} />
                       </div>
-                      <p className="text-xs text-[var(--shell-subtext)]">A IA analisará cada foto automaticamente</p>
                     </div>
-                  ) : (
-                    <>
-                      <svg className="h-8 w-8 text-[var(--shell-subtext)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                      </svg>
-                      <div className="text-center">
-                        <p className="text-sm font-medium text-[var(--shell-text)]">Clique ou arraste fotos aqui</p>
-                        <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Selecione várias de uma vez · JPG, PNG, WEBP</p>
-                        <p className="text-xs text-[var(--brand-accent)] mt-1">IA identifica o ambiente e características automaticamente</p>
-                      </div>
-                    </>
                   )}
-                </label>
+                </div>
+
+                {/* Modal de upload */}
+                {showUploadModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+                    onClick={() => { if (!imgUploading) setShowUploadModal(false); }}>
+                    <div className="w-full max-w-md mx-4 rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-2xl"
+                      onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-4">
+                        <p className="text-sm font-semibold text-[var(--shell-text)]">Adicionar fotos</p>
+                        {!imgUploading && (
+                          <button type="button" onClick={() => setShowUploadModal(false)}
+                            className="rounded-full p-1 text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors leading-none">✕</button>
+                        )}
+                      </div>
+                      <label
+                        className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-8 cursor-pointer hover:border-slate-400 hover:bg-[var(--shell-hover)] transition-all duration-150"
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--brand-accent)"; }}
+                        onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; }}
+                        onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; onUploadImage(e.dataTransfer.files); }}
+                      >
+                        <input type="file" accept="image/*" multiple disabled={imgUploading || loading}
+                          onChange={(e) => { onUploadImage(e.target.files); }}
+                          className="sr-only" />
+                        {imgUploading && uploadProgress ? (
+                          <div className="text-center space-y-2 w-full">
+                            <p className="text-sm font-medium text-[var(--shell-text)]">
+                              Enviando {uploadProgress.done}/{uploadProgress.total}...
+                            </p>
+                            <div className="w-full rounded-full bg-[var(--shell-card-border)] h-2">
+                              <div className="h-2 rounded-full bg-[var(--brand-accent)] transition-all"
+                                style={{ width: `${(uploadProgress.done / uploadProgress.total) * 100}%` }} />
+                            </div>
+                            <p className="text-xs text-[var(--shell-subtext)]">A IA analisará cada foto automaticamente</p>
+                          </div>
+                        ) : (
+                          <>
+                            <svg className="h-10 w-10 text-[var(--shell-subtext)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                            </svg>
+                            <div className="text-center">
+                              <p className="text-sm font-medium text-[var(--shell-text)]">Clique ou arraste fotos aqui</p>
+                              <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Selecione várias de uma vez · JPG, PNG, WEBP</p>
+                              <p className="text-xs text-[var(--brand-accent)] mt-1">IA identifica o ambiente automaticamente</p>
+                            </div>
+                          </>
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 {productImages.length > 0 && (
                   <div className="space-y-2">
@@ -2476,7 +2767,7 @@ export default function ProductEditPage() {
                                 }
                               </button>
                               {/* Excluir */}
-                              <button type="button" onClick={() => onDeleteImage(img.id)} title="Excluir"
+                              <button type="button" onClick={() => { if (confirm("Excluir esta imagem?")) onDeleteImage(img.id); }} title="Excluir"
                                 className="absolute top-1 right-1 rounded-full bg-[var(--shell-card-bg)]/90 p-1 shadow hover:bg-red-50 transition-colors">
                                 <svg className="h-3.5 w-3.5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                                   <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -2605,6 +2896,32 @@ export default function ProductEditPage() {
                     </div>
                   );
                 })()}
+              </div>
+
+              {/* Quantidades */}
+              <div className="border-t pt-4">
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+                  <Field label="Quartos">
+                    <input value={form.bedrooms} onChange={(e) => f({ bedrooms: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Suítes">
+                    <input value={form.suites} onChange={(e) => f({ suites: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Banheiros">
+                    <input value={form.bathrooms} onChange={(e) => f({ bathrooms: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Vagas">
+                    <input value={form.parkingSpaces} onChange={(e) => f({ parkingSpaces: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                  <Field label="Área (m²)">
+                    <input value={form.areaM2} onChange={(e) => f({ areaM2: e.target.value })}
+                      inputMode="numeric" placeholder="0" className={inp} disabled={loading} />
+                  </Field>
+                </div>
               </div>
 
               {/* Comodidades internas */}

@@ -285,6 +285,17 @@ NEXT_PUBLIC_API_URL=
 
 ---
 
+## Contexto de Produtos para a IA
+
+`buildProductsBlock()` em `src/ai/ai.service.ts` — monta o bloco de imóveis que é injetado no system prompt dos agentes.
+
+- **Inclui:** título, tipo, finalidade, localização, preços, quartos/suítes/banheiros/vagas, áreas (construção, terreno, privativo), padrão, condomínio, andar, ano, mobiliado, posição solar, comodidades internas, lazer do condomínio, condições financeiras (FGTS, financiamento, permuta, IPTU, taxa condomínio), **ambientes confirmados pelas fotos** (QUARTO, SUITE, etc.) e **características das fotos** (porcelanato, banheira, etc.).
+- **Não inclui:** informações do proprietário, documentos do imóvel.
+- **Condição:** apenas produtos com `status: ACTIVE` e `publicationStatus: PUBLISHED` são visíveis para a IA.
+- **Regra:** sempre que novos campos relevantes forem adicionados ao cadastro de imóvel, adicionar ao `select` e ao bloco de formatação em `buildProductsBlock()` para que a IA tenha acesso.
+
+---
+
 ## AiService (dual-provider)
 
 `src/ai/ai.service.ts` — suporte a OpenAI e Anthropic no mesmo método `callLLM()`.

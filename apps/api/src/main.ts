@@ -79,8 +79,12 @@ async function bootstrap() {
   initCloudinary();
 
   // 🤖 Seed de modelos de IA padrão (idempotente — não sobrescreve configurações existentes)
-  await seedAiModelDefaults(app.get(PrismaService));
-  logger.log('Modelos de IA padrão verificados/aplicados');
+  try {
+    await seedAiModelDefaults(app.get(PrismaService));
+    logger.log('Modelos de IA padrão verificados/aplicados');
+  } catch (e: any) {
+    logger.warn(`seedAiModelDefaults ignorado (${e?.code ?? e?.message}) — será tentado na próxima reinicialização`);
+  }
 
   // 🔍 Verificar Redis antes de iniciar os workers
   const queueService = app.get(QueueService);

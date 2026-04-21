@@ -548,23 +548,32 @@ export class AiService {
     const products = await this.prisma.product.findMany({
       where: { tenantId, status: 'ACTIVE', publicationStatus: 'PUBLISHED' },
       select: {
-        id: true, title: true, type: true, dealType: true,
+        id: true, title: true, type: true, dealType: true, origin: true,
         // Localização
         neighborhood: true, city: true, state: true, referencePoint: true,
+        zipCode: true, street: true,
         // Preços
-        price: true, rentPrice: true,
-        // Imovel avulso
+        price: true, rentPrice: true, iptu: true, condominiumFee: true,
+        // Imóvel avulso
         bedrooms: true, suites: true, bathrooms: true, parkingSpaces: true,
-        areaM2: true, builtAreaM2: true, standard: true, condominiumName: true,
-        condition: true, description: true,
+        areaM2: true, builtAreaM2: true, landAreaM2: true, privateAreaM2: true,
+        standard: true, condominiumName: true, condition: true, description: true,
+        floor: true, totalFloors: true, yearBuilt: true, sunPosition: true,
+        furnished: true, virtualTourUrl: true,
+        internalFeatures: true, condoFeatures: true,
         // Empreendimento
         developer: true, totalUnits: true, totalTowers: true, floorsPerTower: true,
         privateAreaMinM2: true, privateAreaMaxM2: true, parkingMin: true, parkingMax: true,
-        deliveryForecast: true, unitTypes: true, condoFeatures: true, unitSpecs: true,
+        deliveryForecast: true, unitTypes: true, unitSpecs: true,
         socialPrograms: true, commercialDescription: true,
         // Condições
         acceptsFGTS: true, acceptsFinancing: true, acceptsExchange: true,
         paymentConditions: true, minBuyerIncome: true, buyerIncomeLimit: true,
+        // Fotos confirmadas pela IA (ambientes e características)
+        images: {
+          where: { aiConfirmed: true },
+          select: { aiRoomType: true, aiRoomLabel: true, aiFeatures: true },
+        },
       },
       take: 30,
       orderBy: { createdAt: 'desc' },
@@ -678,17 +687,63 @@ export class AiService {
         if (p.suites != null) physParts.push(`${p.suites} suíte${p.suites !== 1 ? 's' : ''}`);
         if (p.bathrooms != null) physParts.push(`${p.bathrooms} banheiro${p.bathrooms !== 1 ? 's' : ''}`);
         if (p.parkingSpaces != null) physParts.push(`${p.parkingSpaces} vaga${p.parkingSpaces !== 1 ? 's' : ''}`);
-        const area = p.builtAreaM2 ?? p.areaM2;
-        if (area != null) physParts.push(`${area}m²`);
+        if (p.builtAreaM2 != null) physParts.push(`${p.builtAreaM2}m² construção`);
+        else if (p.areaM2 != null) physParts.push(`${p.areaM2}m²`);
+        if (p.landAreaM2 != null) physParts.push(`${p.landAreaM2}m² terreno`);
+        if (p.privateAreaM2 != null) physParts.push(`${p.privateAreaM2}m² privativo`);
         if (physParts.length) parts.push(`   ${physParts.join(' | ')}`);
 
         const extraParts: string[] = [];
         if (p.standard) extraParts.push(`Padrão: ${STANDARD_LABEL[String(p.standard)] ?? p.standard}`);
         if (p.condominiumName) extraParts.push(`Condomínio: ${p.condominiumName}`);
+        if (p.floor != null) extraParts.push(`${p.floor}º andar`);
+        if (p.totalFloors != null) extraParts.push(`Prédio com ${p.totalFloors} andares`);
+        if (p.yearBuilt) extraParts.push(`Ano: ${p.yearBuilt}`);
+        if (p.sunPosition) extraParts.push(`Posição solar: ${p.sunPosition}`);
+        if (p.furnished) extraParts.push(`Mobiliado: ${p.furnished}`);
         if (extraParts.length) parts.push(`   ${extraParts.join(' | ')}`);
 
+        // Condições financeiras
+        const finParts: string[] = [];
+        if (p.acceptsFinancing) finParts.push('Aceita financiamento');
+        if (p.acceptsFGTS) finParts.push('Aceita FGTS');
+        if (p.acceptsExchange) finParts.push('Aceita permuta');
+        if (p.iptu != null) finParts.push(`IPTU: R$ ${fmtBRL(p.iptu)}/ano`);
+        if (p.condominiumFee != null) finParts.push(`Condomínio: R$ ${fmtBRL(p.condominiumFee)}/mês`);
+        if (finParts.length) parts.push(`   ${finParts.join(' | ')}`);
+
+        // Comodidades internas e do condomínio
+        if (Array.isArray(p.internalFeatures) && p.internalFeatures.length)
+          parts.push(`   Características internas: ${p.internalFeatures.join(', ')}`);
+        if (Array.isArray(p.condoFeatures) && p.condoFeatures.length)
+          parts.push(`   Lazer/condomínio: ${p.condoFeatures.join(', ')}`);
+
+        // Ambientes e características confirmados pelas fotos
+        if (Array.isArray(p.images) && p.images.length > 0) {
+          const roomCounts: Record<string, number> = {};
+          const allFeatures = new Set<string>();
+          for (const img of p.images) {
+            if (img.aiRoomType) roomCounts[img.aiRoomType] = (roomCounts[img.aiRoomType] ?? 0) + 1;
+            if (Array.isArray(img.aiFeatures)) img.aiFeatures.forEach((f: string) => allFeatures.add(f));
+          }
+          const roomLabels: Record<string, string> = {
+            QUARTO: 'quarto', SUITE: 'suíte', BANHEIRO: 'banheiro', LAVABO: 'lavabo',
+            SALA_ESTAR: 'sala de estar', SALA_JANTAR: 'sala de jantar', COZINHA: 'cozinha',
+            VARANDA: 'varanda', SACADA: 'sacada', AREA_GOURMET: 'área gourmet',
+            GARAGEM: 'garagem', QUINTAL: 'quintal', ESCRITORIO: 'escritório',
+            HOME_OFFICE: 'home office', CLOSET: 'closet', PISCINA: 'piscina',
+            TERRAÇO: 'terraço', ACADEMIA: 'academia', SAUNA: 'sauna', ADEGA: 'adega',
+          };
+          const roomParts = Object.entries(roomCounts)
+            .map(([type, count]) => `${count} ${roomLabels[type] ?? type.toLowerCase()}${count > 1 && !['CLOSET','PISCINA','ACADEMIA','SAUNA','ADEGA'].includes(type) ? 's' : ''}`)
+            .join(', ');
+          if (roomParts) parts.push(`   Ambientes confirmados: ${roomParts}`);
+          const featList = [...allFeatures].filter(f => !f.toUpperCase().startsWith('OUTRO_REVESTIMENTO:') && f.trim());
+          if (featList.length) parts.push(`   Características das fotos: ${featList.join(', ')}`);
+        }
+
         const desc = (p.description ?? '').trim();
-        if (desc) parts.push(`   ${desc.slice(0, 150)}${desc.length > 150 ? '...' : ''}`);
+        if (desc) parts.push(`   ${desc.slice(0, 200)}${desc.length > 200 ? '...' : ''}`);
       }
 
       return parts.join('\n');

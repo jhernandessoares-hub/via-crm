@@ -35,6 +35,10 @@ export class CreateProductDto {
   origin?: ProductOrigin;
 
   @IsOptional()
+  @IsString()
+  dealType?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   price?: number;
@@ -168,19 +172,19 @@ export class CreateProductDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
+  @IsNumber()
   @Min(0)
   builtAreaM2?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
+  @IsNumber()
   @Min(0)
   privateAreaM2?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
+  @IsNumber()
   @Min(0)
   landAreaM2?: number;
 

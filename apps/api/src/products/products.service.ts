@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveAiModel } from '../ai/resolve-ai-model';
+import { resolvePermissions } from '../tenants/permissions.config';
 import { Logger } from '../logger';
 import { resolveWhatsappCreds, sendWhatsappText } from '../whatsapp/whatsapp-creds';
 
@@ -109,6 +110,7 @@ export class ProductsService {
         type: body.type || ProductType.OUTRO,
         status: body.status || ProductStatus.ACTIVE,
         origin,
+        dealType: body.dealType || null,
 
         price: body.price ?? null,
         city: body.city || null,
@@ -379,21 +381,39 @@ export class ProductsService {
     }
   }
 
+  private async resolveProductPermissions(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    return resolvePermissions(tenant?.permissionsConfig as any);
+  }
+
   async remove(user: any, id: string) {
-    const product = await this.getById(user, id);
+    if (user.role === 'OWNER') {
+      const product = await this.getById(user, id);
+      await this.deleteProductCloudinaryAssets(id);
+      await this.prisma.product.delete({ where: { id } });
+      return { ok: true };
+    }
+
+    const [product, perms] = await Promise.all([
+      this.getById(user, id),
+      this.resolveProductPermissions(user.tenantId),
+    ]);
+
+    const roleKey = user.role === 'MANAGER' ? 'manager' : 'agent';
+    const canDelete = perms[roleKey]?.products?.delete ?? false;
+
+    if (!canDelete) {
+      throw new ForbiddenException('Sem permissão para excluir produtos.');
+    }
 
     if (user.role === 'AGENT') {
       const userId = user.id || user.sub;
-      const isDraft = product.publicationStatus === 'DRAFT';
-      const isOwner = product.capturedByUserId === userId;
-      if (isDraft && isOwner) {
-        await this.deleteProductCloudinaryAssets(id);
-        await this.prisma.product.delete({ where: { id } });
-        return { ok: true };
+      if (product.capturedByUserId !== userId) {
+        throw new ForbiddenException('Corretores só podem excluir produtos que eles cadastraram.');
       }
-      throw new ForbiddenException(
-        'Corretores só podem excluir diretamente produtos em rascunho que eles cadastraram.',
-      );
     }
 
     if (user.role === 'MANAGER' && product.capturedByUserId) {
@@ -402,9 +422,7 @@ export class ProductsService {
         select: { role: true },
       });
       if (owner && owner.role !== 'AGENT') {
-        throw new ForbiddenException(
-          'Gerentes só podem excluir produtos cadastrados por corretores.',
-        );
+        throw new ForbiddenException('Gerentes só podem excluir produtos cadastrados por corretores.');
       }
     }
 
@@ -414,10 +432,17 @@ export class ProductsService {
   }
 
   async requestDelete(user: any, id: string) {
-    if (user.role !== 'AGENT') {
+    if (user.role === 'OWNER' || user.role === 'MANAGER') {
       throw new ForbiddenException('OWNER e MANAGER podem excluir diretamente.');
     }
-    const product = await this.getById(user, id);
+    const [product, perms] = await Promise.all([
+      this.getById(user, id),
+      this.resolveProductPermissions(user.tenantId),
+    ]);
+    const canDelete = perms.agent?.products?.delete ?? false;
+    if (canDelete) {
+      throw new BadRequestException('Você tem permissão para excluir diretamente.');
+    }
     const userId = user.id || user.sub;
     if (product.capturedByUserId !== userId) {
       throw new ForbiddenException('Você só pode solicitar exclusão de produtos que você cadastrou.');
@@ -1073,7 +1098,7 @@ export class ProductsService {
     const prompt = `Você é um assistente especializado em análise de fotos de imóveis residenciais brasileiros.
 Analise esta foto e retorne SOMENTE um JSON válido, sem texto adicional, com este formato exato:
 {
-  "roomType": "um dos valores: QUARTO, SUITE, BANHEIRO, LAVABO, CLOSET, SALA_ESTAR, SALA_JANTAR, COZINHA, VARANDA, AREA_GOURMET, AREA_SERVICO, ESCRITORIO, GARAGEM, PISCINA, QUINTAL, FACHADA, CORREDOR, LAVANDERIA, DEPOSITO, OUTRO",
+  "roomType": "um dos valores: QUARTO, SUITE, SALA_ESTAR, SALA_JANTAR, COZINHA, BANHEIRO, GARAGEM, VARANDA, SACADA, AREA_GOURMET, QUINTAL, ESCRITORIO, HOME_OFFICE, LAVABO, CLOSET, AREA_SERVICO, LAVANDERIA, COPA, DESPENSA, SALA_TV, TERRAÇO, HALL_ENTRADA, QUARTO_EMPREGADA, BANHEIRO_EMPREGADA, ACADEMIA, SAUNA, ADEGA, PISCINA, FACHADA, CORREDOR, DEPOSITO, OUTRO",
   "roomLabel": "nome descritivo em português, ex: Suíte Master, Sala de Estar, Varanda Gourmet, Fachada",
   "features": ["lista de características visíveis, escolha entre: ARMARIO_EMBUTIDO, CLOSET, BANHEIRA, CHURRASQUEIRA, PISCINA, SACADA, VISTA_MAR, VISTA_CIDADE, VISTA_CAMPO, JANELA_AMPLA, PIA_DUPLA, LAVABO_EMBUTIDO, PORCELANATO, PISO_MADEIRA, TETO_ALTO, ILUMINACAO_NATURAL, AREA_GOURMET"]
 }`;

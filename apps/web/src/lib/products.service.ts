@@ -51,7 +51,7 @@ export type Product = {
 
   // backend atual (prisma)
   title?: string;
-  origin?: "OWN" | "THIRD_PARTY" | "DEVELOPMENT";
+  origin?: "OWN" | "THIRD_PARTY" | "DEVELOPMENT" | "PARTNERSHIP";
   type?: string; // ProductType
   status?: string; // ProductStatus
   price?: number | string | null;
@@ -76,14 +76,19 @@ export type Product = {
 
 export type CreateProductInput = {
   title: string;
-  origin: "OWN" | "THIRD_PARTY" | "DEVELOPMENT";
+  origin: "OWN" | "THIRD_PARTY" | "DEVELOPMENT" | "PARTNERSHIP";
   type: string;
   status?: string;
+  dealType?: string;
+  condition?: string;
+  standard?: string;
   city?: string;
   neighborhood?: string;
   state?: string;
   description?: string;
   price?: number;
+  builtAreaM2?: number;
+  landAreaM2?: number;
 };
 
 export type UpdateProductInput = Partial<Record<string, any>>;
