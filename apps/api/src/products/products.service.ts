@@ -328,6 +328,7 @@ export class ProductsService {
     if (body.technicalDescription !== undefined) data.technicalDescription = body.technicalDescription || null;
     if (body.commercialDescription !== undefined) data.commercialDescription = body.commercialDescription || null;
     if (body.aiGeneratedFields !== undefined) data.aiGeneratedFields = body.aiGeneratedFields;
+    if (body.sectionStatus !== undefined) data.sectionStatus = body.sectionStatus;
     if (body.minBuyerIncome !== undefined) data.minBuyerIncome = body.minBuyerIncome;
     if (body.priceReviewDays !== undefined) data.priceReviewDays = body.priceReviewDays;
     if (body.acceptsFGTS !== undefined) data.acceptsFGTS = body.acceptsFGTS;

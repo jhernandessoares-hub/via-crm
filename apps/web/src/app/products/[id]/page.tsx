@@ -57,12 +57,13 @@ type FormData = {
   price: string; rentPrice: string; iptu: string; condominiumFee: string;
   acceptsFinancing: boolean; acceptsExchange: boolean;
   bedrooms: string; suites: string; bathrooms: string; parkingSpaces: string;
-  areaM2: string; builtAreaM2: string; privateAreaM2: string; landAreaM2: string;
-  floor: string; totalFloors: string; yearBuilt: string;
-  sunPosition: string; furnished: string;
+  areaM2: string; privateAreaM2: string; landAreaM2: string;
+  privateAreaM2NA: boolean; landAreaM2NA: boolean;
+  yearBuilt: string;
   internalFeatures: string[]; condoFeatures: string[];
   registrationNumber: string; propertySituation: string;
   hasExclusivity: boolean; exclusivityUntil: string; virtualTourUrl: string;
+  description: string; tags: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -73,11 +74,13 @@ const EMPTY_FORM: FormData = {
   price: "", rentPrice: "", iptu: "", condominiumFee: "",
   acceptsFinancing: false, acceptsExchange: false,
   bedrooms: "", suites: "", bathrooms: "", parkingSpaces: "",
-  areaM2: "", builtAreaM2: "", privateAreaM2: "", landAreaM2: "",
-  floor: "", totalFloors: "", yearBuilt: "", sunPosition: "", furnished: "",
+  areaM2: "", privateAreaM2: "", landAreaM2: "",
+  privateAreaM2NA: false, landAreaM2NA: false,
+  yearBuilt: "",
   internalFeatures: [], condoFeatures: [],
   registrationNumber: "", propertySituation: "",
   hasExclusivity: false, exclusivityUntil: "", virtualTourUrl: "",
+  description: "", tags: "",
 };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -129,9 +132,6 @@ const CONDO_FEATURES = [
   "Portaria 24h", "Elevador", "Churrasqueira", "Quadra esportiva",
   "Pet friendly", "Gerador",
 ];
-
-const SUN_POSITIONS = ["Frente", "Fundos", "Lateral", "Frente e fundos"];
-
 
 const ROOM_TYPE_CONFIG: {
   value: string; label: string; suggestions: string[]; freeLabel?: boolean;
@@ -205,6 +205,14 @@ function fmtBRL(raw: string): string {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function applyBRLMask(input: string): string {
+  // Keep only digits and comma/dot
+  const digits = input.replace(/[^\d]/g, "");
+  if (!digits) return "";
+  const n = parseInt(digits, 10) / 100;
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function fmtDate(iso?: string) {
   if (!iso) return "-";
   try { return new Date(iso).toLocaleString("pt-BR"); } catch { return iso; }
@@ -222,19 +230,69 @@ function guessCategoryFromOrigin(origin: string) {
 
 // ─── Section accordion ───────────────────────────────────────────────────────
 
+type SectionStatus = "DONE" | "INCOMPLETE" | "PENDING" | null;
+
 function Section({
-  id, title, open, onToggle, children,
+  id, title, open, onToggle, children, status, onSave, onFinishLater, saving,
 }: {
   id: string; title: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+  status?: SectionStatus; onSave?: () => void; onFinishLater?: () => void; saving?: boolean;
 }) {
+  const borderClass =
+    status === "DONE"       ? "border-green-400 dark:border-green-600" :
+    status === "INCOMPLETE" ? "border-orange-400 dark:border-orange-500" :
+    status === "PENDING"    ? "border-yellow-400 dark:border-yellow-500" :
+    "border-[var(--shell-card-border)]";
+
+  const headerBg =
+    status === "DONE"       ? "bg-green-50 dark:bg-green-950/30" :
+    status === "INCOMPLETE" ? "bg-orange-50 dark:bg-orange-950/30" :
+    status === "PENDING"    ? "bg-yellow-50 dark:bg-yellow-950/30" :
+    "";
+
+  const statusIcon =
+    status === "DONE" ? (
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 shrink-0">
+        <svg className="h-3 w-3 text-white" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+        </svg>
+      </span>
+    ) : status === "INCOMPLETE" ? (
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-400 shrink-0">
+        <svg className="h-3 w-3 text-white" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
+      </span>
+    ) : status === "PENDING" ? (
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-yellow-400 shrink-0">
+        <svg className="h-3 w-3 text-white" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+        </svg>
+      </span>
+    ) : (
+      <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-[var(--shell-card-border)] shrink-0" />
+    );
+
   return (
-    <div className={`rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden transition-shadow ${open ? "shadow-md border-[var(--shell-card-border)]" : "shadow-sm"}`}>
+    <div className={`rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden transition-all ${open ? "shadow-md" : "shadow-sm"} ${borderClass}`}>
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-5 py-3.5 text-left hover:bg-[var(--shell-hover)] transition-colors"
+        className={`flex w-full items-center gap-3 justify-between px-5 py-3.5 text-left hover:bg-[var(--shell-hover)] transition-colors ${headerBg}`}
       >
-        <span className="text-sm font-semibold text-[var(--shell-text)] tracking-tight">{title}</span>
+        <div className="flex items-center gap-3 min-w-0">
+          {statusIcon}
+          <span className="text-sm font-semibold text-[var(--shell-text)] tracking-tight">{title}</span>
+          {status === "DONE" && (
+            <span className="text-xs font-medium text-green-600 dark:text-green-400">— Totalmente preenchido</span>
+          )}
+          {status === "INCOMPLETE" && (
+            <span className="text-xs font-medium text-orange-500 dark:text-orange-400">— Salvo com campos vazios</span>
+          )}
+          {status === "PENDING" && (
+            <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">— Pendente</span>
+          )}
+        </div>
         <svg
           className={`h-4 w-4 shrink-0 text-[var(--shell-subtext)] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           viewBox="0 0 20 20" fill="currentColor"
@@ -245,6 +303,22 @@ function Section({
       {open && (
         <div className="border-t border-[var(--shell-card-border)] px-5 py-5 space-y-4">
           {children}
+          {(onSave || onFinishLater) && (
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--shell-card-border)] pt-4 mt-2">
+              {onFinishLater && (
+                <button type="button" onClick={onFinishLater} disabled={saving}
+                  className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors">
+                  Terminar depois
+                </button>
+              )}
+              {onSave && (
+                <button type="button" onClick={onSave} disabled={saving}
+                  className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 transition-colors">
+                  {saving ? "Salvando..." : "Salvar seção"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -304,6 +378,44 @@ function CurrencyInput({
         disabled={disabled}
         className="flex-1 py-2 pr-3 pl-1.5 text-sm outline-none bg-transparent min-w-0"
       />
+    </div>
+  );
+}
+
+// ─── AreaInput ────────────────────────────────────────────────────────────────
+
+function AreaInput({
+  value, onChange, disabled, placeholder = "0,00",
+}: {
+  value: string; onChange: (v: string) => void; disabled?: boolean; placeholder?: string;
+}) {
+  const [display, setDisplay] = useState(() => fmtBRL(value) || "");
+  const skipSync = useRef(false);
+
+  useEffect(() => {
+    if (skipSync.current) { skipSync.current = false; return; }
+    setDisplay(fmtBRL(value) || "");
+  }, [value]);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    skipSync.current = true;
+    const masked = applyBRLMask(e.target.value);
+    setDisplay(masked);
+    const n = parseCurrencyInput(masked);
+    onChange(!masked || isNaN(n) ? "" : String(n));
+  }
+
+  return (
+    <div className={`flex w-full items-center rounded-lg border overflow-hidden transition-colors ${disabled ? "border-slate-200 bg-slate-100 dark:bg-slate-800 dark:border-slate-700" : "border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] focus-within:border-slate-500 focus-within:ring-1 focus-within:ring-slate-500/20"}`}>
+      <input
+        value={display}
+        onChange={handleChange}
+        inputMode="numeric"
+        placeholder={placeholder}
+        disabled={disabled}
+        className={`flex-1 py-2 pl-3 pr-1.5 text-sm outline-none bg-transparent min-w-0 ${disabled ? "text-slate-400 cursor-not-allowed" : "text-[var(--shell-text)]"}`}
+      />
+      <span className={`pr-3 text-sm select-none shrink-0 ${disabled ? "text-slate-400" : "text-[var(--shell-subtext)]"}`}>m²</span>
     </div>
   );
 }
@@ -1551,6 +1663,18 @@ export default function ProductEditPage() {
   function toggle(s: string) {
     setOpen((prev) => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
   }
+  function openNext(current: string) {
+    const order = ["identificacao", "midia", "comodos", "localizacao", "valores", "proprietarios", "documentacao", "descricao"];
+    const idx = order.indexOf(current);
+    if (idx >= 0 && idx < order.length - 1) setOpen(new Set([order[idx + 1]]));
+  }
+
+  // Section status
+  const [sectionStatus, setSectionStatus] = useState<Record<string, SectionStatus>>({});
+  const [savingSection, setSavingSection] = useState<string | null>(null);
+  const [confirmSection, setConfirmSection] = useState<string | null>(null);
+  const [confirmSectionEmptyFields, setConfirmSectionEmptyFields] = useState<string[]>([]);
+  const [finishLaterSection, setFinishLaterSection] = useState<string | null>(null);
 
   const f = (patch: Partial<FormData>) => setForm((p) => ({ ...p, ...patch }));
 
@@ -1694,14 +1818,11 @@ export default function ProductEditPage() {
         bathrooms: pa.bathrooms != null ? String(pa.bathrooms) : "",
         parkingSpaces: pa.parkingSpaces != null ? String(pa.parkingSpaces) : "",
         areaM2: pa.areaM2 != null ? String(pa.areaM2) : "",
-        builtAreaM2: pa.builtAreaM2 != null ? String(pa.builtAreaM2) : "",
         privateAreaM2: pa.privateAreaM2 != null ? String(pa.privateAreaM2) : "",
         landAreaM2: pa.landAreaM2 != null ? String(pa.landAreaM2) : "",
-        floor: pa.floor != null ? String(pa.floor) : "",
-        totalFloors: pa.totalFloors != null ? String(pa.totalFloors) : "",
+        privateAreaM2NA: pa.privateAreaM2 === null && pa.landAreaM2 !== null,
+        landAreaM2NA: pa.landAreaM2 === null && pa.privateAreaM2 !== null,
         yearBuilt: pa.yearBuilt != null ? String(pa.yearBuilt) : "",
-        sunPosition: pa.sunPosition ?? "",
-        furnished: pa.furnished ?? "",
         internalFeatures: Array.isArray(pa.internalFeatures) ? pa.internalFeatures : [],
         condoFeatures: Array.isArray(pa.condoFeatures) ? pa.condoFeatures : [],
         registrationNumber: pa.registrationNumber ?? "",
@@ -1709,7 +1830,12 @@ export default function ProductEditPage() {
         hasExclusivity: pa.hasExclusivity ?? false,
         exclusivityUntil: pa.exclusivityUntil ? pa.exclusivityUntil.split("T")[0] : "",
         virtualTourUrl: pa.virtualTourUrl ?? "",
+        description: pa.description ?? "",
+        tags: pa.tags ?? "",
       });
+      if (pa.sectionStatus && typeof pa.sectionStatus === "object") {
+        setSectionStatus(pa.sectionStatus as Record<string, SectionStatus>);
+      }
     } catch (e: any) {
       setError(e?.message ?? "Erro ao carregar produto");
     } finally {
@@ -1791,7 +1917,6 @@ export default function ProductEditPage() {
       suites:         source.suites != null ? String(source.suites) : form.suites,
       bathrooms:      source.bathrooms != null ? String(source.bathrooms) : form.bathrooms,
       parkingSpaces:  source.parkingSpaces != null ? String(source.parkingSpaces) : form.parkingSpaces,
-      builtAreaM2:    source.builtAreaM2 != null ? String(source.builtAreaM2) : form.builtAreaM2,
       privateAreaM2:  source.privateAreaM2 != null ? String(source.privateAreaM2) : form.privateAreaM2,
       condominiumName: source.condominiumName ?? form.condominiumName,
       internalFeatures: Array.isArray(source.internalFeatures) && source.internalFeatures.length > 0
@@ -1837,6 +1962,124 @@ export default function ProductEditPage() {
     }
   }
 
+  // ── Section save helpers ─────────────────────────────────────────────────────
+
+  async function persistSection(sectionId: string, status: SectionStatus) {
+    if (!id) return;
+    setSavingSection(sectionId);
+    try {
+      const newStatus = { ...sectionStatus, [sectionId]: status };
+      const payload: any = {
+        title: form.title.trim() || computedTitle,
+        origin: form.origin, type: form.type, status: form.status, publicationStatus: form.publicationStatus,
+        dealType: form.dealType || undefined, standard: form.standard || undefined,
+        condition: form.condition || undefined, referenceCode: form.referenceCode.trim() || undefined,
+        zipCode: form.zipCode.trim() || undefined, street: form.street.trim() || undefined,
+        streetNumber: form.streetNumber.trim() || undefined, complement: form.complement.trim() || undefined,
+        neighborhood: form.neighborhood.trim() || undefined, city: form.city.trim() || undefined,
+        state: form.state.trim() || undefined, condominiumName: form.condominiumName.trim() || undefined,
+        hideAddress: form.hideAddress,
+        price: parseNum(form.price), rentPrice: parseNum(form.rentPrice),
+        iptu: parseNum(form.iptu), condominiumFee: parseNum(form.condominiumFee),
+        acceptsFinancing: form.acceptsFinancing,
+        bedrooms: parseNum(form.bedrooms), suites: parseNum(form.suites),
+        bathrooms: parseNum(form.bathrooms), parkingSpaces: parseNum(form.parkingSpaces),
+        areaM2: parseNum(form.areaM2),
+        privateAreaM2: form.privateAreaM2NA ? null : parseNum(form.privateAreaM2),
+        landAreaM2: form.landAreaM2NA ? null : parseNum(form.landAreaM2),
+        yearBuilt: parseNum(form.yearBuilt),
+        internalFeatures: form.internalFeatures, condoFeatures: form.condoFeatures,
+        registrationNumber: form.registrationNumber.trim() || undefined,
+        propertySituation: form.propertySituation.trim() || undefined,
+        hasExclusivity: form.hasExclusivity, exclusivityUntil: form.exclusivityUntil || undefined,
+        virtualTourUrl: form.virtualTourUrl.trim() || undefined,
+        description: form.description?.trim() || null, tags: form.tags?.trim() || null,
+        sectionStatus: newStatus,
+      };
+      await updateProduct(id, payload);
+      setSectionStatus(newStatus);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao salvar seção");
+    } finally {
+      setSavingSection(null);
+    }
+  }
+
+  const FIELD_LABELS: Partial<Record<keyof typeof form, string>> = {
+    condition: "Estado do imóvel", standard: "Padrão", origin: "Origem",
+    internalFeatures: "Comodidades internas", condoFeatures: "Lazer do condomínio",
+    zipCode: "CEP", street: "Rua", streetNumber: "Número",
+    neighborhood: "Bairro", city: "Cidade", state: "Estado",
+    price: "Preço de venda", rentPrice: "Preço de locação",
+    iptu: "IPTU", condominiumFee: "Taxa de condomínio",
+    registrationNumber: "Matrícula", propertySituation: "Situação do imóvel",
+    description: "Descrição comercial", tags: "Tags",
+  };
+
+  const SECTION_FIELDS: Record<string, (keyof typeof form)[]> = {
+    identificacao: ["condition", "standard", "origin"],
+    midia: [],
+    comodos: ["internalFeatures", "condoFeatures"],
+    localizacao: ["zipCode", "street", "streetNumber", "neighborhood", "city", "state"],
+    valores: ["price", "rentPrice", "iptu", "condominiumFee"],
+    proprietarios: [],
+    documentacao: ["registrationNumber", "propertySituation"],
+    descricao: ["description", "tags"],
+  };
+
+  function getEmptyFieldLabels(sectionId: string): string[] {
+    if (sectionId === "midia") {
+      return productImages.length < 4 ? [`Mínimo de 4 fotos (${productImages.length} adicionada${productImages.length === 1 ? "" : "s"})`] : [];
+    }
+    if (sectionId === "proprietarios") {
+      return productOwners.length === 0 ? ["Proprietário vinculado"] : [];
+    }
+    const empty: string[] = [];
+    if (sectionId === "identificacao") {
+      for (const k of SECTION_FIELDS["identificacao"] ?? []) {
+        const v = form[k];
+        const isEmpty = typeof v === "string" ? v.trim() === "" : !v;
+        if (isEmpty) empty.push(FIELD_LABELS[k] ?? String(k));
+      }
+      if (!form.privateAreaM2NA && !form.privateAreaM2) empty.push("Área Privativa (m²)");
+      if (!form.landAreaM2NA && !form.landAreaM2) empty.push("Área do Terreno (m²)");
+      return empty;
+    }
+    for (const k of SECTION_FIELDS[sectionId] ?? []) {
+      const v = form[k];
+      const isEmpty = Array.isArray(v) ? v.length === 0 : typeof v === "string" ? v.trim() === "" : !v;
+      if (isEmpty) empty.push(FIELD_LABELS[k] ?? String(k));
+    }
+    return empty;
+  }
+
+  async function handleSaveSection(sectionId: string) {
+    const emptyFields = getEmptyFieldLabels(sectionId);
+    if (emptyFields.length > 0) {
+      setConfirmSectionEmptyFields(emptyFields);
+      setConfirmSection(sectionId);
+      return;
+    }
+    await persistSection(sectionId, "DONE");
+    openNext(sectionId);
+  }
+
+  async function handleConfirmSaveAnyway(sectionId: string) {
+    setConfirmSection(null);
+    await persistSection(sectionId, "INCOMPLETE");
+    openNext(sectionId);
+  }
+
+  function handleFinishLater(sectionId: string) {
+    setFinishLaterSection(sectionId);
+  }
+
+  async function handleConfirmFinishLater(sectionId: string) {
+    setFinishLaterSection(null);
+    await persistSection(sectionId, "PENDING");
+    openNext(sectionId);
+  }
+
   // ── Save ────────────────────────────────────────────────────────────────────
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -1875,14 +2118,9 @@ export default function ProductEditPage() {
         bathrooms: parseNum(form.bathrooms),
         parkingSpaces: parseNum(form.parkingSpaces),
         areaM2: parseNum(form.areaM2),
-        builtAreaM2: parseNum(form.builtAreaM2),
-        privateAreaM2: parseNum(form.privateAreaM2),
-        landAreaM2: parseNum(form.landAreaM2),
-        floor: parseNum(form.floor),
-        totalFloors: parseNum(form.totalFloors),
+        privateAreaM2: form.privateAreaM2NA ? null : parseNum(form.privateAreaM2),
+        landAreaM2: form.landAreaM2NA ? null : parseNum(form.landAreaM2),
         yearBuilt: parseNum(form.yearBuilt),
-        sunPosition: form.sunPosition || undefined,
-        furnished: form.furnished || undefined,
         internalFeatures: form.internalFeatures,
         condoFeatures: form.condoFeatures,
         registrationNumber: form.registrationNumber.trim() || undefined,
@@ -2495,7 +2733,7 @@ export default function ProductEditPage() {
           <div className="flex-1 min-w-0 space-y-3">
 
             {/* ── S1: Identificação ─────────────────────────────────────── */}
-            <Section id="identificacao" title="1. Identificação e Classificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")}>
+            <Section id="identificacao" title="1. Identificação e Classificação" open={open.has("identificacao")} onToggle={() => toggle("identificacao")} status={sectionStatus["identificacao"]} onSave={() => handleSaveSection("identificacao")} onFinishLater={() => handleFinishLater("identificacao")} saving={savingSection === "identificacao"}>
               {/* Nome para publicação */}
               <div className="mb-4">
                 <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Nome para publicação</label>
@@ -2587,6 +2825,28 @@ export default function ProductEditPage() {
                     <option value="PARTNERSHIP">Parceria com outra Imob/Corretor</option>
                   </select>
                 </Field>
+                <Field label="Área Privativa (m²)">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <AreaInput value={form.privateAreaM2NA ? "" : form.privateAreaM2} onChange={(v) => f({ privateAreaM2: v })} disabled={loading || form.privateAreaM2NA} />
+                    </div>
+                    <button type="button" onClick={() => f({ privateAreaM2NA: !form.privateAreaM2NA, privateAreaM2: !form.privateAreaM2NA ? "" : form.privateAreaM2 })}
+                      className={`shrink-0 rounded-lg border px-2.5 py-2 text-xs transition-colors ${form.privateAreaM2NA ? "border-slate-400 bg-slate-100 text-slate-600 font-medium dark:bg-slate-700 dark:text-slate-300" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                      N/A
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Área do Terreno (m²)">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <AreaInput value={form.landAreaM2NA ? "" : form.landAreaM2} onChange={(v) => f({ landAreaM2: v })} disabled={loading || form.landAreaM2NA} />
+                    </div>
+                    <button type="button" onClick={() => f({ landAreaM2NA: !form.landAreaM2NA, landAreaM2: !form.landAreaM2NA ? "" : form.landAreaM2 })}
+                      className={`shrink-0 rounded-lg border px-2.5 py-2 text-xs transition-colors ${form.landAreaM2NA ? "border-slate-400 bg-slate-100 text-slate-600 font-medium dark:bg-slate-700 dark:text-slate-300" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                      N/A
+                    </button>
+                  </div>
+                </Field>
               </div>
               {(form.type === "APARTAMENTO" || form.type === "CASA") && (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5">
@@ -2635,7 +2895,7 @@ export default function ProductEditPage() {
             </Section>
 
             {/* ── S2: Fotos e Detalhes ────────────────────────────────────────────── */}
-            {!isEmpreendimento && <Section id="midia" title="2. Fotos e Detalhes" open={open.has("midia")} onToggle={() => { toggle("midia"); if (!open.has("midia")) loadDocs(); }}>
+            {!isEmpreendimento && <Section id="midia" title="2. Fotos e Detalhes" open={open.has("midia")} onToggle={() => { toggle("midia"); if (!open.has("midia")) loadDocs(); }} status={sectionStatus["midia"]} onSave={() => handleSaveSection("midia")} onFinishLater={() => handleFinishLater("midia")} saving={savingSection === "midia"}>
 
               {/* Upload */}
               <div>
@@ -2861,7 +3121,7 @@ export default function ProductEditPage() {
             </Section>}
 
             {/* ── S3: Ambientes & Características ───────────────────────── */}
-            {!isEmpreendimento && <Section id="comodos" title="3. Ambientes & Características" open={open.has("comodos")} onToggle={() => toggle("comodos")}>
+            {!isEmpreendimento && <Section id="comodos" title="3. Ambientes & Características" open={open.has("comodos")} onToggle={() => toggle("comodos")} status={sectionStatus["comodos"]} onSave={() => handleSaveSection("comodos")} onFinishLater={() => handleFinishLater("comodos")} saving={savingSection === "comodos"}>
 
               {/* Resumo dos ambientes identificados nas fotos */}
               <div className="mb-4">
@@ -2946,7 +3206,7 @@ export default function ProductEditPage() {
             </Section>}
 
             {/* ── S4: Localização ──────────────────────────────────────── */}
-            <Section id="localizacao" title="4. Localização" open={open.has("localizacao")} onToggle={() => toggle("localizacao")}>
+            <Section id="localizacao" title="4. Localização" open={open.has("localizacao")} onToggle={() => toggle("localizacao")} status={sectionStatus["localizacao"]} onSave={() => handleSaveSection("localizacao")} onFinishLater={() => handleFinishLater("localizacao")} saving={savingSection === "localizacao"}>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="CEP">
                   <input value={form.zipCode}
@@ -2992,7 +3252,7 @@ export default function ProductEditPage() {
             </Section>
 
             {/* ── S5: Valores ──────────────────────────────────────────── */}
-            <Section id="valores" title="5. Valores" open={open.has("valores")} onToggle={() => toggle("valores")}>
+            <Section id="valores" title="5. Valores" open={open.has("valores")} onToggle={() => toggle("valores")} status={sectionStatus["valores"]} onSave={() => handleSaveSection("valores")} onFinishLater={() => handleFinishLater("valores")} saving={savingSection === "valores"}>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Preço de venda">
                   <CurrencyInput value={form.price} onChange={(v) => f({ price: v })} disabled={loading} />
@@ -3019,7 +3279,7 @@ export default function ProductEditPage() {
             </Section>
 
             {/* ── S6: Proprietário ─────────────────────────────────────── */}
-            {!isEmpreendimento && <Section id="proprietarios" title="6. Proprietário" open={open.has("proprietarios")} onToggle={() => toggle("proprietarios")}>
+            {!isEmpreendimento && <Section id="proprietarios" title="6. Proprietário" open={open.has("proprietarios")} onToggle={() => toggle("proprietarios")} status={sectionStatus["proprietarios"]} onSave={() => handleSaveSection("proprietarios")} onFinishLater={() => handleFinishLater("proprietarios")} saving={savingSection === "proprietarios"}>
 
               {ownersLoading ? (
                 <p className="text-sm text-[var(--shell-subtext)]">Carregando proprietários...</p>
@@ -3078,7 +3338,7 @@ export default function ProductEditPage() {
             </Section>}
 
             {/* ── S7: Documentação ──────────────────────────────────────── */}
-            <Section id="documentacao" title="7. Documentação" open={open.has("documentacao")} onToggle={() => toggle("documentacao")}>
+            <Section id="documentacao" title="7. Documentação" open={open.has("documentacao")} onToggle={() => toggle("documentacao")} status={sectionStatus["documentacao"]} onSave={() => handleSaveSection("documentacao")} onFinishLater={() => handleFinishLater("documentacao")} saving={savingSection === "documentacao"}>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Matrícula">
                   <input value={form.registrationNumber} onChange={(e) => f({ registrationNumber: e.target.value })}
@@ -3087,10 +3347,6 @@ export default function ProductEditPage() {
                 <Field label="Situação do imóvel">
                   <input value={form.propertySituation} onChange={(e) => f({ propertySituation: e.target.value })}
                     placeholder="Ex.: Quitado, Financiado..." className={inp} disabled={loading} />
-                </Field>
-                <Field label="Link tour virtual">
-                  <input value={form.virtualTourUrl} onChange={(e) => f({ virtualTourUrl: e.target.value })}
-                    placeholder="https://..." className={inp} disabled={loading} />
                 </Field>
                 {form.hasExclusivity && (
                   <Field label="Validade da exclusividade">
@@ -3103,6 +3359,17 @@ export default function ProductEditPage() {
               <Toggle checked={form.hasExclusivity} onChange={(v) => f({ hasExclusivity: v })} label="Exclusividade" />
             </Section>
 
+            <Section id="descricao" title="8. Título e Descrição" open={open.has("descricao")} onToggle={() => toggle("descricao")} status={sectionStatus["descricao"]} onSave={() => handleSaveSection("descricao")} onFinishLater={() => handleFinishLater("descricao")} saving={savingSection === "descricao"}>
+              <Field label="Descrição comercial">
+                <textarea value={form.description} onChange={(e) => f({ description: e.target.value })}
+                  rows={5} placeholder="Descreva o imóvel para o cliente..." disabled={loading}
+                  className={`w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400 resize-none`} />
+              </Field>
+              <Field label="Tags">
+                <input value={form.tags} onChange={(e) => f({ tags: e.target.value })}
+                  placeholder="Ex.: piscina, churrasqueira, vista mar" className={inp} disabled={loading} />
+              </Field>
+            </Section>
 
           </div>{/* fim coluna principal */}
 
@@ -3155,35 +3422,84 @@ export default function ProductEditPage() {
 
           {/* ── Fixed save footer ─────────────────────────────────────── */}
           <div className="sticky bottom-0 mt-4 flex items-center gap-2 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]/95 backdrop-blur-sm px-4 py-3 shadow-lg flex-wrap">
-            <select value={form.status} onChange={(e) => f({ status: e.target.value })} disabled={loading}
-              className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-500 transition-colors">
-              <option value="ACTIVE">Ativo</option>
-              <option value="INACTIVE">Inativo</option>
-              <option value="RESERVED">Reservado</option>
-              <option value="SOLD">Vendido</option>
-              <option value="SOLD_OUT">Esgotado</option>
-              <option value="ARCHIVED">Arquivado</option>
-            </select>
-            <select value={form.publicationStatus} onChange={(e) => f({ publicationStatus: e.target.value })} disabled={loading}
-              className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-500 transition-colors">
-              <option value="DRAFT">Rascunho</option>
-              <option value="PUBLISHED">Publicado</option>
-              <option value="UNPUBLISHED">Despublicado</option>
-            </select>
             <input value={form.referenceCode} onChange={(e) => f({ referenceCode: e.target.value })}
               placeholder="Código interno" disabled={loading}
               className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400 w-32" />
-            <div className="ml-auto flex gap-2">
-              <button type="button" onClick={load} disabled={loading || saving}
-                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50">
-                Recarregar
-              </button>
-              <button type="submit" disabled={loading || saving}
-                className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
-                {saving ? "Salvando..." : "Salvar"}
-              </button>
+            <button type="button" onClick={load} disabled={loading || saving}
+              className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-[var(--shell-bg)] disabled:opacity-50">
+              Recarregar
+            </button>
+            <button type="submit" disabled={loading || saving}
+              className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <select value={form.status} onChange={(e) => f({ status: e.target.value })} disabled={loading}
+                className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-500 transition-colors">
+                <option value="ACTIVE">Ativo</option>
+                <option value="INACTIVE">Inativo</option>
+                <option value="RESERVED">Reservado</option>
+                <option value="SOLD">Vendido</option>
+                <option value="SOLD_OUT">Esgotado</option>
+                <option value="ARCHIVED">Arquivado</option>
+              </select>
+              <select value={form.publicationStatus} onChange={(e) => f({ publicationStatus: e.target.value })} disabled={loading}
+                className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] outline-none focus:border-slate-500 transition-colors">
+                <option value="DRAFT">Rascunho</option>
+                <option value="PUBLISHED">Publicado</option>
+                <option value="UNPUBLISHED">Despublicado</option>
+              </select>
             </div>
           </div>
+
+          {/* Modal: salvar com campos vazios */}
+          {confirmSection && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+              <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl">
+                <h3 className="text-base font-semibold text-[var(--shell-text)] mb-2">Campos não preenchidos</h3>
+                <p className="text-sm text-[var(--shell-subtext)] mb-3">Os seguintes campos estão vazios nesta seção:</p>
+                <ul className="mb-5 space-y-1">
+                  {confirmSectionEmptyFields.map((label) => (
+                    <li key={label} className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />
+                      {label}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-sm text-[var(--shell-subtext)] mb-5">Deseja salvar mesmo assim?</p>
+                <div className="flex gap-3 justify-end">
+                  <button type="button" onClick={() => setConfirmSection(null)}
+                    className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]">
+                    Voltar
+                  </button>
+                  <button type="button" onClick={() => handleConfirmSaveAnyway(confirmSection)}
+                    className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+                    Salvar mesmo assim
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: terminar depois */}
+          {finishLaterSection && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+              <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl">
+                <h3 className="text-base font-semibold text-[var(--shell-text)] mb-2">Seção incompleta</h3>
+                <p className="text-sm text-[var(--shell-subtext)] mb-5">Para poder publicar este imóvel, é necessário retornar a esta seção e finalizar o cadastro.</p>
+                <div className="flex gap-3 justify-end">
+                  <button type="button" onClick={() => setFinishLaterSection(null)}
+                    className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]">
+                    Voltar
+                  </button>
+                  <button type="button" onClick={() => handleConfirmFinishLater(finishLaterSection)}
+                    className="rounded-lg bg-yellow-500 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-600">
+                    Entendido, salvar assim
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </form>
