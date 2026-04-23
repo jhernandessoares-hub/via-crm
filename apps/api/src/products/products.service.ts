@@ -1479,4 +1479,53 @@ Responda SOMENTE com o JSON válido, sem markdown, sem explicações adicionais.
 
     return { extracted };
   }
+
+  async generateDescription(user: any, productId: string) {
+    const product = await this.getById(user, productId) as any;
+
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) throw new BadRequestException('OPENAI_API_KEY não configurada.');
+
+    const openai = new OpenAI({ apiKey: openaiKey });
+
+    const tipo = product.type ?? 'Imóvel';
+    const finalidade = product.dealType === 'RENT' ? 'locação' : 'venda';
+    const partes: string[] = [];
+    if (product.bedrooms) partes.push(`${product.bedrooms} quarto(s)`);
+    if (product.suites) partes.push(`${product.suites} suíte(s)`);
+    if (product.bathrooms) partes.push(`${product.bathrooms} banheiro(s)`);
+    if (product.parkingSpaces) partes.push(`${product.parkingSpaces} vaga(s)`);
+    if (product.privateAreaM2) partes.push(`${product.privateAreaM2} m² privativos`);
+    if (product.landAreaM2) partes.push(`${product.landAreaM2} m² de terreno`);
+    if (product.neighborhood) partes.push(`bairro ${product.neighborhood}`);
+    if (product.city) partes.push(`${product.city}`);
+    if (product.condominiumName) partes.push(`condomínio ${product.condominiumName}`);
+    if (product.standard) partes.push(`padrão ${product.standard}`);
+    if (product.condition) partes.push(`${product.condition}`);
+    const internalFeatures: string[] = Array.isArray(product.internalFeatures) ? product.internalFeatures : [];
+    const condoFeatures: string[] = Array.isArray(product.condoFeatures) ? product.condoFeatures : [];
+    const price = product.price ? `R$ ${Number(product.price).toLocaleString('pt-BR')}` : null;
+
+    const prompt = `Você é um especialista em marketing imobiliário brasileiro. Escreva uma descrição comercial atraente para este imóvel.
+
+Tipo: ${tipo}
+Finalidade: ${finalidade}
+${partes.length ? `Características: ${partes.join(', ')}` : ''}
+${price ? `Preço: ${price}` : ''}
+${internalFeatures.length ? `Diferenciais internos: ${internalFeatures.join(', ')}` : ''}
+${condoFeatures.length ? `Lazer do condomínio: ${condoFeatures.join(', ')}` : ''}
+${product.paymentConditions ? `Condições: ${product.paymentConditions}` : ''}
+
+Escreva 2 a 3 parágrafos curtos e objetivos, com linguagem envolvente e profissional. Destaque os principais diferenciais. Não use bullet points. Não inclua título.`;
+
+    const response = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 500,
+      temperature: 0.7,
+    });
+
+    const description = response.choices[0]?.message?.content?.trim() ?? '';
+    return { description };
+  }
 }

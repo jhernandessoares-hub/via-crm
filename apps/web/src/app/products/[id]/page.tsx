@@ -1675,6 +1675,7 @@ export default function ProductEditPage() {
   const [confirmSection, setConfirmSection] = useState<string | null>(null);
   const [confirmSectionEmptyFields, setConfirmSectionEmptyFields] = useState<string[]>([]);
   const [finishLaterSection, setFinishLaterSection] = useState<string | null>(null);
+  const [generatingDesc, setGeneratingDesc] = useState(false);
 
   const f = (patch: Partial<FormData>) => setForm((p) => ({ ...p, ...patch }));
 
@@ -1745,6 +1746,8 @@ export default function ProductEditPage() {
     const suites = suitesFromPhotos || parseInt(f.suites) || 0;
     if (beds > 0) parts.push(`${beds} ${beds === 1 ? "quarto" : "quartos"}${suites > 0 ? ` (${suites} ${suites === 1 ? "suíte" : "suítes"})` : ""}`);
     else if (suites > 0) parts.push(`${suites} ${suites === 1 ? "suíte" : "suítes"}`);
+    const area = !f.privateAreaM2NA && parseFloat(f.privateAreaM2);
+    if (area) parts.push(`${area.toLocaleString("pt-BR")} m²`);
     if (f.condominiumName.trim()) parts.push(`Cond. ${f.condominiumName.trim()}`);
     else if (f.neighborhood.trim()) parts.push(f.neighborhood.trim());
     const priceNum = parseFloat(f.price);
@@ -3360,10 +3363,42 @@ export default function ProductEditPage() {
             </Section>
 
             <Section id="descricao" title="8. Título e Descrição" open={open.has("descricao")} onToggle={() => toggle("descricao")} status={sectionStatus["descricao"]} onSave={() => handleSaveSection("descricao")} onFinishLater={() => handleFinishLater("descricao")} saving={savingSection === "descricao"}>
+              {/* Nome para publicação */}
+              <Field label="Nome para publicação">
+                <div className="space-y-1.5">
+                  <div className="rounded-lg border border-[var(--shell-card-border)] bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-sm text-[var(--shell-subtext)]">
+                    {computedTitle || <span className="italic">Preencha Identificação e Localização para gerar automaticamente</span>}
+                  </div>
+                  <p className="text-[11px] text-[var(--shell-subtext)]">Gerado automaticamente. Para personalizar, edite o campo "Nome para publicação" na Seção 1.</p>
+                </div>
+              </Field>
+              {/* Descrição comercial */}
               <Field label="Descrição comercial">
-                <textarea value={form.description} onChange={(e) => f({ description: e.target.value })}
-                  rows={5} placeholder="Descreva o imóvel para o cliente..." disabled={loading}
-                  className={`w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400 resize-none`} />
+                <div className="space-y-2">
+                  <textarea value={form.description} onChange={(e) => f({ description: e.target.value })}
+                    rows={6} placeholder="Descreva o imóvel para o cliente..." disabled={loading}
+                    className={`w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-slate-400 resize-none`} />
+                  <button type="button" disabled={loading || generatingDesc}
+                    onClick={async () => {
+                      setGeneratingDesc(true);
+                      try {
+                        const { apiFetch } = await import("@/lib/api");
+                        const res = await apiFetch(`/products/${id}/ai/generate-description`, { method: "POST" });
+                        if (res?.description) f({ description: res.description });
+                      } catch (e: any) {
+                        setError(e?.message ?? "Erro ao gerar descrição");
+                      } finally {
+                        setGeneratingDesc(false);
+                      }
+                    }}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors">
+                    {generatingDesc ? (
+                      <><span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />Gerando...</>
+                    ) : (
+                      <><svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z" /></svg>Gerar com IA</>
+                    )}
+                  </button>
+                </div>
               </Field>
               <Field label="Tags">
                 <input value={form.tags} onChange={(e) => f({ tags: e.target.value })}

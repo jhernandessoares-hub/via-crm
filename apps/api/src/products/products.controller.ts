@@ -95,6 +95,11 @@ export class ProductsController {
     return this.productsService.extractInfoWithAI(req.user, id);
   }
 
+  @Post(':id/ai/generate-description')
+  async generateDescription(@Req() req: any, @Param('id') id: string) {
+    return this.productsService.generateDescription(req.user, id);
+  }
+
   // =========================
   // 📸 IMAGENS
   // =========================
