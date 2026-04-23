@@ -353,6 +353,17 @@ NEXT_PUBLIC_API_URL=
 **Redirecionamentos:** cada página verifica o `type` do produto ao carregar e redireciona para a página correta se necessário.
 
 **Regra:** cada tipo tem formulário independente. Mudanças só precisam ser replicadas se a funcionalidade for comum aos três tipos.
+
+**Página de imóvel (`[id]/page.tsx`) — sistema de seções:**
+- 8 seções (Identificação, Fotos, Ambientes, Localização, Valores, Proprietário, Documentação, Título e Descrição)
+- Cada seção tem botões "Salvar seção" e "Terminar depois"
+- Status: `DONE` (verde) = totalmente preenchido, `INCOMPLETE` (laranja) = salvo com campos vazios, `PENDING` (amarelo) = terminar depois
+- Modal de confirmação lista os campos vazios antes de salvar
+- `sectionStatus` é salvo no banco via `updateProduct` e recarregado ao abrir o imóvel
+- Campos de área (`privateAreaM2`, `landAreaM2`) com input fluido (máscara brasileira) e botão N/A — ficam na Seção 1
+- Seção 2 exige mínimo 4 fotos; Seção 6 exige pelo menos 1 proprietário vinculado
+- Footer: [Código interno] [Recarregar] [Salvar] à esquerda | [Status] [Publicação] à direita
+- `products.service.ts`: `update()` persiste `sectionStatus` no banco
 - `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
 - `/meus-leads` → leads atribuídos ao usuário logado (todos os roles) — usa `GET /leads/my`.
 - `/settings/permissions` → permissões por role (OWNER only) — toggles ver/criar/editar/excluir por módulo para MANAGER e AGENT. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
