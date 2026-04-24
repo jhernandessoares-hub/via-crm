@@ -83,6 +83,24 @@ function UnitTooltip({ unit, x, y }: { unit: DevelopmentUnit; x: number; y: numb
   );
 }
 
+// ─── InsertRowBtn ─────────────────────────────────────────────────────────────
+
+function InsertRowBtn({ label, onClick }: { label: string; onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div className="relative h-3 flex items-center group"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}>
+      {hover && (
+        <button type="button" onClick={onClick}
+          className="absolute left-0 right-0 z-10 flex items-center justify-center gap-1 rounded bg-[var(--brand-accent)] py-0.5 text-[10px] font-semibold text-white opacity-90 hover:opacity-100 transition-opacity">
+          ➕ {label}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── TerrainGrid ─────────────────────────────────────────────────────────────
 
 function TerrainGrid({ dev, onSelectTower, onSave }: {
@@ -115,6 +133,22 @@ function TerrainGrid({ dev, onSelectTower, onSave }: {
   function paintCell(row: number, col: number) {
     setSaved(false);
     setLayout((prev) => ({ ...prev, [`${row}-${col}`]: brushType }));
+  }
+
+  function insertRow(atIndex: number) {
+    // Desloca todas as linhas >= atIndex para baixo (+1)
+    setLayout((prev) => {
+      const next: Record<string, string> = {};
+      Object.entries(prev).forEach(([key, type]) => {
+        const [r, c] = key.split("-").map(Number);
+        if (r >= atIndex) next[`${r + 1}-${c}`] = type;
+        else next[key] = type;
+      });
+      return next;
+    });
+    setRows((r) => r + 1);
+    setTmpRows((r) => String(parseInt(r) + 1));
+    setSaved(false);
   }
 
   function layoutToArray() {
@@ -190,34 +224,42 @@ function TerrainGrid({ dev, onSelectTower, onSave }: {
         <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--shell-bg)]"
           onMouseLeave={() => setPainting(false)}>
           <SunIndicator orientation={dev.sunOrientation} />
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 2.5rem)`, gap: "3px" }}>
-            {Array.from({ length: rows }, (_, row) =>
-              Array.from({ length: cols }, (_, col) => {
-                const key = `${row}-${col}`;
-                const cellType = layout[key] ?? "UNIT";
-                const tower = towerMap[key];
-                const cfg = CELL_COLORS[cellType];
+          <div className="flex flex-col gap-0">
+            {/* Botão inserir linha no topo */}
+            <InsertRowBtn label="+ linha acima" onClick={() => insertRow(0)} />
 
-                return (
-                  <div key={key}
-                    className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-pointer select-none border"
-                    style={{
-                      backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
-                      borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
-                    }}
-                    onMouseDown={() => { setPainting(true); paintCell(row, col); }}
-                    onMouseEnter={() => { if (painting) paintCell(row, col); }}
-                    onMouseUp={() => setPainting(false)}
-                    onClick={() => { if (tower) onSelectTower(tower); }}>
-                    {tower ? (
-                      <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
-                    ) : (
-                      <span>{cfg?.emoji}</span>
-                    )}
-                  </div>
-                );
-              })
-            )}
+            {Array.from({ length: rows }, (_, row) => (
+              <div key={row} className="flex flex-col gap-0">
+                <div className="flex items-center gap-0.5">
+                  {Array.from({ length: cols }, (_, col) => {
+                    const key = `${row}-${col}`;
+                    const cellType = layout[key] ?? "UNIT";
+                    const tower = towerMap[key];
+                    const cfg = CELL_COLORS[cellType];
+                    return (
+                      <div key={key}
+                        className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-pointer select-none border m-px"
+                        style={{
+                          backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+                          borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
+                        }}
+                        onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+                        onMouseEnter={() => { if (painting) paintCell(row, col); }}
+                        onMouseUp={() => setPainting(false)}
+                        onClick={() => { if (tower) onSelectTower(tower); }}>
+                        {tower ? (
+                          <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
+                        ) : (
+                          <span>{cfg?.emoji}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Botão inserir linha abaixo desta */}
+                <InsertRowBtn label={`+ linha abaixo da ${row + 1}`} onClick={() => insertRow(row + 1)} />
+              </div>
+            ))}
           </div>
         </div>
       </div>
