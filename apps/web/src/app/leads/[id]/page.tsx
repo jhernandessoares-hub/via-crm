@@ -1251,6 +1251,12 @@ export default function LeadDetailChatPage() {
   const [nomeConfirmadoEdit, setNomeConfirmadoEdit] = useState<string>("");
   const [savingNomeConfirmado, setSavingNomeConfirmado] = useState(false);
 
+  // Unit selector
+  const [unitSelectorOpen, setUnitSelectorOpen] = useState(false);
+  const [unitSelectorUnits, setUnitSelectorUnits] = useState<any[]>([]);
+  const [unitSelectorLoading, setUnitSelectorLoading] = useState(false);
+  const [reservingUnitId, setReservingUnitId] = useState<string | null>(null);
+
   // SLA panel
   const [slaData, setSlaData] = useState<any>(null);
   const [slaLoading, setSlaLoading] = useState(false);
@@ -2326,6 +2332,37 @@ function discardAiSuggestion() {
 
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  async function openUnitSelector() {
+    if (!lead?.produtoInteresseId) return;
+    setUnitSelectorOpen(true);
+    setUnitSelectorLoading(true);
+    try {
+      const data = await apiFetch(`/products/${lead.produtoInteresseId}/units`);
+      setUnitSelectorUnits(Array.isArray(data) ? data : []);
+    } catch {
+      setUnitSelectorUnits([]);
+    } finally {
+      setUnitSelectorLoading(false);
+    }
+  }
+
+  async function reserveUnitForLead(unit: any) {
+    if (unit.status !== "DISPONIVEL") return;
+    setReservingUnitId(unit.id);
+    try {
+      await apiFetch(`/products/${lead!.produtoInteresseId}/units/${unit.id}/reserve`, {
+        method: "POST",
+        body: JSON.stringify({ leadId: lead!.id }),
+      });
+      setUnitSelectorOpen(false);
+      setUnitSelectorUnits([]);
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao reservar unidade");
+    } finally {
+      setReservingUnitId(null);
+    }
+  }
+
   function autoGrow() {
     const el = textAreaRef.current;
     if (!el) return;
@@ -2725,6 +2762,27 @@ function discardAiSuggestion() {
                 <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
               </a>
             )}
+
+            {/* Botão Selecionar Unidade — apenas para EMPREENDIMENTO ou LOTEAMENTO */}
+            {(() => {
+              if (!lead?.produtoInteresseId) return null;
+              const prod = products.find((p: any) => p.id === lead.produtoInteresseId);
+              if (!prod || !["EMPREENDIMENTO", "LOTEAMENTO"].includes(prod.type)) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={openUnitSelector}
+                  className="mt-2 flex w-full items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors dark:bg-indigo-950/30 dark:border-indigo-800 dark:text-indigo-300"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                    Selecionar Unidade
+                  </span>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+                </button>
+              );
+            })()}
+
             {/* Painel SLA */}
             {slaData && (
               <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
@@ -4012,6 +4070,39 @@ function discardAiSuggestion() {
               >
                 {savingNomeConfirmado ? "Salvando..." : "Confirmar"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal: Selecionar Unidade */}
+      {unitSelectorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }} onClick={() => setUnitSelectorOpen(false)}>
+          <div className="w-full max-w-3xl max-h-[85vh] flex flex-col rounded-2xl bg-[var(--shell-card-bg)] shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--shell-card-border)]">
+              <h3 className="text-base font-semibold text-[var(--shell-text)]">Selecionar Unidade</h3>
+              <button type="button" onClick={() => setUnitSelectorOpen(false)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+            </div>
+            <div className="px-6 py-3 border-b border-[var(--shell-card-border)] bg-green-50 dark:bg-green-950/20">
+              <p className="text-xs text-green-700 dark:text-green-300">
+                Clique em uma unidade <strong>disponível</strong> (verde) para reservá-la para este lead.
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {unitSelectorLoading ? (
+                <p className="text-sm text-center text-[var(--shell-subtext)]">Carregando planta...</p>
+              ) : unitSelectorUnits.length === 0 ? (
+                <p className="text-sm text-center text-[var(--shell-subtext)]">Nenhuma unidade cadastrada para este produto.</p>
+              ) : (() => {
+                const hasTower = unitSelectorUnits.some((u) => u.floor != null);
+                const n = unitSelectorUnits.length;
+                const cols = Math.round(Math.sqrt(n)) || 1;
+                if (hasTower) {
+                  const { default: TowerLayoutComp } = require("@/components/development/TowerLayout");
+                  return <TowerLayoutComp units={unitSelectorUnits} onSelect={(u: any) => reserveUnitForLead(u)} />;
+                }
+                const { default: LotGridComp } = require("@/components/development/LotGrid");
+                return <LotGridComp units={unitSelectorUnits} cols={cols} mode="lot" onSelect={(u: any) => reserveUnitForLead(u)} />;
+              })()}
             </div>
           </div>
         </div>
