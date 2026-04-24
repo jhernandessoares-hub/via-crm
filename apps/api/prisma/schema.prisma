@@ -1378,9 +1378,10 @@ model Development {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  towers  Tower[]
-  units   DevelopmentUnit[]
+  tenant           Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  towers           Tower[]
+  units            DevelopmentUnit[]
+  paymentCondition DevelopmentPaymentCondition?
 
   @@index([tenantId])
   @@map("developments")
@@ -1422,6 +1423,7 @@ model DevelopmentUnit {
   vagas          Int?
   valorVenda     Float?
   valorAvaliado  Float?
+  soldAt         DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1431,4 +1433,27 @@ model DevelopmentUnit {
   @@index([developmentId])
   @@index([towerId])
   @@map("development_units")
+}
+
+model DevelopmentPaymentCondition {
+  id                      String   @id @default(uuid())
+  developmentId           String   @unique
+  tenantId                String
+  aceitaFinanciamento     Boolean  @default(true)
+  valorAto                Float?   // R$ fixo pago no ato da assinatura
+  entradaPercentual       Float?   // % do valor total para entrada parcelada
+  entradaParcelas         Int?     // quantas parcelas da entrada até entrega
+  descontoAVista          Float?   // % de desconto para pagamento à vista
+  financiamentoBase       String?  // AVALIADO | VENDA
+  financiamentoPercentual Float?   // % sobre a base para financiamento bancário
+  proSoluto               Boolean  @default(false)
+  proSolutoPercentual     Float?   // % sobre valor de venda (ex: 3-5%)
+  proSolutoParcelas       Int?     // parcelas do pro-soluto após entrega das chaves
+  obs                     String?  // observações gerais
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("development_payment_conditions")
 }

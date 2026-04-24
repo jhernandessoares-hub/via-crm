@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DevelopmentsService } from './developments.service';
 
@@ -101,5 +101,19 @@ export class DevelopmentsController {
   removeUnit(@Req() req: any, @Param('id') id: string, @Param('unitId') unitId: string) {
     requireOwner(req);
     return this.svc.removeUnit(req.user.tenantId, id, unitId);
+  }
+
+  // ── Condições de Pagamento ─────────────────────────────────────────────────
+
+  @Get(':id/payment-condition')
+  getPaymentCondition(@Req() req: any, @Param('id') id: string) {
+    requireOwnerOrManager(req);
+    return this.svc.getPaymentCondition(req.user.tenantId, id);
+  }
+
+  @Put(':id/payment-condition')
+  upsertPaymentCondition(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    requireOwner(req);
+    return this.svc.upsertPaymentCondition(req.user.tenantId, id, body);
   }
 }

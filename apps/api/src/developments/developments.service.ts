@@ -46,6 +46,7 @@ export class DevelopmentsService {
             units: { orderBy: [{ andar: 'asc' }, { posicao: 'asc' }] },
           },
         },
+        paymentCondition: true,
       },
     });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
@@ -149,20 +150,11 @@ export class DevelopmentsService {
       for (let p = 1; p <= unitsPerFloor; p++) {
         const nome = `${prefix ?? ''}${f}${String(p).padStart(2, '0')}`;
         units.push({
-          tenantId,
-          developmentId,
-          towerId,
-          nome,
-          andar: f,
-          posicao: p,
-          status: 'DISPONIVEL',
-          areaM2: areaM2 ?? null,
-          quartos: quartos ?? null,
-          suites: suites ?? null,
-          banheiros: banheiros ?? null,
-          vagas: vagas ?? null,
-          valorVenda: valorVenda ?? null,
-          valorAvaliado: valorAvaliado ?? null,
+          tenantId, developmentId, towerId, nome,
+          andar: f, posicao: p, status: 'DISPONIVEL',
+          areaM2: areaM2 ?? null, quartos: quartos ?? null, suites: suites ?? null,
+          banheiros: banheiros ?? null, vagas: vagas ?? null,
+          valorVenda: valorVenda ?? null, valorAvaliado: valorAvaliado ?? null,
         });
       }
     }
@@ -176,14 +168,10 @@ export class DevelopmentsService {
     const { total, prefix, areaM2, valorVenda } = body;
 
     const units = Array.from({ length: total }, (_, i) => ({
-      tenantId,
-      developmentId,
-      towerId,
+      tenantId, developmentId, towerId,
       nome: `${prefix ?? 'Lote'} ${i + 1}`,
-      posicao: i + 1,
-      status: 'DISPONIVEL',
-      areaM2: areaM2 ?? null,
-      valorVenda: valorVenda ?? null,
+      posicao: i + 1, status: 'DISPONIVEL',
+      areaM2: areaM2 ?? null, valorVenda: valorVenda ?? null,
     }));
 
     await this.prisma.developmentUnit.createMany({ data: units });
@@ -191,11 +179,16 @@ export class DevelopmentsService {
   }
 
   async updateUnit(tenantId: string, developmentId: string, unitId: string, body: any) {
-    await this.assertUnit(tenantId, developmentId, unitId);
+    const current = await this.assertUnit(tenantId, developmentId, unitId);
 
     if (body.status === 'BLOQUEADO' && !body.bloqueioMotivo) {
       throw new ForbiddenException('Informe o motivo do bloqueio');
     }
+
+    // Set soldAt when first marked as VENDIDO; clear when leaving VENDIDO
+    let soldAt: Date | null | undefined = undefined;
+    if (body.status === 'VENDIDO' && current.status !== 'VENDIDO') soldAt = new Date();
+    else if (body.status && body.status !== 'VENDIDO' && current.status === 'VENDIDO') soldAt = null;
 
     return this.prisma.developmentUnit.update({
       where: { id: unitId },
@@ -210,6 +203,7 @@ export class DevelopmentsService {
         vagas: body.vagas,
         valorVenda: body.valorVenda,
         valorAvaliado: body.valorAvaliado,
+        ...(soldAt !== undefined ? { soldAt } : {}),
       },
     });
   }
@@ -223,12 +217,7 @@ export class DevelopmentsService {
     });
 
     await Promise.all(
-      units.map((u) =>
-        this.prisma.developmentUnit.update({
-          where: { id: u.id },
-          data: updates,
-        }),
-      ),
+      units.map((u) => this.prisma.developmentUnit.update({ where: { id: u.id }, data: updates })),
     );
 
     return { updated: units.length };
@@ -240,6 +229,37 @@ export class DevelopmentsService {
     return { ok: true };
   }
 
+  // ── Condições de Pagamento ─────────────────────────────────────────────────
+
+  async getPaymentCondition(tenantId: string, developmentId: string) {
+    await this.assertDevelopment(tenantId, developmentId);
+    return this.prisma.developmentPaymentCondition.findUnique({ where: { developmentId } });
+  }
+
+  async upsertPaymentCondition(tenantId: string, developmentId: string, body: any) {
+    await this.assertDevelopment(tenantId, developmentId);
+
+    const data = {
+      aceitaFinanciamento:     body.aceitaFinanciamento ?? true,
+      valorAto:                body.valorAto ?? null,
+      entradaPercentual:       body.entradaPercentual ?? null,
+      entradaParcelas:         body.entradaParcelas ?? null,
+      descontoAVista:          body.descontoAVista ?? null,
+      financiamentoBase:       body.financiamentoBase ?? null,
+      financiamentoPercentual: body.financiamentoPercentual ?? null,
+      proSoluto:               body.proSoluto ?? false,
+      proSolutoPercentual:     body.proSolutoPercentual ?? null,
+      proSolutoParcelas:       body.proSolutoParcelas ?? null,
+      obs:                     body.obs ?? null,
+    };
+
+    return this.prisma.developmentPaymentCondition.upsert({
+      where:  { developmentId },
+      create: { developmentId, tenantId, ...data },
+      update: data,
+    });
+  }
+
   // ── Dashboard ─────────────────────────────────────────────────────────────
 
   async dashboard(tenantId: string, developmentId: string) {
@@ -249,20 +269,36 @@ export class DevelopmentsService {
       where: { developmentId, tenantId },
     });
 
-    const total = units.length;
+    const total      = units.length;
     const disponivel = units.filter((u) => u.status === 'DISPONIVEL').length;
-    const reservado = units.filter((u) => u.status === 'RESERVADO').length;
-    const vendido = units.filter((u) => u.status === 'VENDIDO').length;
-    const bloqueado = units.filter((u) => u.status === 'BLOQUEADO').length;
+    const reservado  = units.filter((u) => u.status === 'RESERVADO').length;
+    const vendido    = units.filter((u) => u.status === 'VENDIDO').length;
+    const bloqueado  = units.filter((u) => u.status === 'BLOQUEADO').length;
 
-    const vgvTotal = units.reduce((s, u) => s + (u.valorVenda ?? 0), 0);
-    const vgvVendido = units.filter((u) => u.status === 'VENDIDO').reduce((s, u) => s + (u.valorVenda ?? 0), 0);
+    const vgvTotal      = units.reduce((s, u) => s + (u.valorVenda ?? 0), 0);
+    const vgvVendido    = units.filter((u) => u.status === 'VENDIDO').reduce((s, u) => s + (u.valorVenda ?? 0), 0);
+    const vgvReservado  = units.filter((u) => u.status === 'RESERVADO').reduce((s, u) => s + (u.valorVenda ?? 0), 0);
     const vgvDisponivel = units.filter((u) => u.status === 'DISPONIVEL').reduce((s, u) => s + (u.valorVenda ?? 0), 0);
+
+    // Últimos 12 meses de vendas
+    const now = new Date();
+    const monthly = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+      const mesKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const mesUnits = units.filter((u) => {
+        if (!u.soldAt) return false;
+        const s = new Date(u.soldAt);
+        return s.getFullYear() === d.getFullYear() && s.getMonth() === d.getMonth();
+      });
+      return { mes: mesKey, vendas: mesUnits.length, vgv: mesUnits.reduce((s, u) => s + (u.valorVenda ?? 0), 0) };
+    });
 
     return {
       total, disponivel, reservado, vendido, bloqueado,
-      vgvTotal, vgvVendido, vgvDisponivel,
+      vgvTotal, vgvVendido, vgvReservado, vgvDisponivel,
       percentualVendido: total > 0 ? Math.round((vendido / total) * 100) : 0,
+      vso: total > 0 ? Math.round(((vendido + reservado) / total) * 100) : 0,
+      monthly,
     };
   }
 }

@@ -16,6 +16,7 @@ export type DevelopmentUnit = {
   vagas?: number | null;
   valorVenda?: number | null;
   valorAvaliado?: number | null;
+  soldAt?: string | null;
 };
 
 export type Tower = {
@@ -26,6 +27,22 @@ export type Tower = {
   gridX?: number | null;
   gridY?: number | null;
   units: DevelopmentUnit[];
+};
+
+export type PaymentCondition = {
+  id: string;
+  developmentId: string;
+  aceitaFinanciamento: boolean;
+  valorAto?: number | null;
+  entradaPercentual?: number | null;
+  entradaParcelas?: number | null;
+  descontoAVista?: number | null;
+  financiamentoBase?: "AVALIADO" | "VENDA" | null;
+  financiamentoPercentual?: number | null;
+  proSoluto: boolean;
+  proSolutoPercentual?: number | null;
+  proSolutoParcelas?: number | null;
+  obs?: string | null;
 };
 
 export type Development = {
@@ -44,6 +61,22 @@ export type Development = {
   gridLayout?: any[] | null;
   descricao?: string | null;
   towers: Tower[];
+  paymentCondition?: PaymentCondition | null;
+};
+
+export type Dashboard = {
+  total: number;
+  disponivel: number;
+  reservado: number;
+  vendido: number;
+  bloqueado: number;
+  vgvTotal: number;
+  vgvVendido: number;
+  vgvReservado: number;
+  vgvDisponivel: number;
+  percentualVendido: number;
+  vso: number;
+  monthly: { mes: string; vendas: number; vgv: number }[];
 };
 
 export async function listDevelopments(): Promise<Development[]> {
@@ -83,10 +116,22 @@ export async function bulkCreateUnits(devId: string, towerId: string, body: any)
   return apiFetch(`/developments/${devId}/towers/${towerId}/units/bulk`, { method: "POST", body: JSON.stringify(body) });
 }
 
+export async function bulkUpdateUnits(devId: string, towerId: string, body: { andar?: number; updates: Partial<DevelopmentUnit> }) {
+  return apiFetch(`/developments/${devId}/towers/${towerId}/units/bulk`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
 export async function updateUnit(devId: string, unitId: string, body: Partial<DevelopmentUnit>) {
   return apiFetch(`/developments/${devId}/units/${unitId}`, { method: "PATCH", body: JSON.stringify(body) });
 }
 
-export async function getDashboard(devId: string) {
+export async function getDashboard(devId: string): Promise<Dashboard> {
   return apiFetch(`/developments/${devId}/dashboard`);
+}
+
+export async function getPaymentCondition(devId: string): Promise<PaymentCondition | null> {
+  return apiFetch(`/developments/${devId}/payment-condition`);
+}
+
+export async function upsertPaymentCondition(devId: string, body: Partial<PaymentCondition>): Promise<PaymentCondition> {
+  return apiFetch(`/developments/${devId}/payment-condition`, { method: "PUT", body: JSON.stringify(body) });
 }
