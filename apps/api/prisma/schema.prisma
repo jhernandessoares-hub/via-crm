@@ -109,7 +109,6 @@ model Tenant {
   slaRules               SlaRule[]
   tenantSites            TenantSite[]
   users                  User[]
-  developmentUnits       DevelopmentUnit[]
 
   @@map("tenants")
 }
@@ -256,7 +255,6 @@ model Lead {
   stage                   PipelineStage?       @relation(fields: [stageId], references: [id])
   tenant                  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews                 ManagerReview[]
-  unit                    DevelopmentUnit?     @relation("UnitLead")
 
   @@index([tenantId, telefoneKey])
   @@index([tenantId, status])
@@ -417,8 +415,6 @@ model Product {
   @@index([tenantId, origin, status])
   @@index([tenantId, city, neighborhood])
   @@index([tenantId, branchId])
-  priceRules             Json?
-  developmentUnits       DevelopmentUnit[]
 
   @@index([tenantId, kind])
   @@index([tenantId, dealType])
@@ -1358,38 +1354,4 @@ enum LearningStatus {
   APPROVED
   REJECTED
   APPLIED
-}
-
-
-model DevelopmentUnit {
-  id          String                @id @default(uuid())
-  tenantId    String
-  productId   String
-  tower       String?
-  floor       Int?
-  number      String
-  status      DevelopmentUnitStatus @default(DISPONIVEL)
-  areaM2      Float?
-  price       Float?
-  leadId      String?               @unique
-  buyerName   String?
-  soldAt      DateTime?
-  reservedAt  DateTime?
-  notes       String?
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
-
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  lead    Lead?   @relation("UnitLead", fields: [leadId], references: [id], onDelete: SetNull)
-
-  @@index([productId, status])
-  @@index([tenantId])
-  @@map("development_units")
-}
-
-enum DevelopmentUnitStatus {
-  DISPONIVEL
-  RESERVADO
-  VENDIDO
 }
