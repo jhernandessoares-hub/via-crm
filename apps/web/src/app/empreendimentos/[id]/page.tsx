@@ -25,13 +25,20 @@ const STATUS_LABEL: Record<UnitStatus, string> = {
 };
 
 const CELL_COLORS: Record<string, { bg: string; label: string; emoji: string }> = {
-  UNIT:          { bg: "var(--shell-card-bg)", label: "Unidade",      emoji: "" },
-  EMPTY:         { bg: "transparent",           label: "Vazio",        emoji: "" },
-  VEGETATION:    { bg: "#bbf7d0",               label: "Vegetação",    emoji: "🌳" },
-  PORTARIA:      { bg: "#bfdbfe",               label: "Portaria",     emoji: "🏪" },
-  RUA:           { bg: "#d1d5db",               label: "Rua",          emoji: "🛣️" },
-  CASA_MAQUINAS: { bg: "#fef9c3",               label: "Casa de Maq.", emoji: "⚙️" },
-  CAIXA_DAGUA:   { bg: "#e0f2fe",               label: "Caixa d'água", emoji: "💧" },
+  UNIT:          { bg: "var(--shell-card-bg)", label: "Unidade",        emoji: "" },
+  EMPTY:         { bg: "transparent",           label: "Vazio",          emoji: "" },
+  VEGETATION:    { bg: "#bbf7d0",               label: "Vegetação",      emoji: "🌳" },
+  PORTARIA:      { bg: "#bfdbfe",               label: "Portaria",       emoji: "🏪" },
+  RUA:           { bg: "#d1d5db",               label: "Rua",            emoji: "🛣️" },
+  MURO:          { bg: "#9ca3af",               label: "Muro",           emoji: "🧱" },
+  GARAGEM:       { bg: "#fde68a",               label: "Garagem",        emoji: "🚗" },
+  PISCINA:       { bg: "#7dd3fc",               label: "Piscina",        emoji: "🏊" },
+  QUADRA:        { bg: "#a7f3d0",               label: "Quadra",         emoji: "🏀" },
+  CHURRASQUEIRA: { bg: "#fca5a5",               label: "Churrasqueira",  emoji: "🔥" },
+  SALAO_FESTA:   { bg: "#ddd6fe",               label: "Salão de Festa", emoji: "🎉" },
+  AREA_LAZER:    { bg: "#d1fae5",               label: "Área de Lazer",  emoji: "🌿" },
+  CASA_MAQUINAS: { bg: "#fef9c3",               label: "Casa de Maq.",   emoji: "⚙️" },
+  CAIXA_DAGUA:   { bg: "#e0f2fe",               label: "Caixa d'água",   emoji: "💧" },
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -129,12 +136,11 @@ function TerrainGrid({ dev, onSelectTower, onSave }: {
     }
   }
 
-  function applyGridResize() {
-    const r = Math.max(1, Math.min(50, parseInt(tmpRows) || rows));
-    const c = Math.max(1, Math.min(50, parseInt(tmpCols) || cols));
-    setRows(r);
-    setCols(c);
-    setEditingGrid(false);
+  function applyGridResize(r: string, c: string) {
+    const newRows = Math.max(1, Math.min(50, parseInt(r) || rows));
+    const newCols = Math.max(1, Math.min(50, parseInt(c) || cols));
+    setRows(newRows);
+    setCols(newCols);
     setSaved(false);
   }
 
@@ -154,13 +160,14 @@ function TerrainGrid({ dev, onSelectTower, onSave }: {
           {/* Grid resize */}
           {editingGrid ? (
             <div className="flex items-center gap-2 rounded-lg border border-[var(--brand-accent)] bg-[var(--brand-accent)]/5 px-3 py-1.5">
-              <input type="number" value={tmpRows} onChange={(e) => setTmpRows(e.target.value)}
-                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
-              <span className="text-xs text-[var(--shell-subtext)]">×</span>
-              <input type="number" value={tmpCols} onChange={(e) => setTmpCols(e.target.value)}
-                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
-              <button type="button" onClick={applyGridResize}
-                className="rounded bg-[var(--brand-accent)] px-2 py-0.5 text-xs text-white font-medium">OK</button>
+              <span className="text-xs text-[var(--shell-subtext)]">Linhas:</span>
+              <input type="number" value={tmpRows}
+                onChange={(e) => { setTmpRows(e.target.value); applyGridResize(e.target.value, tmpCols); }}
+                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
+              <span className="text-xs text-[var(--shell-subtext)]">Colunas:</span>
+              <input type="number" value={tmpCols}
+                onChange={(e) => { setTmpCols(e.target.value); applyGridResize(tmpRows, e.target.value); }}
+                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
               <button type="button" onClick={() => setEditingGrid(false)}
                 className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
             </div>
