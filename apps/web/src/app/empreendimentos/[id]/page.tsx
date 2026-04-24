@@ -13,6 +13,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
   ResponsiveContainer, CartesianGrid,
 } from "recharts";
+import * as XLSX from "xlsx";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -574,6 +575,127 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
   );
 }
 
+// ─── BuildingIsometric ───────────────────────────────────────────────────────
+
+function BuildingIsometric({ tower, onSelectUnit }: { tower: Tower; onSelectUnit: (u: DevelopmentUnit) => void }) {
+  const [tooltip, setTooltip] = useState<{ unit: DevelopmentUnit; x: number; y: number } | null>(null);
+
+  const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
+  for (const u of tower.units) {
+    const f = u.andar ?? 1;
+    if (!unitsByFloor[f]) unitsByFloor[f] = [];
+    unitsByFloor[f].push(u);
+  }
+  const floors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
+
+  if (tower.units.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-[var(--shell-subtext)]">
+        <p className="text-sm">Nenhuma unidade cadastrada nesta torre.</p>
+      </div>
+    );
+  }
+
+  const UW   = 46;   // largura de cada unidade
+  const UH   = 34;   // altura de cada andar
+  const DX   = 18;   // offset X da profundidade
+  const DY   = 11;   // offset Y da profundidade (pra cima)
+  const PAD  = 10;
+
+  const maxCols  = Math.max(...floors.map((f) => (unitsByFloor[f] ?? []).length));
+  const nFloors  = floors.length;
+  const FRONT_W  = maxCols * UW;
+  const FRONT_H  = nFloors * UH;
+  const TOP_PAD  = DY + PAD;
+  const SVG_W    = PAD + FRONT_W + DX + PAD + 20; // +20 para labels de andar
+  const SVG_H    = TOP_PAD + FRONT_H + PAD;
+
+  const pt = (x: number, y: number) => `${x},${y}`;
+
+  const topFacePoints = [
+    pt(PAD, TOP_PAD),
+    pt(PAD + FRONT_W, TOP_PAD),
+    pt(PAD + FRONT_W + DX, TOP_PAD - DY),
+    pt(PAD + DX, TOP_PAD - DY),
+  ].join(" ");
+
+  const rightFacePoints = [
+    pt(PAD + FRONT_W,      TOP_PAD),
+    pt(PAD + FRONT_W + DX, TOP_PAD - DY),
+    pt(PAD + FRONT_W + DX, TOP_PAD - DY + FRONT_H),
+    pt(PAD + FRONT_W,      TOP_PAD + FRONT_H),
+  ].join(" ");
+
+  return (
+    <div className="overflow-auto">
+      <svg width={SVG_W} height={SVG_H} style={{ display: "block" }}>
+        {/* Face de topo */}
+        <polygon points={topFacePoints} fill="#94a3b8" opacity={0.55} />
+        {/* Face lateral direita */}
+        <polygon points={rightFacePoints} fill="#64748b" opacity={0.65} />
+
+        {/* Unidades na fachada frontal */}
+        {floors.map((floor, fi) =>
+          (unitsByFloor[floor] ?? []).map((unit, col) => {
+            const x = PAD + col * UW;
+            const y = TOP_PAD + fi * UH;
+            const color = STATUS_COLOR[unit.status];
+            const W = UW - 2; const H = UH - 2;
+            const pw = (W - 9) / 2; const ph = (H - 9) / 2;
+            return (
+              <g key={unit.id} style={{ cursor: "pointer" }}
+                onClick={() => onSelectUnit(unit)}
+                onMouseEnter={(e) => setTooltip({ unit, x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setTooltip(null)}>
+                <rect x={x + 1} y={y + 1} width={W} height={H}
+                  fill={color + "30"} stroke={color} strokeWidth={1.5} rx={2} />
+                {/* 4 vidraças */}
+                {([[0,0],[1,0],[0,1],[1,1]] as [number,number][]).map(([wx, wy], i) => (
+                  <rect key={i}
+                    x={x + 4 + wx * (pw + 1)} y={y + 4 + wy * (ph + 1)}
+                    width={pw} height={ph}
+                    fill={color + "70"} rx={1} />
+                ))}
+                <text x={x + UW / 2} y={y + UH - 4}
+                  textAnchor="middle" fontSize={7} fill={color} fontWeight="bold">
+                  {unit.nome.replace(/\D/g, "").slice(-3)}
+                </text>
+              </g>
+            );
+          })
+        )}
+
+        {/* Labels de andar à direita */}
+        {floors.map((floor, fi) => (
+          <text key={floor}
+            x={PAD + FRONT_W + DX + 4}
+            y={TOP_PAD - DY + fi * UH + UH / 2 + 3}
+            fontSize={8} fill="#94a3b8" fontWeight="600">
+            {floor}°
+          </text>
+        ))}
+
+        {/* Linha de base do prédio */}
+        <line x1={PAD} y1={TOP_PAD + FRONT_H}
+          x2={PAD + FRONT_W} y2={TOP_PAD + FRONT_H}
+          stroke="#475569" strokeWidth={2} />
+      </svg>
+
+      {tooltip && <UnitTooltip unit={tooltip.unit} x={tooltip.x} y={tooltip.y} />}
+
+      {/* Legenda */}
+      <div className="flex items-center gap-3 mt-3 text-xs text-[var(--shell-subtext)]">
+        {(Object.keys(STATUS_COLOR) as UnitStatus[]).map((s) => (
+          <span key={s} className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-sm border-2" style={{ backgroundColor: STATUS_COLOR[s] + "33", borderColor: STATUS_COLOR[s] }} />
+            {STATUS_LABEL[s]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── BuildingFacade ───────────────────────────────────────────────────────────
 
 function BuildingFacade({ tower, onSelectUnit }: { tower: Tower; onSelectUnit: (u: DevelopmentUnit) => void }) {
@@ -651,6 +773,100 @@ function BuildingFacade({ tower, onSelectUnit }: { tower: Tower; onSelectUnit: (
       </div>
     </div>
   );
+}
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+
+function exportExcel(dev: Development, paymentCondition: PaymentCondition | null | undefined) {
+  const wb = XLSX.utils.book_new();
+
+  // Aba 1: Tabela de Preços
+  const header = ["Torre", "Unidade", "Andar", "Status", "Área m²", "Quartos", "Suítes", "Banheiros", "Vagas", "Valor Venda (R$)", "Valor Avaliado (R$)"];
+  const rows: any[][] = [header];
+  dev.towers.forEach((t) =>
+    t.units.forEach((u) =>
+      rows.push([t.nome, u.nome, u.andar ?? "", STATUS_LABEL[u.status], u.areaM2 ?? "", u.quartos ?? "", u.suites ?? "", u.banheiros ?? "", u.vagas ?? "", u.valorVenda ?? "", u.valorAvaliado ?? ""])
+    )
+  );
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  ws1["!cols"] = header.map(() => ({ wch: 16 }));
+  XLSX.utils.book_append_sheet(wb, ws1, "Tabela de Preços");
+
+  // Aba 2: Condições de Pagamento
+  if (paymentCondition) {
+    const pc = paymentCondition;
+    const pcRows: any[][] = [
+      ["Campo", "Valor"],
+      ["Aceita Financiamento Bancário", pc.aceitaFinanciamento ? "Sim" : "Não"],
+      ["Valor de Ato (R$)", pc.valorAto ?? "—"],
+      ["Entrada (%)", pc.entradaPercentual != null ? `${pc.entradaPercentual}%` : "—"],
+      ["Parcelas da Entrada", pc.entradaParcelas ?? "—"],
+      ["Desconto à Vista (%)", pc.descontoAVista != null ? `${pc.descontoAVista}%` : "—"],
+      ["Base do Financiamento", pc.financiamentoBase ?? "—"],
+      ["Financiamento (%)", pc.financiamentoPercentual != null ? `${pc.financiamentoPercentual}%` : "—"],
+      ["Pro-soluto", pc.proSoluto ? "Sim" : "Não"],
+      ["Pro-soluto (%)", pc.proSolutoPercentual != null ? `${pc.proSolutoPercentual}%` : "—"],
+      ["Pro-soluto (parcelas)", pc.proSolutoParcelas ?? "—"],
+      ["Observações", pc.obs ?? "—"],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(pcRows);
+    ws2["!cols"] = [{ wch: 32 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws2, "Condições de Pagamento");
+  }
+
+  XLSX.writeFile(wb, `${dev.nome} — Tabela de Preços.xlsx`);
+}
+
+function exportPDF(dev: Development, paymentCondition: PaymentCondition | null | undefined) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+
+  const rows = dev.towers.flatMap((t) =>
+    t.units.map((u) => `
+      <tr>
+        <td>${t.nome}</td><td>${u.nome}</td><td>${u.andar ?? "—"}</td>
+        <td style="color:${STATUS_COLOR[u.status]};font-weight:600">${STATUS_LABEL[u.status]}</td>
+        <td>${u.areaM2 ?? "—"}</td><td>${u.quartos ?? "—"}</td>
+        <td>${u.valorVenda ? `R$ ${Number(u.valorVenda).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}</td>
+        <td>${u.valorAvaliado ? `R$ ${Number(u.valorAvaliado).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}</td>
+      </tr>`)
+  ).join("");
+
+  const pcTable = paymentCondition ? `
+    <h3>Condições de Pagamento</h3>
+    <table>
+      <tr><td><b>Aceita Financiamento</b></td><td>${paymentCondition.aceitaFinanciamento ? "Sim" : "Não"}</td></tr>
+      ${paymentCondition.valorAto ? `<tr><td><b>Valor de Ato</b></td><td>R$ ${paymentCondition.valorAto.toLocaleString("pt-BR")}</td></tr>` : ""}
+      ${paymentCondition.entradaPercentual ? `<tr><td><b>Entrada</b></td><td>${paymentCondition.entradaPercentual}% em ${paymentCondition.entradaParcelas ?? "?"} parcelas</td></tr>` : ""}
+      ${paymentCondition.descontoAVista ? `<tr><td><b>Desconto à Vista</b></td><td>${paymentCondition.descontoAVista}%</td></tr>` : ""}
+      ${paymentCondition.financiamentoPercentual ? `<tr><td><b>Financiamento</b></td><td>${paymentCondition.financiamentoPercentual}% sobre ${paymentCondition.financiamentoBase === "AVALIADO" ? "valor avaliado" : "valor de venda"}</td></tr>` : ""}
+      ${paymentCondition.proSoluto ? `<tr><td><b>Pro-soluto</b></td><td>${paymentCondition.proSolutoPercentual}% em ${paymentCondition.proSolutoParcelas ?? "?"} parcelas</td></tr>` : ""}
+      ${paymentCondition.obs ? `<tr><td><b>Obs.</b></td><td>${paymentCondition.obs}</td></tr>` : ""}
+    </table>` : "";
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>${dev.nome} — Tabela de Preços</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; padding: 24px; }
+      h2 { margin: 0 0 4px; font-size: 16px; } h3 { margin: 20px 0 6px; font-size: 13px; }
+      p  { margin: 0 0 16px; color: #64748b; font-size: 10px; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+      th { background: #f1f5f9; font-weight: 700; text-align: left; padding: 6px 8px; border: 1px solid #e2e8f0; }
+      td { padding: 5px 8px; border: 1px solid #e2e8f0; }
+      tr:nth-child(even) { background: #f8fafc; }
+      @media print { body { padding: 12px; } }
+    </style></head><body>
+    <h2>${dev.nome}</h2>
+    <p>${dev.cidade ?? ""}${dev.cidade && dev.estado ? ` / ${dev.estado}` : dev.estado ?? ""} · Gerado em ${new Date().toLocaleDateString("pt-BR")}</p>
+    <h3>Tabela de Preços</h3>
+    <table>
+      <thead><tr><th>Torre</th><th>Unidade</th><th>Andar</th><th>Status</th><th>Área m²</th><th>Quartos</th><th>Vl. Venda</th><th>Vl. Avaliado</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${pcTable}
+    </body></html>`);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 400);
 }
 
 // ─── PriceTable ───────────────────────────────────────────────────────────────
@@ -1111,7 +1327,8 @@ export default function EmpreendimentoPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [tab, setTab]   = useState<"terreno" | "fachada" | "precos" | "dashboard">("terreno");
+  const [tab,      setTab]      = useState<"terreno" | "fachada" | "precos" | "dashboard">("terreno");
+  const [view3d,   setView3d]   = useState(false);
   const [selectedTower, setSelectedTower] = useState<Tower | null>(null);
   const [selectedUnit,  setSelectedUnit]  = useState<DevelopmentUnit | null>(null);
 
@@ -1306,10 +1523,26 @@ export default function EmpreendimentoPage() {
               </div>
             )}
             <div className="flex-1 min-w-0 rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
-              {selectedTower
-                ? <BuildingFacade tower={selectedTower} onSelectUnit={openUnitModal} />
-                : <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Selecione uma torre para ver a fachada</div>
-              }
+              {selectedTower ? (
+                <>
+                  {/* Toggle 2D / 3D */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xs text-[var(--shell-subtext)] font-medium">Vista:</span>
+                    {[{ k: false, l: "⬛ 2D Frontal" }, { k: true, l: "🏗️ 3D Isométrico" }].map(({ k, l }) => (
+                      <button key={String(k)} type="button" onClick={() => setView3d(k as boolean)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors
+                          ${view3d === k ? "bg-slate-900 text-white" : "border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                  {view3d
+                    ? <BuildingIsometric tower={selectedTower} onSelectUnit={openUnitModal} />
+                    : <BuildingFacade    tower={selectedTower} onSelectUnit={openUnitModal} />}
+                </>
+              ) : (
+                <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Selecione uma torre para ver a fachada</div>
+              )}
             </div>
           </div>
         )}
@@ -1318,7 +1551,19 @@ export default function EmpreendimentoPage() {
         {tab === "precos" && (
           <div className="space-y-8">
             <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6">
-              <h2 className="text-base font-semibold text-[var(--shell-text)] mb-5">Tabela de Preços</h2>
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-base font-semibold text-[var(--shell-text)]">Tabela de Preços</h2>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => exportExcel(dev, dev.paymentCondition)}
+                    className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors">
+                    📊 Excel
+                  </button>
+                  <button onClick={() => exportPDF(dev, dev.paymentCondition)}
+                    className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors">
+                    📄 PDF
+                  </button>
+                </div>
+              </div>
               <PriceTable dev={dev} onSaved={load} />
             </div>
             <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6">
