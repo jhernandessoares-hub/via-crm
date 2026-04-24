@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import {
-  getDevelopment, createTower, updateTower, deleteTower,
+  getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
   bulkCreateUnits, updateUnit, getDashboard,
   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
 } from "@/lib/developments.service";
@@ -78,7 +78,11 @@ function UnitTooltip({ unit, x, y }: { unit: DevelopmentUnit; x: number; y: numb
 
 // ─── TerrainGrid ─────────────────────────────────────────────────────────────
 
-function TerrainGrid({ dev, onSelectTower }: { dev: Development; onSelectTower: (t: Tower) => void }) {
+function TerrainGrid({ dev, onSelectTower, onSave }: {
+  dev: Development;
+  onSelectTower: (t: Tower) => void;
+  onSave: (layout: any[], rows: number, cols: number) => Promise<void>;
+}) {
   const [layout, setLayout] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     if (dev.gridLayout) {
@@ -88,12 +92,50 @@ function TerrainGrid({ dev, onSelectTower }: { dev: Development; onSelectTower: 
   });
   const [brushType, setBrushType] = useState<string>("EMPTY");
   const [painting, setPainting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(true);
+
+  // Grid resize
+  const [rows, setRows] = useState(dev.gridRows);
+  const [cols, setCols] = useState(dev.gridCols);
+  const [editingGrid, setEditingGrid] = useState(false);
+  const [tmpRows, setTmpRows] = useState(String(dev.gridRows));
+  const [tmpCols, setTmpCols] = useState(String(dev.gridCols));
 
   const towerMap: Record<string, Tower> = {};
   dev.towers.forEach((t) => { if (t.gridX != null && t.gridY != null) towerMap[`${t.gridY}-${t.gridX}`] = t; });
 
   function paintCell(row: number, col: number) {
+    setSaved(false);
     setLayout((prev) => ({ ...prev, [`${row}-${col}`]: brushType }));
+  }
+
+  function layoutToArray() {
+    return Object.entries(layout)
+      .filter(([, type]) => type !== "UNIT")
+      .map(([key, type]) => {
+        const [r, c] = key.split("-").map(Number);
+        return { row: r, col: c, type };
+      });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(layoutToArray(), rows, cols);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function applyGridResize() {
+    const r = Math.max(1, Math.min(50, parseInt(tmpRows) || rows));
+    const c = Math.max(1, Math.min(50, parseInt(tmpCols) || cols));
+    setRows(r);
+    setCols(c);
+    setEditingGrid(false);
+    setSaved(false);
   }
 
   return (
@@ -108,43 +150,74 @@ function TerrainGrid({ dev, onSelectTower }: { dev: Development; onSelectTower: 
             {cfg.emoji} {cfg.label}
           </button>
         ))}
-      </div>
-
-      {/* Grid */}
-      <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--shell-bg)]">
-        <SunIndicator orientation={dev.sunOrientation} />
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${dev.gridCols}, 2.5rem)`, gap: "3px" }}>
-          {Array.from({ length: dev.gridRows }, (_, row) =>
-            Array.from({ length: dev.gridCols }, (_, col) => {
-              const key = `${row}-${col}`;
-              const cellType = layout[key] ?? "UNIT";
-              const tower = towerMap[key];
-              const cfg = CELL_COLORS[cellType];
-
-              return (
-                <div key={key}
-                  className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-pointer select-none border"
-                  style={{
-                    backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
-                    borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
-                  }}
-                  onMouseDown={() => { setPainting(true); paintCell(row, col); }}
-                  onMouseEnter={() => { if (painting) paintCell(row, col); }}
-                  onMouseUp={() => setPainting(false)}
-                  onClick={() => { if (tower) onSelectTower(tower); }}>
-                  {tower ? (
-                    <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
-                  ) : (
-                    <span>{cfg?.emoji}</span>
-                  )}
-                </div>
-              );
-            })
+        <div className="ml-auto flex items-center gap-2">
+          {/* Grid resize */}
+          {editingGrid ? (
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--brand-accent)] bg-[var(--brand-accent)]/5 px-3 py-1.5">
+              <input type="number" value={tmpRows} onChange={(e) => setTmpRows(e.target.value)}
+                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
+              <span className="text-xs text-[var(--shell-subtext)]">×</span>
+              <input type="number" value={tmpCols} onChange={(e) => setTmpCols(e.target.value)}
+                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
+              <button type="button" onClick={applyGridResize}
+                className="rounded bg-[var(--brand-accent)] px-2 py-0.5 text-xs text-white font-medium">OK</button>
+              <button type="button" onClick={() => setEditingGrid(false)}
+                className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => { setTmpRows(String(rows)); setTmpCols(String(cols)); setEditingGrid(true); }}
+              className="rounded-lg border border-[var(--shell-card-border)] px-2.5 py-1 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]">
+              ✏️ {rows}×{cols}
+            </button>
           )}
+          {/* Save button */}
+          <button type="button" onClick={handleSave} disabled={saving || saved}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${saved ? "border border-green-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`}>
+            {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar terreno"}
+          </button>
         </div>
       </div>
 
-      <p className="text-xs text-[var(--shell-subtext)]">Clique e arraste para pintar células. Clique em uma torre para ver a fachada.</p>
+      {/* Grid */}
+      <div className="overflow-auto">
+        <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--shell-bg)]"
+          onMouseLeave={() => setPainting(false)}>
+          <SunIndicator orientation={dev.sunOrientation} />
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 2.5rem)`, gap: "3px" }}>
+            {Array.from({ length: rows }, (_, row) =>
+              Array.from({ length: cols }, (_, col) => {
+                const key = `${row}-${col}`;
+                const cellType = layout[key] ?? "UNIT";
+                const tower = towerMap[key];
+                const cfg = CELL_COLORS[cellType];
+
+                return (
+                  <div key={key}
+                    className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-pointer select-none border"
+                    style={{
+                      backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+                      borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
+                    }}
+                    onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+                    onMouseEnter={() => { if (painting) paintCell(row, col); }}
+                    onMouseUp={() => setPainting(false)}
+                    onClick={() => { if (tower) onSelectTower(tower); }}>
+                    {tower ? (
+                      <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
+                    ) : (
+                      <span>{cfg?.emoji}</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-xs text-[var(--shell-subtext)]">
+        Clique e arraste para pintar · ✏️ para redimensionar · Clique em uma torre (azul) para ver a fachada
+      </p>
     </div>
   );
 }
@@ -303,6 +376,11 @@ export default function EmpreendimentoPage() {
     }
   }, [dev]);
 
+  async function handleSaveLayout(layout: any[], rows: number, cols: number) {
+    await updateDevelopment(id, { gridLayout: layout, gridRows: rows, gridCols: cols } as any);
+    await load();
+  }
+
   async function handleCreateTower() {
     if (!towerNome.trim()) return;
     setSavingTower(true);
@@ -448,7 +526,7 @@ export default function EmpreendimentoPage() {
 
             <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
               {view === "terreno" ? (
-                <TerrainGrid dev={dev} onSelectTower={(t) => { setSelectedTower(t); setView("fachada"); }} />
+                <TerrainGrid dev={dev} onSelectTower={(t) => { setSelectedTower(t); setView("fachada"); }} onSave={handleSaveLayout} />
               ) : selectedTower ? (
                 <BuildingFacade tower={selectedTower} onSelectUnit={openUnitModal} />
               ) : (
