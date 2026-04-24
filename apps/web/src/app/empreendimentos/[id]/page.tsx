@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import {
-  getDevelopment, updateDevelopment, createTower, deleteTower,
+  getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
   bulkCreateUnits, bulkUpdateUnits, updateUnit, getDashboard,
   getPaymentCondition, upsertPaymentCondition,
   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
@@ -116,11 +116,13 @@ function BtnMinus({ onClick, label }: { onClick: () => void; label: string }) {
   );
 }
 
-function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
+function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, onClearTowerPosition }: {
   dev: Development;
   onSelectTower: (t: Tower) => void;
   onSave: (layout: any[], rows: number, cols: number, sun: string) => Promise<void>;
   onSunChange: (sun: string) => void;
+  onPlaceTower: (towerId: string, col: number, row: number) => Promise<void>;
+  onClearTowerPosition: (towerId: string) => Promise<void>;
 }) {
   const [layout, setLayout] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -136,9 +138,22 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
   const [rows, setRows] = useState(dev.gridRows);
   const [cols, setCols] = useState(dev.gridCols);
   const [sun, setSun] = useState(dev.sunOrientation);
+  const [placingTowerId, setPlacingTowerId] = useState<string | null>(null);
+  const [hoverCell, setHoverCell] = useState<{ row: number; col: number } | null>(null);
 
   const towerMap: Record<string, Tower> = {};
   dev.towers.forEach((t) => { if (t.gridX != null && t.gridY != null) towerMap[`${t.gridY}-${t.gridX}`] = t; });
+
+  const placingTower = placingTowerId ? dev.towers.find((t) => t.id === placingTowerId) ?? null : null;
+
+  // ESC cancela posicionamento
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape") setPlacingTowerId(null);
+  }, []);
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   function mark() { setSaved(false); }
 
@@ -217,18 +232,63 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
 
   return (
     <div className="space-y-3">
-      {/* Pincéis */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-xs font-semibold text-[var(--shell-subtext)] mr-1">Pincel:</span>
-        {Object.entries(CELL_COLORS).filter(([k]) => k !== "UNIT").map(([type, cfg]) => (
-          <button key={type} type="button" onClick={() => setBrushType(type)}
-            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors ${brushType === type ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-border)] hover:bg-[var(--shell-hover)]"}`}>
-            {cfg.emoji} {cfg.label}
-          </button>
-        ))}
-      </div>
 
-      {/* Segunda linha: orientação solar + salvar */}
+      {/* Banner modo posicionamento */}
+      {placingTower && (
+        <div className="flex items-center justify-between rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5">
+          <p className="text-sm font-semibold text-blue-700">
+            📍 Clique em uma célula para posicionar <span className="font-bold">{placingTower.nome}</span> · ESC para cancelar
+          </p>
+          <button onClick={() => setPlacingTowerId(null)}
+            className="text-blue-500 hover:text-blue-700 text-lg font-bold">✕</button>
+        </div>
+      )}
+
+      {/* Torres do empreendimento */}
+      {dev.towers.length > 0 && (
+        <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-3">
+          <p className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Torres no terreno</p>
+          <div className="flex flex-wrap gap-2">
+            {dev.towers.map((t) => {
+              const placed = t.gridX != null && t.gridY != null;
+              const isPlacing = placingTowerId === t.id;
+              return (
+                <div key={t.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${isPlacing ? "border-blue-400 bg-blue-50" : placed ? "border-[#3b82f6] bg-[#1e3a5f]/10" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]"}`}>
+                  <span className={`font-semibold ${placed ? "text-blue-600" : "text-[var(--shell-subtext)]"}`}>
+                    {placed ? "🏢" : "⬜"} {t.nome}
+                  </span>
+                  {placed && <span className="text-[10px] text-[var(--shell-subtext)]">L{(t.gridY ?? 0) + 1} C{(t.gridX ?? 0) + 1}</span>}
+                  <button
+                    onClick={() => setPlacingTowerId(isPlacing ? null : t.id)}
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${isPlacing ? "bg-blue-200 text-blue-700" : "bg-[var(--brand-accent)]/10 text-[var(--brand-accent)] hover:bg-[var(--brand-accent)]/20"}`}>
+                    {isPlacing ? "Cancelar" : placed ? "Mover" : "📍 Posicionar"}
+                  </button>
+                  {placed && !isPlacing && (
+                    <button onClick={() => onClearTowerPosition(t.id)}
+                      className="rounded px-1 py-0.5 text-[10px] text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="Remover do terreno">✕</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pincéis — ocultos durante posicionamento */}
+      {!placingTower && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-semibold text-[var(--shell-subtext)] mr-1">Pincel:</span>
+          {Object.entries(CELL_COLORS).filter(([k]) => k !== "UNIT").map(([type, cfg]) => (
+            <button key={type} type="button" onClick={() => setBrushType(type)}
+              className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors ${brushType === type ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-border)] hover:bg-[var(--shell-hover)]"}`}>
+              {cfg.emoji} {cfg.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Orientação solar + salvar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[var(--shell-subtext)]">☀️ Nascente:</span>
@@ -259,19 +319,19 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
           </div>
 
           <div className="flex items-start gap-1">
-            {/* Oeste + controles linhas à esquerda */}
+            {/* Oeste */}
             <div className="flex flex-col items-center justify-center gap-1 w-6 self-stretch">
               <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-lr] rotate-180">⬅ {compass.O}</span>
             </div>
 
-            {/* Área central: controles de linha + grid + controles de coluna */}
+            {/* Área central */}
             <div className="flex flex-col gap-0.5">
               {/* Botões de coluna no topo */}
               <div className="flex gap-px pl-7">
                 {Array.from({ length: cols }, (_, col) => (
                   <div key={col} className="flex flex-col items-center gap-0.5" style={{ width: "2.5rem" }}>
-                    <BtnPlusMinus onClick={() => addCol(col)} label={`Inserir coluna antes da ${col + 1}`} />
-                    {col === cols - 1 && (
+                    {!placingTower && <BtnPlusMinus onClick={() => addCol(col)} label={`Inserir coluna antes da ${col + 1}`} />}
+                    {!placingTower && col === cols - 1 && (
                       <BtnPlusMinus onClick={() => addCol(cols)} label="Inserir coluna no final" />
                     )}
                   </div>
@@ -283,49 +343,73 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
                 <div key={row} className="flex items-center gap-0.5">
                   {/* Controles da linha */}
                   <div className="flex flex-col gap-0.5 w-6 items-center">
-                    <BtnPlusMinus onClick={() => addRow(row)} label={`Inserir linha acima da ${row + 1}`} />
-                    <BtnMinus onClick={() => removeRow(row)} label={`Remover linha ${row + 1}`} />
-                    {row === rows - 1 && <BtnPlusMinus onClick={() => addRow(rows)} label="Inserir linha abaixo" />}
+                    {!placingTower && <BtnPlusMinus onClick={() => addRow(row)} label={`Inserir linha acima da ${row + 1}`} />}
+                    {!placingTower && <BtnMinus onClick={() => removeRow(row)} label={`Remover linha ${row + 1}`} />}
+                    {!placingTower && row === rows - 1 && <BtnPlusMinus onClick={() => addRow(rows)} label="Inserir linha abaixo" />}
                   </div>
                   {/* Células */}
-                  <div className="flex gap-px"
-                    onMouseLeave={() => setPainting(false)}>
+                  <div className="flex gap-px" onMouseLeave={() => { setPainting(false); setHoverCell(null); }}>
                     {Array.from({ length: cols }, (_, col) => {
                       const key = `${row}-${col}`;
                       const cellType = layout[key] ?? "UNIT";
                       const tower = towerMap[key];
                       const cfg = CELL_COLORS[cellType];
+                      const isHover = placingTower && hoverCell?.row === row && hoverCell?.col === col;
+                      const isTarget = placingTower && !tower; // célula válida para posicionar
+
+                      let bg = tower ? "#1e3a5f" : cfg?.bg;
+                      let borderColor = tower ? "#3b82f6" : "rgba(0,0,0,0.1)";
+                      if (isHover) { bg = "#2563eb"; borderColor = "#1d4ed8"; }
+
                       return (
                         <div key={key}
-                          className="h-10 w-10 rounded flex items-center justify-center text-sm cursor-pointer select-none border"
-                          style={{
-                            backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
-                            borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.1)",
+                          className={`h-10 w-10 rounded flex items-center justify-center text-sm select-none border transition-colors ${placingTower ? (isTarget ? "cursor-crosshair" : "cursor-not-allowed opacity-60") : "cursor-pointer"}`}
+                          style={{ backgroundColor: bg, borderColor }}
+                          onMouseEnter={() => {
+                            if (placingTower) { setHoverCell({ row, col }); return; }
+                            if (painting) paintCell(row, col);
                           }}
-                          onMouseDown={() => { setPainting(true); paintCell(row, col); }}
-                          onMouseEnter={() => { if (painting) paintCell(row, col); }}
+                          onMouseDown={() => {
+                            if (placingTower) return;
+                            setPainting(true);
+                            paintCell(row, col);
+                          }}
                           onMouseUp={() => setPainting(false)}
-                          onClick={() => { if (tower) onSelectTower(tower); }}>
-                          {tower
-                            ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
-                            : <span>{cfg?.emoji}</span>}
+                          onClick={async () => {
+                            if (placingTowerId) {
+                              if (tower) return; // célula já tem torre
+                              await onPlaceTower(placingTowerId, col, row);
+                              setPlacingTowerId(null);
+                              setHoverCell(null);
+                              return;
+                            }
+                            if (tower) onSelectTower(tower);
+                          }}>
+                          {isHover
+                            ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{placingTower?.nome}</span>
+                            : tower
+                              ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
+                              : <span>{cfg?.emoji}</span>
+                          }
                         </div>
                       );
                     })}
                   </div>
                   {/* − coluna direita */}
-                  <BtnMinus onClick={() => removeCol(cols - 1)} label="Remover última coluna" />
+                  {!placingTower && <BtnMinus onClick={() => removeCol(cols - 1)} label="Remover última coluna" />}
                 </div>
               ))}
 
               {/* − linha no rodapé */}
-              <div className="flex gap-px pl-7">
-                {Array.from({ length: cols }, (_, col) => (
-                  <div key={col} className="flex items-center justify-center" style={{ width: "2.5rem" }}>
-                    {col === 0 && <BtnMinus onClick={() => removeRow(rows - 1)} label="Remover última linha" />}
-                  </div>
-                ))}
-              </div>
+              {!placingTower && (
+                <div className="flex gap-px pl-7">
+                  {Array.from({ length: cols }, (_, col) => (
+                    <div key={col} className="flex items-center justify-center" style={{ width: "2.5rem" }}>
+                      {col === 0 && <BtnMinus onClick={() => removeRow(rows - 1)} label="Remover última linha" />}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Leste */}
@@ -344,7 +428,9 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
       </div>
 
       <p className="text-xs text-[var(--shell-subtext)]">
-        Clique e arraste para pintar · + adiciona linha/coluna · − remove · Clique em uma torre (azul) para ver a fachada
+        {placingTower
+          ? "Clique em qualquer célula livre para posicionar a torre · ESC para cancelar"
+          : "Clique e arraste para pintar · + adiciona linha/coluna · − remove · Clique em uma torre (azul) para ver a fachada"}
       </p>
     </div>
   );
@@ -1051,7 +1137,15 @@ export default function EmpreendimentoPage() {
               <TerrainGrid dev={dev}
                 onSelectTower={(t) => { setSelectedTower(t); setTab("fachada"); }}
                 onSave={handleSaveLayout}
-                onSunChange={(sun) => setDev((d) => d ? { ...d, sunOrientation: sun } : d)} />
+                onSunChange={(sun) => setDev((d) => d ? { ...d, sunOrientation: sun } : d)}
+                onPlaceTower={async (towerId, col, row) => {
+                  await updateTower(id, towerId, { gridX: col, gridY: row });
+                  await load();
+                }}
+                onClearTowerPosition={async (towerId) => {
+                  await updateTower(id, towerId, { gridX: null, gridY: null });
+                  await load();
+                }} />
             </div>
           </div>
         )}
