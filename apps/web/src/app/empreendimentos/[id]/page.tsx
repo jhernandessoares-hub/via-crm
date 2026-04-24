@@ -83,30 +83,38 @@ function UnitTooltip({ unit, x, y }: { unit: DevelopmentUnit; x: number; y: numb
   );
 }
 
-// ─── InsertRowBtn ─────────────────────────────────────────────────────────────
+// ─── TerrainGrid ─────────────────────────────────────────────────────────────
 
-function InsertRowBtn({ label, onClick }: { label: string; onClick: () => void }) {
-  const [hover, setHover] = useState(false);
+const COMPASS: Record<string, { N: string; S: string; L: string; O: string }> = {
+  NORTE:  { N: "☀️ Nascente", S: "Poente",    L: "Leste", O: "Oeste" },
+  SUL:    { N: "Poente",     S: "☀️ Nascente", L: "Oeste", O: "Leste" },
+  LESTE:  { N: "Norte",      S: "Sul",         L: "☀️ Nascente", O: "Poente" },
+  OESTE:  { N: "Norte",      S: "Sul",         L: "Poente", O: "☀️ Nascente" },
+};
+
+function BtnPlusMinus({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <div className="relative h-3 flex items-center group"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}>
-      {hover && (
-        <button type="button" onClick={onClick}
-          className="absolute left-0 right-0 z-10 flex items-center justify-center gap-1 rounded bg-[var(--brand-accent)] py-0.5 text-[10px] font-semibold text-white opacity-90 hover:opacity-100 transition-opacity">
-          ➕ {label}
-        </button>
-      )}
-    </div>
+    <button type="button" onClick={onClick} title={label}
+      className="flex h-5 w-5 items-center justify-center rounded bg-[var(--brand-accent)] text-white text-xs font-bold hover:opacity-80 transition-opacity shrink-0">
+      +
+    </button>
   );
 }
 
-// ─── TerrainGrid ─────────────────────────────────────────────────────────────
+function BtnMinus({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button type="button" onClick={onClick} title={label}
+      className="flex h-5 w-5 items-center justify-center rounded border border-red-300 bg-red-50 text-red-500 text-xs font-bold hover:bg-red-100 transition-colors shrink-0">
+      −
+    </button>
+  );
+}
 
-function TerrainGrid({ dev, onSelectTower, onSave }: {
+function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
   dev: Development;
   onSelectTower: (t: Tower) => void;
-  onSave: (layout: any[], rows: number, cols: number) => Promise<void>;
+  onSave: (layout: any[], rows: number, cols: number, sun: string) => Promise<void>;
+  onSunChange: (sun: string) => void;
 }) {
   const [layout, setLayout] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -119,99 +127,114 @@ function TerrainGrid({ dev, onSelectTower, onSave }: {
   const [painting, setPainting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(true);
-
-  // Grid resize
   const [rows, setRows] = useState(dev.gridRows);
   const [cols, setCols] = useState(dev.gridCols);
-  const [editingGrid, setEditingGrid] = useState(false);
-  const [tmpRows, setTmpRows] = useState(String(dev.gridRows));
-  const [tmpCols, setTmpCols] = useState(String(dev.gridCols));
+  const [sun, setSun] = useState(dev.sunOrientation);
 
   const towerMap: Record<string, Tower> = {};
   dev.towers.forEach((t) => { if (t.gridX != null && t.gridY != null) towerMap[`${t.gridY}-${t.gridX}`] = t; });
 
-  function paintCell(row: number, col: number) {
-    setSaved(false);
-    setLayout((prev) => ({ ...prev, [`${row}-${col}`]: brushType }));
-  }
+  function mark() { setSaved(false); }
 
-  function insertRow(atIndex: number) {
-    // Desloca todas as linhas >= atIndex para baixo (+1)
+  function paintCell(r: number, c: number) { mark(); setLayout((p) => ({ ...p, [`${r}-${c}`]: brushType })); }
+
+  function addRow(atIndex: number) {
     setLayout((prev) => {
       const next: Record<string, string> = {};
       Object.entries(prev).forEach(([key, type]) => {
         const [r, c] = key.split("-").map(Number);
-        if (r >= atIndex) next[`${r + 1}-${c}`] = type;
-        else next[key] = type;
+        next[r >= atIndex ? `${r + 1}-${c}` : key] = type;
       });
       return next;
     });
     setRows((r) => r + 1);
-    setTmpRows((r) => String(parseInt(r) + 1));
-    setSaved(false);
+    mark();
+  }
+
+  function removeRow(atIndex: number) {
+    if (rows <= 1) return;
+    setLayout((prev) => {
+      const next: Record<string, string> = {};
+      Object.entries(prev).forEach(([key, type]) => {
+        const [r, c] = key.split("-").map(Number);
+        if (r === atIndex) return;
+        next[r > atIndex ? `${r - 1}-${c}` : key] = type;
+      });
+      return next;
+    });
+    setRows((r) => r - 1);
+    mark();
+  }
+
+  function addCol(atIndex: number) {
+    setLayout((prev) => {
+      const next: Record<string, string> = {};
+      Object.entries(prev).forEach(([key, type]) => {
+        const [r, c] = key.split("-").map(Number);
+        next[c >= atIndex ? `${r}-${c + 1}` : key] = type;
+      });
+      return next;
+    });
+    setCols((c) => c + 1);
+    mark();
+  }
+
+  function removeCol(atIndex: number) {
+    if (cols <= 1) return;
+    setLayout((prev) => {
+      const next: Record<string, string> = {};
+      Object.entries(prev).forEach(([key, type]) => {
+        const [r, c] = key.split("-").map(Number);
+        if (c === atIndex) return;
+        next[c > atIndex ? `${r}-${c - 1}` : key] = type;
+      });
+      return next;
+    });
+    setCols((c) => c - 1);
+    mark();
   }
 
   function layoutToArray() {
-    return Object.entries(layout)
-      .filter(([, type]) => type !== "UNIT")
-      .map(([key, type]) => {
-        const [r, c] = key.split("-").map(Number);
-        return { row: r, col: c, type };
-      });
+    return Object.entries(layout).filter(([, t]) => t !== "UNIT").map(([key, type]) => {
+      const [r, c] = key.split("-").map(Number);
+      return { row: r, col: c, type };
+    });
   }
 
   async function handleSave() {
     setSaving(true);
-    try {
-      await onSave(layoutToArray(), rows, cols);
-      setSaved(true);
-    } finally {
-      setSaving(false);
-    }
+    try { await onSave(layoutToArray(), rows, cols, sun); setSaved(true); }
+    finally { setSaving(false); }
   }
 
-  function applyGridResize(r: string, c: string) {
-    const newRows = Math.max(1, Math.min(50, parseInt(r) || rows));
-    const newCols = Math.max(1, Math.min(50, parseInt(c) || cols));
-    setRows(newRows);
-    setCols(newCols);
-    setSaved(false);
-  }
+  const compass = COMPASS[sun] ?? COMPASS.LESTE;
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-[var(--shell-subtext)]">Pincel:</span>
+    <div className="space-y-3">
+      {/* Pincéis */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-xs font-semibold text-[var(--shell-subtext)] mr-1">Pincel:</span>
         {Object.entries(CELL_COLORS).filter(([k]) => k !== "UNIT").map(([type, cfg]) => (
-          <button key={type} type="button"
-            onClick={() => setBrushType(type)}
-            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs transition-colors ${brushType === type ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-border)] hover:bg-[var(--shell-hover)]"}`}>
+          <button key={type} type="button" onClick={() => setBrushType(type)}
+            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors ${brushType === type ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-border)] hover:bg-[var(--shell-hover)]"}`}>
             {cfg.emoji} {cfg.label}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-2">
-          {/* Grid resize */}
-          {editingGrid ? (
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--brand-accent)] bg-[var(--brand-accent)]/5 px-3 py-1.5">
-              <span className="text-xs text-[var(--shell-subtext)]">Linhas:</span>
-              <input type="number" value={tmpRows}
-                onChange={(e) => { setTmpRows(e.target.value); applyGridResize(e.target.value, tmpCols); }}
-                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
-              <span className="text-xs text-[var(--shell-subtext)]">Colunas:</span>
-              <input type="number" value={tmpCols}
-                onChange={(e) => { setTmpCols(e.target.value); applyGridResize(tmpRows, e.target.value); }}
-                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-0.5 text-xs text-center" min={1} max={50} />
-              <button type="button" onClick={() => setEditingGrid(false)}
-                className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => { setTmpRows(String(rows)); setTmpCols(String(cols)); setEditingGrid(true); }}
-              className="rounded-lg border border-[var(--shell-card-border)] px-2.5 py-1 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]">
-              ✏️ {rows}×{cols}
-            </button>
-          )}
-          {/* Save button */}
+      </div>
+
+      {/* Segunda linha: orientação solar + salvar */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-[var(--shell-subtext)]">☀️ Nascente:</span>
+          <select value={sun} onChange={(e) => { setSun(e.target.value); onSunChange(e.target.value); mark(); }}
+            className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1 text-xs text-[var(--shell-text)]">
+            <option value="NORTE">Norte</option>
+            <option value="SUL">Sul</option>
+            <option value="LESTE">Leste</option>
+            <option value="OESTE">Oeste</option>
+          </select>
+        </div>
+        <div className="ml-auto">
           <button type="button" onClick={handleSave} disabled={saving || saved}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${saved ? "border border-green-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`}>
             {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar terreno"}
@@ -219,53 +242,103 @@ function TerrainGrid({ dev, onSelectTower, onSave }: {
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Grid com compass + +/- buttons */}
       <div className="overflow-auto">
-        <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--shell-bg)]"
-          onMouseLeave={() => setPainting(false)}>
-          <SunIndicator orientation={dev.sunOrientation} />
-          <div className="flex flex-col gap-0">
-            {/* Botão inserir linha no topo */}
-            <InsertRowBtn label="+ linha acima" onClick={() => insertRow(0)} />
+        <div className="inline-flex flex-col items-center gap-1">
+          {/* Norte */}
+          <div className="flex items-center gap-1">
+            <div className="w-6" />
+            <span className="text-[11px] font-semibold text-slate-500 px-2">⬆ {compass.N}</span>
+            <div className="w-6" />
+          </div>
 
-            {Array.from({ length: rows }, (_, row) => (
-              <div key={row} className="flex flex-col gap-0">
-                <div className="flex items-center gap-0.5">
-                  {Array.from({ length: cols }, (_, col) => {
-                    const key = `${row}-${col}`;
-                    const cellType = layout[key] ?? "UNIT";
-                    const tower = towerMap[key];
-                    const cfg = CELL_COLORS[cellType];
-                    return (
-                      <div key={key}
-                        className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-pointer select-none border m-px"
-                        style={{
-                          backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
-                          borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
-                        }}
-                        onMouseDown={() => { setPainting(true); paintCell(row, col); }}
-                        onMouseEnter={() => { if (painting) paintCell(row, col); }}
-                        onMouseUp={() => setPainting(false)}
-                        onClick={() => { if (tower) onSelectTower(tower); }}>
-                        {tower ? (
-                          <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
-                        ) : (
-                          <span>{cfg?.emoji}</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {/* Botão inserir linha abaixo desta */}
-                <InsertRowBtn label={`+ linha abaixo da ${row + 1}`} onClick={() => insertRow(row + 1)} />
+          <div className="flex items-start gap-1">
+            {/* Oeste + controles linhas à esquerda */}
+            <div className="flex flex-col items-center justify-center gap-1 w-6 self-stretch">
+              <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-lr] rotate-180">⬅ {compass.O}</span>
+            </div>
+
+            {/* Área central: controles de linha + grid + controles de coluna */}
+            <div className="flex flex-col gap-0.5">
+              {/* Botões de coluna no topo */}
+              <div className="flex gap-px pl-7">
+                {Array.from({ length: cols }, (_, col) => (
+                  <div key={col} className="flex flex-col items-center gap-0.5" style={{ width: "2.5rem" }}>
+                    <BtnPlusMinus onClick={() => addCol(col)} label={`Inserir coluna antes da ${col + 1}`} />
+                    {col === cols - 1 && (
+                      <BtnPlusMinus onClick={() => addCol(cols)} label="Inserir coluna no final" />
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
+
+              {/* Linhas do grid */}
+              {Array.from({ length: rows }, (_, row) => (
+                <div key={row} className="flex items-center gap-0.5">
+                  {/* Controles da linha */}
+                  <div className="flex flex-col gap-0.5 w-6 items-center">
+                    <BtnPlusMinus onClick={() => addRow(row)} label={`Inserir linha acima da ${row + 1}`} />
+                    <BtnMinus onClick={() => removeRow(row)} label={`Remover linha ${row + 1}`} />
+                    {row === rows - 1 && <BtnPlusMinus onClick={() => addRow(rows)} label="Inserir linha abaixo" />}
+                  </div>
+                  {/* Células */}
+                  <div className="flex gap-px"
+                    onMouseLeave={() => setPainting(false)}>
+                    {Array.from({ length: cols }, (_, col) => {
+                      const key = `${row}-${col}`;
+                      const cellType = layout[key] ?? "UNIT";
+                      const tower = towerMap[key];
+                      const cfg = CELL_COLORS[cellType];
+                      return (
+                        <div key={key}
+                          className="h-10 w-10 rounded flex items-center justify-center text-sm cursor-pointer select-none border"
+                          style={{
+                            backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+                            borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.1)",
+                          }}
+                          onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+                          onMouseEnter={() => { if (painting) paintCell(row, col); }}
+                          onMouseUp={() => setPainting(false)}
+                          onClick={() => { if (tower) onSelectTower(tower); }}>
+                          {tower
+                            ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
+                            : <span>{cfg?.emoji}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* − coluna direita */}
+                  <BtnMinus onClick={() => removeCol(cols - 1)} label="Remover última coluna" />
+                </div>
+              ))}
+
+              {/* − linha no rodapé */}
+              <div className="flex gap-px pl-7">
+                {Array.from({ length: cols }, (_, col) => (
+                  <div key={col} className="flex items-center justify-center" style={{ width: "2.5rem" }}>
+                    {col === 0 && <BtnMinus onClick={() => removeRow(rows - 1)} label="Remover última linha" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Leste */}
+            <div className="flex flex-col items-center justify-center gap-1 w-6 self-stretch">
+              <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-lr]">{compass.L} ➡</span>
+            </div>
+          </div>
+
+          {/* Sul */}
+          <div className="flex items-center gap-1">
+            <div className="w-6" />
+            <span className="text-[11px] font-semibold text-slate-500 px-2">⬇ {compass.S}</span>
+            <div className="w-6" />
           </div>
         </div>
       </div>
 
       <p className="text-xs text-[var(--shell-subtext)]">
-        Clique e arraste para pintar · ✏️ para redimensionar · Clique em uma torre (azul) para ver a fachada
+        Clique e arraste para pintar · + adiciona linha/coluna · − remove · Clique em uma torre (azul) para ver a fachada
       </p>
     </div>
   );
@@ -425,8 +498,8 @@ export default function EmpreendimentoPage() {
     }
   }, [dev]);
 
-  async function handleSaveLayout(layout: any[], rows: number, cols: number) {
-    await updateDevelopment(id, { gridLayout: layout, gridRows: rows, gridCols: cols } as any);
+  async function handleSaveLayout(layout: any[], rows: number, cols: number, sun: string) {
+    await updateDevelopment(id, { gridLayout: layout, gridRows: rows, gridCols: cols, sunOrientation: sun } as any);
     await load();
   }
 
@@ -575,7 +648,7 @@ export default function EmpreendimentoPage() {
 
             <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
               {view === "terreno" ? (
-                <TerrainGrid dev={dev} onSelectTower={(t) => { setSelectedTower(t); setView("fachada"); }} onSave={handleSaveLayout} />
+                <TerrainGrid dev={dev} onSelectTower={(t) => { setSelectedTower(t); setView("fachada"); }} onSave={handleSaveLayout} onSunChange={(sun) => setDev((d) => d ? { ...d, sunOrientation: sun } : d)} />
               ) : selectedTower ? (
                 <BuildingFacade tower={selectedTower} onSelectUnit={openUnitModal} />
               ) : (
