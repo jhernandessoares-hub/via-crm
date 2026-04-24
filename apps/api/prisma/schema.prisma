@@ -109,6 +109,7 @@ model Tenant {
   slaRules               SlaRule[]
   tenantSites            TenantSite[]
   users                  User[]
+  developments           Development[]
 
   @@map("tenants")
 }
@@ -1354,4 +1355,80 @@ enum LearningStatus {
   APPROVED
   REJECTED
   APPLIED
+}
+
+// ─── Gestão de Empreendimentos ───────────────────────────────────────────────
+
+model Development {
+  id             String    @id @default(uuid())
+  tenantId       String
+  nome           String
+  tipo           String    // VERTICAL | HORIZONTAL
+  subtipo        String    // APARTAMENTO | CASA | LOTEAMENTO
+  endereco       String?
+  cidade         String?
+  estado         String?
+  sunOrientation String    @default("LESTE") // NORTE | SUL | LESTE | OESTE
+  prazoEntrega   DateTime?
+  status         String    @default("LANCAMENTO") // LANCAMENTO | EM_OBRA | CONCLUIDO
+  gridRows       Int       @default(10)
+  gridCols       Int       @default(10)
+  gridLayout     Json?     // [{row, col, type: UNIT|EMPTY|VEGETATION|PORTARIA|RUA|CASA_MAQUINAS|CAIXA_DAGUA}]
+  descricao      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  towers  Tower[]
+  units   DevelopmentUnit[]
+
+  @@index([tenantId])
+  @@map("developments")
+}
+
+model Tower {
+  id            String   @id @default(uuid())
+  developmentId String
+  tenantId      String
+  nome          String
+  floors        Int      @default(1)
+  unitsPerFloor Int      @default(1)
+  gridX         Int?
+  gridY         Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  development Development     @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  units       DevelopmentUnit[]
+
+  @@index([developmentId])
+  @@map("towers")
+}
+
+model DevelopmentUnit {
+  id             String   @id @default(uuid())
+  towerId        String
+  developmentId  String
+  tenantId       String
+  nome           String
+  andar          Int?
+  posicao        Int?
+  status         String   @default("DISPONIVEL") // DISPONIVEL | RESERVADO | VENDIDO | BLOQUEADO
+  bloqueioMotivo String?
+  areaM2         Float?
+  quartos        Int?
+  suites         Int?
+  banheiros      Int?
+  vagas          Int?
+  valorVenda     Float?
+  valorAvaliado  Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tower       Tower       @relation(fields: [towerId], references: [id], onDelete: Cascade)
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@index([developmentId])
+  @@index([towerId])
+  @@map("development_units")
 }
