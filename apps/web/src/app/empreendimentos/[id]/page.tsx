@@ -121,7 +121,7 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
   onSelectTower: (t: Tower) => void;
   onSave: (layout: any[], rows: number, cols: number, sun: string) => Promise<void>;
   onSunChange: (sun: string) => void;
-  onPlaceTower: (towerId: string, col: number, row: number) => Promise<void>;
+  onPlaceTower: (towerId: string, col: number, row: number, w: number, h: number) => Promise<void>;
   onClearTowerPosition: (towerId: string) => Promise<void>;
 }) {
   const [layout, setLayout] = useState<Record<string, string>>(() => {
@@ -131,24 +131,44 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
     }
     return map;
   });
-  const [brushType, setBrushType] = useState<string>("EMPTY");
-  const [painting, setPainting] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(true);
-  const [rows, setRows] = useState(dev.gridRows);
-  const [cols, setCols] = useState(dev.gridCols);
-  const [sun, setSun] = useState(dev.sunOrientation);
+  const [brushType,     setBrushType]     = useState<string>("EMPTY");
+  const [painting,      setPainting]      = useState(false);
+  const [saving,        setSaving]        = useState(false);
+  const [saved,         setSaved]         = useState(true);
+  const [rows,          setRows]          = useState(dev.gridRows);
+  const [cols,          setCols]          = useState(dev.gridCols);
+  const [sun,           setSun]           = useState(dev.sunOrientation);
   const [placingTowerId, setPlacingTowerId] = useState<string | null>(null);
-  const [hoverCell, setHoverCell] = useState<{ row: number; col: number } | null>(null);
+  const [placingW,      setPlacingW]      = useState(1);
+  const [placingH,      setPlacingH]      = useState(1);
+  const [hoverCell,     setHoverCell]     = useState<{ row: number; col: number } | null>(null);
 
+  // towerMap cobre todos os cells do footprint de cada torre
   const towerMap: Record<string, Tower> = {};
-  dev.towers.forEach((t) => { if (t.gridX != null && t.gridY != null) towerMap[`${t.gridY}-${t.gridX}`] = t; });
+  dev.towers.forEach((t) => {
+    if (t.gridX != null && t.gridY != null) {
+      const w = t.gridWidth  ?? 1;
+      const h = t.gridHeight ?? 1;
+      for (let dy = 0; dy < h; dy++)
+        for (let dx = 0; dx < w; dx++)
+          towerMap[`${t.gridY + dy}-${t.gridX + dx}`] = t;
+    }
+  });
 
   const placingTower = placingTowerId ? dev.towers.find((t) => t.id === placingTowerId) ?? null : null;
 
-  // ESC cancela posicionamento
+  // células do preview de posicionamento
+  const previewCells = new Set<string>();
+  if (placingTower && hoverCell) {
+    for (let dy = 0; dy < placingH; dy++)
+      for (let dx = 0; dx < placingW; dx++)
+        previewCells.add(`${hoverCell.row + dy}-${hoverCell.col + dx}`);
+  }
+  const previewConflict = placingTower && hoverCell
+    && Array.from(previewCells).some((k) => towerMap[k]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") setPlacingTowerId(null);
+    if (e.key === "Escape") { setPlacingTowerId(null); setHoverCell(null); }
   }, []);
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
@@ -156,7 +176,6 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
   }, [handleKeyDown]);
 
   function mark() { setSaved(false); }
-
   function paintCell(r: number, c: number) { mark(); setLayout((p) => ({ ...p, [`${r}-${c}`]: brushType })); }
 
   function addRow(atIndex: number) {
@@ -168,8 +187,7 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
       });
       return next;
     });
-    setRows((r) => r + 1);
-    mark();
+    setRows((r) => r + 1); mark();
   }
 
   function removeRow(atIndex: number) {
@@ -183,8 +201,7 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
       });
       return next;
     });
-    setRows((r) => r - 1);
-    mark();
+    setRows((r) => r - 1); mark();
   }
 
   function addCol(atIndex: number) {
@@ -196,8 +213,7 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
       });
       return next;
     });
-    setCols((c) => c + 1);
-    mark();
+    setCols((c) => c + 1); mark();
   }
 
   function removeCol(atIndex: number) {
@@ -211,8 +227,7 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
       });
       return next;
     });
-    setCols((c) => c - 1);
-    mark();
+    setCols((c) => c - 1); mark();
   }
 
   function layoutToArray() {
@@ -228,19 +243,57 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
     finally { setSaving(false); }
   }
 
+  function setSunDir(dir: string) { setSun(dir); onSunChange(dir); mark(); }
+
   const compass = COMPASS[sun] ?? COMPASS.LESTE;
+  const DIRS = ["NORTE", "SUL", "LESTE", "OESTE"] as const;
+
+  // Label de uma direção no compass: se é o sol, mostra ☀️; senão mostra o nome + clicável
+  function CompassLabel({ dir, arrow, vertical }: { dir: string; arrow: string; vertical?: boolean }) {
+    const isSun = sun === dir;
+    const label = compass[dir === "NORTE" ? "N" : dir === "SUL" ? "S" : dir === "LESTE" ? "L" : "O" as "N"|"S"|"L"|"O"];
+    return (
+      <button type="button" onClick={() => setSunDir(dir)}
+        title={isSun ? "Sol nasce aqui" : `Mover sol para ${dir.toLowerCase()}`}
+        className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-semibold transition-all
+          ${isSun ? "bg-yellow-100 text-yellow-700 border border-yellow-300" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"}`}
+        style={vertical ? { writingMode: "vertical-lr" } : {}}>
+        {arrow} {isSun ? "☀️" : ""}{label}
+      </button>
+    );
+  }
 
   return (
     <div className="space-y-3">
 
       {/* Banner modo posicionamento */}
       {placingTower && (
-        <div className="flex items-center justify-between rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5">
+        <div className="flex items-center justify-between rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 gap-4 flex-wrap">
           <p className="text-sm font-semibold text-blue-700">
-            📍 Clique em uma célula para posicionar <span className="font-bold">{placingTower.nome}</span> · ESC para cancelar
+            📍 Posicionando <span className="font-bold">{placingTower.nome}</span>
           </p>
-          <button onClick={() => setPlacingTowerId(null)}
-            className="text-blue-500 hover:text-blue-700 text-lg font-bold">✕</button>
+          <div className="flex items-center gap-3">
+            {/* Tamanho do footprint */}
+            <div className="flex items-center gap-1.5 text-xs text-blue-700">
+              <span className="font-semibold">Tamanho:</span>
+              <div className="flex items-center gap-1">
+                <BtnMinus onClick={() => setPlacingW((w) => Math.max(1, w - 1))} label="−" />
+                <span className="w-5 text-center font-bold">{placingW}</span>
+                <BtnPlusMinus onClick={() => setPlacingW((w) => Math.min(cols, w + 1))} label="+" />
+                <span className="text-blue-500">colunas</span>
+              </div>
+              <span className="text-blue-400">×</span>
+              <div className="flex items-center gap-1">
+                <BtnMinus onClick={() => setPlacingH((h) => Math.max(1, h - 1))} label="−" />
+                <span className="w-5 text-center font-bold">{placingH}</span>
+                <BtnPlusMinus onClick={() => setPlacingH((h) => Math.min(rows, h + 1))} label="+" />
+                <span className="text-blue-500">linhas</span>
+              </div>
+            </div>
+            <span className="text-xs text-blue-500">· Clique no canto superior esquerdo · ESC cancela</span>
+            <button onClick={() => { setPlacingTowerId(null); setHoverCell(null); }}
+              className="text-blue-500 hover:text-blue-700 text-lg font-bold">✕</button>
+          </div>
         </div>
       )}
 
@@ -250,16 +303,22 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
           <p className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Torres no terreno</p>
           <div className="flex flex-wrap gap-2">
             {dev.towers.map((t) => {
-              const placed = t.gridX != null && t.gridY != null;
+              const placed   = t.gridX != null && t.gridY != null;
               const isPlacing = placingTowerId === t.id;
+              const w = t.gridWidth ?? 1; const h = t.gridHeight ?? 1;
               return (
                 <div key={t.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${isPlacing ? "border-blue-400 bg-blue-50" : placed ? "border-[#3b82f6] bg-[#1e3a5f]/10" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]"}`}>
                   <span className={`font-semibold ${placed ? "text-blue-600" : "text-[var(--shell-subtext)]"}`}>
                     {placed ? "🏢" : "⬜"} {t.nome}
                   </span>
-                  {placed && <span className="text-[10px] text-[var(--shell-subtext)]">L{(t.gridY ?? 0) + 1} C{(t.gridX ?? 0) + 1}</span>}
+                  {placed && (
+                    <span className="text-[10px] text-[var(--shell-subtext)]">
+                      L{(t.gridY ?? 0) + 1} C{(t.gridX ?? 0) + 1}
+                      {(w > 1 || h > 1) ? ` · ${w}×${h}` : ""}
+                    </span>
+                  )}
                   <button
-                    onClick={() => setPlacingTowerId(isPlacing ? null : t.id)}
+                    onClick={() => { setPlacingTowerId(isPlacing ? null : t.id); setPlacingW(w); setPlacingH(h); setHoverCell(null); }}
                     className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${isPlacing ? "bg-blue-200 text-blue-700" : "bg-[var(--brand-accent)]/10 text-[var(--brand-accent)] hover:bg-[var(--brand-accent)]/20"}`}>
                     {isPlacing ? "Cancelar" : placed ? "Mover" : "📍 Posicionar"}
                   </button>
@@ -288,104 +347,95 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
         </div>
       )}
 
-      {/* Orientação solar + salvar */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-[var(--shell-subtext)]">☀️ Nascente:</span>
-          <select value={sun} onChange={(e) => { setSun(e.target.value); onSunChange(e.target.value); mark(); }}
-            className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1 text-xs text-[var(--shell-text)]">
-            <option value="NORTE">Norte</option>
-            <option value="SUL">Sul</option>
-            <option value="LESTE">Leste</option>
-            <option value="OESTE">Oeste</option>
-          </select>
-        </div>
-        <div className="ml-auto">
-          <button type="button" onClick={handleSave} disabled={saving || saved}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${saved ? "border border-green-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`}>
-            {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar terreno"}
-          </button>
-        </div>
+      {/* Salvar */}
+      <div className="flex justify-end">
+        <button type="button" onClick={handleSave} disabled={saving || saved}
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${saved ? "border border-green-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`}>
+          {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar terreno"}
+        </button>
       </div>
 
-      {/* Grid com compass + +/- buttons */}
-      <div className="overflow-auto">
+      {/* Grid centralizado com compass clicável */}
+      <div className="flex justify-center overflow-auto">
         <div className="inline-flex flex-col items-center gap-1">
-          {/* Norte */}
-          <div className="flex items-center gap-1">
-            <div className="w-6" />
-            <span className="text-[11px] font-semibold text-slate-500 px-2">⬆ {compass.N}</span>
-            <div className="w-6" />
-          </div>
+
+          {/* Norte — clicável */}
+          <CompassLabel dir="NORTE" arrow="⬆" />
 
           <div className="flex items-start gap-1">
-            {/* Oeste */}
-            <div className="flex flex-col items-center justify-center gap-1 w-6 self-stretch">
-              <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-lr] rotate-180">⬅ {compass.O}</span>
+            {/* Oeste — clicável */}
+            <div className="flex items-center justify-center self-stretch">
+              <CompassLabel dir="OESTE" arrow="⬅" vertical />
             </div>
 
-            {/* Área central */}
+            {/* Área central: +/- cols no topo, linhas com controles, +/- cols no rodapé */}
             <div className="flex flex-col gap-0.5">
-              {/* Botões de coluna no topo */}
-              <div className="flex gap-px pl-7">
-                {Array.from({ length: cols }, (_, col) => (
-                  <div key={col} className="flex flex-col items-center gap-0.5" style={{ width: "2.5rem" }}>
-                    {!placingTower && <BtnPlusMinus onClick={() => addCol(col)} label={`Inserir coluna antes da ${col + 1}`} />}
-                    {!placingTower && col === cols - 1 && (
-                      <BtnPlusMinus onClick={() => addCol(cols)} label="Inserir coluna no final" />
-                    )}
-                  </div>
-                ))}
-              </div>
 
-              {/* Linhas do grid */}
+              {/* + colunas no topo (inserir antes de cada col + inserir no final) */}
+              {!placingTower && (
+                <div className="flex gap-px pl-6">
+                  {Array.from({ length: cols }, (_, col) => (
+                    <div key={col} className="flex items-center justify-center" style={{ width: "2.5rem" }}>
+                      <BtnPlusMinus onClick={() => addCol(col)} label={`+ col antes da ${col + 1}`} />
+                    </div>
+                  ))}
+                  {/* + inserir coluna no final */}
+                  <div className="flex items-center justify-center" style={{ width: "2.5rem" }}>
+                    <BtnPlusMinus onClick={() => addCol(cols)} label="+ col no final" />
+                  </div>
+                </div>
+              )}
+
+              {/* Linhas */}
               {Array.from({ length: rows }, (_, row) => (
                 <div key={row} className="flex items-center gap-0.5">
-                  {/* Controles da linha */}
-                  <div className="flex flex-col gap-0.5 w-6 items-center">
-                    {!placingTower && <BtnPlusMinus onClick={() => addRow(row)} label={`Inserir linha acima da ${row + 1}`} />}
-                    {!placingTower && <BtnMinus onClick={() => removeRow(row)} label={`Remover linha ${row + 1}`} />}
-                    {!placingTower && row === rows - 1 && <BtnPlusMinus onClick={() => addRow(rows)} label="Inserir linha abaixo" />}
+                  {/* + e − da linha à esquerda */}
+                  <div className="flex items-center gap-0.5 w-6 justify-end">
+                    {!placingTower && (
+                      <>
+                        <BtnPlusMinus onClick={() => addRow(row)} label={`+ linha acima da ${row + 1}`} />
+                        <BtnMinus     onClick={() => removeRow(row)} label={`− linha ${row + 1}`} />
+                      </>
+                    )}
                   </div>
+
                   {/* Células */}
                   <div className="flex gap-px" onMouseLeave={() => { setPainting(false); setHoverCell(null); }}>
                     {Array.from({ length: cols }, (_, col) => {
-                      const key = `${row}-${col}`;
-                      const cellType = layout[key] ?? "UNIT";
-                      const tower = towerMap[key];
-                      const cfg = CELL_COLORS[cellType];
-                      const isHover = placingTower && hoverCell?.row === row && hoverCell?.col === col;
-                      const isTarget = placingTower && !tower; // célula válida para posicionar
+                      const key       = `${row}-${col}`;
+                      const cellType  = layout[key] ?? "UNIT";
+                      const tower     = towerMap[key];
+                      const cfg       = CELL_COLORS[cellType];
+                      const inPreview = previewCells.has(key);
+                      const isAnchor  = inPreview && hoverCell?.row === row && hoverCell?.col === col;
 
-                      let bg = tower ? "#1e3a5f" : cfg?.bg;
+                      let bg          = tower ? "#1e3a5f" : cfg?.bg;
                       let borderColor = tower ? "#3b82f6" : "rgba(0,0,0,0.1)";
-                      if (isHover) { bg = "#2563eb"; borderColor = "#1d4ed8"; }
+                      if (inPreview) { bg = previewConflict ? "#dc2626" : "#2563eb"; borderColor = previewConflict ? "#b91c1c" : "#1d4ed8"; }
+
+                      const canPlace  = placingTower && !previewConflict;
 
                       return (
                         <div key={key}
-                          className={`h-10 w-10 rounded flex items-center justify-center text-sm select-none border transition-colors ${placingTower ? (isTarget ? "cursor-crosshair" : "cursor-not-allowed opacity-60") : "cursor-pointer"}`}
+                          className={`h-10 w-10 rounded flex items-center justify-center text-sm select-none border transition-colors
+                            ${placingTower ? (canPlace ? "cursor-crosshair" : "cursor-not-allowed") : "cursor-pointer"}`}
                           style={{ backgroundColor: bg, borderColor }}
                           onMouseEnter={() => {
                             if (placingTower) { setHoverCell({ row, col }); return; }
                             if (painting) paintCell(row, col);
                           }}
-                          onMouseDown={() => {
-                            if (placingTower) return;
-                            setPainting(true);
-                            paintCell(row, col);
-                          }}
+                          onMouseDown={() => { if (!placingTower) { setPainting(true); paintCell(row, col); } }}
                           onMouseUp={() => setPainting(false)}
                           onClick={async () => {
                             if (placingTowerId) {
-                              if (tower) return; // célula já tem torre
-                              await onPlaceTower(placingTowerId, col, row);
-                              setPlacingTowerId(null);
-                              setHoverCell(null);
+                              if (previewConflict || !hoverCell) return;
+                              await onPlaceTower(placingTowerId, hoverCell.col, hoverCell.row, placingW, placingH);
+                              setPlacingTowerId(null); setHoverCell(null);
                               return;
                             }
                             if (tower) onSelectTower(tower);
                           }}>
-                          {isHover
+                          {inPreview && isAnchor
                             ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{placingTower?.nome}</span>
                             : tower
                               ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
@@ -395,42 +445,47 @@ function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, on
                       );
                     })}
                   </div>
-                  {/* − coluna direita */}
-                  {!placingTower && <BtnMinus onClick={() => removeCol(cols - 1)} label="Remover última coluna" />}
+
+                  {/* − coluna por linha (remove coluna da direita) + linha abaixo da última */}
+                  {!placingTower && (
+                    <div className="flex items-center gap-0.5 w-6">
+                      <BtnMinus onClick={() => removeCol(cols - 1)} label="− última coluna" />
+                      {row === rows - 1 && (
+                        <BtnPlusMinus onClick={() => addRow(rows)} label="+ linha abaixo" />
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
-              {/* − linha no rodapé */}
+              {/* − linha no rodapé (remover última) + + col no rodapé */}
               {!placingTower && (
-                <div className="flex gap-px pl-7">
-                  {Array.from({ length: cols }, (_, col) => (
+                <div className="flex gap-px pl-6">
+                  {Array.from({ length: cols + 1 }, (_, col) => (
                     <div key={col} className="flex items-center justify-center" style={{ width: "2.5rem" }}>
-                      {col === 0 && <BtnMinus onClick={() => removeRow(rows - 1)} label="Remover última linha" />}
+                      {col === 0 && <BtnMinus onClick={() => removeRow(rows - 1)} label="− última linha" />}
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Leste */}
-            <div className="flex flex-col items-center justify-center gap-1 w-6 self-stretch">
-              <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-lr]">{compass.L} ➡</span>
+            {/* Leste — clicável */}
+            <div className="flex items-center justify-center self-stretch">
+              <CompassLabel dir="LESTE" arrow="➡" vertical />
             </div>
           </div>
 
-          {/* Sul */}
-          <div className="flex items-center gap-1">
-            <div className="w-6" />
-            <span className="text-[11px] font-semibold text-slate-500 px-2">⬇ {compass.S}</span>
-            <div className="w-6" />
-          </div>
+          {/* Sul — clicável */}
+          <CompassLabel dir="SUL" arrow="⬇" />
+
         </div>
       </div>
 
-      <p className="text-xs text-[var(--shell-subtext)]">
+      <p className="text-xs text-center text-[var(--shell-subtext)]">
         {placingTower
-          ? "Clique em qualquer célula livre para posicionar a torre · ESC para cancelar"
-          : "Clique e arraste para pintar · + adiciona linha/coluna · − remove · Clique em uma torre (azul) para ver a fachada"}
+          ? `Defina o tamanho (${placingW}×${placingH}) · hover para ver preview · clique para confirmar · ESC cancela`
+          : "Clique e arraste para pintar · clique no compass para mover o sol · + adiciona · − remove"}
       </p>
     </div>
   );
@@ -1138,8 +1193,8 @@ export default function EmpreendimentoPage() {
                 onSelectTower={(t) => { setSelectedTower(t); setTab("fachada"); }}
                 onSave={handleSaveLayout}
                 onSunChange={(sun) => setDev((d) => d ? { ...d, sunOrientation: sun } : d)}
-                onPlaceTower={async (towerId, col, row) => {
-                  await updateTower(id, towerId, { gridX: col, gridY: row });
+                onPlaceTower={async (towerId, col, row, w, h) => {
+                  await updateTower(id, towerId, { gridX: col, gridY: row, gridWidth: w, gridHeight: h });
                   await load();
                 }}
                 onClearTowerPosition={async (towerId) => {

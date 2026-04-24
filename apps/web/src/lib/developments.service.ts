@@ -26,6 +26,8 @@ export type Tower = {
   unitsPerFloor: number;
   gridX?: number | null;
   gridY?: number | null;
+  gridWidth?: number | null;
+  gridHeight?: number | null;
   units: DevelopmentUnit[];
 };
 

@@ -115,6 +115,8 @@ export class DevelopmentsService {
         unitsPerFloor: body.unitsPerFloor ?? 1,
         gridX: body.gridX ?? null,
         gridY: body.gridY ?? null,
+        gridWidth:  body.gridWidth  ?? 1,
+        gridHeight: body.gridHeight ?? 1,
       },
     });
   }
@@ -124,11 +126,13 @@ export class DevelopmentsService {
     return this.prisma.tower.update({
       where: { id: towerId },
       data: {
-        nome: body.nome,
-        floors: body.floors,
+        nome:       body.nome,
+        floors:     body.floors,
         unitsPerFloor: body.unitsPerFloor,
-        gridX: body.gridX,
-        gridY: body.gridY,
+        gridX:      body.gridX,
+        gridY:      body.gridY,
+        gridWidth:  body.gridWidth,
+        gridHeight: body.gridHeight,
       },
     });
   }
