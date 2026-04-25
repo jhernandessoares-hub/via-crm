@@ -110,6 +110,7 @@ model Tenant {
   tenantSites            TenantSite[]
   users                  User[]
   developments           Development[]
+  creditRequests         CreditRequest[]
 
   @@map("tenants")
 }
@@ -251,6 +252,7 @@ model Lead {
   participantes           LeadParticipante[]
   leadSla                 LeadSla?
   leadTransitionLogs      LeadTransitionLog[]
+  creditRequests          CreditRequest[]
   branch                  Branch?              @relation(fields: [branchId], references: [id])
   pipeline                Pipeline?            @relation(fields: [pipelineId], references: [id])
   stage                   PipelineStage?       @relation(fields: [stageId], references: [id])
@@ -1458,4 +1460,49 @@ model DevelopmentPaymentCondition {
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("development_payment_conditions")
+}
+
+model Correspondent {
+  id        String   @id @default(uuid())
+  nome      String
+  email     String   @unique
+  telefone  String?
+  empresa   String?
+  creci     String?
+  senhaHash String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creditRequests CreditRequest[]
+
+  @@map("correspondents")
+}
+
+model CreditRequest {
+  id              String    @id @default(uuid())
+  tenantId        String
+  leadId          String
+  correspondentId String
+
+  valorImovel       Float?
+  valorCredito      Float?
+  rendaMensal       Float?
+  tipoFinanciamento String?  // MINHA_CASA_MINHA_VIDA | SBPE | FGTS | CONSORCIO | OUTRO
+  observacoes       String?
+
+  status      String    @default("EM_ANALISE") // EM_ANALISE | COM_PENDENCIA | APROVADO | REPROVADO | CONDICIONADO
+  parecer     String?
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  correspondent Correspondent @relation(fields: [correspondentId], references: [id])
+
+  @@index([tenantId])
+  @@index([correspondentId])
+  @@map("credit_requests")
 }

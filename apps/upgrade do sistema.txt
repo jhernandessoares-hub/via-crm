@@ -1,0 +1,1637 @@
+ Vou te contextualizar, esse modulo é uma ferramenta de gestão de empreendimento que imobiliária ou loteadora, ou construtora ou
+  incorporadora faz a coordenação e controle das unidades.
+
+  Ele fica a disposição somente o Onwer que é o contratante da ferramenta. Por isso tem que ser um modulo separado, com seu próprio
+   icone na sidebar.
+
+  Esta funcionalidade será de pagamento a parte mais vamos definir isso mais para frente, de momento deixa isso para todos os
+  tenants.
+
+  Tem que ter a função de criar o empreendimento, escolhe o tipo horizontal, vertical, casas, apartamento, prédios, definir
+  quantidade de pavimentos, unidade por pavimento.
+
+  Te que ser visual, então o layout tem que se parecer bem com a estrutura do terreno e do prédio caso seja apartamentos, se for
+  lotes pode colocar a silhueta do terreno e ir demarcando cada unidade, e se for casas fazer da mesma forma que o terreno so que
+  com desenha de casas em cima.
+
+  Tem de ter a visão em 3d e em 2d e pode colocar um desenho de sol nascente indicando o lado que ele se põe.
+
+  Depois de ter feito o layout e definido a quantidade de unidades, sim criasse a tabela de preço na qual vamos poder nomear as
+  unidades de conforme a gosto, precifica-las e colocar informações de tamanho, quantidade de cômodos. A maioria das unidades são
+  parecidas, então pode ser feito esse cadastro por pavimento, por torre.
+
+  Tem que poder cadastrar em um campo a parte as condições de pagamento, prazo de termino de obra, se aceita financiamento
+  bancário, se parcela entrada e em quantas vezes, se tem desconto avista, se tem porcentual de pro soluto e em quantas vezes faz o
+   pro soluto.
+
+  A unidade terá status de Disponível, Vendida, Reservada, Bloqueada (tendo que justifica o bloqueio) pelo o onwer ou manager, com
+  cores cada unidade
+
+  Depois de criado o empreendimento tem que ter um dashboard com a visão de vendas geral mensal, e o valor do VGV total com o VGV
+  vendido e o VGV a vender, tambem com o numero de unidades.
+
+  Tem que poder gerar em excel e pdf, a gosto, a tabela de preço de acordo com as unidades disponíveis ou não, e considerando as
+  informações das condições de pagamento.
+
+
+  Ao passar o curso por cada unidade, será possível ver o status, o valor que ela está ou foi vendida, o tamanho, a quantidade de
+  cômodos (se não for terreno).
+
+
+  assim que terminarmos isso, futuramente vamos conectar com leads pois será de la que vem os clientes.
+
+● Entendido. Esse é um módulo robusto. Deixa eu confirmar meu entendimento antes de qualquer planejamento:
+
+  O que entendi:
+
+  - Módulo separado na sidebar, somente OWNER acessa
+  - Cria empreendimentos com tipo: horizontal (lotes/casas) ou vertical (apartamentos/prédios)
+  - Visual interativo: layout 2D e 3D com indicação de sol
+  - Unidades com status colorido: Disponível, Vendida, Reservada, Bloqueada (com justificativa)
+  - Tabela de preços configurável por pavimento/torre com nome, tamanho, cômodos
+  - Condições de pagamento: financiamento, parcela entrada, desconto à vista, pro-soluto
+  - Dashboard: VGV total/vendido/a vender, visão mensal de vendas
+  - Exportação em Excel e PDF da tabela de preços
+  - Tooltip ao passar o cursor: status, valor, tamanho, cômodos
+  - Futuramente conecta com leads
+
+  Minhas dúvidas antes de planejar:
+
+  1. 3D — Pensando em algo como uma perspectiva isométrica (CSS/SVG) ou quer algo mais elaborado com biblioteca 3D (Three.js)?
+  2. Múltiplas torres — Um empreendimento pode ter Torre A, Torre B, etc.? Ou sempre é uma estrutura só?
+  3. Layout do terreno — O formato do terreno (retangular, irregular, L, etc.) é desenhado pelo usuário ou sempre é retangular e o
+  sistema organiza as unidades automaticamente?
+  4. Pro-soluto — Confirmando: é financiamento direto com a incorporadora, com percentual e número de parcelas?
+
+> 1.    3D — Pensando em algo como uma perspectiva isométrica (CSS/SVG) ou quer algo mais elaborado com biblioteca 3D (Three.js)?
+  Se for muito complexo a biblioteca 3D, vamos começar com perspectiva isométrica, e depois vamos evoluir para biblioteca 3D.
+  2.    Múltiplas torres — Um empreendimento pode ter Torre A, Torre B, etc.? Ou sempre é uma estrutura só?
+  Pode ter inúmeras torres.
+  3.    Layout do terreno — O formato do terreno (retangular, irregular, L, etc.) é desenhado pelo usuário ou sempre é retangular e
+   o sistema organiza as unidades automaticamente?
+  Isso eu quero que seja desenhado pelo o usuário, tente fazer com que o usuário faça na maneira mais fácil possível.
+  4.    Pro-soluto — Confirmando: é financiamento direto com a incorporadora, com percentual e número de parcelas?
+  Isso, taxa de juros, se é juros sobre juros ou não, e o percentual do valor da unidade que poderá ter pro soluto, pro soluto é
+  financiamento da entrada depois a entrega das chaves.
+
+
+● Ótimo, contexto bem claro. Só mais 2 perguntas antes de planejar:
+
+  1. Desenho do terreno — Para facilitar ao máximo, estou pensando assim:
+
+  ▎ O usuário define uma grade (ex: 5 colunas × 8 linhas) e o sistema preenche com unidades automaticamente. Depois ele pode excluir
+  ▎  células para criar a forma irregular (esquinas, recortes, etc.). Ficaria visual e intuitivo.
+
+  Você aceita essa abordagem ou precisa de um desenho livre mesmo (clicar e arrastar pontos para criar polígono)?
+
+  2. Pro-soluto — Confirmando: funciona assim?
+
+  ▎ Ex: unidade R$500k → entrada 20% (R$100k) dividida em 24x até a entrega das chaves. O restante 80% (R$400k) vai para
+  ▎ banco/financiamento. O pro-soluto tem taxa de juros (simples ou composto) aplicada sobre as parcelas da entrada.
+
+  Está correto?
+
+>   1. Desenho do terreno — Para facilitar ao máximo, estou pensando assim:
+
+    ▎ O usuário define uma grade (ex: 5 colunas × 8 linhas) e o sistema preenche com unidades automaticamente. Depois ele pode
+  excluir  ▎  células para criar a forma irregular (esquinas, recortes, etc.). Ficaria visual e intuitivo.
+    Você aceita essa abordagem ou precisa de um desenho livre mesmo (clicar e arrastar pontos para criar polígono)?
+
+  R: Teria que ser um misto disso, eu seleciono exemplo CASA, ou TERRENO, ai eu coloco quantidade de áreas (quarterão ) coloco
+  quantas colunas e quantas linhas, ai vc me entrega automaticamente, e eu vou refinando o desenha como um desenho livre clicar e
+  arrastar pontos para criar polígono. Seria legal poder colocar em alguns lugares (fora o terreno) para indicar vegetação, ou
+  portaria, ou algum comodo (casa de maquinas, lixeira etc.), indicação de caixa dagua, colocar rua. Tem que fazer o mais parecido
+  possivel da realidade.
+
+    2. Pro-soluto — Confirmando: funciona assim?
+    ▎ Ex: unidade R$500k → entrada 20% (R$100k) dividida em 24x até a entrega das chaves. O restante 80% (R$400k) vai para
+    ▎ banco/financiamento. O pro-soluto tem taxa de juros (simples ou composto) aplicada sobre as parcelas da entrada.
+    Está correto?
+
+
+  R: Não vou explicar, unidade valor de venda R$500k  Valor avaliado 600k → VALOR DE ATO  Financia (definido pelo o usuário) %
+  sobre o valor (usuário define, se é sobre o valor de venda ou valor avaliado, normalmente é pelo o avaliado)  entrada é
+  parcelada em até (definido pelo o usuário X vezes)  Pro Soluto (Financiamento após a entrega da chaves) Quantidade de parcelas
+  definido pelo o usuário, e o usuário define o % do valor que poderá ser financiado após a entrega da chave que é sobre o valor de
+   venda da unidade sempre (normalmente coloca algo em torno de 3% a 5%.
+
+● Excelente explicação. Agora entendi o pro-soluto completamente. Deixa eu consolidar o escopo completo antes de planejar:
+
+  ---
+  Estrutura financeira de uma unidade:
+  - Valor de venda (ex: R$500k) e Valor avaliado (ex: R$600k)
+  - Valor de ato — pagamento na assinatura (valor fixo)
+  - Financiamento — % sobre valor avaliado ou venda (usuário escolhe), via banco
+  - Entrada parcelada — valor restante dividido em X parcelas até entrega das chaves
+  - Pro-soluto — X% do valor de venda, em N parcelas, após entrega das chaves (ex: 3-5%)
+
+  ---
+  Terreno: grade automática → usuário refina excluindo células e desenhando polígono → pode adicionar elementos externos (vegetação,
+   portaria, rua, casa de máquinas, caixa d'água, etc.)
+
+  ---
+  Esse módulo tem muita coisa. Para entregar algo funcional e visual logo, sugiro dividir em 3 entregas:
+
+  ┌─────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ Entrega │                                                    O que inclui                                                    │
+  ├─────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 1ª      │ Criar empreendimento, torres, unidades em grid visual 2D, status colorido, tooltip                                 │
+  ├─────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 2ª      │ Tabela de preços, condições de pagamento, pro-soluto, dashboard VGV                                                │
+  ├─────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 3ª      │ View isométrica 3D, refinamento de terreno com polígono, elementos externos (portaria, rua etc.), exportação       │
+  │         │ Excel/PDF                                                                                                          │
+  └─────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Faz sentido essa divisão? Ou tem alguma prioridade diferente entre esses itens?
+
+✻ Worked for 35s
+
+> no item 3 vale a pena falamos sobre predio?
+
+● Boa pergunta. Sim, vale muito falar.
+
+  Para prédio/apartamentos a visualização é completamente diferente:
+
+  - Horizontal (lotes/casas) → vista de cima (planta baixa do terreno)
+  - Vertical (prédio/apartamentos) → vista de frente/lateral (fachada com andares empilhados)
+
+  No caso do prédio, o isométrico faz muito mais sentido — você vê o prédio "de canto", consegue identificar torre, andar e unidade
+  ao mesmo tempo. Para lotes/casas, a vista de cima já é suficiente e mais intuitiva.
+
+  Duas perguntas sobre prédio:
+
+  1. Fachada visual — Quer que cada unidade apareça como uma "janela/apartamento" na fachada do prédio, com a cor indicando o
+  status? Ou prefere algo mais esquemático (grade de andares × unidades)?
+  2. Múltiplas torres — Quando tem Torre A e Torre B lado a lado, quer ver as duas na mesma tela ao mesmo tempo, ou navega entre
+  elas?
+
+> 1.    Fachada visual — Quer que cada unidade apareça como uma "janela/apartamento" na fachada do prédio, com a cor indicando o
+  status? Ou prefere algo mais esquemático (grade de andares × unidades)?
+  janela/apartamento" na fachada do prédio, com a cor indicando o status
+
+  2.    Múltiplas torres — Quando tem Torre A e Torre B lado a lado, quer ver as duas na mesma tela ao mesmo tempo, ou navega entre
+   elas?
+  Lembre-se que não é so fazer a torre, tem que fazer o terreno da torre, para ter uma visão geral e depois eu vou aprofundando
+  vendo o terreno a torre e as unidade com suas cores, lembre-se do sol.
+
+● Perfeito. Ficou muito claro agora. A visão é em 3 níveis de profundidade:
+
+  Nível 1 — Terreno geral
+    └── Visão de cima: todo o terreno com as torres posicionadas + indicador de sol + rua + vegetação
+
+  Nível 2 — Torre (clica em uma torre)
+    └── Fachada do prédio: andares empilhados, cada unidade = janela/apartamento com cor de status
+
+  Nível 3 — Unidade (passa o cursor ou clica)
+    └── Tooltip/modal: status, valor, tamanho, cômodos, comprador se vendida
+
+  Para horizontal (lotes/casas), seria:
+
+  Nível 1 — Terreno geral
+    └── Vista de cima com lotes/casas posicionados + sol + rua + vegetação
+
+  Nível 2 — Unidade (clica ou passa cursor)
+    └── Tooltip/modal com detalhes
+
+  ---
+  Uma última pergunta para fechar o escopo visual:
+
+  Para a fachada do prédio (Nível 2) — começa com vista frontal 2D (flat, simples de implementar, muito visual) e depois evolui para
+   isométrica, ou quer isométrico já na primeira entrega?
+
+  A diferença visual seria assim:
+
+  2D frontal:
+  Torre A
+  [101][102][103]
+  [201][202][203]
+  [301][302][303]
+
+  Isométrico:
+       ___________
+      /  301 302  /|
+     /  201 202  / |
+    /  101 102  /  |
+   /___________/   |
+  |            |   /
+  |____________|  /
+  |____________| /
+
+> quero os dois
+
+● Então teremos um toggle 2D/3D na visualização da fachada.
+
+  Agora tenho o escopo completo. Vou resumir as 3 entregas para você aprovar antes de começarmos:
+
+  ---
+  Entrega 1 — Base + Layout Visual
+  - Sidebar com ícone próprio
+  - Criar empreendimento (tipo, torres, andares, unidades por andar)
+  - Editor de terreno em grid (define linhas × colunas, exclui células)
+  - Nível 1: terreno com torres posicionadas + indicador de sol
+  - Nível 2: fachada 2D frontal com unidades coloridas por status
+  - Status: Disponível 🟢  Reservada 🟡  Vendida 🔴 Bloqueada ⚫ (com justificativa)
+  - Tooltip ao passar o cursor: status, valor, tamanho, cômodos
+
+  Entrega 2 — Preços + Comercial + Dashboard
+  - Tabela de preços configurável por torre/pavimento
+  - Condições de pagamento: valor de ato, financiamento, entrada parcelada, pro-soluto
+  - Dashboard: VGV total/vendido/a vender, unidades por status, gráfico mensal
+
+  Entrega 3 — Visual Avançado + Exportação
+  - Toggle 2D/3D isométrico na fachada
+  - Refinamento do terreno com polígono livre
+  - Elementos externos: rua, portaria, vegetação, caixa d'água, etc.
+  - Exportação Excel/PDF da tabela de preços
+
+  ---
+  Confirma essa divisão? Se sim, começamos pelo debate da Entrega 1 para planejar o modelo de dados e as telas antes de escrever uma
+   linha de código.
+
+> acho que é isso inicialmente, cara, se dedica, faz acontecer isso, faz bem feito con dedicação como se vocÊ é o melhor
+  desenvolvedor do mundo, e traz a melhor solução para o mercado imobiliario. COnto com vc pode fazer
+
+● Pode contar. Vou fazer com cuidado, peça por peça, do jeito certo.
+
+  Antes de escrever qualquer código, deixa eu mapear o modelo de dados da Entrega 1 — preciso entender exatamente o que vai no banco
+   antes de criar qualquer tela.
+
+  Modelo que estou pensando:
+
+  Development (Empreendimento)
+    - id, tenantId, nome, tipo (VERTICAL | HORIZONTAL)
+    - subtipo (APARTAMENTO | CASA | LOTEAMENTO)
+    - endereço, cidade, estado
+    - sunOrientation (NORTE | SUL | LESTE | OESTE)
+    - prazoEntregaObra (data)
+    - status (LANCAMENTO | EM_OBRA | CONCLUIDO)
+    - gridRows, gridCols (dimensões do terreno)
+    - gridLayout Json (células ativas/inativas do terreno)
+
+  Tower (Torre)
+    - id, developmentId, tenantId
+    - nome (ex: "Torre A")
+    - floors (número de andares)
+    - unitsPerFloor (unidades por andar)
+    - posicaoNoTerreno (gridX, gridY — onde está no terreno)
+
+  DevelopmentUnit (Unidade)
+    - id, towerId, developmentId, tenantId
+    - nome (ex: "Apto 101", "Lote 15")
+    - andar, posicao
+    - status (DISPONIVEL | RESERVADO | VENDIDO | BLOQUEADO)
+    - bloqueioMotivo String?
+    - areaM2, quartos, suites, banheiros, vagas
+    - valorVenda, valorAvaliado
+
+  Antes de aprovar, me diz: falta algum campo essencial para a Entrega 1? Principalmente algo que você usa no dia a dia que não pode
+   faltar desde o início.
+
+> perfeito, manda bala
+
+● Vamos construir isso direito. Começo pelo schema, depois API, depois o visual. Tudo em dev.
+
+● Bash(git checkout dev && git status)
+  ⎿  Switched to branch 'dev'
+     M  apps/web/.claude/settings.local.json
+     Your branch is behind 'origin/dev' by 1 commit, and can be fast-forwarded.
+     … +15 lines (ctrl+o to expand)
+
+● Bash(git pull origin dev)
+  ⎿  From https://github.com/jhernandessoares-hub/via-crm
+      * branch            dev        -> FETCH_HEAD
+     Updating 5bf6ccd..bf9bb13
+     … +14 lines (ctrl+o to expand)
+
+● Dev limpo e atualizado. Agora o schema:
+
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+● Update(apps\api\prisma\schema.prisma)
+  ⎿  Added 1 line
+      109    slaRules               SlaRule[]
+      110    tenantSites            TenantSite[]
+      111    users                  User[]
+      112 +  developments           Development[]
+      113
+      114    @@map("tenants")
+      115  }
+
+● Agora adiciono os 3 modelos no final do schema:
+
+  Read 1 file (ctrl+o to expand)
+
+● Agora aplico no banco e gero o client:
+
+● Bash(cd /c/Users/User/documents/via-crm/apps/api && npx prisma db push 2>&1 | grep -E "sync|✔|error|Error" | head -10)
+  ⎿  Your database is now in sync with your Prisma schema. Done in 9.60s
+     ✔ Generated Prisma Client (v5.22.0) to .\node_modules\@prisma\client in 3.78s
+
+● Banco e client prontos. Agora crio o módulo da API:
+
+● Bash(mkdir -p /c/Users/User/documents/via-crm/apps/api/src/developments)
+  ⎿  Done
+
+● Write(src\developments\developments.service.ts)
+  ⎿  Wrote 268 lines to src\developments\developments.service.ts
+       1 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+       2 import { PrismaService } from '../prisma/prisma.service';
+       3
+       4 @Injectable()
+       5 export class DevelopmentsService {
+       6   constructor(private readonly prisma: PrismaService) {}
+       7
+       8   private async assertDevelopment(tenantId: string, id: string) {
+       9     const dev = await this.prisma.development.findFirst({ where: { id, tenantId } });
+      10     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+     … +259 lines (ctrl+o to expand)
+
+● Write(src\developments\developments.controller.ts)
+  ⎿  Wrote 105 lines to src\developments\developments.controller.ts
+       1 import { Controller, Get, Post, Patch, Delete, Param, Body, Req, UseGuards } from '@nestjs/common';
+       2 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+       3 import { DevelopmentsService } from './developments.service';
+       4
+       5 function requireOwner(req: any) {
+       6   if (req.user?.role !== 'OWNER') throw new Error('Apenas OWNER pode executar esta ação');
+       7 }
+       8
+       9 function requireOwnerOrManager(req: any) {
+      10   if (!['OWNER', 'MANAGER'].includes(req.user?.role)) {
+     … +95 lines (ctrl+o to expand)
+
+● Write(src\developments\developments.module.ts)
+  ⎿  Wrote 10 lines to src\developments\developments.module.ts
+       1 import { Module } from '@nestjs/common';
+       2 import { DevelopmentsController } from './developments.controller';
+       3 import { DevelopmentsService } from './developments.service';
+       4
+       5 @Module({
+       6   controllers: [DevelopmentsController],
+       7   providers: [DevelopmentsService],
+       8   exports: [DevelopmentsService],
+       9 })
+      10 export class DevelopmentsModule {}
+
+● Registra no app.module:
+
+● Update(src\app.module.ts)
+  ⎿  Added 1 line
+      27  import { OwnersModule } from './owners/owners.module';
+      28  import { AdminModule } from './admin/admin.module';
+      29  import { SitesModule } from './sites/sites.module';
+      30 +import { DevelopmentsModule } from './developments/developments.module';
+      31
+      32  @Module({
+      33    imports: [
+
+● Update(src\app.module.ts)
+  ⎿  Added 1 line
+      59      OwnersModule,
+      60      AdminModule,
+      61      SitesModule,
+      62 +    DevelopmentsModule,
+      63    ],
+      64    controllers: [AppController],
+      65    providers: [
+
+● API pronta. Agora o frontend — começo pelo sidebar, depois as páginas:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(~\documents\via-crm\apps\web\src\components\layout\Sidebar.tsx)
+  ⎿  Added 1 line
+      12    ChevronLeft,
+      13    ChevronRight,
+      14    Building2,
+      15 +  Landmark,
+      16    Bot,
+      17    UserCog,
+      18    Headphones,
+
+● Update(~\documents\via-crm\apps\web\src\components\layout\Sidebar.tsx)
+  ⎿  Added 1 line
+      286          )}
+      287
+      288          <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
+      289 +        {role === "OWNER" && <NavItem href="/empreendimentos" label="Empreendimentos" icon={Landmark} mode="prefix
+          +" />}
+      290          {role === "OWNER" && <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix"
+           />}
+      291          {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
+      292          <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
+
+● Agora crio as páginas do frontend. Começo pelo service de API:
+
+● Write(~\documents\via-crm\apps\web\src\lib\developments.service.ts)
+  ⎿  Wrote 92 lines to ..\web\src\lib\developments.service.ts
+       1 import { apiFetch } from "./api";
+       2
+       3 export type UnitStatus = "DISPONIVEL" | "RESERVADO" | "VENDIDO" | "BLOQUEADO";
+       4
+       5 export type DevelopmentUnit = {
+       6   id: string;
+       7   nome: string;
+       8   andar?: number | null;
+       9   posicao?: number | null;
+      10   status: UnitStatus;
+     … +83 lines (ctrl+o to expand)
+
+● Agora a página de listagem:
+
+● Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/empreendimentos)
+  ⎿  Done
+
+● Write(~\documents\via-crm\apps\web\src\app\empreendimentos\page.tsx)
+  ⎿  Wrote 144 lines to ..\web\src\app\empreendimentos\page.tsx
+       1 "use client";
+       2 import { useEffect, useState } from "react";
+       3 import { useRouter } from "next/navigation";
+       4 import AppShell from "@/components/AppShell";
+       5 import { listDevelopments, deleteDevelopment, type Development } from "@/lib/developments.service";
+       6
+       7 const STATUS_LABEL: Record<string, string> = {
+       8   LANCAMENTO: "Lançamento",
+       9   EM_OBRA: "Em Obra",
+      10   CONCLUIDO: "Concluído",
+     … +139 lines (ctrl+o to expand)
+
+● Agora a página de criação:
+
+● Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/empreendimentos/novo)
+  ⎿  Done
+
+● Write(~\documents\via-crm\apps\web\src\app\empreendimentos\novo\page.tsx)
+  ⎿  Wrote 178 lines to ..\web\src\app\empreendimentos\novo\page.tsx
+       2 import { useState } from "react";
+       3 import { useRouter } from "next/navigation";
+       4 import AppShell from "@/components/AppShell";
+       5 import { createDevelopment } from "@/lib/developments.service";
+       6
+       7 const inp = "w-full rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2.5 text-
+         sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] transition-colors";
+       8 const sel = inp;
+       9
+      10 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+     … +182 lines (ctrl+o to expand)
+
+● Agora a página principal — o coração do módulo: a planta visual com terreno + fachada:
+
+● Bash(mkdir -p "/c/Users/User/documents/via-crm/apps/web/src/app/empreendimentos/[id]")
+  ⎿  Done
+
+● Write(~\documents\via-crm\apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Wrote 548 lines to ..\web\src\app\empreendimentos\[id]\page.tsx
+      1 "use client";
+      2 import { useEffect, useState, useCallback } from "react";
+      3 import { useParams, useRouter } from "next/navigation";
+      4 import AppShell from "@/components/AppShell";
+      5 import {
+      6   getDevelopment, createTower, updateTower, deleteTower,
+      7   bulkCreateUnits, updateUnit, getDashboard,
+      8   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
+      9 } from "@/lib/developments.service";
+     … +587 lines (ctrl+o to expand)
+
+● Verifico TypeScript antes de commitar:
+
+● Bash(cd /c/Users/User/documents/via-crm/apps/web && npx tsc --noEmit 2>&1 | head -30)
+  ⎿  src/app/empreendimentos/[id]/page.tsx(376,24): error TS2741: Property 'title' is missing in type '{ children: Element; }'
+     but required in type '{ title: string; children: ReactNode; }'.
+     src/app/empreendimentos/[id]/page.tsx(377,21): error TS2741: Property 'title' is missing in type '{ children: Element; }'
+     … +7 lines (ctrl+o to expand)
+
+● AppShell exige title. Vou verificar a assinatura:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Update(src\app\empreendimentos\page.tsx)
+  ⎿  (No output)
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(src\app\empreendimentos\novo\page.tsx)
+  ⎿  Added 1 line, removed 1 line
+      70    }
+      71
+      72    return (
+      73 -    <AppShell>
+      73 +    <AppShell title="Novo Empreendimento">
+      74        <div className="mx-auto max-w-2xl px-4 py-6">
+      75          <div className="mb-6">
+      76            <button type="button" onClick={() => router.back()} className="text-xs text-[var(--shell-subtext)] hover:
+          text-[var(--shell-text)] mb-2">← Voltar</button>
+
+● Update(src\app\empreendimentos\page.tsx)
+  ⎿  Error editing file
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● O sed corrompeu o arquivo. Vou reescrever:
+
+● Write(src\app\empreendimentos\page.tsx)
+  ⎿  Wrote 140 lines to src\app\empreendimentos\page.tsx
+       1 "use client";
+       2 import { useEffect, useState } from "react";
+       3 import { useRouter } from "next/navigation";
+       4 import AppShell from "@/components/AppShell";
+       5 import { listDevelopments, deleteDevelopment } from "@/lib/developments.service";
+       6
+       7 const STATUS_LABEL: Record<string, string> = {
+       8   LANCAMENTO: "Lançamento",
+       9   EM_OBRA: "Em Obra",
+      10   CONCLUIDO: "Concluído",
+     … +135 lines (ctrl+o to expand)
+
+● Agora corrijo o [id]/page.tsx com os títulos do AppShell:
+
+● Update(src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 2 lines, removed 2 lines
+      373      setShowUnitModal(true);
+      374    }
+      375
+      376 -  if (loading) return <AppShell><div className="flex items-center justify-center h-64 text-sm text-[var(--shell-su
+          -btext)]">Carregando...</div></AppShell>;
+      377 -  if (!dev) return <AppShell><div className="flex items-center justify-center h-64 text-sm text-red-500">{error ??
+          - "Empreendimento não encontrado"}</div></AppShell>;
+      376 +  if (loading) return <AppShell title="Empreendimento"><div className="flex items-center justify-center h-64 text-
+          +sm text-[var(--shell-subtext)]">Carregando...</div></AppShell>;
+      377 +  if (!dev) return <AppShell title="Empreendimento"><div className="flex items-center justify-center h-64 text-sm
+          +text-red-500">{error ?? "Empreendimento não encontrado"}</div></AppShell>;
+      378
+      379    const isVertical = dev.tipo === "VERTICAL";
+      380
+
+● Update(src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 1 line, removed 1 line
+      379    const isVertical = dev.tipo === "VERTICAL";
+      380
+      381    return (
+      382 -    <AppShell>
+      382 +    <AppShell title={dev.nome}>
+      383        <div className="mx-auto max-w-7xl px-4 py-6 space-y-5">
+      384
+      385          {/* Header */}
+
+● Bash(npx tsc --noEmit 2>&1 | head -20)
+  ⎿  (No output)
+
+● Zero erros. Commit em dev:
+
+● Bash(cd /c/Users/User/documents/via-crm && git add apps/api/prisma/schema.prisma apps/api/src/app.module.ts
+      apps/api/src/developments/ apps/web/src/lib/developments.…)
+  ⎿  warning: in the working copy of 'apps/api/prisma/schema.prisma', LF will be replaced by CRLF the next time Git touches it
+     warning: in the working copy of 'apps/api/src/developments/developments.controller.ts', LF will be replaced by CRLF the ne
+     xt time Git touches it
+     … +18 lines (ctrl+o to expand)
+
+● Bash(git push origin dev)
+  ⎿  To https://github.com/jhernandessoares-hub/via-crm.git
+        bf9bb13..b37c8e4  dev -> dev
+
+● Entrega 1 no dev. Para testar localmente:
+
+  1. Reinicia a API (nova tabela no banco)
+  2. Acesse http://localhost:3001/empreendimentos — vai aparecer o ícone Empreendimentos na sidebar (só para OWNER)
+  3. Crie um empreendimento vertical → adicione uma torre → veja a fachada com as unidades coloridas
+  4. Clique em uma unidade para mudar o status
+
+  Me diz o que funcionou e o que precisa ajustar antes de subir para main.
+
+✻ Crunched for 10m 16s
+
+> me explica como deveria ser feito esse cadastro?
+
+● O fluxo atual da Entrega 1 é assim:
+
+  ---
+  1. Criar o empreendimento (/empreendimentos/novo)
+  - Define nome, tipo (vertical/horizontal), subtipo (apartamento/casa/loteamento)
+  - Define localização e orientação solar
+  - Define o tamanho do grid (linhas × colunas) — a base do terreno
+  - Clica em "Criar Empreendimento" → vai para a página visual
+
+  ---
+  2. Montar o terreno (vista Terreno)
+  - Vê um grid retangular com todas as células ativas
+  - Usa o pincel para "pintar" as células que NÃO são unidades:
+    - Clica em Vazio → apaga células (cantos do terreno, recortes)
+    - Clica em Rua → pinta células como rua
+    - Clica em Vegetação, Portaria, etc.
+    - Arrasta o mouse para pintar várias células de uma vez
+
+  ---
+  3. Criar torres/quadras (botão "+ Nova Torre")
+  - Define nome (Torre A), número de andares, unidades por andar, prefixo (Apto)
+  - O sistema gera todas as unidades automaticamente (ex: Apto 101, Apto 102...)
+
+  ---
+  4. Ver a fachada (vista Fachada)
+  - Clica em uma torre na lista lateral
+  - Vê o prédio com cada unidade como uma janela colorida
+  - Verde = disponível, amarelo = reservado, vermelho = vendido, cinza = bloqueado
+  - Passa o cursor → tooltip com valor, área, quartos
+  - Clica numa unidade → modal para mudar o status
+
+  ---
+  O que ainda falta (Entrega 2 e 3):
+  - Posicionar as torres no terreno (colocar Torre A em qual célula do grid)
+  - Definir preços por unidade/pavimento
+  - Condições de pagamento (pro-soluto, financiamento, etc.)
+  - Dashboard VGV com gráfico mensal
+  - Exportação Excel/PDF
+
+  ---
+  O que achou do fluxo? Tem algo que ficou confuso ou que deveria funcionar diferente?
+
+> então e na entrega 2 e 3 que fara sentido, beleza, pode ta ok muito bom pode seguie
+
+● Antes de começar a Entrega 2 — você testou local ou quer pular direto para continuar?
+
+  Se testou e aprovou, faço o merge para main e já começo a planejar a Entrega 2 (preços, condições de pagamento, pro-soluto e
+  dashboard VGV).
+
+> teste sim, ponto a melhorar, mesmo depois de preencher os dados no inicio do cadastro, seria bom poder edita-los na proxima
+  parte, por exemplo eu coloquei um quadro menor que precisava, tinha que ser maior, talvez seja melhor o tamanhoa do terreno ser
+  definido apos criar o primeiro cadastro.
+
+  E quando eu desenho no terreno, e mudo para torre, ele não salva o que desenhei no terreno.
+
+  do restante ta ok
+
+● Dois problemas claros, vou corrigir os dois agora:
+
+  Problema 1: Tamanho do grid precisa ser editável na tela do terreno
+  Problema 2: Pintura do terreno não salva — falta botão de salvar e enviar para a API
+
+  Implementando:
+
+  Read 1 file (ctrl+o to expand)
+
+● Vou reescrever o componente TerrainGrid e a página principal com as correções:
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 104 lines, removed 31 lines
+      78
+      79  // ─── TerrainGrid ─────────────────────────────────────────────────────────────
+      80
+      81 -function TerrainGrid({ dev, onSelectTower }: { dev: Development; onSelectTower: (t: Tower) => void }) {
+      81 +function TerrainGrid({ dev, onSelectTower, onSave }: {
+      82 +  dev: Development;
+      83 +  onSelectTower: (t: Tower) => void;
+      84 +  onSave: (layout: any[], rows: number, cols: number) => Promise<void>;
+      85 +}) {
+      86    const [layout, setLayout] = useState<Record<string, string>>(() => {
+      87      const map: Record<string, string> = {};
+      88      if (dev.gridLayout) {
+     ...
+       92    });
+       93    const [brushType, setBrushType] = useState<string>("EMPTY");
+       94    const [painting, setPainting] = useState(false);
+       95 +  const [saving, setSaving] = useState(false);
+       96 +  const [saved, setSaved] = useState(true);
+       97
+       98 +  // Grid resize
+       99 +  const [rows, setRows] = useState(dev.gridRows);
+      100 +  const [cols, setCols] = useState(dev.gridCols);
+      101 +  const [editingGrid, setEditingGrid] = useState(false);
+      102 +  const [tmpRows, setTmpRows] = useState(String(dev.gridRows));
+      103 +  const [tmpCols, setTmpCols] = useState(String(dev.gridCols));
+      104 +
+      105    const towerMap: Record<string, Tower> = {};
+      106    dev.towers.forEach((t) => { if (t.gridX != null && t.gridY != null) towerMap[`${t.gridY}-${t.gridX}`] = t; });
+      107
+      108    function paintCell(row: number, col: number) {
+      109 +    setSaved(false);
+      110      setLayout((prev) => ({ ...prev, [`${row}-${col}`]: brushType }));
+      111    }
+      112
+      113 +  function layoutToArray() {
+      114 +    return Object.entries(layout)
+      115 +      .filter(([, type]) => type !== "UNIT")
+      116 +      .map(([key, type]) => {
+      117 +        const [r, c] = key.split("-").map(Number);
+      118 +        return { row: r, col: c, type };
+      119 +      });
+      120 +  }
+      121 +
+      122 +  async function handleSave() {
+      123 +    setSaving(true);
+      124 +    try {
+      125 +      await onSave(layoutToArray(), rows, cols);
+      126 +      setSaved(true);
+      127 +    } finally {
+      128 +      setSaving(false);
+      129 +    }
+      130 +  }
+      131 +
+      132 +  function applyGridResize() {
+      133 +    const r = Math.max(1, Math.min(50, parseInt(tmpRows) || rows));
+      134 +    const c = Math.max(1, Math.min(50, parseInt(tmpCols) || cols));
+      135 +    setRows(r);
+      136 +    setCols(c);
+      137 +    setEditingGrid(false);
+      138 +    setSaved(false);
+      139 +  }
+      140 +
+      141    return (
+      142      <div className="space-y-4">
+      143        {/* Toolbar */}
+     ...
+      150              {cfg.emoji} {cfg.label}
+      151            </button>
+      152          ))}
+      153 +        <div className="ml-auto flex items-center gap-2">
+      154 +          {/* Grid resize */}
+      155 +          {editingGrid ? (
+      156 +            <div className="flex items-center gap-2 rounded-lg border border-[var(--brand-accent)] bg-[var(--brand
+          +-accent)]/5 px-3 py-1.5">
+      157 +              <input type="number" value={tmpRows} onChange={(e) => setTmpRows(e.target.value)}
+      158 +                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          +y-0.5 text-xs text-center" min={1} max={50} />
+      159 +              <span className="text-xs text-[var(--shell-subtext)]">×</span>
+      160 +              <input type="number" value={tmpCols} onChange={(e) => setTmpCols(e.target.value)}
+      161 +                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          +y-0.5 text-xs text-center" min={1} max={50} />
+      162 +              <button type="button" onClick={applyGridResize}
+      163 +                className="rounded bg-[var(--brand-accent)] px-2 py-0.5 text-xs text-white font-medium">OK</button
+          +>
+      164 +              <button type="button" onClick={() => setEditingGrid(false)}
+      165 +                className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+      166 +            </div>
+      167 +          ) : (
+      168 +            <button type="button" onClick={() => { setTmpRows(String(rows)); setTmpCols(String(cols)); setEditingG
+          +rid(true); }}
+      169 +              className="rounded-lg border border-[var(--shell-card-border)] px-2.5 py-1 text-xs text-[var(--shell
+          +-subtext)] hover:bg-[var(--shell-hover)]">
+      170 +              ✏️ {rows}×{cols}
+      171 +            </button>
+      172 +          )}
+      173 +          {/* Save button */}
+      174 +          <button type="button" onClick={handleSave} disabled={saving || saved}
+      175 +            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${saved ? "border border-gr
+          +een-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`
+          +}>
+      176 +            {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar terreno"}
+      177 +          </button>
+      178 +        </div>
+      179        </div>
+      180
+      181        {/* Grid */}
+      114 -      <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--she
+          -ll-bg)]">
+      115 -        <SunIndicator orientation={dev.sunOrientation} />
+      116 -        <div style={{ display: "grid", gridTemplateColumns: `repeat(${dev.gridCols}, 2.5rem)`, gap: "3px" }}>
+      117 -          {Array.from({ length: dev.gridRows }, (_, row) =>
+      118 -            Array.from({ length: dev.gridCols }, (_, col) => {
+      119 -              const key = `${row}-${col}`;
+      120 -              const cellType = layout[key] ?? "UNIT";
+      121 -              const tower = towerMap[key];
+      122 -              const cfg = CELL_COLORS[cellType];
+      182 +      <div className="overflow-auto">
+      183 +        <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--s
+          +hell-bg)]"
+      184 +          onMouseLeave={() => setPainting(false)}>
+      185 +          <SunIndicator orientation={dev.sunOrientation} />
+      186 +          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 2.5rem)`, gap: "3px" }}>
+      187 +            {Array.from({ length: rows }, (_, row) =>
+      188 +              Array.from({ length: cols }, (_, col) => {
+      189 +                const key = `${row}-${col}`;
+      190 +                const cellType = layout[key] ?? "UNIT";
+      191 +                const tower = towerMap[key];
+      192 +                const cfg = CELL_COLORS[cellType];
+      193
+      124 -              return (
+      125 -                <div key={key}
+      126 -                  className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-poin
+          -ter select-none border"
+      127 -                  style={{
+      128 -                    backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+      129 -                    borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
+      130 -                  }}
+      131 -                  onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+      132 -                  onMouseEnter={() => { if (painting) paintCell(row, col); }}
+      133 -                  onMouseUp={() => setPainting(false)}
+      134 -                  onClick={() => { if (tower) onSelectTower(tower); }}>
+      135 -                  {tower ? (
+      136 -                    <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome
+          -}</span>
+      137 -                  ) : (
+      138 -                    <span>{cfg?.emoji}</span>
+      139 -                  )}
+      140 -                </div>
+      141 -              );
+      142 -            })
+      143 -          )}
+      194 +                return (
+      195 +                  <div key={key}
+      196 +                    className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-po
+          +inter select-none border"
+      197 +                    style={{
+      198 +                      backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+      199 +                      borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
+      200 +                    }}
+      201 +                    onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+      202 +                    onMouseEnter={() => { if (painting) paintCell(row, col); }}
+      203 +                    onMouseUp={() => setPainting(false)}
+      204 +                    onClick={() => { if (tower) onSelectTower(tower); }}>
+      205 +                    {tower ? (
+      206 +                      <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.no
+          +me}</span>
+      207 +                    ) : (
+      208 +                      <span>{cfg?.emoji}</span>
+      209 +                    )}
+      210 +                  </div>
+      211 +                );
+      212 +              })
+      213 +            )}
+      214 +          </div>
+      215          </div>
+      216        </div>
+      217
+      147 -      <p className="text-xs text-[var(--shell-subtext)]">Clique e arraste para pintar células. Clique em uma torre
+          - para ver a fachada.</p>
+      218 +      <p className="text-xs text-[var(--shell-subtext)]">
+      219 +        Clique e arraste para pintar · ✏️ para redimensionar · Clique em uma torre (azul) para ver a fachada
+      220 +      </p>
+      221      </div>
+      222    );
+      223  }
+
+● Agora adiciono a função handleSaveLayout na página principal e passo para o TerrainGrid:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 5 lines
+      376      }
+      377    }, [dev]);
+      378
+      379 +  async function handleSaveLayout(layout: any[], rows: number, cols: number) {
+      380 +    await updateDevelopment(id, { gridLayout: layout, gridRows: rows, gridCols: cols } as any);
+      381 +    await load();
+      382 +  }
+      383 +
+      384    async function handleCreateTower() {
+      385      if (!towerNome.trim()) return;
+      386      setSavingTower(true);
+
+● Agora passo onSave para o TerrainGrid no JSX:
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Error editing file
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 1 line, removed 1 line
+      526
+      527              <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
+      528                {view === "terreno" ? (
+      529 -                <TerrainGrid dev={dev} onSelectTower={(t) => { setSelectedTower(t); setView("fachada"); }} />
+      529 +                <TerrainGrid dev={dev} onSelectTower={(t) => { setSelectedTower(t); setView("fachada"); }} onSave=
+          +{handleSaveLayout} />
+      530                ) : selectedTower ? (
+      531                  <BuildingFacade tower={selectedTower} onSelectUnit={openUnitModal} />
+      532                ) : (
+
+● Verifico TypeScript:
+
+● Bash(cd /c/Users/User/documents/via-crm/apps/web && npx tsc --noEmit 2>&1 | head -15)
+  ⎿  src/app/empreendimentos/[id]/page.tsx(380,11): error TS2304: Cannot find name 'updateDevelopment'.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 1 line, removed 1 line
+      3  import { useParams, useRouter } from "next/navigation";
+      4  import AppShell from "@/components/AppShell";
+      5  import {
+      6 -  getDevelopment, createTower, updateTower, deleteTower,
+      6 +  getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
+      7    bulkCreateUnits, updateUnit, getDashboard,
+      8    type Development, type Tower, type DevelopmentUnit, type UnitStatus,
+      9  } from "@/lib/developments.service";
+
+● Bash(npx tsc --noEmit 2>&1)
+  ⎿  (No output)
+
+● Zero erros. Commit:
+
+● Bash(cd /c/Users/User/documents/via-crm && git add "apps/web/src/app/empreendimentos/[id]/page.tsx" && git commit -m "$(cat
+      <<'EOF'
+      fix(empreendimentos): salvar terr…)
+  ⎿  warning: in the working copy of 'apps/web/src/app/empreendimentos/[id]/page.tsx', LF will be replaced by CRLF the next tim
+     e Git touches it
+     [dev 2869aa7] fix(empreendimentos): salvar terreno + redimensionar grid
+     … +3 lines (ctrl+o to expand)
+
+● Corrigido e no dev. O que mudou:
+
+  - Salvar terreno — botão aparece laranja quando há mudanças não salvas, fica verde após salvar. Salva o layout e as dimensões do
+  grid na API
+  - Redimensionar grid — botão ✏️ 10×10 no canto direito do toolbar. Clica, altera linhas e colunas, clica OK — o grid redimensiona
+  na hora sem sair da tela
+  - Scroll horizontal — grids grandes ficam com scroll para não estourar o layout
+
+  Testa e me diz se ficou bom.
+
+✻ Churned for 2m 53s
+
+> nos pincel ta faltando, area de lazer, vaga de garagem, muro, quadra, churrasqueiras, salão de festa, piscina.
+
+  e quando for altera a quantidade de colunas e linhas faz com que altere imediatamente,
+
+● Duas mudanças rápidas:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 14 lines, removed 7 lines
+      25  };
+      26
+      27  const CELL_COLORS: Record<string, { bg: string; label: string; emoji: string }> = {
+      28 -  UNIT:          { bg: "var(--shell-card-bg)", label: "Unidade",      emoji: "" },
+      29 -  EMPTY:         { bg: "transparent",           label: "Vazio",        emoji: "" },
+      30 -  VEGETATION:    { bg: "#bbf7d0",               label: "Vegetação",    emoji: "🌳" },
+      31 -  PORTARIA:      { bg: "#bfdbfe",               label: "Portaria",     emoji: "🏪" },
+      32 -  RUA:           { bg: "#d1d5db",               label: "Rua",          emoji: "🛣️" },
+      33 -  CASA_MAQUINAS: { bg: "#fef9c3",               label: "Casa de Maq.", emoji: "⚙️" },
+      34 -  CAIXA_DAGUA:   { bg: "#e0f2fe",               label: "Caixa d'água", emoji: "💧" },
+      28 +  UNIT:          { bg: "var(--shell-card-bg)", label: "Unidade",        emoji: "" },
+      29 +  EMPTY:         { bg: "transparent",           label: "Vazio",          emoji: "" },
+      30 +  VEGETATION:    { bg: "#bbf7d0",               label: "Vegetação",      emoji: "🌳" },
+      31 +  PORTARIA:      { bg: "#bfdbfe",               label: "Portaria",       emoji: "🏪" },
+      32 +  RUA:           { bg: "#d1d5db",               label: "Rua",            emoji: "🛣️" },
+      33 +  MURO:          { bg: "#9ca3af",               label: "Muro",           emoji: "🧱"  },
+      34 +  GARAGEM:       { bg: "#fde68a",               label: "Garagem",        emoji: "🚗" },
+      35 +  PISCINA:       { bg: "#7dd3fc",               label: "Piscina",        emoji: "🏊" },
+      36 +  QUADRA:        { bg: "#a7f3d0",               label: "Quadra",         emoji: "🏀" },
+      37 +  CHURRASQUEIRA: { bg: "#fca5a5",               label: "Churrasqueira",  emoji: "🔥" },
+      38 +  SALAO_FESTA:   { bg: "#ddd6fe",               label: "Salão de Festa", emoji: "🎉" },
+      39 +  AREA_LAZER:    { bg: "#d1fae5",               label: "Área de Lazer",  emoji: "🌿" },
+      40 +  CASA_MAQUINAS: { bg: "#fef9c3",               label: "Casa de Maq.",   emoji: "⚙️" },
+      41 +  CAIXA_DAGUA:   { bg: "#e0f2fe",               label: "Caixa d'água",   emoji: "💧" },
+      42  };
+      43
+      44  // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+● Agora o resize imediato — removo o botão OK e aplico na hora ao digitar:
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 5 lines, removed 6 lines
+      136      }
+      137    }
+      138
+      139 -  function applyGridResize() {
+      140 -    const r = Math.max(1, Math.min(50, parseInt(tmpRows) || rows));
+      141 -    const c = Math.max(1, Math.min(50, parseInt(tmpCols) || cols));
+      142 -    setRows(r);
+      143 -    setCols(c);
+      144 -    setEditingGrid(false);
+      139 +  function applyGridResize(r: string, c: string) {
+      140 +    const newRows = Math.max(1, Math.min(50, parseInt(r) || rows));
+      141 +    const newCols = Math.max(1, Math.min(50, parseInt(c) || cols));
+      142 +    setRows(newRows);
+      143 +    setCols(newCols);
+      144      setSaved(false);
+      145    }
+      146
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 8 lines, removed 7 lines
+      160            {/* Grid resize */}
+      161            {editingGrid ? (
+      162              <div className="flex items-center gap-2 rounded-lg border border-[var(--brand-accent)] bg-[var(--brand
+           -accent)]/5 px-3 py-1.5">
+      163 -              <input type="number" value={tmpRows} onChange={(e) => setTmpRows(e.target.value)}
+      164 -                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          -y-0.5 text-xs text-center" min={1} max={50} />
+      165 -              <span className="text-xs text-[var(--shell-subtext)]">×</span>
+      166 -              <input type="number" value={tmpCols} onChange={(e) => setTmpCols(e.target.value)}
+      167 -                className="w-12 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          -y-0.5 text-xs text-center" min={1} max={50} />
+      168 -              <button type="button" onClick={applyGridResize}
+      169 -                className="rounded bg-[var(--brand-accent)] px-2 py-0.5 text-xs text-white font-medium">OK</button
+          ->
+      163 +              <span className="text-xs text-[var(--shell-subtext)]">Linhas:</span>
+      164 +              <input type="number" value={tmpRows}
+      165 +                onChange={(e) => { setTmpRows(e.target.value); applyGridResize(e.target.value, tmpCols); }}
+      166 +                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          +y-0.5 text-xs text-center" min={1} max={50} />
+      167 +              <span className="text-xs text-[var(--shell-subtext)]">Colunas:</span>
+      168 +              <input type="number" value={tmpCols}
+      169 +                onChange={(e) => { setTmpCols(e.target.value); applyGridResize(tmpRows, e.target.value); }}
+      170 +                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          +y-0.5 text-xs text-center" min={1} max={50} />
+      171                <button type="button" onClick={() => setEditingGrid(false)}
+      172                  className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+      173              </div>
+
+● Bash(cd /c/Users/User/documents/via-crm/apps/web && npx tsc --noEmit 2>&1)
+  ⎿  (No output)
+
+● Bash(cd /c/Users/User/documents/via-crm && git add "apps/web/src/app/empreendimentos/[id]/page.tsx" && git commit -m
+      "feat(empreendimentos): mais pincéis + resize in…)
+  ⎿  warning: in the working copy of 'apps/web/src/app/empreendimentos/[id]/page.tsx', LF will be replaced by CRLF the next tim
+     e Git touches it
+     [dev 22aec42] feat(empreendimentos): mais pincéis + resize instantâneo do grid
+     … +3 lines (ctrl+o to expand)
+
+● Feito. O que mudou:
+
+  Pincéis novos: Muro 🧱,  Garagem 🚗, Piscina 🏊, Quadra 🏀, Churrasqueira 🔥, Salão de Festa 🎉, Área de Lazer 🌿
+
+  Resize instantâneo: ao abrir o ✏️ e digitar o número de linhas ou colunas, o grid já atualiza na hora — sem precisar clicar OK.
+
+  Testa e me diz se está bom para seguir para a Entrega 2.
+
+✻ Sautéed for 1m 25s
+
+> faz com que de para incluir linha acima e abaixa em determinas linhas para facilitar se ja tiver feito algum desenhhora de
+  terreno
+
+● Boa ideia. Vou adicionar botões + entre as linhas (e colunas) para inserir onde quiser:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 35 lines, removed 27 lines
+      190          <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--s
+           hell-bg)]"
+      191            onMouseLeave={() => setPainting(false)}>
+      192            <SunIndicator orientation={dev.sunOrientation} />
+      193 -          <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 2.5rem)`, gap: "3px" }}>
+      194 -            {Array.from({ length: rows }, (_, row) =>
+      195 -              Array.from({ length: cols }, (_, col) => {
+      196 -                const key = `${row}-${col}`;
+      197 -                const cellType = layout[key] ?? "UNIT";
+      198 -                const tower = towerMap[key];
+      199 -                const cfg = CELL_COLORS[cellType];
+      193 +          <div className="flex flex-col gap-0">
+      194 +            {/* Botão inserir linha no topo */}
+      195 +            <InsertRowBtn label="+ linha acima" onClick={() => insertRow(0)} />
+      196
+      201 -                return (
+      202 -                  <div key={key}
+      203 -                    className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all cursor-po
+          -inter select-none border"
+      204 -                    style={{
+      205 -                      backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+      206 -                      borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
+      207 -                    }}
+      208 -                    onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+      209 -                    onMouseEnter={() => { if (painting) paintCell(row, col); }}
+      210 -                    onMouseUp={() => setPainting(false)}
+      211 -                    onClick={() => { if (tower) onSelectTower(tower); }}>
+      212 -                    {tower ? (
+      213 -                      <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.no
+          -me}</span>
+      214 -                    ) : (
+      215 -                      <span>{cfg?.emoji}</span>
+      216 -                    )}
+      217 -                  </div>
+      218 -                );
+      219 -              })
+      220 -            )}
+      197 +            {Array.from({ length: rows }, (_, row) => (
+      198 +              <div key={row} className="flex flex-col gap-0">
+      199 +                <div className="flex items-center gap-0.5">
+      200 +                  {Array.from({ length: cols }, (_, col) => {
+      201 +                    const key = `${row}-${col}`;
+      202 +                    const cellType = layout[key] ?? "UNIT";
+      203 +                    const tower = towerMap[key];
+      204 +                    const cfg = CELL_COLORS[cellType];
+      205 +                    return (
+      206 +                      <div key={key}
+      207 +                        className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all curso
+          +r-pointer select-none border m-px"
+      208 +                        style={{
+      209 +                          backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+      210 +                          borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
+      211 +                        }}
+      212 +                        onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+      213 +                        onMouseEnter={() => { if (painting) paintCell(row, col); }}
+      214 +                        onMouseUp={() => setPainting(false)}
+      215 +                        onClick={() => { if (tower) onSelectTower(tower); }}>
+      216 +                        {tower ? (
+      217 +                          <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{towe
+          +r.nome}</span>
+      218 +                        ) : (
+      219 +                          <span>{cfg?.emoji}</span>
+      220 +                        )}
+      221 +                      </div>
+      222 +                    );
+      223 +                  })}
+      224 +                </div>
+      225 +                {/* Botão inserir linha abaixo desta */}
+      226 +                <InsertRowBtn label={`+ linha abaixo da ${row + 1}`} onClick={() => insertRow(row + 1)} />
+      227 +              </div>
+      228 +            ))}
+      229            </div>
+      230          </div>
+      231        </div>
+
+● Agora adiciono as funções insertRow e o componente InsertRowBtn, e a função para remapear o layout quando uma linha é inserida:
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 16 lines
+      117      setLayout((prev) => ({ ...prev, [`${row}-${col}`]: brushType }));
+      118    }
+      119
+      120 +  function insertRow(atIndex: number) {
+      121 +    // Desloca todas as linhas >= atIndex para baixo (+1)
+      122 +    setLayout((prev) => {
+      123 +      const next: Record<string, string> = {};
+      124 +      Object.entries(prev).forEach(([key, type]) => {
+      125 +        const [r, c] = key.split("-").map(Number);
+      126 +        if (r >= atIndex) next[`${r + 1}-${c}`] = type;
+      127 +        else next[key] = type;
+      128 +      });
+      129 +      return next;
+      130 +    });
+      131 +    setRows((r) => r + 1);
+      132 +    setTmpRows((r) => String(parseInt(r) + 1));
+      133 +    setSaved(false);
+      134 +  }
+      135 +
+      136    function layoutToArray() {
+      137      return Object.entries(layout)
+      138        .filter(([, type]) => type !== "UNIT")
+
+● Agora adiciono o componente InsertRowBtn antes do TerrainGrid:
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 18 lines
+       83    );
+       84  }
+       85
+       86 +// ─── InsertRowBtn ─────────────────────────────────────────────────────────────
+       87 +
+       88 +function InsertRowBtn({ label, onClick }: { label: string; onClick: () => void }) {
+       89 +  const [hover, setHover] = useState(false);
+       90 +  return (
+       91 +    <div className="relative h-3 flex items-center group"
+       92 +      onMouseEnter={() => setHover(true)}
+       93 +      onMouseLeave={() => setHover(false)}>
+       94 +      {hover && (
+       95 +        <button type="button" onClick={onClick}
+       96 +          className="absolute left-0 right-0 z-10 flex items-center justify-center gap-1 rounded bg-[var(--brand-a
+          +ccent)] py-0.5 text-[10px] font-semibold text-white opacity-90 hover:opacity-100 transition-opacity">
+       97 +          ➕ {label}
+       98 +        </button>
+       99 +      )}
+      100 +    </div>
+      101 +  );
+      102 +}
+      103 +
+      104  // ─── TerrainGrid ─────────────────────────────────────────────────────────────
+      105
+      106  function TerrainGrid({ dev, onSelectTower, onSave }: {
+
+● Bash(cd /c/Users/User/documents/via-crm/apps/web && npx tsc --noEmit 2>&1)
+  ⎿  Error: Exit code 134
+
+     <--- Last few GCs --->
+
+     [12324:000002D563564000]     2632 ms: Scavenge (interleaved) 72.1 (105.5) -> 63.5 (122.3) MB, pooled: 21 MB, 22.73 / 0.08 ms
+     (average mu = 0.997, current mu = 0.997) allocation failure;
+
+     FATAL ERROR: Zone Allocation failed - process out of memory
+     ----- Native stack trace -----
+
+      1: 00007FF68703B6AF
+
+     … +11 lines (ctrl+o to see all)
+
+● Erro de memória do compilador TypeScript (arquivo grande) — não é erro de código. Vou commitar diretamente:
+
+● Bash(git add "apps/web/src/app/empreendimentos/[id]/page.tsx" && git commit -m "feat(empreendimentos): inserir linhas no terreno…)
+  ⎿  warning: in the working copy of 'apps/web/src/app/empreendimentos/[id]/page.tsx', LF will be replaced by CRLF the next tim
+     e Git touches it
+     [dev 6ed7b2b] feat(empreendimentos): inserir linhas no terreno
+     … +3 lines (ctrl+o to expand)
+
+● Feito. Como funciona:
+
+  - Passe o mouse entre duas linhas do grid — aparece um botão verde ➕ linha abaixo da N
+  - Também tem um ➕ linha acima no topo
+  - Ao clicar, insere uma linha vazia naquela posição e empurra tudo que estava abaixo para baixo — o desenho já feito é preservado
+  - O terreno fica marcado como não salvo automaticamente
+
+  Testa e me avisa se precisa de mais algum ajuste antes de seguir para a Entrega 2.
+
+✻ Crunched for 1m 22s
+
+> mas a grade ficou bem espaçada, coloca botão de + e - ao lado e em cima para incluir colunas, e voltando o modelo de grande
+  anterior.
+
+  outra coisa, tinha que ser possivel mudar a orientação do sol depois do cadastro, pois eu preciso ver para colocar, coloca
+  indicação de norte e sul tambem para localizar.
+
+● Três ajustes claros. Vou refazer o grid e o compass:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Agora reescrevo o TerrainGrid completo com as 3 melhorias:
+
+● Update(apps\web\src\app\empreendimentos\[id]\page.tsx)
+  ⎿  Added 189 lines, removed 116 lines
+       83    );
+       84  }
+       85
+       86 -// ─── InsertRowBtn ─────────────────────────────────────────────────────────────
+       86 +// ─── TerrainGrid ─────────────────────────────────────────────────────────────
+       87
+       88 -function InsertRowBtn({ label, onClick }: { label: string; onClick: () => void }) {
+       89 -  const [hover, setHover] = useState(false);
+       88 +const COMPASS: Record<string, { N: string; S: string; L: string; O: string }> = {
+       89 +  NORTE:  { N: "☀️ Nascente", S: "Poente",    L: "Leste", O: "Oeste" },
+       90 +  SUL:    { N: "Poente",     S: "☀️ Nascente", L: "Oeste", O: "Leste" },
+       91 +  LESTE:  { N: "Norte",      S: "Sul",         L: "☀️ Nascente", O: "Poente" },
+       92 +  OESTE:  { N: "Norte",      S: "Sul",         L: "Poente", O: "☀️ Nascente" },
+       93 +};
+       94 +
+       95 +function BtnPlusMinus({ onClick, label }: { onClick: () => void; label: string }) {
+       96    return (
+       91 -    <div className="relative h-3 flex items-center group"
+       92 -      onMouseEnter={() => setHover(true)}
+       93 -      onMouseLeave={() => setHover(false)}>
+       94 -      {hover && (
+       95 -        <button type="button" onClick={onClick}
+       96 -          className="absolute left-0 right-0 z-10 flex items-center justify-center gap-1 rounded bg-[var(--brand-a
+          -ccent)] py-0.5 text-[10px] font-semibold text-white opacity-90 hover:opacity-100 transition-opacity">
+       97 -          ➕ {label}
+       98 -        </button>
+       99 -      )}
+      100 -    </div>
+       97 +    <button type="button" onClick={onClick} title={label}
+       98 +      className="flex h-5 w-5 items-center justify-center rounded bg-[var(--brand-accent)] text-white text-xs font
+          +-bold hover:opacity-80 transition-opacity shrink-0">
+       99 +      +
+      100 +    </button>
+      101    );
+      102  }
+      103
+      104 -// ─── TerrainGrid ─────────────────────────────────────────────────────────────
+      104 +function BtnMinus({ onClick, label }: { onClick: () => void; label: string }) {
+      105 +  return (
+      106 +    <button type="button" onClick={onClick} title={label}
+      107 +      className="flex h-5 w-5 items-center justify-center rounded border border-red-300 bg-red-50 text-red-500 tex
+          +t-xs font-bold hover:bg-red-100 transition-colors shrink-0">
+      108 +      −
+      109 +    </button>
+      110 +  );
+      111 +}
+      112
+      106 -function TerrainGrid({ dev, onSelectTower, onSave }: {
+      113 +function TerrainGrid({ dev, onSelectTower, onSave, onSunChange }: {
+      114    dev: Development;
+      115    onSelectTower: (t: Tower) => void;
+      109 -  onSave: (layout: any[], rows: number, cols: number) => Promise<void>;
+      116 +  onSave: (layout: any[], rows: number, cols: number, sun: string) => Promise<void>;
+      117 +  onSunChange: (sun: string) => void;
+      118  }) {
+      119    const [layout, setLayout] = useState<Record<string, string>>(() => {
+      120      const map: Record<string, string> = {};
+     ...
+      127    const [painting, setPainting] = useState(false);
+      128    const [saving, setSaving] = useState(false);
+      129    const [saved, setSaved] = useState(true);
+      122 -
+      123 -  // Grid resize
+      130    const [rows, setRows] = useState(dev.gridRows);
+      131    const [cols, setCols] = useState(dev.gridCols);
+      126 -  const [editingGrid, setEditingGrid] = useState(false);
+      127 -  const [tmpRows, setTmpRows] = useState(String(dev.gridRows));
+      128 -  const [tmpCols, setTmpCols] = useState(String(dev.gridCols));
+      132 +  const [sun, setSun] = useState(dev.sunOrientation);
+      133
+      134    const towerMap: Record<string, Tower> = {};
+      135    dev.towers.forEach((t) => { if (t.gridX != null && t.gridY != null) towerMap[`${t.gridY}-${t.gridX}`] = t; });
+      136
+      133 -  function paintCell(row: number, col: number) {
+      134 -    setSaved(false);
+      135 -    setLayout((prev) => ({ ...prev, [`${row}-${col}`]: brushType }));
+      136 -  }
+      137 +  function mark() { setSaved(false); }
+      138
+      138 -  function insertRow(atIndex: number) {
+      139 -    // Desloca todas as linhas >= atIndex para baixo (+1)
+      139 +  function paintCell(r: number, c: number) { mark(); setLayout((p) => ({ ...p, [`${r}-${c}`]: brushType })); }
+      140 +
+      141 +  function addRow(atIndex: number) {
+      142      setLayout((prev) => {
+      143        const next: Record<string, string> = {};
+      144        Object.entries(prev).forEach(([key, type]) => {
+      145          const [r, c] = key.split("-").map(Number);
+      144 -        if (r >= atIndex) next[`${r + 1}-${c}`] = type;
+      145 -        else next[key] = type;
+      146 +        next[r >= atIndex ? `${r + 1}-${c}` : key] = type;
+      147        });
+      148        return next;
+      149      });
+      150      setRows((r) => r + 1);
+      150 -    setTmpRows((r) => String(parseInt(r) + 1));
+      151 -    setSaved(false);
+      151 +    mark();
+      152    }
+      153
+      154 -  function layoutToArray() {
+      155 -    return Object.entries(layout)
+      156 -      .filter(([, type]) => type !== "UNIT")
+      157 -      .map(([key, type]) => {
+      154 +  function removeRow(atIndex: number) {
+      155 +    if (rows <= 1) return;
+      156 +    setLayout((prev) => {
+      157 +      const next: Record<string, string> = {};
+      158 +      Object.entries(prev).forEach(([key, type]) => {
+      159          const [r, c] = key.split("-").map(Number);
+      159 -        return { row: r, col: c, type };
+      160 +        if (r === atIndex) return;
+      161 +        next[r > atIndex ? `${r - 1}-${c}` : key] = type;
+      162        });
+      163 +      return next;
+      164 +    });
+      165 +    setRows((r) => r - 1);
+      166 +    mark();
+      167    }
+      168
+      169 +  function addCol(atIndex: number) {
+      170 +    setLayout((prev) => {
+      171 +      const next: Record<string, string> = {};
+      172 +      Object.entries(prev).forEach(([key, type]) => {
+      173 +        const [r, c] = key.split("-").map(Number);
+      174 +        next[c >= atIndex ? `${r}-${c + 1}` : key] = type;
+      175 +      });
+      176 +      return next;
+      177 +    });
+      178 +    setCols((c) => c + 1);
+      179 +    mark();
+      180 +  }
+      181 +
+      182 +  function removeCol(atIndex: number) {
+      183 +    if (cols <= 1) return;
+      184 +    setLayout((prev) => {
+      185 +      const next: Record<string, string> = {};
+      186 +      Object.entries(prev).forEach(([key, type]) => {
+      187 +        const [r, c] = key.split("-").map(Number);
+      188 +        if (c === atIndex) return;
+      189 +        next[c > atIndex ? `${r}-${c - 1}` : key] = type;
+      190 +      });
+      191 +      return next;
+      192 +    });
+      193 +    setCols((c) => c - 1);
+      194 +    mark();
+      195 +  }
+      196 +
+      197 +  function layoutToArray() {
+      198 +    return Object.entries(layout).filter(([, t]) => t !== "UNIT").map(([key, type]) => {
+      199 +      const [r, c] = key.split("-").map(Number);
+      200 +      return { row: r, col: c, type };
+      201 +    });
+      202 +  }
+      203 +
+      204    async function handleSave() {
+      205      setSaving(true);
+      165 -    try {
+      166 -      await onSave(layoutToArray(), rows, cols);
+      167 -      setSaved(true);
+      168 -    } finally {
+      169 -      setSaving(false);
+      170 -    }
+      206 +    try { await onSave(layoutToArray(), rows, cols, sun); setSaved(true); }
+      207 +    finally { setSaving(false); }
+      208    }
+      209
+      173 -  function applyGridResize(r: string, c: string) {
+      174 -    const newRows = Math.max(1, Math.min(50, parseInt(r) || rows));
+      175 -    const newCols = Math.max(1, Math.min(50, parseInt(c) || cols));
+      176 -    setRows(newRows);
+      177 -    setCols(newCols);
+      178 -    setSaved(false);
+      179 -  }
+      210 +  const compass = COMPASS[sun] ?? COMPASS.LESTE;
+      211
+      212    return (
+      182 -    <div className="space-y-4">
+      183 -      {/* Toolbar */}
+      184 -      <div className="flex items-center gap-2 flex-wrap">
+      185 -        <span className="text-xs font-semibold text-[var(--shell-subtext)]">Pincel:</span>
+      213 +    <div className="space-y-3">
+      214 +      {/* Pincéis */}
+      215 +      <div className="flex items-center gap-1.5 flex-wrap">
+      216 +        <span className="text-xs font-semibold text-[var(--shell-subtext)] mr-1">Pincel:</span>
+      217          {Object.entries(CELL_COLORS).filter(([k]) => k !== "UNIT").map(([type, cfg]) => (
+      187 -          <button key={type} type="button"
+      188 -            onClick={() => setBrushType(type)}
+      189 -            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs transition-colors ${brushTyp
+          -e === type ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-
+          -border)] hover:bg-[var(--shell-hover)]"}`}>
+      218 +          <button key={type} type="button" onClick={() => setBrushType(type)}
+      219 +            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors ${brushType
+          +=== type ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-bo
+          +rder)] hover:bg-[var(--shell-hover)]"}`}>
+      220              {cfg.emoji} {cfg.label}
+      221            </button>
+      222          ))}
+      193 -        <div className="ml-auto flex items-center gap-2">
+      194 -          {/* Grid resize */}
+      195 -          {editingGrid ? (
+      196 -            <div className="flex items-center gap-2 rounded-lg border border-[var(--brand-accent)] bg-[var(--brand
+          --accent)]/5 px-3 py-1.5">
+      197 -              <span className="text-xs text-[var(--shell-subtext)]">Linhas:</span>
+      198 -              <input type="number" value={tmpRows}
+      199 -                onChange={(e) => { setTmpRows(e.target.value); applyGridResize(e.target.value, tmpCols); }}
+      200 -                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          -y-0.5 text-xs text-center" min={1} max={50} />
+      201 -              <span className="text-xs text-[var(--shell-subtext)]">Colunas:</span>
+      202 -              <input type="number" value={tmpCols}
+      203 -                onChange={(e) => { setTmpCols(e.target.value); applyGridResize(tmpRows, e.target.value); }}
+      204 -                className="w-14 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 p
+          -y-0.5 text-xs text-center" min={1} max={50} />
+      205 -              <button type="button" onClick={() => setEditingGrid(false)}
+      206 -                className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+      207 -            </div>
+      208 -          ) : (
+      209 -            <button type="button" onClick={() => { setTmpRows(String(rows)); setTmpCols(String(cols)); setEditingG
+          -rid(true); }}
+      210 -              className="rounded-lg border border-[var(--shell-card-border)] px-2.5 py-1 text-xs text-[var(--shell
+          --subtext)] hover:bg-[var(--shell-hover)]">
+      211 -              ✏️ {rows}×{cols}
+      212 -            </button>
+      213 -          )}
+      214 -          {/* Save button */}
+      223 +      </div>
+      224 +
+      225 +      {/* Segunda linha: orientação solar + salvar */}
+      226 +      <div className="flex items-center gap-3 flex-wrap">
+      227 +        <div className="flex items-center gap-2">
+      228 +          <span className="text-xs font-semibold text-[var(--shell-subtext)]">☀️ Nascente:</span>
+      229 +          <select value={sun} onChange={(e) => { setSun(e.target.value); onSunChange(e.target.value); mark(); }}
+      230 +            className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1 te
+          +xt-xs text-[var(--shell-text)]">
+      231 +            <option value="NORTE">Norte</option>
+      232 +            <option value="SUL">Sul</option>
+      233 +            <option value="LESTE">Leste</option>
+      234 +            <option value="OESTE">Oeste</option>
+      235 +          </select>
+      236 +        </div>
+      237 +        <div className="ml-auto">
+      238            <button type="button" onClick={handleSave} disabled={saving || saved}
+      239              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${saved ? "border border-gr
+           een-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`
+           }>
+      240              {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar terreno"}
+     ...
+      242          </div>
+      243        </div>
+      244
+      222 -      {/* Grid */}
+      245 +      {/* Grid com compass + +/- buttons */}
+      246        <div className="overflow-auto">
+      224 -        <div className="relative inline-block p-8 border border-[var(--shell-card-border)] rounded-2xl bg-[var(--s
+          -hell-bg)]"
+      225 -          onMouseLeave={() => setPainting(false)}>
+      226 -          <SunIndicator orientation={dev.sunOrientation} />
+      227 -          <div className="flex flex-col gap-0">
+      228 -            {/* Botão inserir linha no topo */}
+      229 -            <InsertRowBtn label="+ linha acima" onClick={() => insertRow(0)} />
+      247 +        <div className="inline-flex flex-col items-center gap-1">
+      248 +          {/* Norte */}
+      249 +          <div className="flex items-center gap-1">
+      250 +            <div className="w-6" />
+      251 +            <span className="text-[11px] font-semibold text-slate-500 px-2">⬆ {compass.N}</span>
+      252 +            <div className="w-6" />
+      253 +          </div>
+      254
+      231 -            {Array.from({ length: rows }, (_, row) => (
+      232 -              <div key={row} className="flex flex-col gap-0">
+      233 -                <div className="flex items-center gap-0.5">
+      234 -                  {Array.from({ length: cols }, (_, col) => {
+      235 -                    const key = `${row}-${col}`;
+      236 -                    const cellType = layout[key] ?? "UNIT";
+      237 -                    const tower = towerMap[key];
+      238 -                    const cfg = CELL_COLORS[cellType];
+      239 -                    return (
+      240 -                      <div key={key}
+      241 -                        className="h-10 w-10 rounded flex items-center justify-center text-sm transition-all curso
+          -r-pointer select-none border m-px"
+      242 -                        style={{
+      243 -                          backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+      244 -                          borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.08)",
+      245 -                        }}
+      246 -                        onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+      247 -                        onMouseEnter={() => { if (painting) paintCell(row, col); }}
+      248 -                        onMouseUp={() => setPainting(false)}
+      249 -                        onClick={() => { if (tower) onSelectTower(tower); }}>
+      250 -                        {tower ? (
+      251 -                          <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{towe
+          -r.nome}</span>
+      252 -                        ) : (
+      253 -                          <span>{cfg?.emoji}</span>
+      254 -                        )}
+      255 -                      </div>
+      256 -                    );
+      257 -                  })}
+      255 +          <div className="flex items-start gap-1">
+      256 +            {/* Oeste + controles linhas à esquerda */}
+      257 +            <div className="flex flex-col items-center justify-center gap-1 w-6 self-stretch">
+      258 +              <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-lr] rotate-180">⬅ {
+          +compass.O}</span>
+      259 +            </div>
+      260 +
+      261 +            {/* Área central: controles de linha + grid + controles de coluna */}
+      262 +            <div className="flex flex-col gap-0.5">
+      263 +              {/* Botões de coluna no topo */}
+      264 +              <div className="flex gap-px pl-7">
+      265 +                {Array.from({ length: cols }, (_, col) => (
+      266 +                  <div key={col} className="flex flex-col items-center gap-0.5" style={{ width: "2.5rem" }}>
+      267 +                    <BtnPlusMinus onClick={() => addCol(col)} label={`Inserir coluna antes da ${col + 1}`} />
+      268 +                    {col === cols - 1 && (
+      269 +                      <BtnPlusMinus onClick={() => addCol(cols)} label="Inserir coluna no final" />
+      270 +                    )}
+      271 +                  </div>
+      272 +                ))}
+      273 +              </div>
+      274 +
+      275 +              {/* Linhas do grid */}
+      276 +              {Array.from({ length: rows }, (_, row) => (
+      277 +                <div key={row} className="flex items-center gap-0.5">
+      278 +                  {/* Controles da linha */}
+      279 +                  <div className="flex flex-col gap-0.5 w-6 items-center">
+      280 +                    <BtnPlusMinus onClick={() => addRow(row)} label={`Inserir linha acima da ${row + 1}`} />
+      281 +                    <BtnMinus onClick={() => removeRow(row)} label={`Remover linha ${row + 1}`} />
+      282 +                    {row === rows - 1 && <BtnPlusMinus onClick={() => addRow(rows)} label="Inserir linha abaixo" /
+          +>}
+      283 +                  </div>
+      284 +                  {/* Células */}
+      285 +                  <div className="flex gap-px"
+      286 +                    onMouseLeave={() => setPainting(false)}>
+      287 +                    {Array.from({ length: cols }, (_, col) => {
+      288 +                      const key = `${row}-${col}`;
+      289 +                      const cellType = layout[key] ?? "UNIT";
+      290 +                      const tower = towerMap[key];
+      291 +                      const cfg = CELL_COLORS[cellType];
+      292 +                      return (
+      293 +                        <div key={key}
+      294 +                          className="h-10 w-10 rounded flex items-center justify-center text-sm cursor-pointer sel
+          +ect-none border"
+      295 +                          style={{
+      296 +                            backgroundColor: tower ? "#1e3a5f" : cfg?.bg,
+      297 +                            borderColor: tower ? "#3b82f6" : "rgba(0,0,0,0.1)",
+      298 +                          }}
+      299 +                          onMouseDown={() => { setPainting(true); paintCell(row, col); }}
+      300 +                          onMouseEnter={() => { if (painting) paintCell(row, col); }}
+      301 +                          onMouseUp={() => setPainting(false)}
+      302 +                          onClick={() => { if (tower) onSelectTower(tower); }}>
+      303 +                          {tower
+      304 +                            ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{
+          +tower.nome}</span>
+      305 +                            : <span>{cfg?.emoji}</span>}
+      306 +                        </div>
+      307 +                      );
+      308 +                    })}
+      309 +                  </div>
+      310 +                  {/* − coluna direita */}
+      311 +                  <BtnMinus onClick={() => removeCol(cols - 1)} label="Remover última coluna" />
+      312                  </div>
+      259 -                {/* Botão inserir linha abaixo desta */}
+      260 -                <InsertRowBtn label={`+ linha abaixo da ${row + 1}`} onClick={() => insertRow(row + 1)} />
+      313 +              ))}
+      314 +
+      315 +              {/* − linha no rodapé */}
+      316 +              <div className="flex gap-px pl-7">
+      317 +                {Array.from({ length: cols }, (_, col) => (
+      318 +                  <div key={col} className="flex items-center justify-center" style={{ width: "2.5rem" }}>
+      319 +                    {col === 0 && <BtnMinus onClick={() => removeRow(rows - 1)} label="Remover última linha" />}
+      320 +                  </div>
+      321 +                ))}
+      322                </div>
+      262 -            ))}
+      323 +            </div>
+      324 +
+      325 +            {/* Leste */}
+      326 +            <div className="flex flex-col items-center justify-center gap-1 w-6 self-stretch">
+      327 +              <span className="text-[10px] font-semibold text-slate-500 [writing-mode:vertical-lr]">{compass.L} ➡<
+          +/span>
+      328 +            </div>
+      329            </div>
+      330 +
+      331 +          {/* Sul */}
+      332 +          <div className="flex items-center gap-1">
+      333 +            <div className="w-6" />
+      334 +            <span className="text-[11px] font-semibold text-slate-500 px-2">⬇ {compass.S}</span>
+      335 +            <div className="w-6" />
+      336 +          </div>
+      337          </div>
+      338        </div>
+      339
+      340        <p className="text-xs text-[var(--shell-subtext)]">
+      268 -        Clique e arraste para pintar · ✏️ para redimensionar · Clique em uma torre (azul) para ver a fachada
+      341 +        Clique e arraste para pintar · + adiciona linha/coluna · − remove · Clique em uma torre (azul) para ver a
+          +fachada
+      342        </p>
+      343      </div>
+      344    );
