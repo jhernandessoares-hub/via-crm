@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { Logger } from '../logger';
 
 const logger = new Logger('IngestService');
@@ -21,7 +22,10 @@ function makeTelefoneKey(raw: string | null): string | null {
 
 @Injectable()
 export class IngestService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+  ) {}
 
   private async resolveDefaultBranchId(tenantId: string): Promise<string | null> {
     const branch = await this.prisma.branch.findFirst({
@@ -154,6 +158,17 @@ export class IngestService {
     });
 
     logger.log(`Lead: ${lead.id} Event: ${event.id} Reentry: ${isReentry}`);
+
+    // Notifica por email o responsável se for lead novo com assignedUserId
+    if (!isReentry && (lead as any).assignedUserId) {
+      try {
+        const user = await this.prisma.user.findUnique({
+          where: { id: (lead as any).assignedUserId },
+          select: { email: true, nome: true },
+        });
+        if (user) await this.email.sendNewLeadNotification(user.email, user.nome, lead.nome, channel);
+      } catch { /* não quebra o fluxo */ }
+    }
 
     return { lead, event };
   }

@@ -88,4 +88,39 @@ export class EmailService {
       `,
     );
   }
+
+  async sendTenantSuspended(to: string, tenantNome: string, ownerNome: string): Promise<void> {
+    await this.send(
+      to,
+      `Conta suspensa — ${tenantNome}`,
+      `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <h2 style="color:#1a1a1a">Olá, ${ownerNome}!</h2>
+        <p>Informamos que a conta <strong>${tenantNome}</strong> no <strong>VIA CRM</strong> foi
+        <span style="color:#dc2626;font-weight:600">suspensa</span>.</p>
+        <p>Durante a suspensão, o acesso ao sistema e o recebimento de leads estão temporariamente bloqueados.</p>
+        <p>Para mais informações ou para regularizar a situação, entre em contato com o suporte.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:32px 0">
+        <p style="color:#999;font-size:12px">VIA CRM · Todos os direitos reservados</p>
+      </div>
+      `,
+    );
+  }
+
+  async sendTenantActivated(to: string, tenantNome: string, ownerNome: string): Promise<void> {
+    await this.send(
+      to,
+      `Conta reativada — ${tenantNome}`,
+      `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <h2 style="color:#1a1a1a">Olá, ${ownerNome}!</h2>
+        <p>A conta <strong>${tenantNome}</strong> no <strong>VIA CRM</strong> foi
+        <span style="color:#16a34a;font-weight:600">reativada</span> com sucesso.</p>
+        <p>Você já pode acessar o sistema normalmente.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:32px 0">
+        <p style="color:#999;font-size:12px">VIA CRM · Todos os direitos reservados</p>
+      </div>
+      `,
+    );
+  }
 }

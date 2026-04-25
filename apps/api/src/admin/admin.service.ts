@@ -149,6 +149,18 @@ export class AdminService {
   async suspendTenant(id: string, suspend: boolean) {
     const tenant = await this.prisma.tenant.update({ where: { id }, data: { ativo: !suspend } });
     this.audit.log({ action: suspend ? 'PLATFORM_SUSPEND_TENANT' : 'PLATFORM_ACTIVATE_TENANT', resourceType: 'tenant', resourceId: id });
+
+    try {
+      const owner = await this.prisma.user.findFirst({
+        where: { tenantId: id, role: 'OWNER' },
+        select: { email: true, nome: true },
+      });
+      if (owner) {
+        if (suspend) await this.email.sendTenantSuspended(owner.email, tenant.nome, owner.nome);
+        else         await this.email.sendTenantActivated(owner.email, tenant.nome, owner.nome);
+      }
+    } catch { /* não quebra o fluxo */ }
+
     return tenant;
   }
 
