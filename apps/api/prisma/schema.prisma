@@ -110,7 +110,10 @@ model Tenant {
   tenantSites            TenantSite[]
   users                  User[]
   developments           Development[]
-  creditRequests         CreditRequest[]
+  creditRequests                CreditRequest[]
+  whatsappUnofficialSessions    WhatsappUnofficialSession[]
+  campanhaModelos               CampanhaModelo[]
+  campanhaDisparos              CampanhaDisparo[]
 
   @@map("tenants")
 }
@@ -178,6 +181,8 @@ model User {
   refreshTokens            RefreshToken[]
   branch                   Branch?           @relation(fields: [branchId], references: [id])
   tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campanhaModelos          CampanhaModelo[]
+  campanhaDisparos         CampanhaDisparo[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -244,6 +249,10 @@ model Lead {
   rg                      String?
   uf                      String?
   cadastroOrigem          Json?
+  conversaCanal           String?
+  conversaSessionId       String?
+  avatarUrl               String?
+  lastReadAt              DateTime?
   aiExecutionLogs         AiExecutionLog[]
   baseFria                BaseFria?
   kbTeachings             KbTeaching[]
@@ -253,17 +262,19 @@ model Lead {
   leadSla                 LeadSla?
   leadTransitionLogs      LeadTransitionLog[]
   creditRequests          CreditRequest[]
-  branch                  Branch?              @relation(fields: [branchId], references: [id])
-  pipeline                Pipeline?            @relation(fields: [pipelineId], references: [id])
-  stage                   PipelineStage?       @relation(fields: [stageId], references: [id])
-  tenant                  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch                  Branch?                    @relation(fields: [branchId], references: [id])
+  pipeline                Pipeline?                  @relation(fields: [pipelineId], references: [id])
+  stage                   PipelineStage?             @relation(fields: [stageId], references: [id])
+  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews                 ManagerReview[]
+  conversaSession         WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, telefoneKey])
   @@index([tenantId, status])
   @@index([tenantId, branchId])
   @@index([tenantId, pipelineId])
   @@index([tenantId, stageId])
+  @@index([tenantId, conversaCanal])
   @@map("leads")
 }
 
@@ -281,6 +292,7 @@ model LeadEvent {
 
   @@index([tenantId, leadId])
   @@index([tenantId, channel])
+  @@index([leadId, channel, criadoEm])
   @@map("lead_events")
 }
 
@@ -1505,4 +1517,93 @@ model CreditRequest {
   @@index([tenantId])
   @@index([correspondentId])
   @@map("credit_requests")
+}
+
+model WhatsappUnofficialSession {
+  id            String     @id @default(uuid())
+  tenantId      String
+  nome          String
+  status        String     @default("DISCONNECTED")
+  qrCode        String?
+  phoneNumber   String?
+  pushName      String?
+  authStateJson Json?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads    Lead[]
+  disparos CampanhaDisparo[]
+
+  @@index([tenantId])
+  @@map("whatsapp_unofficial_sessions")
+}
+
+model CampanhaModelo {
+  id               String    @id @default(uuid())
+  tenantId         String
+  userId           String
+  nome             String
+  mensagem         String
+  mediaUrl         String?
+  mediaPublicId    String?
+  mediaType        String?
+  delayMinSegundos Int       @default(5)
+  delayMaxSegundos Int       @default(15)
+  criadoEm         DateTime  @default(now())
+  atualizadoEm     DateTime  @updatedAt
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  disparos CampanhaDisparo[]
+
+  @@index([tenantId, userId])
+  @@map("campanha_modelos")
+}
+
+model CampanhaDisparo {
+  id            String    @id @default(uuid())
+  tenantId      String
+  userId        String
+  sessionId     String?
+  modeloId      String
+  nome          String
+  status        String    @default("RODANDO")
+  totalContatos Int       @default(0)
+  enviados      Int       @default(0)
+  falhas        Int       @default(0)
+  responderam   Int       @default(0)
+  iniciadaEm    DateTime  @default(now())
+  concluidaEm   DateTime?
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  tenant   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session  WhatsappUnofficialSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  modelo   CampanhaModelo            @relation(fields: [modeloId], references: [id])
+  contatos CampanhaContato[]
+
+  @@index([tenantId])
+  @@index([sessionId])
+  @@map("campanha_disparos")
+}
+
+model CampanhaContato {
+  id          String    @id @default(uuid())
+  disparoId   String
+  telefone    String
+  nome        String?
+  leadId      String?
+  status      String    @default("PENDENTE")
+  enviadoEm   DateTime?
+  respondeuEm DateTime?
+  erro        String?
+  criadoEm    DateTime  @default(now())
+
+  disparo CampanhaDisparo @relation(fields: [disparoId], references: [id], onDelete: Cascade)
+
+  @@index([disparoId])
+  @@index([telefone])
+  @@map("campanha_contatos")
 }

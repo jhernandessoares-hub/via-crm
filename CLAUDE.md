@@ -24,7 +24,8 @@ via-crm/
 | Fila | BullMQ + Redis |
 | IA principal | OpenAI GPT-4o-mini (agentes, secretária) |
 | IA extração | Anthropic Claude Haiku (PDFs de produtos) |
-| WhatsApp | Meta Cloud API v20.0 (multi-tenant, por `phone_number_id`) |
+| WhatsApp oficial | Meta Cloud API v20.0 (multi-tenant, por `phone_number_id`) |
+| WhatsApp Light | Baileys (`@whiskeysockets/baileys`) — conexão via QR Code, multi-sessão por tenant |
 | Imagens | Cloudinary |
 | Vídeo/áudio | fluent-ffmpeg + ffmpeg-static |
 | Auth | JWT (access 15min, refresh 7d) + Platform Admin JWT (8h) |
@@ -62,6 +63,9 @@ via-crm/
 | `sites/` | Gerenciador de Sites — templates admin, sites dos tenants, rotas públicas |
 | `prisma/` | PrismaService (@Global) |
 | `admin/ai-providers.service.ts` | Provedores de IA — CRUD de provedores, configuração de modelo por função, saldo OpenAI |
+| `whatsapp-unofficial/` | WhatsApp Light — sessões Baileys multi-tenant (QR Code), envio de texto/imagem/vídeo, inbound de mensagens; filtros: ignora @g.us (grupos), status@broadcast, @newsletter e reações; `profilePictureUrl` com timeout 2s; desconexão manual via flag `manuallyDisconnected` não reconecta automaticamente |
+| `campanhas/` | Campanhas de disparo via WhatsApp Light — CRUD modelos (com mídia), CRUD disparos, contatos (leads ou lista externa), controle start/pause/resume/cancel, variáveis `{{nome}}`/`{{telefone}}`; lead criado **somente quando contato responde** (não ao enviar); ao responder, evento da mensagem original da campanha é registrado no lead (2s antes do inbound) para contexto da IA |
+| `inbox/` | Inbox WA Light — lista conversas por sessão (`GET /inbox?sessionId=X`), mensagens paginadas, envio (`POST /inbox/:leadId/send`), marcar como lida (`POST /inbox/:leadId/read`); filtra por `conversaSessionId`; naoLidos calculado em 2 queries (não N+1); `GET /inbox/:leadId` retorna `avatarUrl` |
 
 ---
 
@@ -72,10 +76,11 @@ Todos inicializados em `main.ts` após health check do Redis.
 | Worker | Fila | Função |
 |--------|------|--------|
 | `SlaWorker` | `sla-queue` | SLA automático: 2h (BAIXA), 10h (MEDIA), 18h (ALTA), 23h (CRITICA) — **somente** leads em grupo `PRE_ATENDIMENTO` e status `EM_CONTATO` |
-| `InboundAiWorker` | `inbound-ai-queue` | Resposta IA ao lead em tempo real (delay 90s/15s) — cooldown para evitar spam; notifica **somente o usuário assignado** (`assignedUserId`) via WhatsApp ao mover etapa (`notifyUsersForStage`) e ao qualificar lead (dados completos: renda, FGTS, entrada, perfil, produto, etc.) |
+| `InboundAiWorker` | `inbound-ai-queue` | Resposta IA ao lead em tempo real — suporta canais `whatsapp.in` e `whatsapp.unofficial.in`; envia via `WhatsappUnofficialService` quando `lead.conversaCanal === 'WHATSAPP_LIGHT'`; cooldown verifica `whatsapp.out` e `whatsapp.unofficial.out`; contexto da conversa inclui mensagens unofficial; notifica **somente o usuário assignado** (`assignedUserId`) |
 | `WhatsappInboundWorker` | `whatsapp-inbound-queue` | Processa payloads de webhook (3 tentativas, exponential backoff) |
 | `WhatsappMediaWorker` | `whatsapp-media-queue` | Download e resolução de mídia (áudio/imagem) via Cloudinary |
 | `ReminderWorker` | `reminder-queue` | Lembretes de eventos do calendário 30min antes (cron `*/5 * * * *`) |
+| `CampaignWorker` | `campaign-queue` | Disparo encadeado de campanhas WhatsApp Light — um job por vez, agenda próximo com delay aleatório entre `delayMin` e `delayMax` |
 
 ---
 
@@ -87,6 +92,7 @@ inbound-ai-queue       → inbound-ai
 whatsapp-inbound-queue → whatsapp-inbound
 whatsapp-media-queue   → whatsapp-media.resolve
 reminder-queue         → reminder-check (repeatable, cron */5 * * * *)
+campaign-queue         → campaign-send (encadeado, um por campanha)
 ```
 
 ---
@@ -139,6 +145,13 @@ AuditLog          → rastreabilidade LGPD — inclui platformAdminId para açõ
 SiteTemplate      → template de site (scope: PADRAO/EXCLUSIVO/INTERNO, siteType, contentJson, status DRAFT/PUBLISHED)
 TenantSite        → site do tenant — fork independente do template (contentJson ≠ template após customização)
                     slug único, publishedJson separado do contentJson (rascunho vs publicado)
+WhatsappUnofficialSession → sessão Baileys por tenant (múltiplas por tenant): nome, status (DISCONNECTED|CONNECTING|CONNECTED|QR_PENDING), qrCode base64, phoneNumber, pushName, authStateJson (creds+keys Baileys). FK em Lead (onDelete: SetNull) e CampanhaDisparo (onDelete: SetNull)
+CampanhaModelo    → template de campanha: nome, mensagem ({{nome}}/{{telefone}}), mediaUrl, mediaType, delayMinSegundos (≥5), delayMaxSegundos. Delete bloqueia se há disparo ativo; remove histórico de disparos antes de deletar
+CampanhaDisparo   → disparo de campanha: sessionId? (nullable, onDelete: SetNull), modeloId, status (RODANDO|PAUSADA|CONCLUIDA|CANCELADA), contadores. Rota `GET /campanhas/disparos/active/:sessionId` deve ficar ANTES de `GET /campanhas/disparos/:id` no controller (NestJS resolve em ordem)
+CampanhaContato   → contato de campanha: telefone, nome, leadId? (preenchido quando contato responde), status (PENDENTE|ENVIADO|FALHA|RESPONDEU), enviadoEm, respondeuEm
+Lead.avatarUrl    → foto de perfil do contato WhatsApp (buscado com timeout 2s via profilePictureUrl do Baileys, salvo no upsert)
+Lead.lastReadAt   → timestamp da última vez que um usuário abriu a conversa no inbox (`POST /inbox/:leadId/read`); usado no cálculo de naoLidos
+Lead.conversaCanal/conversaSessionId → canal ativo da conversa ('WHATSAPP_OFICIAL'|'WHATSAPP_LIGHT'|null) e FK para sessão Light (onDelete: SetNull)
 PlatformConfig    → configurações globais da plataforma (key/value). Chaves: globalAgentRules, agentIdentityRules, whatsappFormattingRules
 PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
 AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION|DOC_CLASSIFICATION, modelName). Chaves de API ficam no .env.
@@ -417,6 +430,11 @@ NEXT_PUBLIC_API_URL=
 | Canais/Config.IA/Settings OWNER-only | Configurações de tenant não devem ser visíveis/editáveis por operadores — protegido em frontend (sidebar) e backend (requireOwner) |
 | Round-robin por "último recebeu" ASC | Sem contador dedicado — ordena candidatos elegíveis por data do último lead assignado ASC; auto-corretivo, eficiente |
 | InboundAiWorker notifica só assignedUser | Evita spam de notificações para toda equipe — apenas o responsável pelo lead recebe o WhatsApp de lead qualificado/etapa movida |
+| WhatsApp Light — filtros de inbound | Grupos (`@g.us`), status (`status@broadcast`, `@newsletter`) e reações (`type === 'reaction'`) são ignorados no `handleInbound` — nunca criam lead nem evento |
+| WhatsApp Light — desconexão manual | `disconnect()` adiciona sessionId em `manuallyDisconnected` (Set em memória); o handler `connection === 'close'` checa o flag antes de reconectar — só reconecta em quedas inesperadas, nunca em desconexão manual |
+| Campanha → lead só na resposta | `CampaignWorker` não cria lead ao enviar; lead criado pelo `handleInbound` quando contato responde; evento `whatsapp.unofficial.out` da mensagem original registrado com timestamp 2s antes do inbound para a IA ter contexto |
+| Lead page — canais unofficial | `isOutgoing()` reconhece `whatsapp.unofficial.out` como enviado (direita) e `whatsapp.unofficial.in` como recebido (esquerda) |
+| Inbox WA Light — conversas por sessão | `GET /inbox?sessionId=X` filtra conversas pelo inbox específico; sem filtro retorna todas as conversas WHATSAPP_LIGHT do tenant |
 | Tailwind v4 sem opacidade em bg-black/40 | Modificador de opacidade não funciona de forma confiável — usar `style={{ backgroundColor: "rgba(...)" }}` para overlays e valores hex para fundos de modal |
 | `router.push/replace` em Next.js 16 + React 19 | Envolto em `startTransition(() => router.replace(...))` para evitar "Router action dispatched before initialization" |
 | `localStorage` nunca lido durante o render | Sempre em `useEffect` + `useState` — leitura síncrona durante render causa hidratação incorreta e dispara router antes da inicialização |
