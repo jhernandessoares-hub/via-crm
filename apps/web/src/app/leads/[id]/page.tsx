@@ -5,6 +5,11 @@ import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
+import {
+  listCorrespondents, listCreditRequests, createCreditRequest, cancelCreditRequest,
+  CREDIT_STATUS_LABEL, CREDIT_STATUS_COLOR,
+  type Correspondent, type CreditRequest,
+} from "@/lib/correspondente.service";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -1253,6 +1258,13 @@ export default function LeadDetailChatPage() {
 
   // SLA panel
   const [slaData, setSlaData] = useState<any>(null);
+
+  // Análise de Crédito
+  const [creditRequests,    setCreditRequests]    = useState<CreditRequest[]>([]);
+  const [correspondents,    setCorrespondents]    = useState<Correspondent[]>([]);
+  const [showCreditForm,    setShowCreditForm]    = useState(false);
+  const [creditForm,        setCreditForm]        = useState({ correspondentId: "", valorImovel: "", valorCredito: "", rendaMensal: "", tipoFinanciamento: "SBPE", observacoes: "" });
+  const [savingCredit,      setSavingCredit]      = useState(false);
   const [slaLoading, setSlaLoading] = useState(false);
 
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -1334,6 +1346,15 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  async function loadCreditData() {
+    if (!id) return;
+    try {
+      const [reqs, corrs] = await Promise.all([listCreditRequests(id), listCorrespondents()]);
+      setCreditRequests(reqs);
+      setCorrespondents(corrs);
+    } catch { /* silencioso */ }
+  }
+
   async function loadDocuments() {
     if (!id) return;
     setLoadingDocs(true);
@@ -1408,7 +1429,7 @@ export default function LeadDetailChatPage() {
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments()]);
+      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData()]);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -2724,6 +2745,132 @@ function discardAiSuggestion() {
                 </span>
                 <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
               </a>
+            )}
+
+            {/* Análise de Crédito */}
+            {lead && (
+              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--shell-card-border)]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">💳</span>
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">Análise de Crédito</span>
+                    {creditRequests.length > 0 && (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{creditRequests.length}</span>
+                    )}
+                  </div>
+                  <button onClick={() => setShowCreditForm((p) => !p)}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors">
+                    + Enviar para Correspondente
+                  </button>
+                </div>
+
+                {/* Formulário de nova solicitação */}
+                {showCreditForm && (
+                  <div className="px-4 py-4 border-b border-[var(--shell-card-border)] bg-blue-50/50 space-y-3">
+                    <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nova Solicitação</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs text-[var(--shell-subtext)]">Correspondente *</label>
+                        <select value={creditForm.correspondentId}
+                          onChange={(e) => setCreditForm((p) => ({ ...p, correspondentId: e.target.value }))}
+                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm text-[var(--shell-text)]">
+                          <option value="">Selecione...</option>
+                          {correspondents.map((c) => (
+                            <option key={c.id} value={c.id}>{c.nome}{c.empresa ? ` — ${c.empresa}` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {[
+                        { k: "valorImovel",  l: "Valor do Imóvel (R$)" },
+                        { k: "valorCredito", l: "Crédito Solicitado (R$)" },
+                        { k: "rendaMensal",  l: "Renda Mensal (R$)" },
+                      ].map(({ k, l }) => (
+                        <div key={k} className="space-y-1">
+                          <label className="text-xs text-[var(--shell-subtext)]">{l}</label>
+                          <input type="number" value={(creditForm as any)[k]}
+                            onChange={(e) => setCreditForm((p) => ({ ...p, [k]: e.target.value }))}
+                            className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm" />
+                        </div>
+                      ))}
+                      <div className="space-y-1">
+                        <label className="text-xs text-[var(--shell-subtext)]">Tipo de Financiamento</label>
+                        <select value={creditForm.tipoFinanciamento}
+                          onChange={(e) => setCreditForm((p) => ({ ...p, tipoFinanciamento: e.target.value }))}
+                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm">
+                          <option value="SBPE">SBPE</option>
+                          <option value="MINHA_CASA_MINHA_VIDA">Minha Casa Minha Vida</option>
+                          <option value="FGTS">FGTS</option>
+                          <option value="CONSORCIO">Consórcio</option>
+                          <option value="OUTRO">Outro</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs text-[var(--shell-subtext)]">Observações</label>
+                        <textarea value={creditForm.observacoes}
+                          onChange={(e) => setCreditForm((p) => ({ ...p, observacoes: e.target.value }))}
+                          rows={2} className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm resize-none" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setShowCreditForm(false)}
+                        className="rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]">
+                        Cancelar
+                      </button>
+                      <button
+                        disabled={savingCredit || !creditForm.correspondentId}
+                        onClick={async () => {
+                          setSavingCredit(true);
+                          try {
+                            await createCreditRequest(lead.id, {
+                              correspondentId:  creditForm.correspondentId,
+                              valorImovel:      creditForm.valorImovel ? parseFloat(creditForm.valorImovel) : undefined,
+                              valorCredito:     creditForm.valorCredito ? parseFloat(creditForm.valorCredito) : undefined,
+                              rendaMensal:      creditForm.rendaMensal ? parseFloat(creditForm.rendaMensal) : undefined,
+                              tipoFinanciamento: creditForm.tipoFinanciamento || undefined,
+                              observacoes:      creditForm.observacoes || undefined,
+                            } as any);
+                            setShowCreditForm(false);
+                            setCreditForm({ correspondentId: "", valorImovel: "", valorCredito: "", rendaMensal: "", tipoFinanciamento: "SBPE", observacoes: "" });
+                            await loadCreditData();
+                          } finally { setSavingCredit(false); }
+                        }}
+                        className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+                        {savingCredit ? "Enviando..." : "Enviar"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de solicitações */}
+                {creditRequests.length > 0 ? (
+                  <div className="divide-y divide-[var(--shell-card-border)]">
+                    {creditRequests.map((cr) => (
+                      <div key={cr.id} className="px-4 py-3 flex items-center gap-3">
+                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold"
+                          style={{ backgroundColor: CREDIT_STATUS_COLOR[cr.status] + "22", color: CREDIT_STATUS_COLOR[cr.status] }}>
+                          {CREDIT_STATUS_LABEL[cr.status]}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[var(--shell-text)]">{cr.correspondent.nome}</p>
+                          {cr.correspondent.empresa && <p className="text-[10px] text-[var(--shell-subtext)]">{cr.correspondent.empresa}</p>}
+                          {cr.parecer && <p className="text-[11px] text-[var(--shell-subtext)] mt-0.5 italic">"{cr.parecer}"</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[10px] text-[var(--shell-subtext)]">{new Date(cr.createdAt).toLocaleDateString("pt-BR")}</p>
+                        </div>
+                        <button onClick={async () => { await cancelCreditRequest(lead.id, cr.id); await loadCreditData(); }}
+                          className="text-[10px] text-red-400 hover:text-red-600" title="Cancelar">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  !showCreditForm && (
+                    <div className="px-4 py-4 text-xs text-center text-[var(--shell-subtext)]">
+                      Nenhuma solicitação enviada ainda.
+                    </div>
+                  )
+                )}
+              </div>
             )}
 
             {/* Painel SLA */}

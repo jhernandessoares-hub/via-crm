@@ -1,10 +1,14 @@
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from "@nestjs/common";
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from "../prisma/prisma.service";
+import { EmailService } from "../email/email.service";
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private email: EmailService,
+  ) {}
 
   async listByTenant(tenantId: string) {
     return this.prisma.user.findMany({
@@ -66,7 +70,7 @@ export class UsersService {
 
     const senhaHash = await bcrypt.hash(data.senha, 10);
 
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         tenantId,
         nome: data.nome.trim(),
@@ -76,8 +80,16 @@ export class UsersService {
         ativo: true,
         branchId: data.branchId ?? null,
       },
-      select: { id: true, nome: true, email: true, role: true, ativo: true, criadoEm: true },
+      select: { id: true, nome: true, email: true, role: true, ativo: true, criadoEm: true, tenantId: true },
     });
+
+    // Busca nome do tenant para o email de boas-vindas
+    try {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { nome: true } });
+      if (tenant) await this.email.sendWelcome(email, data.nome.trim(), tenant.nome);
+    } catch { /* não quebra o fluxo */ }
+
+    return user;
   }
 
   async updateTeamMember(tenantId: string, requesterId: string, userId: string, data: {

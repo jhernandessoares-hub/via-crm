@@ -27,6 +27,9 @@ import { DevModule } from './dev/dev.module';
 import { OwnersModule } from './owners/owners.module';
 import { AdminModule } from './admin/admin.module';
 import { SitesModule } from './sites/sites.module';
+import { DevelopmentsModule } from './developments/developments.module';
+import { CorrespondentsModule } from './correspondents/correspondents.module';
+import { CreditRequestsModule } from './credit-requests/credit-requests.module';
 
 @Module({
   imports: [
@@ -58,6 +61,9 @@ import { SitesModule } from './sites/sites.module';
     OwnersModule,
     AdminModule,
     SitesModule,
+    DevelopmentsModule,
+    CorrespondentsModule,
+    CreditRequestsModule,
   ],
   controllers: [AppController],
   providers: [

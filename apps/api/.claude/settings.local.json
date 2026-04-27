@@ -70,7 +70,11 @@
       "Read(//mnt/c/Users/User/documents/via-crm/apps/web/src/app/**)",
       "Read(//mnt/c/Users/User/documents/via-crm/apps/web/src/**)",
       "Bash(npx next *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(npx --max-old-space-size=1024 tsc --noEmit --skipLibCheck)",
+      "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/correspondente/login)",
+      "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/correspondente/demandas/\\\\[id\\\\])",
+      "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/admin/correspondentes)"
     ]
   }
 }

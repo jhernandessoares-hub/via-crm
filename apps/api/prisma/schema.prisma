@@ -109,6 +109,11 @@ model Tenant {
   slaRules               SlaRule[]
   tenantSites            TenantSite[]
   users                  User[]
+  developments           Development[]
+  creditRequests                CreditRequest[]
+  whatsappUnofficialSessions    WhatsappUnofficialSession[]
+  campanhaModelos               CampanhaModelo[]
+  campanhaDisparos              CampanhaDisparo[]
 
   @@map("tenants")
 }
@@ -176,6 +181,8 @@ model User {
   refreshTokens            RefreshToken[]
   branch                   Branch?           @relation(fields: [branchId], references: [id])
   tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campanhaModelos          CampanhaModelo[]
+  campanhaDisparos         CampanhaDisparo[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -242,6 +249,10 @@ model Lead {
   rg                      String?
   uf                      String?
   cadastroOrigem          Json?
+  conversaCanal           String?
+  conversaSessionId       String?
+  avatarUrl               String?
+  lastReadAt              DateTime?
   aiExecutionLogs         AiExecutionLog[]
   baseFria                BaseFria?
   kbTeachings             KbTeaching[]
@@ -250,17 +261,20 @@ model Lead {
   participantes           LeadParticipante[]
   leadSla                 LeadSla?
   leadTransitionLogs      LeadTransitionLog[]
-  branch                  Branch?              @relation(fields: [branchId], references: [id])
-  pipeline                Pipeline?            @relation(fields: [pipelineId], references: [id])
-  stage                   PipelineStage?       @relation(fields: [stageId], references: [id])
-  tenant                  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creditRequests          CreditRequest[]
+  branch                  Branch?                    @relation(fields: [branchId], references: [id])
+  pipeline                Pipeline?                  @relation(fields: [pipelineId], references: [id])
+  stage                   PipelineStage?             @relation(fields: [stageId], references: [id])
+  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews                 ManagerReview[]
+  conversaSession         WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, telefoneKey])
   @@index([tenantId, status])
   @@index([tenantId, branchId])
   @@index([tenantId, pipelineId])
   @@index([tenantId, stageId])
+  @@index([tenantId, conversaCanal])
   @@map("leads")
 }
 
@@ -278,6 +292,7 @@ model LeadEvent {
 
   @@index([tenantId, leadId])
   @@index([tenantId, channel])
+  @@index([leadId, channel, criadoEm])
   @@map("lead_events")
 }
 
@@ -1354,4 +1369,241 @@ enum LearningStatus {
   APPROVED
   REJECTED
   APPLIED
+}
+
+// ─── Gestão de Empreendimentos ───────────────────────────────────────────────
+
+model Development {
+  id             String    @id @default(uuid())
+  tenantId       String
+  nome           String
+  tipo           String    // VERTICAL | HORIZONTAL
+  subtipo        String    // APARTAMENTO | CASA | LOTEAMENTO
+  endereco       String?
+  cidade         String?
+  estado         String?
+  sunOrientation String    @default("LESTE") // NORTE | SUL | LESTE | OESTE
+  prazoEntrega   DateTime?
+  status         String    @default("LANCAMENTO") // LANCAMENTO | EM_OBRA | CONCLUIDO
+  gridRows       Int       @default(10)
+  gridCols       Int       @default(10)
+  gridLayout     Json?     // [{row, col, type: UNIT|EMPTY|VEGETATION|PORTARIA|RUA|CASA_MAQUINAS|CAIXA_DAGUA}]
+  descricao      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant           Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  towers           Tower[]
+  units            DevelopmentUnit[]
+  paymentCondition DevelopmentPaymentCondition?
+
+  @@index([tenantId])
+  @@map("developments")
+}
+
+model Tower {
+  id            String   @id @default(uuid())
+  developmentId String
+  tenantId      String
+  nome          String
+  floors        Int      @default(1)
+  unitsPerFloor Int      @default(1)
+  gridX         Int?
+  gridY         Int?
+  gridWidth     Int      @default(1)
+  gridHeight    Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  development Development     @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  units       DevelopmentUnit[]
+
+  @@index([developmentId])
+  @@map("towers")
+}
+
+model DevelopmentUnit {
+  id             String   @id @default(uuid())
+  towerId        String
+  developmentId  String
+  tenantId       String
+  nome           String
+  andar          Int?
+  posicao        Int?
+  status         String   @default("DISPONIVEL") // DISPONIVEL | RESERVADO | VENDIDO | BLOQUEADO
+  bloqueioMotivo String?
+  areaM2         Float?
+  quartos        Int?
+  suites         Int?
+  banheiros      Int?
+  vagas          Int?
+  valorVenda     Float?
+  valorAvaliado  Float?
+  soldAt         DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tower       Tower       @relation(fields: [towerId], references: [id], onDelete: Cascade)
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@index([developmentId])
+  @@index([towerId])
+  @@map("development_units")
+}
+
+model DevelopmentPaymentCondition {
+  id                      String   @id @default(uuid())
+  developmentId           String   @unique
+  tenantId                String
+  aceitaFinanciamento     Boolean  @default(true)
+  valorAto                Float?   // R$ fixo pago no ato da assinatura
+  entradaPercentual       Float?   // % do valor total para entrada parcelada
+  entradaParcelas         Int?     // quantas parcelas da entrada até entrega
+  descontoAVista          Float?   // % de desconto para pagamento à vista
+  financiamentoBase       String?  // AVALIADO | VENDA
+  financiamentoPercentual Float?   // % sobre a base para financiamento bancário
+  proSoluto               Boolean  @default(false)
+  proSolutoPercentual     Float?   // % sobre valor de venda (ex: 3-5%)
+  proSolutoParcelas       Int?     // parcelas do pro-soluto após entrega das chaves
+  obs                     String?  // observações gerais
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("development_payment_conditions")
+}
+
+model Correspondent {
+  id        String   @id @default(uuid())
+  nome      String
+  email     String   @unique
+  telefone  String?
+  empresa   String?
+  creci     String?
+  senhaHash String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creditRequests CreditRequest[]
+
+  @@map("correspondents")
+}
+
+model CreditRequest {
+  id              String    @id @default(uuid())
+  tenantId        String
+  leadId          String
+  correspondentId String
+
+  valorImovel       Float?
+  valorCredito      Float?
+  rendaMensal       Float?
+  tipoFinanciamento String?  // MINHA_CASA_MINHA_VIDA | SBPE | FGTS | CONSORCIO | OUTRO
+  observacoes       String?
+
+  status      String    @default("EM_ANALISE") // EM_ANALISE | COM_PENDENCIA | APROVADO | REPROVADO | CONDICIONADO
+  parecer     String?
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  correspondent Correspondent @relation(fields: [correspondentId], references: [id])
+
+  @@index([tenantId])
+  @@index([correspondentId])
+  @@map("credit_requests")
+}
+
+model WhatsappUnofficialSession {
+  id            String     @id @default(uuid())
+  tenantId      String
+  nome          String
+  status        String     @default("DISCONNECTED")
+  qrCode        String?
+  phoneNumber   String?
+  pushName      String?
+  authStateJson Json?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads    Lead[]
+  disparos CampanhaDisparo[]
+
+  @@index([tenantId])
+  @@map("whatsapp_unofficial_sessions")
+}
+
+model CampanhaModelo {
+  id               String    @id @default(uuid())
+  tenantId         String
+  userId           String
+  nome             String
+  mensagem         String
+  mediaUrl         String?
+  mediaPublicId    String?
+  mediaType        String?
+  delayMinSegundos Int       @default(5)
+  delayMaxSegundos Int       @default(15)
+  criadoEm         DateTime  @default(now())
+  atualizadoEm     DateTime  @updatedAt
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  disparos CampanhaDisparo[]
+
+  @@index([tenantId, userId])
+  @@map("campanha_modelos")
+}
+
+model CampanhaDisparo {
+  id            String    @id @default(uuid())
+  tenantId      String
+  userId        String
+  sessionId     String?
+  modeloId      String
+  nome          String
+  status        String    @default("RODANDO")
+  totalContatos Int       @default(0)
+  enviados      Int       @default(0)
+  falhas        Int       @default(0)
+  responderam   Int       @default(0)
+  iniciadaEm    DateTime  @default(now())
+  concluidaEm   DateTime?
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  tenant   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session  WhatsappUnofficialSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  modelo   CampanhaModelo            @relation(fields: [modeloId], references: [id])
+  contatos CampanhaContato[]
+
+  @@index([tenantId])
+  @@index([sessionId])
+  @@map("campanha_disparos")
+}
+
+model CampanhaContato {
+  id          String    @id @default(uuid())
+  disparoId   String
+  telefone    String
+  nome        String?
+  leadId      String?
+  status      String    @default("PENDENTE")
+  enviadoEm   DateTime?
+  respondeuEm DateTime?
+  erro        String?
+  criadoEm    DateTime  @default(now())
+
+  disparo CampanhaDisparo @relation(fields: [disparoId], references: [id], onDelete: Cascade)
+
+  @@index([disparoId])
+  @@index([telefone])
+  @@map("campanha_contatos")
 }

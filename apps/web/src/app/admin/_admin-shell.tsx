@@ -29,6 +29,7 @@ const navItems: NavItem[] = [
       { href: "/admin/regras-globais", label: "🛡️ Regras Globais" },
     ],
   },
+  { href: "/admin/correspondentes", label: "💳 Correspondentes" },
   { href: "/admin/audit", label: "Audit Log" },
   { href: "/admin/filas", label: "Filas & IA" },
   { href: "/admin/saude", label: "Saúde do Sistema" },
