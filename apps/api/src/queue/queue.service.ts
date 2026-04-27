@@ -9,6 +9,7 @@ export class QueueService implements OnModuleDestroy {
   private whatsappMediaQueue: Queue;
   private inboundAiQueue: Queue;
   private whatsappInboundQueue: Queue;
+  private campaignQueue: Queue;
   reminderQueue: Queue;
 
   constructor(private readonly prisma: PrismaService) {
@@ -37,6 +38,11 @@ export class QueueService implements OnModuleDestroy {
 
     // ✅ fila para lembretes de eventos do calendário (repeatable job)
     this.reminderQueue = new Queue('reminder-queue', {
+      connection: { host, port, password },
+    });
+
+    // ✅ fila para disparos de campanha WhatsApp Light (encadeado, um job por vez)
+    this.campaignQueue = new Queue('campaign-queue', {
       connection: { host, port, password },
     });
   }
@@ -546,11 +552,31 @@ export class QueueService implements OnModuleDestroy {
     }
   }
 
+  // ── Campanhas WhatsApp Light ──────────────────────────────────────────────
+
+  async scheduleCampaignNext(disparoId: string, delayMs: number) {
+    await this.campaignQueue.add(
+      'campaign-send',
+      { campanhaId: disparoId },
+      { delay: delayMs, removeOnComplete: true, removeOnFail: false },
+    );
+  }
+
+  async cancelCampaignJobs(disparoId: string) {
+    const jobs = await this.campaignQueue.getJobs(['waiting', 'delayed', 'active']);
+    for (const job of jobs) {
+      if (job.data?.campanhaId === disparoId) {
+        await job.remove().catch(() => {});
+      }
+    }
+  }
+
   async onModuleDestroy() {
     await this.slaQueue.close();
     await this.whatsappMediaQueue.close();
     await this.inboundAiQueue.close();
     await this.whatsappInboundQueue.close();
     await this.reminderQueue.close();
+    await this.campaignQueue.close();
   }
 }
