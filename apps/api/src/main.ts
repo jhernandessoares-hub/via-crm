@@ -23,10 +23,12 @@ import { startWhatsappMediaWorker } from "./queue/whatsapp-media.worker";
 import { startInboundAiWorker } from "./queue/inbound-ai.worker";
 import { startWhatsappInboundWorker } from "./queue/whatsapp-inbound.worker";
 import { startReminderWorker } from "./queue/reminder.worker";
+import { startCampaignWorker } from "./queue/campaign.worker";
 import { PrismaService } from "./prisma/prisma.service";
 import { AiService } from "./ai/ai.service";
 import { QueueService } from "./queue/queue.service";
 import { WhatsappService } from "./secretary/whatsapp.service";
+import { WhatsappUnofficialService } from "./whatsapp-unofficial/whatsapp-unofficial.service";
 import { NestLogger, Logger } from "./logger";
 import { seedAiModelDefaults } from "./ai/resolve-ai-model";
 import { initCloudinary } from "./cloudinary/cloudinary-init";
@@ -109,6 +111,9 @@ async function bootstrap() {
 
   // 🔔 INICIAR WORKER DE LEMBRETES (BullMQ cron: a cada 5 min)
   startReminderWorker(app.get(PrismaService), app.get(WhatsappService), queueService);
+
+  // 📣 INICIAR WORKER DE CAMPANHAS WHATSAPP LIGHT
+  startCampaignWorker(app.get(PrismaService), queueService, app.get(WhatsappUnofficialService));
 }
 
 bootstrap();
