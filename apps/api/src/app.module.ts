@@ -29,6 +29,9 @@ import { AdminModule } from './admin/admin.module';
 import { SitesModule } from './sites/sites.module';
 import { CorrespondentsModule } from './correspondents/correspondents.module';
 import { CreditRequestsModule } from './credit-requests/credit-requests.module';
+import { WhatsappUnofficialModule } from './whatsapp-unofficial/whatsapp-unofficial.module';
+import { CampanhasModule } from './campanhas/campanhas.module';
+import { InboxModule } from './inbox/inbox.module';
 
 @Module({
   imports: [
@@ -62,6 +65,9 @@ import { CreditRequestsModule } from './credit-requests/credit-requests.module';
     SitesModule,
     CorrespondentsModule,
     CreditRequestsModule,
+    WhatsappUnofficialModule,
+    CampanhasModule,
+    InboxModule,
   ],
   controllers: [AppController],
   providers: [

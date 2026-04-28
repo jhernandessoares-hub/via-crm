@@ -18,6 +18,8 @@ import {
   Headphones,
   Calendar,
   Megaphone,
+  MessageSquare,
+  Send,
   Settings,
   Shield,
   Globe,
@@ -291,6 +293,8 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
         {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
         <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
         <NavItem href="/calendar" label="Agenda" icon={Calendar} />
+        <NavItem href="/inbox-wa-light" label="Inbox WA Light" icon={MessageSquare} mode="prefix" />
+        {role === "OWNER" && <NavItem href="/campanhas" label="Campanhas" icon={Send} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />}
 
         {role === "OWNER" && (
