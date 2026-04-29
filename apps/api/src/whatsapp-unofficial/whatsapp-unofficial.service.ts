@@ -351,17 +351,19 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     // Resolve JID para telefone.
     // WhatsApp multi-device usa LIDs internos: ex '95236772601989@lid'.
-    // Extrai número limpo removendo sufixo @... e sufixo de dispositivo :X.
+    // Tenta resolver via mapa contacts.upsert; se não encontrado, usa os dígitos do LID
+    // como fallback para não descartar a mensagem.
     let phone: string;
     if (from.endsWith('@lid')) {
       const lid = from.split('@')[0].split(':')[0];
       const resolved = this.resolveLidPhone(sessionId, lid);
-      if (!resolved) {
-        logger.warn(`LID ${lid} sem mapeamento de telefone — aguardando contacts.upsert (sessão=${sessionId})`);
-        return;
+      if (resolved) {
+        phone = resolved;
+        logger.log(`LID ${lid} resolvido → ${phone}`);
+      } else {
+        phone = lid;
+        logger.warn(`LID ${lid} sem mapeamento — usando LID como identificador temporário (sessão=${sessionId})`);
       }
-      phone = resolved;
-      logger.log(`LID ${lid} resolvido → ${phone}`);
     } else {
       phone = from.split('@')[0].split(':')[0];
     }
