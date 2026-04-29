@@ -8,6 +8,60 @@ function digitsOnly(v: string) {
   return (v || '').replace(/\D/g, '');
 }
 
+async function resolveAssignment(
+  prisma: PrismaService,
+  tenantId: string,
+): Promise<{ branchId: string | null; assignedUserId: string | null }> {
+  try {
+    const branch = await prisma.branch.findFirst({
+      where: { tenantId, ativo: true },
+      orderBy: { criadoEm: 'asc' },
+      select: { id: true },
+    });
+    const branchId = branch?.id ?? null;
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { roundRobinConfig: true },
+    });
+    const cfg = (tenant?.roundRobinConfig ?? {}) as any;
+    const roles: string[] = ['AGENT'];
+    if (cfg.incluirGerentes) roles.push('MANAGER');
+    if (cfg.incluirOwner) roles.push('OWNER');
+
+    const candidates = await prisma.user.findMany({
+      where: {
+        tenantId,
+        ativo: true,
+        recebeLeads: true,
+        role: { in: roles as any[] },
+        ...(branchId ? { branchId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (candidates.length === 0) return { branchId, assignedUserId: null };
+
+    const withLastLead = await Promise.all(
+      candidates.map(async (c) => {
+        const last = await prisma.lead.findFirst({
+          where: { tenantId, assignedUserId: c.id, deletedAt: null },
+          orderBy: { criadoEm: 'desc' },
+          select: { criadoEm: true },
+        });
+        return { id: c.id, lastAt: last?.criadoEm ?? new Date(0) };
+      }),
+    );
+
+    withLastLead.sort((a, b) => a.lastAt.getTime() - b.lastAt.getTime());
+
+    return { branchId, assignedUserId: withLastLead[0].id };
+  } catch (err: any) {
+    logger.warn(`resolveAssignment erro: ${err?.message ?? err}`);
+    return { branchId: null, assignedUserId: null };
+  }
+}
+
 function telefoneKeyFrom(from: string) {
   let d = digitsOnly(from);
   if (d.startsWith('55') && d.length > 11) d = d.slice(2);
@@ -63,9 +117,12 @@ export async function upsertLeadFromWhatsapp(
       },
     });
   } else {
-    const firstStageId = await prisma.pipelineStage
-      .findFirst({ where: { tenantId, key: 'NOVO_LEAD' }, select: { id: true } })
-      .then((s) => s?.id ?? null);
+    const [firstStageId, assignment] = await Promise.all([
+      prisma.pipelineStage
+        .findFirst({ where: { tenantId, key: 'NOVO_LEAD' }, select: { id: true } })
+        .then((s) => s?.id ?? null),
+      resolveAssignment(prisma, tenantId),
+    ]);
 
     const created = await prisma.$transaction(async (tx) => {
       const c = await tx.lead.create({
@@ -79,6 +136,8 @@ export async function upsertLeadFromWhatsapp(
           lastInboundAt: now,
           stageId: firstStageId,
           conversaCanal: canal,
+          branchId: assignment.branchId,
+          assignedUserId: assignment.assignedUserId,
           ...(sessionId ? { conversaSessionId: sessionId } : {}),
           ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
           ...(avatarUrl ? { avatarUrl } : {}),
