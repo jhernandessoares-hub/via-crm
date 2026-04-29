@@ -117,8 +117,26 @@ async function useDatabaseAuthState(prisma: PrismaService, sessionId: string) {
 export class WhatsappUnofficialService implements OnModuleDestroy {
   private sockets = new Map<string, WASocket>();
   private connectedAt = new Map<string, number>();
-  // Sessões desconectadas manualmente — não reconectar automaticamente
   private manuallyDisconnected = new Set<string>();
+  // Mapa LID → phone por sessão (WhatsApp multi-device usa LIDs como ID interno)
+  // Ex: { sessionId → Map('95236772601989' → '5513991431834') }
+  private lidToPhone = new Map<string, Map<string, string>>();
+
+  private updateLidMap(sessionId: string, contacts: Array<{ id: string; lid?: string | null }>) {
+    let map = this.lidToPhone.get(sessionId);
+    if (!map) { map = new Map(); this.lidToPhone.set(sessionId, map); }
+    for (const c of contacts) {
+      if (c.lid && c.id.includes('@s.whatsapp.net')) {
+        const lid = c.lid.split('@')[0].split(':')[0];
+        const phone = c.id.split('@')[0].split(':')[0];
+        if (lid && phone) map.set(lid, phone);
+      }
+    }
+  }
+
+  private resolveLidPhone(sessionId: string, lid: string): string | null {
+    return this.lidToPhone.get(sessionId)?.get(lid) ?? null;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -143,6 +161,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   async deleteSession(sessionId: string) {
     this.closeSocket(sessionId);
+    this.lidToPhone.delete(sessionId);
     await this.prisma.whatsappUnofficialSession.delete({ where: { id: sessionId } });
   }
 
@@ -223,6 +242,14 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
           });
         }
       }
+    });
+
+    // Popula mapa LID→phone quando contatos são sincronizados (acontece na conexão)
+    socket.ev.on('contacts.upsert', (contacts) => {
+      this.updateLidMap(sessionId, contacts);
+    });
+    socket.ev.on('contacts.update', (updates) => {
+      this.updateLidMap(sessionId, updates as any[]);
     });
 
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -322,9 +349,22 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     if (from.endsWith('@g.us')) return;
     if (from === 'status@broadcast' || from.endsWith('@newsletter')) return;
 
-    // Extrai número limpo: remove sufixo @s.whatsapp.net/@c.us e sufixo de dispositivo :X
-    // Ex: '5521999999999:10@s.whatsapp.net' → '5521999999999'
-    const phone = from.split('@')[0].split(':')[0];
+    // Resolve JID para telefone.
+    // WhatsApp multi-device usa LIDs internos: ex '95236772601989@lid'.
+    // Extrai número limpo removendo sufixo @... e sufixo de dispositivo :X.
+    let phone: string;
+    if (from.endsWith('@lid')) {
+      const lid = from.split('@')[0].split(':')[0];
+      const resolved = this.resolveLidPhone(sessionId, lid);
+      if (!resolved) {
+        logger.warn(`LID ${lid} sem mapeamento de telefone — aguardando contacts.upsert (sessão=${sessionId})`);
+        return;
+      }
+      phone = resolved;
+      logger.log(`LID ${lid} resolvido → ${phone}`);
+    } else {
+      phone = from.split('@')[0].split(':')[0];
+    }
     const contactName: string | null = (msg.pushName as string | null) || null;
 
     // Extrai texto e tipo da mensagem
