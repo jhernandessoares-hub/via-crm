@@ -288,7 +288,7 @@ export function Sidebar({ role, tenantNome, counts, branding }: SidebarProps) {
         )}
 
         <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
-        {role === "OWNER" && <NavItem href="/empreendimentos" label="Empreendimentos" icon={Landmark} mode="prefix" />}
+        {role === "OWNER" && <NavItem href="/gestao-empreendimentos" label="Gestão de Empreendimentos" icon={Landmark} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
         <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
