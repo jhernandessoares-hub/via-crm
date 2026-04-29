@@ -89,12 +89,14 @@ export class InboxService {
       }
     }
 
-    return leads.map((lead) => {
+    const leadEntries = leads.map((lead) => {
       const ultimaMensagem = lead.events[0] ?? null;
       const texto = ultimaMensagem ? extractText(ultimaMensagem.payloadRaw) : null;
 
       return {
+        type: 'lead' as const,
         leadId: lead.id,
+        contatoId: null as string | null,
         nome: lead.nomeCorreto ?? lead.nome,
         telefone: lead.telefone,
         avatarUrl: lead.avatarUrl ?? null,
@@ -102,12 +104,108 @@ export class InboxService {
         sessaoNome: lead.conversaSession?.nome ?? null,
         naoLidos: naoLidosMap.get(lead.id) ?? 0,
         ultimaMensagem: texto,
-        ultimaMensagemEm: ultimaMensagem?.criadoEm ?? null,
+        ultimaMensagemEm: ultimaMensagem?.criadoEm?.toISOString() ?? null,
         ultimaMensagemDirecao: ultimaMensagem
           ? (LIGHT_CHANNELS_IN.includes(ultimaMensagem.channel) ? 'in' : 'out')
           : null,
       };
     });
+
+    // ── Contatos de campanha sem lead (ainda não responderam) ─────────────
+    type ConversaEntry = {
+      type: 'lead' | 'campanha';
+      leadId: string | null;
+      contatoId: string | null;
+      nome: string;
+      telefone: string | null;
+      avatarUrl: string | null;
+      lastInboundAt: Date | null;
+      sessaoNome: string | null;
+      naoLidos: number;
+      ultimaMensagem: string | null;
+      ultimaMensagemEm: string | null;
+      ultimaMensagemDirecao: 'in' | 'out' | null;
+    };
+    let campanhaEntries: ConversaEntry[] = [];
+
+    if (sessionId) {
+      const disparos = await this.prisma.campanhaDisparo.findMany({
+        where: { sessionId, tenantId },
+        select: {
+          id: true,
+          modelo: { select: { mensagem: true } },
+        },
+      });
+
+      if (disparos.length > 0) {
+        const disparoMsgMap = new Map(disparos.map(d => [d.id, d.modelo?.mensagem ?? null]));
+        const contatos = await this.prisma.campanhaContato.findMany({
+          where: {
+            disparoId: { in: disparos.map(d => d.id) },
+            status: { in: ['ENVIADO', 'FALHA'] },
+            leadId: null,
+          },
+          select: { id: true, telefone: true, nome: true, enviadoEm: true, disparoId: true },
+          orderBy: { enviadoEm: { sort: 'desc', nulls: 'last' } },
+        });
+
+        campanhaEntries = contatos.map(c => ({
+          type: 'campanha' as const,
+          leadId: null,
+          contatoId: c.id,
+          nome: c.nome || c.telefone,
+          telefone: c.telefone,
+          avatarUrl: null,
+          lastInboundAt: c.enviadoEm,
+          sessaoNome: null,
+          naoLidos: 0,
+          ultimaMensagem: disparoMsgMap.get(c.disparoId) ?? null,
+          ultimaMensagemEm: c.enviadoEm?.toISOString() ?? null,
+          ultimaMensagemDirecao: 'out' as 'in' | 'out' | null,
+        }));
+      }
+    }
+
+    // Merge leads + campanha-only contacts, ordenados por mensagem mais recente
+    const merged = [...leadEntries, ...campanhaEntries];
+    merged.sort((a, b) => {
+      const aT = a.ultimaMensagemEm ? new Date(a.ultimaMensagemEm).getTime() : 0;
+      const bT = b.ultimaMensagemEm ? new Date(b.ultimaMensagemEm).getTime() : 0;
+      return bT - aT;
+    });
+    return merged;
+  }
+
+  // ── Detalhe de contato de campanha (sem lead) ─────────────────────────────
+
+  async getCampanhaContato(tenantId: string, contatoId: string) {
+    const contato = await this.prisma.campanhaContato.findFirst({
+      where: { id: contatoId },
+      select: {
+        id: true, telefone: true, nome: true, enviadoEm: true, status: true,
+        disparo: {
+          select: {
+            tenantId: true,
+            modelo: { select: { mensagem: true, mediaUrl: true, mediaType: true } },
+          },
+        },
+      },
+    });
+
+    if (!contato || contato.disparo.tenantId !== tenantId) {
+      throw new NotFoundException('Contato não encontrado');
+    }
+
+    return {
+      contatoId: contato.id,
+      nome: contato.nome || contato.telefone,
+      telefone: contato.telefone,
+      status: contato.status,
+      enviadoEm: contato.enviadoEm,
+      mensagemDisparo: contato.disparo.modelo?.mensagem ?? null,
+      mediaUrl: contato.disparo.modelo?.mediaUrl ?? null,
+      mediaType: contato.disparo.modelo?.mediaType ?? null,
+    };
   }
 
   // ── Mensagens de uma conversa ─────────────────────────────────────────────
