@@ -322,7 +322,9 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     if (from.endsWith('@g.us')) return;
     if (from === 'status@broadcast' || from.endsWith('@newsletter')) return;
 
-    const phone = from.replace('@s.whatsapp.net', '').replace('@c.us', '');
+    // Extrai número limpo: remove sufixo @s.whatsapp.net/@c.us e sufixo de dispositivo :X
+    // Ex: '5521999999999:10@s.whatsapp.net' → '5521999999999'
+    const phone = from.split('@')[0].split(':')[0];
     const contactName: string | null = (msg.pushName as string | null) || null;
 
     // Extrai texto e tipo da mensagem
@@ -358,7 +360,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     // Foto do contato — fire-and-forget, não bloqueia o processamento
     const socket = this.sockets.get(sessionId);
-    const jid = `${from.replace(/\D/g, '')}@s.whatsapp.net`;
+    const jid = `${phone}@s.whatsapp.net`;
     let avatarUrl: string | null = null;
     if (socket) {
       avatarUrl = await Promise.race([
