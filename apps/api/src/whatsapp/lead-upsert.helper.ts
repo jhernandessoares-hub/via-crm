@@ -40,7 +40,14 @@ async function resolveAssignment(
       select: { id: true },
     });
 
-    if (candidates.length === 0) return { branchId, assignedUserId: null };
+    // Fallback: sem candidatos elegíveis → atribui ao OWNER ativo
+    if (candidates.length === 0) {
+      const owner = await prisma.user.findFirst({
+        where: { tenantId, ativo: true, role: 'OWNER' },
+        select: { id: true },
+      });
+      return { branchId, assignedUserId: owner?.id ?? null };
+    }
 
     const withLastLead = await Promise.all(
       candidates.map(async (c) => {
