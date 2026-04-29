@@ -32,6 +32,7 @@ import { CreditRequestsModule } from './credit-requests/credit-requests.module';
 import { WhatsappUnofficialModule } from './whatsapp-unofficial/whatsapp-unofficial.module';
 import { CampanhasModule } from './campanhas/campanhas.module';
 import { InboxModule } from './inbox/inbox.module';
+import { DevelopmentsModule } from './developments/developments.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { InboxModule } from './inbox/inbox.module';
     WhatsappUnofficialModule,
     CampanhasModule,
     InboxModule,
+    DevelopmentsModule,
   ],
   controllers: [AppController],
   providers: [

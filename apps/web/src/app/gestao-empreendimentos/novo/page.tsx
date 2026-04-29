@@ -62,7 +62,7 @@ export default function NovoEmpreendimentoPage() {
         gridCols: parseInt(gridCols) || 10,
         descricao: descricao.trim() || undefined,
       } as any);
-      router.push(`/empreendimentos/${dev.id}`);
+      router.push(`/gestao-empreendimentos/${dev.id}`);
     } catch (e: any) {
       setError(e?.message ?? "Erro ao criar empreendimento");
       setSaving(false);

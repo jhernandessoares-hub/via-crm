@@ -57,14 +57,14 @@ export default function EmpreendimentosPage() {
   }
 
   return (
-    <AppShell title="Empreendimentos">
+    <AppShell title="Gestão de Empreendimentos">
       <div className="mx-auto max-w-6xl px-4 py-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-[var(--shell-text)]">Empreendimentos</h1>
+            <h1 className="text-xl font-bold text-[var(--shell-text)]">Gestão de Empreendimentos</h1>
             <p className="text-sm text-[var(--shell-subtext)] mt-0.5">Gestão de empreendimentos e unidades</p>
           </div>
-          <button type="button" onClick={() => router.push("/empreendimentos/novo")}
+          <button type="button" onClick={() => router.push("/gestao-empreendimentos/novo")}
             className="rounded-xl bg-[var(--brand-accent)] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity">
             + Novo Empreendimento
           </button>
@@ -87,7 +87,7 @@ export default function EmpreendimentosPage() {
               return (
                 <div key={item.id}
                   className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => router.push(`/empreendimentos/${item.id}`)}>
+                  onClick={() => router.push(`/gestao-empreendimentos/${item.id}`)}>
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="min-w-0">
                       <h2 className="font-semibold text-[var(--shell-text)] truncate">{item.nome}</h2>
@@ -118,7 +118,7 @@ export default function EmpreendimentosPage() {
 
                   <div className="flex items-center justify-between">
                     <button type="button"
-                      onClick={(e) => { e.stopPropagation(); router.push(`/empreendimentos/${item.id}`); }}
+                      onClick={(e) => { e.stopPropagation(); router.push(`/gestao-empreendimentos/${item.id}`); }}
                       className="text-xs font-medium text-[var(--brand-accent)] hover:underline">
                       Ver planta →
                     </button>

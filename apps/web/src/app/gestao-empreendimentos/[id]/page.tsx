@@ -1444,7 +1444,7 @@ export default function EmpreendimentoPage() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <button onClick={() => router.back()} className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)] mb-1">← Empreendimentos</button>
+            <button onClick={() => router.back()} className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)] mb-1">← Gestão de Empreendimentos</button>
             <h1 className="text-xl font-bold text-[var(--shell-text)]">{dev.nome}</h1>
             <p className="text-sm text-[var(--shell-subtext)]">{dev.cidade}{dev.cidade && dev.estado ? ` / ${dev.estado}` : dev.estado}</p>
           </div>
