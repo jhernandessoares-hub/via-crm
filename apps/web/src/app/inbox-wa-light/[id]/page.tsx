@@ -42,10 +42,27 @@ type Modelo = {
 };
 
 type Conversa = {
-  leadId: string; nome: string; telefone: string | null;
+  type: "lead" | "campanha";
+  leadId: string | null;
+  contatoId: string | null;
+  nome: string;
+  telefone: string | null;
   avatarUrl?: string | null;
-  naoLidos: number; ultimaMensagem: string | null;
-  ultimaMensagemEm: string | null; ultimaMensagemDirecao: "in" | "out" | null;
+  naoLidos: number;
+  ultimaMensagem: string | null;
+  ultimaMensagemEm: string | null;
+  ultimaMensagemDirecao: "in" | "out" | null;
+};
+
+type ContatoDetail = {
+  contatoId: string;
+  nome: string;
+  telefone: string;
+  status: string;
+  enviadoEm: string | null;
+  mensagemDisparo: string | null;
+  mediaUrl: string | null;
+  mediaType: string | null;
 };
 
 type Msg = { id: string; direcao: "in" | "out"; texto: string | null; criadoEm: string };
@@ -567,6 +584,7 @@ export default function InboxWALightPage() {
   const [activeDisparo, setActiveDisparo] = useState<Disparo | null>(null);
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [leadAtivo, setLeadAtivo] = useState<string | null>(null);
+  const [contatoAtivo, setContatoAtivo] = useState<ContatoDetail | null>(null);
   const [mensagens, setMensagens] = useState<Msg[]>([]);
   const [conversaAtiva, setConversaAtiva] = useState<{ nome: string; telefone: string | null; avatarUrl?: string | null } | null>(null);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
@@ -678,6 +696,21 @@ export default function InboxWALightPage() {
     return () => { if (pollingMsgRef.current) clearInterval(pollingMsgRef.current); };
   }, [leadAtivo, fetchMensagens]);
 
+  // Polling de mensagens para contato de campanha — verifica se virou lead
+  useEffect(() => {
+    if (!contatoAtivo) return;
+    const t = setInterval(async () => {
+      try {
+        // Verifica se o contato já respondeu (lead criado)
+        const d = await apiFetch(`/inbox/contato/${contatoAtivo.contatoId}`);
+        setContatoAtivo(d);
+        // Se já tem um lead, recarrega conversas para ele aparecer na lista
+        await fetchConversas();
+      } catch {}
+    }, 8000);
+    return () => clearInterval(t);
+  }, [contatoAtivo, fetchConversas]);
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [mensagens]);
 
   // ── QR countdown ─────────────────────────────────────────────────────────
@@ -696,10 +729,20 @@ export default function InboxWALightPage() {
 
   // ── Selecionar conversa ──────────────────────────────────────────────────
 
-  function selecionarConversa(leadId: string) {
-    setLeadAtivo(leadId);
-    apiFetch(`/inbox/${leadId}/read`, { method: "POST" }).catch(() => {});
-    setConversas((prev) => prev.map((c) => c.leadId === leadId ? { ...c, naoLidos: 0 } : c));
+  function selecionarConversa(c: Conversa) {
+    if (c.type === "campanha" && c.contatoId) {
+      setLeadAtivo(null);
+      setMensagens([]);
+      setConversaAtiva(null);
+      apiFetch(`/inbox/contato/${c.contatoId}`)
+        .then((d) => setContatoAtivo(d))
+        .catch(() => {});
+    } else if (c.leadId) {
+      setContatoAtivo(null);
+      setLeadAtivo(c.leadId);
+      apiFetch(`/inbox/${c.leadId}/read`, { method: "POST" }).catch(() => {});
+      setConversas((prev) => prev.map((x) => x.leadId === c.leadId ? { ...x, naoLidos: 0 } : x));
+    }
   }
 
   // ── Ações ─────────────────────────────────────────────────────────────────
@@ -899,10 +942,14 @@ export default function InboxWALightPage() {
                   {conversas.length === 0 ? "Sem conversas ainda" : "Nenhuma encontrada"}
                 </div>
               ) : conversasFiltradas.map((c) => {
-                const ativa = leadAtivo === c.leadId;
+                const isCampanha = c.type === "campanha";
+                const ativa = isCampanha
+                  ? contatoAtivo?.contatoId === c.contatoId
+                  : leadAtivo === c.leadId;
                 const temNaoLidos = c.naoLidos > 0;
+                const itemKey = isCampanha ? `c-${c.contatoId}` : `l-${c.leadId}`;
                 return (
-                  <button key={c.leadId} onClick={() => selecionarConversa(c.leadId)}
+                  <button key={itemKey} onClick={() => selecionarConversa(c)}
                     className="w-full text-left px-3 py-3 flex items-center gap-2.5 transition-colors"
                     style={{
                       background: ativa ? "var(--brand-accent-muted)" : "transparent",
@@ -916,7 +963,7 @@ export default function InboxWALightPage() {
                           style={{ border: ativa ? "2px solid var(--brand-accent)" : "2px solid transparent" }} />
                       ) : (
                         <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
-                          style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                          style={{ background: isCampanha ? "#64748b" : "var(--brand-accent)", color: "#fff" }}>
                           {iniciais(c.nome)}
                         </div>
                       )}
@@ -929,10 +976,7 @@ export default function InboxWALightPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-1 mb-0.5">
                         <span className="text-sm truncate"
-                          style={{
-                            color: "var(--text-primary)",
-                            fontWeight: temNaoLidos ? 700 : 500,
-                          }}>
+                          style={{ color: "var(--text-primary)", fontWeight: temNaoLidos ? 700 : 500 }}>
                           {c.nome}
                         </span>
                         {c.ultimaMensagemEm && (
@@ -942,11 +986,16 @@ export default function InboxWALightPage() {
                           </span>
                         )}
                       </div>
+                      {c.telefone && (
+                        <p className="text-[10px] mb-0.5 font-mono" style={{ color: "var(--text-muted)" }}>
+                          {c.telefone}
+                        </p>
+                      )}
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs truncate"
                           style={{ color: temNaoLidos ? "var(--text-primary)" : "var(--text-muted)", fontWeight: temNaoLidos ? 500 : 400 }}>
                           {c.ultimaMensagemDirecao === "out" && (
-                            <span style={{ color: "var(--text-muted)" }}>Você: </span>
+                            <span style={{ color: "var(--text-muted)" }}>Enviado: </span>
                           )}
                           {c.ultimaMensagem ?? "Sem mensagens"}
                         </span>
@@ -966,7 +1015,65 @@ export default function InboxWALightPage() {
 
           {/* Chat */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: chatBg }}>
-            {leadAtivo && conversaAtiva ? (
+            {/* ── View de contato de campanha (sem lead ainda) ──────────── */}
+            {contatoAtivo && !leadAtivo ? (
+              <>
+                <div className="px-3 py-2 border-b flex items-center gap-3"
+                  style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", minHeight: 56 }}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+                    style={{ background: "#64748b", color: "#fff" }}>
+                    {iniciais(contatoAtivo.nome)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate" style={{ color: "var(--text-primary)" }}>
+                      {contatoAtivo.nome}
+                    </p>
+                    <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                      {contatoAtivo.telefone}
+                    </p>
+                  </div>
+                  <span className="text-xs px-2 py-1 rounded-full font-medium shrink-0"
+                    style={{
+                      background: contatoAtivo.status === "ENVIADO" ? "#3b82f620" : "#ef444420",
+                      color: contatoAtivo.status === "ENVIADO" ? "#3b82f6" : "#ef4444",
+                    }}>
+                    {contatoAtivo.status === "ENVIADO" ? "Aguardando resposta" : contatoAtivo.status}
+                  </span>
+                </div>
+                <div className="flex-1 overflow-y-auto px-3 py-3" style={{ background: chatBg }}>
+                  {contatoAtivo.enviadoEm && (
+                    <DateSeparator label={getDataLabel(contatoAtivo.enviadoEm)} />
+                  )}
+                  {contatoAtivo.mensagemDisparo && (
+                    <div className="flex mb-1 justify-end">
+                      <div style={{
+                        position: "relative", maxWidth: "72%",
+                        padding: "6px 12px 8px",
+                        borderRadius: "12px 12px 2px 12px",
+                        background: "var(--brand-accent)", color: "#fff",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                        fontSize: 14, lineHeight: 1.45,
+                      }}>
+                        <p style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
+                          {contatoAtivo.mensagemDisparo}
+                        </p>
+                        {contatoAtivo.enviadoEm && (
+                          <p style={{ fontSize: 11, textAlign: "right", marginTop: 2, opacity: 0.65, lineHeight: 1 }}>
+                            {horaMsg(contatoAtivo.enviadoEm)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="px-3 py-3 flex items-center justify-center gap-2"
+                  style={{ background: isDark ? "#1f2c34" : "#f0f2f5", borderTop: "1px solid var(--card-border)" }}>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Aguardando resposta do contato para iniciar conversa
+                  </p>
+                </div>
+              </>
+            ) : leadAtivo && conversaAtiva ? (
               <>
                 <div className="px-3 py-2 border-b flex items-center gap-3"
                   style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", minHeight: 56 }}>

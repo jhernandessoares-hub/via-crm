@@ -15,6 +15,12 @@ export class InboxController {
     return this.service.listConversas(tenantId, userId, role, branchId ?? null, sessionId);
   }
 
+  @Get('contato/:contatoId')
+  campanhaContato(@Req() req: any, @Param('contatoId') contatoId: string) {
+    const { tenantId } = req.user;
+    return this.service.getCampanhaContato(tenantId, contatoId);
+  }
+
   @Get(':leadId')
   messages(
     @Req() req: any,
