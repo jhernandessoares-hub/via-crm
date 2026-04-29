@@ -466,6 +466,7 @@ NEXT_PUBLIC_API_URL=
 - Permissões configuráveis ainda não são aplicadas nas páginas do frontend além de produtos — `usePermissions()` existe mas falta integrar em leads, agenda, KB, etc.
 - Convite de membro por e-mail (atualmente cria com senha inicial definida pelo OWNER)
 - Permissões de exclusão de produtos (hoje hardcoded): mover regras de quem pode excluir/solicitar exclusão de produto para o sistema de `permissionsConfig` do tenant (OWNER configura via `/settings/permissions`), assim como já existe para leads/agenda/KB
+- **Sistema de preferências de notificação por usuário** — campo `User.notificationSettings Json?` já existe no banco mas não está conectado. Implementar: (A) tela em "Meus Dados" com toggles "Notificar quando chegar lead" e "Notificar quando lead qualificar" para todos os roles; (B) preferência exclusiva do Owner: "Receber notificações de todos os leads qualificados do tenant" — notifica o Owner sempre que qualquer lead do tenant qualificar, independente do responsável; (C) incluir nome do corretor responsável na mensagem de qualificação ("👤 Atendido por: [nome]"). Requisito para receber notificação: `whatsappNumber` preenchido no perfil; janela de 24h da Meta se aplica. A secretária é independente das notificações — não exige conversa ativa.
 
 ---
 
