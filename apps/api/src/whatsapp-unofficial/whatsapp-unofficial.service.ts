@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, BadRequestException } from '@nestjs/common';
 import makeWASocket, { WASocket, DisconnectReason } from '@whiskeysockets/baileys';
 import { initAuthCreds, BufferJSON, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -261,14 +261,14 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   async sendText(sessionId: string, to: string, text: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
-    if (!socket) throw new Error(`Sessão ${sessionId} não está conectada`);
+    if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = this.toJid(to);
     await socket.sendMessage(jid, { text });
   }
 
   async sendImage(sessionId: string, to: string, imageUrl: string, caption?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
-    if (!socket) throw new Error(`Sessão ${sessionId} não está conectada`);
+    if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = this.toJid(to);
     await socket.sendMessage(jid, {
       image: { url: imageUrl },
@@ -278,7 +278,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   async sendVideo(sessionId: string, to: string, videoUrl: string, caption?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
-    if (!socket) throw new Error(`Sessão ${sessionId} não está conectada`);
+    if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = this.toJid(to);
     await socket.sendMessage(jid, {
       video: { url: videoUrl },
@@ -415,7 +415,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   async validateNumbers(sessionId: string, phones: string[]): Promise<Array<{ telefone: string; noWhatsapp: boolean }>> {
     const socket = this.sockets.get(sessionId);
-    if (!socket) throw new Error(`Sessão ${sessionId} não está conectada`);
+    if (!socket) throw new BadRequestException('Sessão não está conectada — reconecte o número e tente novamente');
 
     const results: Array<{ telefone: string; noWhatsapp: boolean }> = [];
 
