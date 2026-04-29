@@ -257,20 +257,25 @@ export default function EquipePage() {
               <span className="text-sm text-[var(--shell-subtext)]">Gerentes podem receber leads</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <button
-                type="button"
-                onClick={() => saveRrConfig({ incluirOwner: !rrConfig.incluirOwner })}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  rrConfig.incluirOwner ? "bg-slate-900" : "bg-gray-200"
-                }`}
-              >
-                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${
-                  rrConfig.incluirOwner ? "translate-x-4" : "translate-x-1"
-                }`} />
-              </button>
-              <span className="text-sm text-[var(--shell-subtext)]">Proprietário pode receber leads</span>
-            </label>
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <button
+                  type="button"
+                  onClick={() => saveRrConfig({ incluirOwner: !rrConfig.incluirOwner })}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    rrConfig.incluirOwner ? "bg-slate-900" : "bg-gray-200"
+                  }`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[var(--shell-card-bg)] shadow transition-transform ${
+                    rrConfig.incluirOwner ? "translate-x-4" : "translate-x-1"
+                  }`} />
+                </button>
+                <span className="text-sm text-[var(--shell-subtext)]">Proprietário pode receber leads</span>
+              </label>
+              <p className="text-xs text-amber-600 dark:text-amber-400 ml-11">
+                Mesmo desligado, se não houver corretores elegíveis, o Proprietário receberá o lead e as notificações automaticamente.
+              </p>
+            </div>
           </div>
 
           <p className="text-xs text-[var(--shell-subtext)] mt-3">

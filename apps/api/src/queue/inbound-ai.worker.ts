@@ -25,7 +25,7 @@ async function sendImageViaWhatsapp(
 
 const NOTIFY_EVENT_KEYS = new Set(['new_lead', 'lead_qualified']);
 
-// Notifica apenas o responsável atribuído ao lead (assignedUserId)
+// Notifica o responsável atribuído; se não houver, notifica todos os OWNERs ativos do tenant
 async function notifyAssignedUser(
   prisma: PrismaService,
   whatsapp: WhatsappService,
@@ -33,15 +33,26 @@ async function notifyAssignedUser(
   assignedUserId: string | null | undefined,
   message: string,
 ) {
-  if (!assignedUserId) return;
+  if (assignedUserId) {
+    const user = await prisma.user.findFirst({
+      where: { id: assignedUserId, tenantId, ativo: true, whatsappNumber: { not: null } },
+      select: { whatsappNumber: true },
+    });
+    if (user?.whatsappNumber) {
+      whatsapp.sendMessage(user.whatsappNumber, message, tenantId).catch((err: any) => logger.warn(`Falha ao notificar usuário assignado: ${err?.message}`));
+    }
+    return;
+  }
 
-  const user = await prisma.user.findFirst({
-    where: { id: assignedUserId, tenantId, ativo: true, whatsappNumber: { not: null } },
+  // Fallback: sem responsável → notifica todos os OWNERs com WhatsApp cadastrado
+  const owners = await prisma.user.findMany({
+    where: { tenantId, ativo: true, role: 'OWNER', whatsappNumber: { not: null } },
     select: { whatsappNumber: true },
   });
-
-  if (user?.whatsappNumber) {
-    whatsapp.sendMessage(user.whatsappNumber, message, tenantId).catch((err: any) => logger.warn(`Falha ao notificar usuário assignado: ${err?.message}`));
+  for (const owner of owners) {
+    if (owner.whatsappNumber) {
+      whatsapp.sendMessage(owner.whatsappNumber, message, tenantId).catch((err: any) => logger.warn(`Falha ao notificar owner fallback: ${err?.message}`));
+    }
   }
 }
 

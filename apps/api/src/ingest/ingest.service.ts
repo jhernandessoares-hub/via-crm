@@ -65,7 +65,14 @@ export class IngestService {
         select: { id: true },
       });
 
-      if (candidates.length === 0) return null;
+      // Fallback: sem candidatos elegíveis → atribui ao OWNER ativo
+      if (candidates.length === 0) {
+        const owner = await this.prisma.user.findFirst({
+          where: { tenantId, ativo: true, role: 'OWNER' },
+          select: { id: true },
+        });
+        return owner?.id ?? null;
+      }
 
       // Para cada candidato, buscar a data do último lead atribuído
       const withLastLead = await Promise.all(
