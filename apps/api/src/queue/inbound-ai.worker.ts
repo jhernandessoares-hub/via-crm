@@ -6,6 +6,7 @@ const logger = new Logger('InboundAiWorker');
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
+import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { resolveWhatsappCreds, sendWhatsappImage } from '../whatsapp/whatsapp-creds';
 
 async function sendImageViaWhatsapp(
@@ -405,7 +406,7 @@ function formatMinutesSince(dateValue?: Date | string | null): string {
 
 async function getLastInboundEvent(prisma: PrismaService, leadId: string) {
   return prisma.leadEvent.findFirst({
-    where: { leadId, channel: 'whatsapp.in' },
+    where: { leadId, channel: { in: ['whatsapp.in', 'whatsapp.unofficial.in'] } },
     orderBy: { criadoEm: 'desc' },
     select: { id: true, criadoEm: true, payloadRaw: true },
   });
@@ -417,7 +418,10 @@ async function getRecentConversationContext(
   limit = 8,
 ) {
   const events = await prisma.leadEvent.findMany({
-    where: { leadId, channel: { in: ['whatsapp.in', 'whatsapp.out'] } },
+    where: {
+      leadId,
+      channel: { in: ['whatsapp.in', 'whatsapp.out', 'whatsapp.unofficial.in', 'whatsapp.unofficial.out'] },
+    },
     orderBy: { criadoEm: 'desc' },
     take: limit,
     select: { channel: true, criadoEm: true, payloadRaw: true },
@@ -430,8 +434,8 @@ async function getRecentConversationContext(
       const ch = String(ev.channel || '').toLowerCase();
       const text = pickEventText(ev.payloadRaw);
       if (!text) return null;
-      if (ch === 'whatsapp.in') return `Lead: ${text}`;
-      if (ch === 'whatsapp.out') return `Agente: ${text}`;
+      if (ch === 'whatsapp.in' || ch === 'whatsapp.unofficial.in') return `Lead: ${text}`;
+      if (ch === 'whatsapp.out' || ch === 'whatsapp.unofficial.out') return `Agente: ${text}`;
       return null;
     })
     .filter(Boolean);
@@ -446,6 +450,7 @@ async function handleInboundAiJob(
   prisma: PrismaService,
   ai: AiService,
   whatsapp?: WhatsappService,
+  unofficialService?: WhatsappUnofficialService,
 ) {
   const leadId = job.data?.leadId as string | undefined;
   if (!leadId) return;
@@ -473,6 +478,8 @@ async function handleInboundAiJob(
       botPaused: true,
       lastInboundAt: true,
       assignedUserId: true,
+      conversaCanal: true,
+      conversaSessionId: true,
     },
   });
   if (!lead) return;
@@ -523,7 +530,7 @@ async function handleInboundAiJob(
   const recentOut = await prisma.leadEvent.findFirst({
     where: {
       leadId: lead.id,
-      channel: 'whatsapp.out',
+      channel: { in: ['whatsapp.out', 'whatsapp.unofficial.out'] },
       criadoEm: { gte: new Date(Date.now() - cooldownMs) },
     },
     select: { id: true, criadoEm: true },
@@ -534,7 +541,7 @@ async function handleInboundAiJob(
     const inboundAfterOut = await prisma.leadEvent.findFirst({
       where: {
         leadId: lead.id,
-        channel: 'whatsapp.in',
+        channel: { in: ['whatsapp.in', 'whatsapp.unofficial.in'] },
         criadoEm: { gt: recentOut.criadoEm },
       },
       select: { id: true },
@@ -681,7 +688,12 @@ async function handleInboundAiJob(
       return;
     }
 
-    if (agentMode === 'AUTOPILOT' && whatsapp && lead.telefone) {
+    const isLight = lead.conversaCanal === 'WHATSAPP_LIGHT';
+    const canSend = isLight
+      ? !!(unofficialService && lead.conversaSessionId && lead.telefone)
+      : !!(whatsapp && lead.telefone);
+
+    if (agentMode === 'AUTOPILOT' && canSend) {
       // Delay humanizado: descontamos o tempo já gasto desde o início do job
       const elapsedMs = Date.now() - jobStartAt;
       const minMs = (tenant.aiDelayMin ?? 5) * 1000;
@@ -692,15 +704,19 @@ async function handleInboundAiJob(
         await new Promise((r) => setTimeout(r, remainingMs));
       }
 
-      // Envia primeiro para capturar o wamid da Meta (necessário para exibir reações no chat)
-      const metaResponse = await whatsapp.sendMessage(lead.telefone, finalText);
-      logger.log(`⚡ AUTOPILOT ENVIOU: leadId=${lead.id}${escalation.escalated ? ' [ESCALATED]' : ''}`);
+      let metaResponse: any = null;
+      if (isLight) {
+        await unofficialService!.sendText(lead.conversaSessionId!, lead.telefone!, finalText);
+      } else {
+        metaResponse = await whatsapp!.sendMessage(lead.telefone!, finalText);
+      }
+      logger.log(`⚡ AUTOPILOT ENVIOU [${isLight ? 'LIGHT' : 'OFICIAL'}]: leadId=${lead.id}${escalation.escalated ? ' [ESCALATED]' : ''}`);
 
       await prisma.leadEvent.create({
         data: {
           tenantId: lead.tenantId,
           leadId: lead.id,
-          channel: 'whatsapp.out',
+          channel: isLight ? 'whatsapp.unofficial.out' : 'whatsapp.out',
           payloadRaw: {
             text: finalText,
             source: 'inbound-ai.worker',
@@ -970,13 +986,14 @@ export function startInboundAiWorker(
   prisma: PrismaService,
   ai: AiService,
   whatsapp?: WhatsappService,
+  unofficialService?: WhatsappUnofficialService,
 ) {
   logger.log('🧠 Inbound AI Worker boot', { redis: getRedisConnection() });
 
   const worker = new Worker(
     'inbound-ai-queue',
     async (job) => {
-      await handleInboundAiJob(job, prisma, ai, whatsapp);
+      await handleInboundAiJob(job, prisma, ai, whatsapp, unofficialService);
     },
     {
       connection: getRedisConnection(),

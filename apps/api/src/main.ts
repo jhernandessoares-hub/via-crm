@@ -104,7 +104,7 @@ async function bootstrap() {
   startWhatsappMediaWorker(app.get(PrismaService));
 
   // 🚀 INICIAR WORKER INBOUND AI (reutiliza instâncias do container NestJS)
-  startInboundAiWorker(app.get(PrismaService), app.get(AiService), app.get(WhatsappService));
+  startInboundAiWorker(app.get(PrismaService), app.get(AiService), app.get(WhatsappService), app.get(WhatsappUnofficialService));
 
   // 🚀 INICIAR WORKER WHATSAPP INBOUND (reutiliza instâncias do container NestJS)
   startWhatsappInboundWorker(app.get(PrismaService), queueService, app.get(WhatsappService));

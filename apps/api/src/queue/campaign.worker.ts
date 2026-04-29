@@ -19,17 +19,6 @@ function interpolate(template: string, nome: string | null, telefone: string): s
     .replace(/\{\{telefone\}\}/gi, telefone);
 }
 
-function digitsOnly(v: string) {
-  return (v || '').replace(/\D/g, '');
-}
-
-function telefoneKeyFrom(telefone: string): string {
-  let d = digitsOnly(telefone);
-  if (d.startsWith('55') && d.length > 11) d = d.slice(2);
-  if (d.length > 11) d = d.slice(-11);
-  if (d.length >= 9) return d.slice(-9);
-  return d;
-}
 
 async function processNext(
   disparoId: string,
@@ -86,39 +75,16 @@ async function processNext(
       await unofficial.sendText(sessionId, contato.telefone, texto);
     }
 
-    // Cria ou atualiza o lead para que a conversa apareça no inbox imediatamente
-    const leadId = await upsertLeadParaCampanha(prisma, {
-      tenantId,
-      telefone: contato.telefone,
-      nome: contato.nome ?? null,
-      sessionId,
-    });
-
-    // Registra o evento de saída da campanha
-    await prisma.leadEvent.create({
-      data: {
-        tenantId,
-        leadId,
-        channel: 'whatsapp.unofficial.out',
-        payloadRaw: {
-          text: texto,
-          source: 'campanha',
-          disparoId,
-          sentAt: new Date().toISOString(),
-        },
-      },
-    });
-
-    // Marca contato como enviado e vincula ao lead
+    // Lead será criado apenas quando o contato responder (handleInbound)
     await prisma.campanhaContato.update({
       where: { id: contato.id },
-      data: { status: 'ENVIADO', enviadoEm: new Date(), leadId },
+      data: { status: 'ENVIADO', enviadoEm: new Date() },
     });
     await prisma.campanhaDisparo.update({
       where: { id: disparoId },
       data: { enviados: { increment: 1 } },
     });
-    logger.log(`📤 Enviado para ${contato.telefone} leadId=${leadId} — disparo=${disparoId}`);
+    logger.log(`📤 Enviado para ${contato.telefone} — disparo=${disparoId}`);
   } catch (e: any) {
     await prisma.campanhaContato.update({
       where: { id: contato.id },
@@ -137,58 +103,6 @@ async function processNext(
   await queue.scheduleCampaignNext(disparoId, delayMs);
 }
 
-async function upsertLeadParaCampanha(
-  prisma: PrismaService,
-  params: { tenantId: string; telefone: string; nome: string | null; sessionId: string },
-): Promise<string> {
-  const { tenantId, telefone, nome, sessionId } = params;
-  const telefoneKey = telefoneKeyFrom(telefone);
-  const telDigits = digitsOnly(telefone);
-
-  const existing = telefoneKey
-    ? await prisma.lead.findFirst({
-        where: { tenantId, telefoneKey, deletedAt: null },
-        select: { id: true },
-        orderBy: { criadoEm: 'desc' },
-      })
-    : null;
-
-  if (existing) {
-    // Lead já existe — atualiza para a sessão da campanha
-    await prisma.lead.update({
-      where: { id: existing.id },
-      data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: sessionId },
-    });
-    return existing.id;
-  }
-
-  const firstStageId = await prisma.pipelineStage
-    .findFirst({ where: { tenantId, key: 'NOVO_LEAD' }, select: { id: true } })
-    .then((s) => s?.id ?? null);
-
-  const created = await prisma.$transaction(async (tx) => {
-    const c = await tx.lead.create({
-      data: {
-        tenantId,
-        nome: nome || telDigits || 'Lead Campanha',
-        telefone: telDigits || null,
-        telefoneKey: telefoneKey || null,
-        origem: 'Campanha WhatsApp Light',
-        status: 'NOVO',
-        stageId: firstStageId,
-        conversaCanal: 'WHATSAPP_LIGHT',
-        conversaSessionId: sessionId,
-      },
-      select: { id: true },
-    });
-    await tx.leadTransitionLog.create({
-      data: { tenantId, leadId: c.id, fromStage: null, toStage: 'NOVO', changedBy: 'SYSTEM' },
-    });
-    return c;
-  });
-
-  return created.id;
-}
 
 export function startCampaignWorker(
   prisma: PrismaService,
