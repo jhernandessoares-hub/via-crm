@@ -98,4 +98,53 @@ export class CampanhasController {
   cancel(@Req() req: any, @Param('id') id: string) {
     return this.service.cancelDisparo(id, req.user.tenantId);
   }
+
+  // ── ROTAS FLAT (usadas pelo frontend novo) ────────────────────────────────
+  // Ficam APÓS as rotas com segmentos estáticos (modelos/disparos) para evitar
+  // que /:id capture "modelos" ou "disparos" como ID.
+
+  @Post()
+  createRascunho(@Req() req: any, @Body() body: any) {
+    return this.service.createRascunho(req.user.tenantId, req.user.sub, body);
+  }
+
+  @Get(':id')
+  getDisparoFlat(@Req() req: any, @Param('id') id: string) {
+    return this.service.getDisparo(id, req.user.tenantId);
+  }
+
+  @Get(':id/contatos')
+  listContatosFlat(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number,
+  ) {
+    return this.service.listContatosDisparo(id, req.user.tenantId, page, limit);
+  }
+
+  @Post(':id/contatos/lista')
+  addContatosLista(@Req() req: any, @Param('id') id: string, @Body() body: { contatos: Array<{ telefone: string; nome?: string }> }) {
+    return this.service.addContatosLista(id, req.user.tenantId, body.contatos ?? []);
+  }
+
+  @Post(':id/start')
+  start(@Req() req: any, @Param('id') id: string) {
+    return this.service.startDisparo(id, req.user.tenantId);
+  }
+
+  @Post(':id/pause')
+  pauseFlat(@Req() req: any, @Param('id') id: string) {
+    return this.service.pauseDisparo(id, req.user.tenantId);
+  }
+
+  @Post(':id/resume')
+  resumeFlat(@Req() req: any, @Param('id') id: string) {
+    return this.service.resumeDisparo(id, req.user.tenantId);
+  }
+
+  @Post(':id/cancel')
+  cancelFlat(@Req() req: any, @Param('id') id: string) {
+    return this.service.cancelDisparo(id, req.user.tenantId);
+  }
 }

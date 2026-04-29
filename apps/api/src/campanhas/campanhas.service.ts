@@ -135,12 +135,78 @@ export class CampanhasService {
     const d = await this.prisma.campanhaDisparo.findFirst({
       where: { id, tenantId },
       include: {
-        modelo: { select: { nome: true } },
-        session: { select: { nome: true, phoneNumber: true } },
+        modelo: { select: { nome: true, mensagem: true, mediaUrl: true, mediaType: true, delayMinSegundos: true, delayMaxSegundos: true } },
+        session: { select: { id: true, nome: true, phoneNumber: true } },
       },
     });
     if (!d) throw new NotFoundException('Disparo não encontrado');
-    return d;
+    return {
+      ...d,
+      mensagem: d.modelo.mensagem,
+      mediaUrl: d.modelo.mediaUrl,
+      mediaType: d.modelo.mediaType,
+      delayMinSegundos: d.modelo.delayMinSegundos,
+      delayMaxSegundos: d.modelo.delayMaxSegundos,
+    };
+  }
+
+  async createRascunho(tenantId: string, userId: string, dto: {
+    nome: string;
+    sessionId: string;
+    mensagem: string;
+    delayMinSegundos?: number;
+    delayMaxSegundos?: number;
+  }) {
+    const session = await this.prisma.whatsappUnofficialSession.findFirst({
+      where: { id: dto.sessionId, tenantId },
+      select: { id: true },
+    });
+    if (!session) throw new NotFoundException('Sessão não encontrada');
+
+    const min = Math.max(5, dto.delayMinSegundos ?? 5);
+    const max = Math.max(min, dto.delayMaxSegundos ?? 15);
+
+    const modelo = await this.prisma.campanhaModelo.create({
+      data: { tenantId, userId, nome: dto.nome, mensagem: dto.mensagem, delayMinSegundos: min, delayMaxSegundos: max },
+    });
+
+    const disparo = await this.prisma.campanhaDisparo.create({
+      data: { tenantId, userId, sessionId: dto.sessionId, modeloId: modelo.id, nome: dto.nome, status: 'RASCUNHO' },
+    });
+
+    logger.log(`Rascunho de campanha criado id=${disparo.id}`);
+    return disparo;
+  }
+
+  async addContatosLista(id: string, tenantId: string, contatos: Array<{ telefone: string; nome?: string }>) {
+    const d = await this.prisma.campanhaDisparo.findFirst({ where: { id, tenantId, status: 'RASCUNHO' } });
+    if (!d) throw new BadRequestException('Campanha não está em rascunho');
+
+    const validos = contatos
+      .filter((c) => c.telefone?.trim())
+      .map((c) => ({ telefone: c.telefone.replace(/\D/g, ''), nome: c.nome?.trim() || null }));
+
+    if (validos.length === 0) throw new BadRequestException('Nenhum contato válido');
+
+    await this.prisma.$transaction([
+      this.prisma.campanhaContato.createMany({
+        data: validos.map((c) => ({ disparoId: id, telefone: c.telefone, nome: c.nome })),
+      }),
+      this.prisma.campanhaDisparo.update({ where: { id }, data: { totalContatos: { increment: validos.length } } }),
+    ]);
+
+    return { adicionados: validos.length };
+  }
+
+  async startDisparo(id: string, tenantId: string) {
+    const d = await this.prisma.campanhaDisparo.findFirst({ where: { id, tenantId, status: 'RASCUNHO' } });
+    if (!d) throw new BadRequestException('Campanha não está em rascunho');
+    if (d.totalContatos === 0) throw new BadRequestException('Adicione contatos antes de iniciar');
+
+    await this.prisma.campanhaDisparo.update({ where: { id }, data: { status: 'RODANDO' } });
+    await this.queue.scheduleCampaignNext(id, 0);
+    logger.log(`Disparo iniciado id=${id} total=${d.totalContatos}`);
+    return { ok: true };
   }
 
   async createDisparo(tenantId: string, userId: string, dto: {
@@ -172,6 +238,7 @@ export class CampanhasService {
         sessionId: dto.sessionId,
         modeloId: dto.modeloId,
         nome,
+        status: 'RODANDO',
         totalContatos: contatos.length,
         contatos: { createMany: { data: contatos.map((c) => ({ telefone: c.telefone, nome: c.nome })) } },
       },
@@ -202,7 +269,6 @@ export class CampanhasService {
       select: { status: true },
     });
     if (!d) throw new NotFoundException('Disparo não encontrado');
-    // Já finalizado — retorna ok sem erro
     if (['CONCLUIDA', 'CANCELADA'].includes(d.status)) return { ok: true };
     await this.queue.cancelCampaignJobs(id);
     await this.prisma.campanhaDisparo.update({ where: { id }, data: { status: 'CANCELADA' } });

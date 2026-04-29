@@ -1568,7 +1568,7 @@ model CampanhaDisparo {
   sessionId     String?
   modeloId      String
   nome          String
-  status        String    @default("RODANDO")
+  status        String    @default("RASCUNHO")
   totalContatos Int       @default(0)
   enviados      Int       @default(0)
   falhas        Int       @default(0)
