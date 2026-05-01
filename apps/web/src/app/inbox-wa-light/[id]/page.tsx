@@ -1163,12 +1163,17 @@ export default function InboxWALightPage() {
                         )}
                       </div>
                       <div className="mt-1 flex items-center gap-1">
-                        {tracked && (
+                        {tracked && !conversation.leadId && (
                           <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#f59e0b20", color: "#f59e0b" }}>
                             Campanha
                           </span>
                         )}
-                        {conversation.leadId && (
+                        {tracked && conversation.leadId && (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#10b98120", color: "#10b981" }}>
+                            Campanha com resposta
+                          </span>
+                        )}
+                        {!tracked && (
                           <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#10b98120", color: "#10b981" }}>
                             Lead
                           </span>

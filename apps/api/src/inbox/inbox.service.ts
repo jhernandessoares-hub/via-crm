@@ -19,99 +19,6 @@ export class InboxService {
   // ── Lista de conversas ────────────────────────────────────────────────────
 
   async listConversas(tenantId: string, userId: string, role: string, branchId: string | null, sessionId?: string) {
-    const whereRole: any = { tenantId, deletedAt: null, conversaCanal: 'WHATSAPP_LIGHT' };
-    if (sessionId) whereRole.conversaSessionId = sessionId;
-    if (role === 'AGENT') whereRole.assignedUserId = userId;
-    else if (role === 'MANAGER' && branchId) whereRole.branchId = branchId;
-
-    const leads = await this.prisma.lead.findMany({
-      where: whereRole,
-      select: {
-        id: true,
-        nome: true,
-        nomeCorreto: true,
-        telefone: true,
-        lastInboundAt: true,
-        assignedUserId: true,
-        conversaSessionId: true,
-        avatarUrl: true,
-        lastReadAt: true,
-        conversaSession: { select: { nome: true, phoneNumber: true } },
-        events: {
-          where: { channel: { in: LIGHT_CHANNELS_ALL } },
-          orderBy: { criadoEm: 'desc' },
-          take: 1,
-          select: { channel: true, criadoEm: true, payloadRaw: true },
-        },
-      },
-      orderBy: { lastInboundAt: { sort: 'desc', nulls: 'last' } },
-    });
-
-    // Calcula naoLidos em 2 queries (em vez de 2N), incluindo lastReadAt como cutoff
-    const leadIds = leads.map(l => l.id);
-    const naoLidosMap = new Map<string, number>();
-
-    if (leadIds.length > 0) {
-      const [lastOuts, allIns] = await Promise.all([
-        this.prisma.leadEvent.findMany({
-          where: { leadId: { in: leadIds }, channel: { in: LIGHT_CHANNELS_OUT } },
-          select: { leadId: true, criadoEm: true },
-          orderBy: { criadoEm: 'desc' },
-        }),
-        this.prisma.leadEvent.findMany({
-          where: { leadId: { in: leadIds }, channel: { in: LIGHT_CHANNELS_IN } },
-          select: { leadId: true, criadoEm: true },
-        }),
-      ]);
-
-      // Último out por lead (já ordenado desc, primeira ocorrência é o mais recente)
-      const lastOutMap = new Map<string, Date>();
-      for (const ev of lastOuts) {
-        if (!lastOutMap.has(ev.leadId)) lastOutMap.set(ev.leadId, ev.criadoEm);
-      }
-
-      // Mapa de lastReadAt por lead
-      const lastReadMap = new Map<string, Date | null>(
-        leads.map(l => [l.id, l.lastReadAt ?? null]),
-      );
-
-      // Conta mensagens inbound não lidas (após lastOut ou lastReadAt, o que for mais recente)
-      for (const ev of allIns) {
-        const lastOut = lastOutMap.get(ev.leadId) ?? null;
-        const lastRead = lastReadMap.get(ev.leadId) ?? null;
-        let cutoff: Date | null = null;
-        if (lastOut && lastRead) cutoff = lastOut > lastRead ? lastOut : lastRead;
-        else cutoff = lastOut ?? lastRead;
-
-        if (!cutoff || ev.criadoEm > cutoff) {
-          naoLidosMap.set(ev.leadId, (naoLidosMap.get(ev.leadId) ?? 0) + 1);
-        }
-      }
-    }
-
-    const leadEntries = leads.map((lead) => {
-      const ultimaMensagem = lead.events[0] ?? null;
-      const texto = ultimaMensagem ? extractText(ultimaMensagem.payloadRaw) : null;
-
-      return {
-        type: 'lead' as const,
-        leadId: lead.id,
-        contatoId: null as string | null,
-        nome: lead.nomeCorreto ?? lead.nome,
-        telefone: lead.telefone,
-        avatarUrl: lead.avatarUrl ?? null,
-        lastInboundAt: lead.lastInboundAt,
-        sessaoNome: lead.conversaSession?.nome ?? null,
-        naoLidos: naoLidosMap.get(lead.id) ?? 0,
-        ultimaMensagem: texto,
-        ultimaMensagemEm: ultimaMensagem?.criadoEm?.toISOString() ?? null,
-        ultimaMensagemDirecao: ultimaMensagem
-          ? (LIGHT_CHANNELS_IN.includes(ultimaMensagem.channel) ? 'in' : 'out')
-          : null,
-      };
-    });
-
-    // ── Contatos de campanha sem lead (ainda não responderam) ─────────────
     type ConversaEntry = {
       type: 'lead' | 'campanha';
       leadId: string | null;
@@ -126,15 +33,20 @@ export class InboxService {
       ultimaMensagemEm: string | null;
       ultimaMensagemDirecao: 'in' | 'out' | null;
     };
-    let campanhaEntries: ConversaEntry[] = [];
+
+    // ── Passo 1: Contatos de campanha (incluindo RESPONDEU) ───────────────
+    type CampanhaContactRaw = {
+      id: string; telefone: string; nome: string | null;
+      enviadoEm: Date | null; disparoId: string;
+      leadId: string | null; mensagem: string | null;
+    };
+    let campanhaContatos: CampanhaContactRaw[] = [];
+    let campanhaLeadIds: string[] = [];
 
     if (sessionId) {
       const disparos = await this.prisma.campanhaDisparo.findMany({
         where: { sessionId, tenantId },
-        select: {
-          id: true,
-          modelo: { select: { mensagem: true } },
-        },
+        select: { id: true, modelo: { select: { mensagem: true } } },
       });
 
       if (disparos.length > 0) {
@@ -142,31 +54,148 @@ export class InboxService {
         const contatos = await this.prisma.campanhaContato.findMany({
           where: {
             disparoId: { in: disparos.map(d => d.id) },
-            status: { in: ['ENVIADO', 'FALHA'] },
-            leadId: null,
+            status: { in: ['ENVIADO', 'FALHA', 'RESPONDEU'] },
           },
-          select: { id: true, telefone: true, nome: true, enviadoEm: true, disparoId: true },
+          select: { id: true, telefone: true, nome: true, enviadoEm: true, disparoId: true, leadId: true },
           orderBy: { enviadoEm: { sort: 'desc', nulls: 'last' } },
         });
 
-        campanhaEntries = contatos.map(c => ({
-          type: 'campanha' as const,
-          leadId: null,
-          contatoId: c.id,
-          nome: c.nome || c.telefone,
-          telefone: c.telefone,
-          avatarUrl: null,
-          lastInboundAt: c.enviadoEm,
-          sessaoNome: null,
-          naoLidos: 0,
-          ultimaMensagem: disparoMsgMap.get(c.disparoId) ?? null,
-          ultimaMensagemEm: c.enviadoEm?.toISOString() ?? null,
-          ultimaMensagemDirecao: 'out' as 'in' | 'out' | null,
-        }));
+        campanhaContatos = contatos.map(c => ({ ...c, mensagem: disparoMsgMap.get(c.disparoId) ?? null }));
+        campanhaLeadIds = contatos.filter(c => c.leadId != null).map(c => c.leadId!);
       }
     }
 
-    // Merge leads + campanha-only contacts, ordenados por mensagem mais recente
+    // ── Passo 2: Leads principais (exclui os já representados por campanha) ─
+    const whereRole: any = { tenantId, deletedAt: null, conversaCanal: 'WHATSAPP_LIGHT' };
+    if (sessionId) whereRole.conversaSessionId = sessionId;
+    if (role === 'AGENT') whereRole.assignedUserId = userId;
+    else if (role === 'MANAGER' && branchId) whereRole.branchId = branchId;
+    if (campanhaLeadIds.length > 0) whereRole.id = { notIn: campanhaLeadIds };
+
+    const leads = await this.prisma.lead.findMany({
+      where: whereRole,
+      select: {
+        id: true, nome: true, nomeCorreto: true, telefone: true,
+        lastInboundAt: true, assignedUserId: true, conversaSessionId: true,
+        avatarUrl: true, lastReadAt: true,
+        conversaSession: { select: { nome: true, phoneNumber: true } },
+        events: {
+          where: { channel: { in: LIGHT_CHANNELS_ALL } },
+          orderBy: { criadoEm: 'desc' },
+          take: 1,
+          select: { channel: true, criadoEm: true, payloadRaw: true },
+        },
+      },
+      orderBy: { lastInboundAt: { sort: 'desc', nulls: 'last' } },
+    });
+
+    // ── Passo 3: Dados dos leads que responderam campanhas ────────────────
+    const respondeuLeadMap = new Map<string, any>();
+    if (campanhaLeadIds.length > 0) {
+      const respondeuLeads = await this.prisma.lead.findMany({
+        where: { id: { in: campanhaLeadIds }, tenantId, deletedAt: null },
+        select: {
+          id: true, nome: true, nomeCorreto: true, telefone: true,
+          lastInboundAt: true, avatarUrl: true, lastReadAt: true,
+          conversaSessionId: true,
+          conversaSession: { select: { nome: true, phoneNumber: true } },
+          events: {
+            where: { channel: { in: LIGHT_CHANNELS_ALL } },
+            orderBy: { criadoEm: 'desc' },
+            take: 1,
+            select: { channel: true, criadoEm: true, payloadRaw: true },
+          },
+        },
+      });
+      for (const lead of respondeuLeads) respondeuLeadMap.set(lead.id, lead);
+    }
+
+    // ── Passo 4: Calcula naoLidos para todos os leads ─────────────────────
+    const allLeadIds = [...leads.map(l => l.id), ...campanhaLeadIds];
+    const naoLidosMap = new Map<string, number>();
+
+    if (allLeadIds.length > 0) {
+      const allLastReadMap = new Map<string, Date | null>();
+      for (const lead of leads) allLastReadMap.set(lead.id, lead.lastReadAt ?? null);
+      for (const [id, lead] of respondeuLeadMap) allLastReadMap.set(id, lead.lastReadAt ?? null);
+
+      const [lastOuts, allIns] = await Promise.all([
+        this.prisma.leadEvent.findMany({
+          where: { leadId: { in: allLeadIds }, channel: { in: LIGHT_CHANNELS_OUT } },
+          select: { leadId: true, criadoEm: true },
+          orderBy: { criadoEm: 'desc' },
+        }),
+        this.prisma.leadEvent.findMany({
+          where: { leadId: { in: allLeadIds }, channel: { in: LIGHT_CHANNELS_IN } },
+          select: { leadId: true, criadoEm: true },
+        }),
+      ]);
+
+      const lastOutMap = new Map<string, Date>();
+      for (const ev of lastOuts) {
+        if (!lastOutMap.has(ev.leadId)) lastOutMap.set(ev.leadId, ev.criadoEm);
+      }
+
+      for (const ev of allIns) {
+        const lastOut = lastOutMap.get(ev.leadId) ?? null;
+        const lastRead = allLastReadMap.get(ev.leadId) ?? null;
+        let cutoff: Date | null = null;
+        if (lastOut && lastRead) cutoff = lastOut > lastRead ? lastOut : lastRead;
+        else cutoff = lastOut ?? lastRead;
+
+        if (!cutoff || ev.criadoEm > cutoff) {
+          naoLidosMap.set(ev.leadId, (naoLidosMap.get(ev.leadId) ?? 0) + 1);
+        }
+      }
+    }
+
+    // ── Passo 5: Montar entries ───────────────────────────────────────────
+    const leadEntries: ConversaEntry[] = leads.map((lead) => {
+      const ultimaMensagem = lead.events[0] ?? null;
+      const texto = ultimaMensagem ? extractText(ultimaMensagem.payloadRaw) : null;
+
+      return {
+        type: 'lead',
+        leadId: lead.id,
+        contatoId: null,
+        nome: lead.nomeCorreto ?? lead.nome,
+        telefone: lead.telefone,
+        avatarUrl: lead.avatarUrl ?? null,
+        lastInboundAt: lead.lastInboundAt,
+        sessaoNome: lead.conversaSession?.nome ?? null,
+        naoLidos: naoLidosMap.get(lead.id) ?? 0,
+        ultimaMensagem: texto,
+        ultimaMensagemEm: ultimaMensagem?.criadoEm?.toISOString() ?? null,
+        ultimaMensagemDirecao: ultimaMensagem
+          ? (LIGHT_CHANNELS_IN.includes(ultimaMensagem.channel) ? 'in' : 'out')
+          : null,
+      };
+    });
+
+    // Campanha: sem resposta → leadId=null; com resposta → leadId=<lead real>
+    const campanhaEntries: ConversaEntry[] = campanhaContatos.map(c => {
+      const leadData = c.leadId ? respondeuLeadMap.get(c.leadId) : null;
+      const ultimaEvento = leadData?.events?.[0] ?? null;
+
+      return {
+        type: 'campanha',
+        leadId: c.leadId ?? null,
+        contatoId: c.id,
+        nome: leadData ? (leadData.nomeCorreto ?? leadData.nome) : (c.nome || c.telefone),
+        telefone: c.telefone,
+        avatarUrl: leadData?.avatarUrl ?? null,
+        lastInboundAt: leadData?.lastInboundAt ?? c.enviadoEm,
+        sessaoNome: leadData?.conversaSession?.nome ?? null,
+        naoLidos: c.leadId ? (naoLidosMap.get(c.leadId) ?? 0) : 0,
+        ultimaMensagem: ultimaEvento ? extractText(ultimaEvento.payloadRaw) : c.mensagem,
+        ultimaMensagemEm: ultimaEvento?.criadoEm?.toISOString() ?? c.enviadoEm?.toISOString() ?? null,
+        ultimaMensagemDirecao: ultimaEvento
+          ? (LIGHT_CHANNELS_IN.includes(ultimaEvento.channel) ? 'in' : 'out')
+          : 'out',
+      };
+    });
+
+    // Merge e ordenar por mensagem mais recente
     const merged = [...leadEntries, ...campanhaEntries];
     merged.sort((a, b) => {
       const aT = a.ultimaMensagemEm ? new Date(a.ultimaMensagemEm).getTime() : 0;
