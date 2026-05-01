@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "src/global.d.ts",
+    "src/lib/api.ts",
+    "src/lib/wa-light.ts",
+    "src/components/AppShell.tsx",
+    "src/components/AuthGuard.tsx",
+    "src/components/ClientProviders.tsx",
+    "src/components/EnvBanner.tsx",
+    "src/components/layout/**/*.tsx",
+    "src/components/ui/Modal.tsx",
+    "src/app/inbox-wa-light/page.tsx",
+    "src/app/inbox-wa-light/[id]/page.tsx"
+  ],
+  "exclude": [
+    ".next",
+    "node_modules"
+  ]
+}

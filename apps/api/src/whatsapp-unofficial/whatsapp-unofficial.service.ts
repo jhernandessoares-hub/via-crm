@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, BadRequestException } from '@nestjs/common
 import makeWASocket, { WASocket, DisconnectReason } from '@whiskeysockets/baileys';
 import { initAuthCreds, BufferJSON, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
+import { Prisma } from '@prisma/client';
 import pino from 'pino';
 import * as QRCode from 'qrcode';
 import { Logger } from '../logger';
@@ -44,6 +45,49 @@ function extractBaileysText(msgContent: any): { type: string; text: string } {
   }
 
   return { type: 'unknown', text: '[MENSAGEM]' };
+}
+
+function digitsOnly(value: string | null | undefined) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function phoneFromJid(jid: string | null | undefined): string | null {
+  if (!jid) return null;
+  if (!jid.includes('@s.whatsapp.net') && !jid.includes('@c.us')) return null;
+  const phone = digitsOnly(jid.split('@')[0].split(':')[0]);
+  return phone || null;
+}
+
+function lidFromJid(jid: string | null | undefined): string | null {
+  if (!jid?.endsWith('@lid')) return null;
+  const lid = jid.split('@')[0].split(':')[0];
+  return lid || null;
+}
+
+function phoneMatchSuffix(value: string) {
+  const digits = digitsOnly(value);
+  if (digits.length >= 11) return digits.slice(-11);
+  if (digits.length >= 9) return digits.slice(-9);
+  return digits;
+}
+
+function nameTokens(value: string | null | undefined) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ''))
+    .filter((token) => token.length >= 4);
+}
+
+function namesLookRelated(a: string | null | undefined, b: string | null | undefined) {
+  const aTokens = nameTokens(a);
+  const bTokens = nameTokens(b);
+  if (aTokens.length === 0 || bTokens.length === 0) return false;
+  return aTokens.some((aToken) =>
+    bTokens.some((bToken) => aToken.startsWith(bToken) || bToken.startsWith(aToken)),
+  );
 }
 
 // ── Auth state persistido no banco ───────────────────────────────────────────
@@ -117,6 +161,7 @@ async function useDatabaseAuthState(prisma: PrismaService, sessionId: string) {
 export class WhatsappUnofficialService implements OnModuleDestroy {
   private sockets = new Map<string, WASocket>();
   private connectedAt = new Map<string, number>();
+  private disconnectedAt = new Map<string, number>();
   private manuallyDisconnected = new Set<string>();
   // Mapa LID → phone por sessão (WhatsApp multi-device usa LIDs como ID interno)
   // Ex: { sessionId → Map('95236772601989' → '5513991431834') }
@@ -134,8 +179,37 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     }
   }
 
-  private resolveLidPhone(sessionId: string, lid: string): string | null {
-    return this.lidToPhone.get(sessionId)?.get(lid) ?? null;
+  private async resolveLidPhone(sessionId: string, lid: string, msg: any): Promise<string | null> {
+    const altPhone = phoneFromJid(msg?.key?.remoteJidAlt) ?? phoneFromJid(msg?.key?.participantAlt);
+    if (altPhone) {
+      this.rememberLidPhone(sessionId, lid, altPhone);
+      return altPhone;
+    }
+
+    const memoryPhone = this.lidToPhone.get(sessionId)?.get(lid) ?? null;
+    if (memoryPhone) return memoryPhone;
+
+    const session = await this.prisma.whatsappUnofficialSession.findUnique({
+      where: { id: sessionId },
+      select: { authStateJson: true },
+    });
+    const storedKeys = ((session?.authStateJson as any)?.keys ?? {}) as Record<string, any>;
+    const pnUser = storedKeys[`lid-mapping-${lid}_reverse`];
+    if (typeof pnUser === 'string' && pnUser) {
+      const phone = digitsOnly(pnUser);
+      if (phone) {
+        this.rememberLidPhone(sessionId, lid, phone);
+        return phone;
+      }
+    }
+
+    return null;
+  }
+
+  private rememberLidPhone(sessionId: string, lid: string, phone: string) {
+    let map = this.lidToPhone.get(sessionId);
+    if (!map) { map = new Map(); this.lidToPhone.set(sessionId, map); }
+    map.set(lid, phone);
   }
 
   constructor(
@@ -160,14 +234,16 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   }
 
   async deleteSession(sessionId: string) {
+    this.manuallyDisconnected.add(sessionId);
     this.closeSocket(sessionId);
     this.lidToPhone.delete(sessionId);
+    this.disconnectedAt.delete(sessionId);
     await this.prisma.whatsappUnofficialSession.delete({ where: { id: sessionId } });
   }
 
   async reconnectAll() {
     const sessions = await this.prisma.whatsappUnofficialSession.findMany({
-      where: { status: 'CONNECTED' },
+      where: { status: { in: ['CONNECTED', 'CONNECTING'] } },
       select: { id: true },
     });
     for (const s of sessions) {
@@ -223,23 +299,26 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
       if (connection === 'close') {
         const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const isLoggedOut = reason === DisconnectReason.loggedOut;
         const manual = this.manuallyDisconnected.has(sessionId);
-        const shouldReconnect = !manual && reason !== DisconnectReason.loggedOut;
-        logger.warn(`Sessão ${sessionId} fechada — reason=${reason} manual=${manual} reconnect=${shouldReconnect}`);
+        const shouldReconnect = !manual;
+        logger.warn(`Sessão ${sessionId} fechada — reason=${reason} loggedOut=${isLoggedOut} manual=${manual} reconnect=${shouldReconnect}`);
+        this.disconnectedAt.set(sessionId, Date.now());
         this.sockets.delete(sessionId);
         if (manual) this.manuallyDisconnected.delete(sessionId);
 
         if (shouldReconnect) {
+          // Logout invalida as creds no servidor do WA — limpa para forçar novo QR
           await this.prisma.whatsappUnofficialSession.update({
             where: { id: sessionId },
-            data: { status: 'CONNECTING' },
-          });
+            data: { status: 'CONNECTING', ...(isLoggedOut ? { authStateJson: Prisma.DbNull } : {}) },
+          }).catch(() => {});
           setTimeout(() => this.connect(sessionId).catch(() => {}), 5000);
         } else {
           await this.prisma.whatsappUnofficialSession.update({
             where: { id: sessionId },
-            data: { status: 'DISCONNECTED', authStateJson: undefined },
-          });
+            data: { status: 'DISCONNECTED' },
+          }).catch(() => {});
         }
       }
     });
@@ -255,11 +334,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
       if (type !== 'notify') return;
       const connectionTs = this.connectedAt.get(sessionId) ?? Date.now();
+      const disconnectedAt = this.disconnectedAt.get(sessionId);
+      // Janela de catchup: processa mensagens desde a última desconexão (máx 10 min).
+      // Se não há registro de desconexão (restart abrupto), usa 60s antes da conexão.
+      const maxCatchupMs = 10 * 60 * 1000;
+      const cutoff = disconnectedAt
+        ? Math.max(disconnectedAt - 2_000, connectionTs - maxCatchupMs)
+        : connectionTs - 60_000;
       for (const msg of messages) {
         if (msg.key.fromMe) continue;
-        // Ignora mensagens históricas anteriores à conexão (com 60s de tolerância)
         const msgTs = (msg.messageTimestamp as number) * 1000;
-        if (msgTs < connectionTs - 60_000) continue;
+        if (msgTs < cutoff) continue;
         await this.handleInbound(sessionId, msg).catch((e) =>
           logger.error(`Erro ao processar inbound sessão=${sessionId}: ${e?.message}`),
         );
@@ -349,23 +434,23 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     if (from.endsWith('@g.us')) return;
     if (from === 'status@broadcast' || from.endsWith('@newsletter')) return;
 
-    // Resolve JID para telefone.
-    // WhatsApp multi-device usa LIDs internos: ex '95236772601989@lid'.
-    // Tenta resolver via mapa contacts.upsert; se não encontrado, usa os dígitos do LID
-    // como fallback para não descartar a mensagem.
-    let phone: string;
+    // Resolve JID para telefone. WhatsApp multi-device pode entregar LIDs
+    // internos (ex: '95236772601989@lid'), que não podem virar telefone de lead.
+    let phone: string | null;
+    let unresolvedLid: string | null = null;
     if (from.endsWith('@lid')) {
-      const lid = from.split('@')[0].split(':')[0];
-      const resolved = this.resolveLidPhone(sessionId, lid);
+      const lid = lidFromJid(from);
+      const resolved = lid ? await this.resolveLidPhone(sessionId, lid, msg) : null;
       if (resolved) {
         phone = resolved;
         logger.log(`LID ${lid} resolvido → ${phone}`);
       } else {
-        phone = lid;
-        logger.warn(`LID ${lid} sem mapeamento — usando LID como identificador temporário (sessão=${sessionId})`);
+        phone = null;
+        unresolvedLid = lid;
+        logger.warn(`LID ${lid} sem mapeamento — aguardando resolução por campanha (sessão=${sessionId})`);
       }
     } else {
-      phone = from.split('@')[0].split(':')[0];
+      phone = phoneFromJid(from) ?? from.split('@')[0].split(':')[0];
     }
     const contactName: string | null = (msg.pushName as string | null) || null;
 
@@ -376,16 +461,60 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     if (type === 'reaction') return;
 
     // Verifica se é contato de disparo aguardando resposta
-    const contatoDisparo = await this.prisma.campanhaContato.findFirst({
-      where: {
-        telefone: { endsWith: phone.slice(-9) },
-        status: 'ENVIADO',
-        disparo: { tenantId, status: { in: ['RODANDO', 'PAUSADA', 'CONCLUIDA'] } },
-      },
-      include: {
-        disparo: { include: { modelo: { select: { mensagem: true } } } },
-      },
-    });
+    const phoneSuffix = phone ? phoneMatchSuffix(phone) : '';
+    let contatoDisparo = phoneSuffix
+      ? await this.prisma.campanhaContato.findFirst({
+          where: {
+            telefone: { endsWith: phoneSuffix },
+            status: 'ENVIADO',
+            disparo: { tenantId, sessionId, status: { in: ['RODANDO', 'PAUSADA', 'CONCLUIDA'] } },
+          },
+          include: {
+            disparo: { include: { modelo: { select: { mensagem: true } } } },
+          },
+        })
+      : null;
+
+    if (!contatoDisparo && unresolvedLid) {
+      const candidates = await this.prisma.campanhaContato.findMany({
+        where: {
+          status: 'ENVIADO',
+          leadId: null,
+          disparo: { tenantId, sessionId, status: { in: ['RODANDO', 'PAUSADA', 'CONCLUIDA'] } },
+        },
+        include: {
+          disparo: { include: { modelo: { select: { mensagem: true } } } },
+        },
+        orderBy: { enviadoEm: 'desc' },
+        take: 2,
+      });
+
+      const nameMatches = contactName
+        ? candidates.filter((candidate) => namesLookRelated(candidate.nome, contactName))
+        : [];
+      const selected = nameMatches.length === 1
+        ? nameMatches[0]
+        : candidates.length === 1
+          ? candidates[0]
+          : null;
+
+      if (selected) {
+        contatoDisparo = selected;
+        phone = contatoDisparo.telefone;
+        logger.warn(`LID ${unresolvedLid} casado com campanha contato=${contatoDisparo.id} telefone=${phone}`);
+      } else {
+        logger.warn(`LID ${unresolvedLid} sem campanha inequivoca; candidates=${candidates.length} nameMatches=${nameMatches.length}`);
+      }
+    }
+
+    if (contatoDisparo) {
+      phone = contatoDisparo.telefone;
+    }
+
+    if (!phone) {
+      logger.warn(`Inbound WhatsApp Light ignorado: LID ${unresolvedLid} sem telefone real (sessão=${sessionId})`);
+      return;
+    }
 
     if (contatoDisparo) {
       await this.prisma.$transaction(async (tx) => {

@@ -36,6 +36,10 @@ function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
   );
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function InboxWALightListPage() {
   const router = useRouter();
   const [inboxes, setInboxes] = useState<Inbox[]>([]);
@@ -70,8 +74,8 @@ export default function InboxWALightListPage() {
     try {
       const inbox = await apiFetch("/inbox-wa-light", { method: "POST", body: JSON.stringify({ nome: nome.trim() }) });
       router.push(`/inbox-wa-light/${inbox.id}`);
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao criar inbox");
+    } catch (e: unknown) {
+      showToast(errorMessage(e, "Erro ao criar inbox"));
       setSalvando(false);
     }
   }
@@ -83,8 +87,8 @@ export default function InboxWALightListPage() {
       await apiFetch(`/inbox-wa-light/${showEdit.id}`, { method: "PATCH", body: JSON.stringify({ nome: nomeEdit.trim() }) });
       setShowEdit(null);
       fetchInboxes();
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao renomear inbox");
+    } catch (e: unknown) {
+      showToast(errorMessage(e, "Erro ao renomear inbox"));
     } finally {
       setSalvando(false);
     }
@@ -97,8 +101,8 @@ export default function InboxWALightListPage() {
       await apiFetch(`/inbox-wa-light/${confirmExcluir.id}`, { method: "DELETE" });
       setConfirmExcluir(null);
       fetchInboxes();
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao excluir inbox");
+    } catch (e: unknown) {
+      showToast(errorMessage(e, "Erro ao excluir inbox"));
     } finally {
       setExcluindo(false);
     }

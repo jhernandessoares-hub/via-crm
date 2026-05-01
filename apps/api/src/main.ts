@@ -114,6 +114,9 @@ async function bootstrap() {
 
   // 📣 INICIAR WORKER DE CAMPANHAS WHATSAPP LIGHT
   startCampaignWorker(app.get(PrismaService), queueService, app.get(WhatsappUnofficialService));
+
+  // 🔌 RECONECTAR SESSÕES WHATSAPP LIGHT que estavam ativas antes do restart
+  app.get(WhatsappUnofficialService).reconnectAll();
 }
 
 bootstrap();

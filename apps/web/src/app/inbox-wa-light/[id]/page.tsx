@@ -6,565 +6,459 @@ import AppShell from "@/components/AppShell";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
 import {
-  Settings, X, Plus, Send, Wifi, WifiOff, QrCode, Loader2, Trash2,
-  RefreshCw, Pause, Play, XCircle, ChevronLeft,
-  Smile, AlertTriangle, CheckCircle, Upload, Pencil,
-  ExternalLink, Search,
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  CircleStop,
+  Clock,
+  File,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Loader2,
+  Mic,
+  MoreVertical,
+  Paperclip,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  QrCode,
+  RefreshCw,
+  Search,
+  Send,
+  Settings,
+  Trash2,
+  Upload,
+  UserRoundCheck,
+  Wifi,
+  WifiOff,
+  X,
+  XCircle,
 } from "lucide-react";
-import dynamic from "next/dynamic";
+import {
+  canSendToConversation,
+  conversationKey,
+  isTrackedConversation,
+  normalizeWhatsappValidation,
+  sendWaLightAttachment,
+  sendWaLightAudio,
+  sendWaLightText,
+  type WaLightCampaignModel,
+  type WaLightCampaignRun,
+  type WaLightConversation,
+  type WaLightConversationDetail,
+  type WaLightInboxStatus,
+  type WaLightMessage,
+  type WaLightStatus,
+  type WaLightValidatedNumber,
+} from "@/lib/wa-light";
 
-const EmojiPicker = dynamic(() => import("@emoji-mart/react"), { ssr: false });
-
-// Memoizado fora do componente — evita re-fetch a cada render
-const fetchEmojiData = async () => {
-  const r = await fetch("https://cdn.jsdelivr.net/npm/@emoji-mart/data");
-  return r.json();
+const STATUS_COLOR: Record<WaLightStatus, string> = {
+  CONNECTED: "#10b981",
+  QR_PENDING: "#6366f1",
+  CONNECTING: "#f59e0b",
+  DISCONNECTED: "#6b7280",
 };
 
-// ── Tipos ─────────────────────────────────────────────────────────────────────
-
-type InboxStatus = {
-  id: string; nome: string;
-  status: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "QR_PENDING";
-  qrCode: string | null; phoneNumber: string | null; pushName: string | null;
+const STATUS_LABEL: Record<WaLightStatus, string> = {
+  CONNECTED: "Conectado",
+  QR_PENDING: "Aguardando QR",
+  CONNECTING: "Conectando",
+  DISCONNECTED: "Desconectado",
 };
 
-type Disparo = {
-  id: string; nome: string; status: string;
-  totalContatos: number; enviados: number; falhas: number; responderam: number;
-};
-
-type Modelo = {
-  id: string; nome: string; mensagem: string;
-  mediaUrl: string | null; mediaType: string | null;
-  delayMinSegundos: number; delayMaxSegundos: number;
-  _count: { disparos: number };
-};
-
-type Conversa = {
-  type: "lead" | "campanha";
-  leadId: string | null;
-  contatoId: string | null;
-  nome: string;
-  telefone: string | null;
-  avatarUrl?: string | null;
-  naoLidos: number;
-  ultimaMensagem: string | null;
-  ultimaMensagemEm: string | null;
-  ultimaMensagemDirecao: "in" | "out" | null;
-};
-
-type ContatoDetail = {
-  contatoId: string;
-  nome: string;
-  telefone: string;
-  status: string;
-  enviadoEm: string | null;
-  mensagemDisparo: string | null;
-  mediaUrl: string | null;
-  mediaType: string | null;
-};
-
-type Msg = { id: string; direcao: "in" | "out"; texto: string | null; criadoEm: string };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function hora(iso: string) {
-  const d = new Date(iso);
-  const hoje = new Date();
-  if (d.toDateString() === hoje.toDateString())
-    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+function initials(name: string) {
+  return String(name || "?")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }
-function horaMsg(iso: string) {
+
+function formatListTime(iso: string | null) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+function formatMessageTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
-function iniciais(n: string) {
-  return n.split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+
+function dateLabel(iso: string) {
+  const date = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return "Hoje";
+  if (date.toDateString() === yesterday.toDateString()) return "Ontem";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", weekday: "long" });
 }
-function getDataLabel(iso: string) {
-  const d = new Date(iso);
-  const hoje = new Date();
-  const ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
-  if (d.toDateString() === hoje.toDateString()) return "Hoje";
-  if (d.toDateString() === ontem.toDateString()) return "Ontem";
-  return d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
-}
-function groupByDate(msgs: Msg[]) {
-  const groups: { dateKey: string; label: string; msgs: Msg[] }[] = [];
-  for (const msg of msgs) {
-    const key = new Date(msg.criadoEm).toDateString();
+
+function groupMessages(messages: WaLightMessage[]) {
+  const groups: Array<{ key: string; label: string; items: WaLightMessage[] }> = [];
+  for (const message of messages) {
+    const key = new Date(message.criadoEm).toDateString();
     const last = groups[groups.length - 1];
-    if (last?.dateKey === key) last.msgs.push(msg);
-    else groups.push({ dateKey: key, label: getDataLabel(msg.criadoEm), msgs: [msg] });
+    if (last?.key === key) last.items.push(message);
+    else groups.push({ key, label: dateLabel(message.criadoEm), items: [message] });
   }
   return groups;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  CONNECTED: "#10b981", QR_PENDING: "#6366f1", CONNECTING: "#f59e0b", DISCONNECTED: "#6b7280",
-};
-
-// ── Separador de data ─────────────────────────────────────────────────────────
-
-function DateSeparator({ label }: { label: string }) {
-  return (
-    <div className="flex justify-center my-3 select-none">
-      <span className="text-xs px-3 py-1 rounded-full font-medium shadow-sm"
-        style={{ background: "rgba(11,20,26,0.18)", color: "#fff", backdropFilter: "blur(2px)" }}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
-// ── Toast ─────────────────────────────────────────────────────────────────────
-
-function Toast({ msg, type, onClose }: { msg: string; type: "error" | "success"; onClose: () => void }) {
+function Toast({
+  msg,
+  type,
+  onClose,
+}: {
+  msg: string;
+  type: "error" | "success";
+  onClose: () => void;
+}) {
   return (
     <div
-      className="fixed bottom-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
-      style={{ background: type === "error" ? "#ef4444" : "#10b981", color: "#fff", maxWidth: 360 }}
+      className="fixed bottom-5 right-5 z-50 flex max-w-[380px] items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium shadow-lg"
+      style={{ background: type === "error" ? "#ef4444" : "#10b981", color: "#fff" }}
     >
       <span className="flex-1">{msg}</span>
-      <button onClick={onClose} className="opacity-70 hover:opacity-100"><X className="w-4 h-4" /></button>
+      <button type="button" onClick={onClose} className="opacity-75 hover:opacity-100">
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
 
-// ── Sub-componentes ───────────────────────────────────────────────────────────
+function StatusDot({ status }: { status: WaLightStatus }) {
+  return (
+    <span
+      className="inline-block h-2.5 w-2.5 rounded-full"
+      style={{ background: STATUS_COLOR[status] }}
+    />
+  );
+}
 
-function ModalCriarModelo({
-  inboxId, onClose, onSaved,
-}: { inboxId: string; onClose: () => void; onSaved: (m: Modelo) => void }) {
-  const [form, setForm] = useState({ nome: "", mensagem: "", delayMinSegundos: 5, delayMaxSegundos: 15 });
-  const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [showEmoji, setShowEmoji] = useState(false);
-  const [salvando, setSalvando] = useState(false);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
+function ConversationAvatar({
+  name,
+  avatarUrl,
+  tracked,
+}: {
+  name: string;
+  avatarUrl?: string | null;
+  tracked?: boolean;
+}) {
+  return (
+    <div className="relative shrink-0">
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={name} className="h-11 w-11 rounded-full object-cover" />
+      ) : (
+        <div
+          className="flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold"
+          style={{ background: tracked ? "#64748b" : "var(--brand-accent)", color: "#fff" }}
+        >
+          {initials(name)}
+        </div>
+      )}
+      {tracked && (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2"
+          style={{ background: "#f59e0b", borderColor: "var(--shell-bg)", color: "#fff" }}
+          title="Conversa acompanhada por campanha"
+        >
+          <LinkIcon className="h-2.5 w-2.5" />
+        </span>
+      )}
+    </div>
+  );
+}
 
-  function insertVar(v: string) {
-    const el = textRef.current;
-    if (!el) return;
-    const start = el.selectionStart ?? form.mensagem.length;
-    const end = el.selectionEnd ?? start;
-    const newMsg = form.mensagem.slice(0, start) + v + form.mensagem.slice(end);
-    setForm((f) => ({ ...f, mensagem: newMsg }));
-    setTimeout(() => { el.focus(); el.setSelectionRange(start + v.length, start + v.length); }, 0);
+function MessageMedia({ message }: { message: WaLightMessage }) {
+  const src = message.mediaUrl;
+  const type = String(message.mediaType || "").toLowerCase();
+  if (!src) return null;
+
+  if (type.includes("image")) {
+    return <img src={src} alt={message.filename || "Imagem"} className="mb-2 max-h-72 rounded-md object-contain" />;
   }
 
-  async function salvar() {
-    if (!form.nome.trim() || !form.mensagem.trim()) { setErrMsg("Nome e mensagem são obrigatórios"); return; }
-    setSalvando(true);
-    setErrMsg(null);
+  if (type.includes("video")) {
+    return <video src={src} controls className="mb-2 max-h-72 w-full rounded-md" />;
+  }
+
+  if (type.includes("audio")) {
+    return (
+      <audio controls className="mb-2 w-64 max-w-full">
+        <source src={src} type={message.mimeType || "audio/ogg"} />
+      </audio>
+    );
+  }
+
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      className="mb-2 flex items-center gap-2 rounded-md px-3 py-2 text-xs"
+      style={{ background: "rgba(255,255,255,0.16)", color: "inherit" }}
+    >
+      <File className="h-4 w-4" />
+      <span className="truncate">{message.filename || "Arquivo"}</span>
+    </a>
+  );
+}
+
+function MessageBubble({ message, incomingBg, incomingText }: {
+  message: WaLightMessage;
+  incomingBg: string;
+  incomingText: string;
+}) {
+  const outgoing = message.direcao === "out";
+
+  return (
+    <div className={`mb-1 flex ${outgoing ? "justify-end" : "justify-start"}`}>
+      <div
+        className="max-w-[74%] rounded-lg px-3 py-2 text-sm shadow-sm"
+        style={{
+          background: outgoing ? "var(--brand-accent)" : incomingBg,
+          color: outgoing ? "#fff" : incomingText,
+          borderBottomRightRadius: outgoing ? 2 : 12,
+          borderBottomLeftRadius: outgoing ? 12 : 2,
+        }}
+      >
+        <MessageMedia message={message} />
+        {message.texto && (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{message.texto}</p>
+        )}
+        {!message.texto && !message.mediaUrl && <p className="opacity-80">[mensagem]</p>}
+        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">
+          <span>{formatMessageTime(message.criadoEm)}</span>
+          {outgoing && <span>{message.status === "READ" ? "✓✓" : "✓"}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignModelModal({
+  model,
+  onClose,
+  onSaved,
+}: {
+  model?: WaLightCampaignModel | null;
+  onClose: () => void;
+  onSaved: (model: WaLightCampaignModel) => void;
+}) {
+  const [form, setForm] = useState({
+    nome: model?.nome ?? "",
+    mensagem: model?.mensagem ?? "",
+    delayMinSegundos: model?.delayMinSegundos ?? 8,
+    delayMaxSegundos: model?.delayMaxSegundos ?? 24,
+  });
+  const [mediaUrl, setMediaUrl] = useState<string | null>(model?.mediaUrl ?? null);
+  const [mediaType, setMediaType] = useState<string | null>(model?.mediaType ?? null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertVar(value: string) {
+    const el = textRef.current;
+    if (!el) {
+      setForm((prev) => ({ ...prev, mensagem: prev.mensagem + value }));
+      return;
+    }
+    const start = el.selectionStart ?? form.mensagem.length;
+    const end = el.selectionEnd ?? start;
+    const next = form.mensagem.slice(0, start) + value + form.mensagem.slice(end);
+    setForm((prev) => ({ ...prev, mensagem: next }));
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + value.length, start + value.length);
+    }, 0);
+  }
+
+  async function save() {
+    if (!form.nome.trim() || !form.mensagem.trim()) {
+      setError("Nome e mensagem são obrigatórios.");
+      return;
+    }
+    if (form.delayMaxSegundos < form.delayMinSegundos) {
+      setError("O delay máximo precisa ser maior ou igual ao mínimo.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
     try {
-      const modelo = await apiFetch("/campanhas/modelos", { method: "POST", body: JSON.stringify(form) });
+      const saved = await apiFetch(model ? `/campanhas/modelos/${model.id}` : "/campanhas/modelos", {
+        method: model ? "PATCH" : "POST",
+        body: JSON.stringify(form),
+      });
+
+      let finalModel: WaLightCampaignModel = {
+        ...(model ?? {}),
+        ...saved,
+        mediaUrl,
+        mediaType,
+      };
+
       if (mediaFile) {
         const fd = new FormData();
         fd.append("file", mediaFile);
-        await apiFetch(`/campanhas/modelos/${modelo.id}/media`, { method: "POST", body: fd, isFormData: true } as any);
+        const media = await apiFetch(`/campanhas/modelos/${saved.id}/media`, {
+          method: "POST",
+          body: fd,
+        });
+        finalModel = { ...finalModel, mediaUrl: media.mediaUrl, mediaType: media.mediaType };
       }
-      const full = await apiFetch("/campanhas/modelos");
-      onSaved(full.find((m: Modelo) => m.id === modelo.id) ?? modelo);
-    } catch (e: any) {
-      setErrMsg(e?.message ?? "Erro ao salvar modelo");
-      setSalvando(false);
-    }
-  }
 
-  return (
-    <Modal open={true} onClose={onClose} title="Criar modelo de campanha" size="lg"
-      footer={<>
-        <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ color: "var(--text-muted)" }}>Cancelar</button>
-        <button onClick={salvar} disabled={salvando}
-          className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-          style={{ background: "var(--brand-accent)", color: "#fff" }}>
-          {salvando && <Loader2 className="w-4 h-4 animate-spin" />} Salvar modelo
-        </button>
-      </>}>
-      <div className="space-y-4">
-        {errMsg && (
-          <div className="px-3 py-2 rounded-lg text-xs" style={{ background: "#ef444420", color: "#ef4444" }}>
-            {errMsg}
-          </div>
-        )}
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>NOME DA CAMPANHA</label>
-          <input value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-            placeholder="Ex: Black Friday 2025" className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>MENSAGEM</label>
-          <div className="flex gap-2 mb-2">
-            <button onClick={() => insertVar("{{nome}}")}
-              className="text-xs px-2 py-1 rounded font-mono"
-              style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
-              {"{{"+"nome"+"}}"}
-            </button>
-            <button onClick={() => insertVar("{{telefone}}")}
-              className="text-xs px-2 py-1 rounded font-mono"
-              style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
-              {"{{"+"telefone"+"}}"}
-            </button>
-            <button onClick={() => setShowEmoji(!showEmoji)} className="text-xs px-2 py-1 rounded"
-              style={{ background: "var(--card-border)", color: "var(--text-muted)" }}>
-              <Smile className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          {showEmoji && (
-            <div className="mb-2">
-              <EmojiPicker
-                data={fetchEmojiData}
-                onEmojiSelect={(e: any) => { insertVar(e.native); setShowEmoji(false); }}
-                theme="auto" locale="pt"
-              />
-            </div>
-          )}
-          <textarea ref={textRef} value={form.mensagem}
-            onChange={(e) => setForm((f) => ({ ...f, mensagem: e.target.value }))}
-            placeholder={"Olá {{nome}}, temos uma oferta especial! 🎉"}
-            rows={4} className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none"
-            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>IMAGEM OU VÍDEO (opcional)</label>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm"
-            style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
-            <Upload className="w-4 h-4" />
-            {mediaFile ? mediaFile.name : "Selecionar arquivo"}
-            <input type="file" accept="image/*,video/*" className="hidden"
-              onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)} />
-          </label>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>INTERVALO ENTRE ENVIOS (segundos)</label>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Mínimo (≥5s)</label>
-              <input type="number" min={5} value={form.delayMinSegundos}
-                onChange={(e) => setForm((f) => ({ ...f, delayMinSegundos: Math.max(5, +e.target.value) }))}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
-            </div>
-            <div className="flex-1">
-              <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Máximo</label>
-              <input type="number" min={form.delayMinSegundos} value={form.delayMaxSegundos}
-                onChange={(e) => setForm((f) => ({ ...f, delayMaxSegundos: Math.max(f.delayMinSegundos, +e.target.value) }))}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-                style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function ModalAdicionarLista({
-  modelo, inboxId, onClose, onDispatched,
-}: { modelo: Modelo; inboxId: string; onClose: () => void; onDispatched: (d: Disparo) => void }) {
-  const DDI_OPTIONS = [
-    { label: "🇧🇷 +55", value: "55" },
-    { label: "🇵🇹 +351", value: "351" },
-    { label: "🇺🇸 +1", value: "1" },
-  ];
-  const [ddi, setDdi] = useState("55");
-  const [listaTexto, setListaTexto] = useState("");
-  const [validando, setValidando] = useState(false);
-  const [disparando, setDisparando] = useState(false);
-  const [resultado, setResultado] = useState<Array<{ telefone: string; nome?: string; noWhatsapp: boolean }> | null>(null);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
-
-  async function validar() {
-    const linhas = listaTexto.split("\n").filter((l) => l.trim());
-    const numeros = linhas.map((l) => {
-      const [tel, ...restNome] = l.split(",");
-      const digits = tel.trim().replace(/\D/g, "");
-      const telefone = digits.startsWith(ddi) ? digits : `${ddi}${digits}`;
-      return { telefone, nome: restNome.join(",").trim() || undefined };
-    });
-    if (numeros.length === 0) return;
-
-    setValidando(true);
-    setErrMsg(null);
-    try {
-      const res = await apiFetch("/campanhas/validate-numbers", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: inboxId, numeros: numeros.map((n) => n.telefone) }),
-      });
-      setResultado(numeros.map((n) => ({
-        ...n,
-        noWhatsapp: res.find((r: any) => r.telefone === n.telefone)?.noWhatsapp ?? false,
-      })));
-    } catch (e: any) {
-      setErrMsg(e?.message ?? "Erro ao validar números");
+      onSaved(finalModel);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar modelo.");
     } finally {
-      setValidando(false);
+      setSaving(false);
     }
   }
 
-  async function iniciar() {
-    if (!resultado) return;
-    const contatos = resultado.filter((r) => !r.noWhatsapp);
-    if (contatos.length === 0) { setErrMsg("Nenhum contato válido no WhatsApp"); return; }
-    setDisparando(true);
+  async function removeMedia() {
+    if (!model?.id) {
+      setMediaFile(null);
+      setMediaUrl(null);
+      setMediaType(null);
+      return;
+    }
+
     try {
-      const disparo = await apiFetch("/campanhas/disparos", {
-        method: "POST",
-        body: JSON.stringify({ modeloId: modelo.id, sessionId: inboxId, contatos }),
-      });
-      onDispatched(disparo);
-    } catch (e: any) {
-      setErrMsg(e?.message ?? "Erro ao iniciar disparo");
-      setDisparando(false);
+      await apiFetch(`/campanhas/modelos/${model.id}/media`, { method: "DELETE" });
+      setMediaFile(null);
+      setMediaUrl(null);
+      setMediaType(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao remover mídia.");
     }
   }
-
-  const validos = resultado?.filter((r) => !r.noWhatsapp).length ?? 0;
-  const invalidos = resultado?.filter((r) => r.noWhatsapp).length ?? 0;
 
   return (
-    <Modal open={true} onClose={onClose} title="Adicionar lista" description={`Modelo: ${modelo.nome}`} size="md">
-      {errMsg && (
-        <div className="mb-3 px-3 py-2 rounded-lg text-xs" style={{ background: "#ef444420", color: "#ef4444" }}>
-          {errMsg}
-        </div>
-      )}
-      {!resultado ? (
+    <Modal
+      open
+      onClose={onClose}
+      title={model ? "Editar modelo de campanha" : "Criar modelo de campanha"}
+      description="Mensagem, variáveis, mídia opcional e intervalo de disparo."
+      size="lg"
+      footer={
         <>
-          <div className="mb-3">
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: "var(--text-muted)" }}>DDI PADRÃO</label>
-            <div className="flex gap-2">
-              {DDI_OPTIONS.map((o) => (
-                <button key={o.value} onClick={() => setDdi(o.value)}
-                  className="flex-1 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors"
-                  style={{
-                    background: ddi === o.value ? "var(--brand-accent)" : "transparent",
-                    color: ddi === o.value ? "#fff" : "var(--text-muted)",
-                    borderColor: ddi === o.value ? "var(--brand-accent)" : "var(--card-border)",
-                  }}>
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mb-4">
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: "var(--text-muted)" }}>
-              NÚMEROS (um por linha: número, nome opcional)
-            </label>
-            <textarea value={listaTexto} onChange={(e) => setListaTexto(e.target.value)}
-              placeholder={"11999999999, João Silva\n21988888888\n31977777777, Maria"}
-              rows={6} className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none font-mono"
-              style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
-          </div>
-          <button onClick={validar} disabled={validando || !listaTexto.trim()}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50"
-            style={{ background: "var(--brand-accent)", color: "#fff" }}>
-            {validando ? <><Loader2 className="w-4 h-4 animate-spin" /> Validando...</> : "Validar números"}
+          <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm" style={{ color: "var(--text-muted)" }}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+            style={{ background: "var(--brand-accent)", color: "#fff" }}
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            Salvar modelo
           </button>
         </>
-      ) : (
-        <>
-          <div className="flex gap-4 mb-4 p-3 rounded-xl" style={{ background: "var(--shell-bg)" }}>
-            <div className="text-center flex-1">
-              <p className="text-xl font-bold" style={{ color: "#10b981" }}>{validos}</p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>No WhatsApp</p>
-            </div>
-            <div className="text-center flex-1">
-              <p className="text-xl font-bold" style={{ color: "#ef4444" }}>{invalidos}</p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Fora do WhatsApp</p>
-            </div>
-            <div className="text-center flex-1">
-              <p className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>{resultado.length}</p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>Total</p>
-            </div>
-          </div>
-
-          {invalidos > 0 && (
-            <div className="mb-3 p-3 rounded-xl border" style={{ borderColor: "#f59e0b", background: "#f59e0b10" }}>
-              <p className="text-xs font-medium mb-1" style={{ color: "#f59e0b" }}>Não estão no WhatsApp:</p>
-              <div className="space-y-0.5">
-                {resultado.filter((r) => r.noWhatsapp).slice(0, 5).map((r) => (
-                  <p key={r.telefone} className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                    {r.telefone}{r.nome ? ` — ${r.nome}` : ""}
-                  </p>
-                ))}
-                {invalidos > 5 && <p className="text-xs" style={{ color: "var(--text-muted)" }}>e mais {invalidos - 5}...</p>}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <button onClick={() => setResultado(null)} className="flex-1 py-2.5 rounded-lg text-sm border"
-              style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
-              Editar lista
-            </button>
-            <button onClick={iniciar} disabled={disparando || validos === 0}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50"
-              style={{ background: "#10b981", color: "#fff" }}>
-              {disparando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              Iniciar disparo ({validos})
-            </button>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
-
-function ModalEditarModelo({
-  modelo, onClose, onSaved,
-}: { modelo: Modelo; onClose: () => void; onSaved: (m: Modelo) => void }) {
-  const [form, setForm] = useState({
-    nome: modelo.nome, mensagem: modelo.mensagem,
-    delayMinSegundos: modelo.delayMinSegundos, delayMaxSegundos: modelo.delayMaxSegundos,
-  });
-  const [mediaUrl, setMediaUrl] = useState<string | null>(modelo.mediaUrl);
-  const [mediaType, setMediaType] = useState<string | null>(modelo.mediaType);
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [salvando, setSalvando] = useState(false);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  function insertVar(v: string) {
-    const el = textRef.current;
-    if (!el) return;
-    const start = el.selectionStart ?? form.mensagem.length;
-    const end = el.selectionEnd ?? start;
-    setForm((f) => ({ ...f, mensagem: f.mensagem.slice(0, start) + v + f.mensagem.slice(end) }));
-    setTimeout(() => { el.focus(); el.setSelectionRange(start + v.length, start + v.length); }, 0);
-  }
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingMedia(true);
-    setErrMsg(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await apiFetch(`/campanhas/modelos/${modelo.id}/media`, { method: "POST", body: fd });
-      setMediaUrl(res.mediaUrl);
-      setMediaType(res.mediaType);
-    } catch (err: any) {
-      setErrMsg(err?.message ?? "Erro ao enviar mídia");
-    } finally {
-      setUploadingMedia(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  async function removerMedia() {
-    setErrMsg(null);
-    try {
-      await apiFetch(`/campanhas/modelos/${modelo.id}/media`, { method: "DELETE" });
-      setMediaUrl(null); setMediaType(null);
-    } catch (err: any) {
-      setErrMsg(err?.message ?? "Erro ao remover mídia");
-    }
-  }
-
-  async function salvar() {
-    if (!form.nome.trim() || !form.mensagem.trim()) { setErrMsg("Nome e mensagem são obrigatórios"); return; }
-    setSalvando(true); setErrMsg(null);
-    try {
-      const updated = await apiFetch(`/campanhas/modelos/${modelo.id}`, { method: "PATCH", body: JSON.stringify(form) });
-      onSaved({ ...modelo, ...updated, mediaUrl, mediaType });
-    } catch (e: any) {
-      setErrMsg(e?.message ?? "Erro ao salvar");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <Modal open={true} onClose={onClose} title={`Editar: ${modelo.nome}`} size="lg"
-      footer={<>
-        <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ color: "var(--text-muted)" }}>Cancelar</button>
-        <button onClick={salvar} disabled={salvando}
-          className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-          style={{ background: "var(--brand-accent)", color: "#fff" }}>
-          {salvando && <Loader2 className="w-4 h-4 animate-spin" />} Salvar
-        </button>
-      </>}>
+      }
+    >
       <div className="space-y-4">
-        {errMsg && (
-          <div className="px-3 py-2 rounded-lg text-xs" style={{ background: "#ef444420", color: "#ef4444" }}>{errMsg}</div>
-        )}
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>NOME</label>
-          <input value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>MENSAGEM</label>
-          <div className="flex gap-2 mb-2">
-            <button onClick={() => insertVar("{{nome}}")} className="text-xs px-2 py-1 rounded font-mono"
-              style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>{"{{"+"nome"+"}}"}
-            </button>
-            <button onClick={() => insertVar("{{telefone}}")} className="text-xs px-2 py-1 rounded font-mono"
-              style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>{"{{"+"telefone"+"}}"}
-            </button>
+        {error && (
+          <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#ef444420", color: "#ef4444" }}>
+            {error}
           </div>
-          <textarea ref={textRef} value={form.mensagem}
-            onChange={(e) => setForm((f) => ({ ...f, mensagem: e.target.value }))}
-            rows={4} className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none"
-            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
+        )}
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            Nome
+          </label>
+          <input
+            value={form.nome}
+            onChange={(event) => setForm((prev) => ({ ...prev, nome: event.target.value }))}
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            placeholder="Ex: Reativação Abril"
+            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+          />
         </div>
 
         <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>MÍDIA ANEXADA</label>
-          {mediaUrl ? (
-            <div className="flex items-center gap-3 p-3 rounded-lg border" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
-              {mediaType === "VIDEO"
-                ? <video src={mediaUrl} className="w-24 h-16 rounded object-cover shrink-0" controls={false} />
-                : <img src={mediaUrl} alt="mídia" className="w-24 h-16 rounded object-cover shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{mediaType === "VIDEO" ? "Vídeo" : "Imagem"}</p>
-                <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{mediaUrl}</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+              Mensagem
+            </label>
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={() => insertVar("{{nome}}")} className="rounded px-2 py-1 text-xs font-mono" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
+                {"{{nome}}"}
+              </button>
+              <button type="button" onClick={() => insertVar("{{telefone}}")} className="rounded px-2 py-1 text-xs font-mono" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
+                {"{{telefone}}"}
+              </button>
+            </div>
+          </div>
+          <textarea
+            ref={textRef}
+            value={form.mensagem}
+            onChange={(event) => setForm((prev) => ({ ...prev, mensagem: event.target.value }))}
+            rows={5}
+            className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none"
+            placeholder="Olá {{nome}}, tudo bem? Tenho uma oportunidade para te mostrar."
+            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            Mídia opcional
+          </label>
+          {mediaUrl || mediaFile ? (
+            <div className="flex items-center gap-3 rounded-lg border p-3" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
+              <ImageIcon className="h-5 w-5 shrink-0" style={{ color: "var(--brand-accent)" }} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium" style={{ color: "var(--text-primary)" }}>{mediaFile?.name ?? mediaUrl}</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>{mediaType ?? mediaFile?.type ?? "Mídia anexada"}</p>
               </div>
-              <div className="flex gap-1.5 shrink-0">
-                <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia}
-                  className="px-2 py-1 rounded text-xs" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
-                  {uploadingMedia ? <Loader2 className="w-3 h-3 animate-spin" /> : "Trocar"}
-                </button>
-                <button onClick={removerMedia} className="px-2 py-1 rounded text-xs" style={{ background: "#ef444420", color: "#ef4444" }}>
-                  Remover
-                </button>
-              </div>
+              <button type="button" onClick={removeMedia} className="rounded p-2" style={{ color: "#ef4444" }}>
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
           ) : (
-            <button onClick={() => fileRef.current?.click()} disabled={uploadingMedia}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm w-full justify-center"
-              style={{ borderColor: "var(--card-border)", borderStyle: "dashed", color: "var(--text-muted)" }}>
-              {uploadingMedia ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {uploadingMedia ? "Enviando..." : "Adicionar imagem ou vídeo"}
-            </button>
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm" style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
+              <Upload className="h-4 w-4" />
+              Adicionar imagem ou vídeo
+              <input type="file" accept="image/*,video/*" className="hidden" onChange={(event) => setMediaFile(event.target.files?.[0] ?? null)} />
+            </label>
           )}
-          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
         </div>
 
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Delay mínimo (≥5s)</label>
-            <input type="number" min={5} value={form.delayMinSegundos}
-              onChange={(e) => setForm((f) => ({ ...f, delayMinSegundos: Math.max(5, +e.target.value) }))}
-              className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-              style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs" style={{ color: "var(--text-muted)" }}>Delay mínimo</label>
+            <input
+              type="number"
+              min={5}
+              value={form.delayMinSegundos}
+              onChange={(event) => setForm((prev) => ({ ...prev, delayMinSegundos: Math.max(5, Number(event.target.value) || 5) }))}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+            />
           </div>
-          <div className="flex-1">
-            <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Delay máximo</label>
-            <input type="number" min={form.delayMinSegundos} value={form.delayMaxSegundos}
-              onChange={(e) => setForm((f) => ({ ...f, delayMaxSegundos: Math.max(f.delayMinSegundos, +e.target.value) }))}
-              className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
-              style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }} />
+          <div>
+            <label className="mb-1 block text-xs" style={{ color: "var(--text-muted)" }}>Delay máximo</label>
+            <input
+              type="number"
+              min={form.delayMinSegundos}
+              value={form.delayMaxSegundos}
+              onChange={(event) => setForm((prev) => ({ ...prev, delayMaxSegundos: Math.max(prev.delayMinSegundos, Number(event.target.value) || prev.delayMinSegundos) }))}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+            />
           </div>
         </div>
       </div>
@@ -572,842 +466,1086 @@ function ModalEditarModelo({
   );
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+function AddListModal({
+  model,
+  inboxId,
+  onClose,
+  onDispatched,
+}: {
+  model: WaLightCampaignModel;
+  inboxId: string;
+  onClose: () => void;
+  onDispatched: (run: WaLightCampaignRun) => void;
+}) {
+  const [ddi, setDdi] = useState("55");
+  const [rawList, setRawList] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
+  const [result, setResult] = useState<WaLightValidatedNumber[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const valid = result?.filter((item) => item.existsOnWhatsapp && !item.invalidFormat && !item.duplicate) ?? [];
+  const unavailable = result?.filter((item) => !item.existsOnWhatsapp || item.invalidFormat || item.duplicate) ?? [];
+
+  function parseList() {
+    return rawList
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [phone, ...nameParts] = line.split(",");
+        const digits = phone.replace(/\D/g, "");
+        const telefone = digits.startsWith(ddi) ? digits : `${ddi}${digits}`;
+        return { telefone, nome: nameParts.join(",").trim() || undefined };
+      });
+  }
+
+  async function validate() {
+    const numbers = parseList();
+    if (numbers.length === 0) return;
+
+    setValidating(true);
+    setError(null);
+    try {
+      const response = await apiFetch("/campanhas/validate-numbers", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: inboxId, numeros: numbers.map((item) => item.telefone) }),
+      });
+      setResult(normalizeWhatsappValidation(numbers, response));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao validar números.");
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  async function dispatch() {
+    if (valid.length === 0) return;
+    setDispatching(true);
+    setError(null);
+    try {
+      const run = await apiFetch("/campanhas/disparos", {
+        method: "POST",
+        body: JSON.stringify({
+          modeloId: model.id,
+          sessionId: inboxId,
+          contatos: valid,
+          source: "INBOX_WA_LIGHT",
+          createTrackedConversations: true,
+          leadOnReply: {
+            stage: "Pré atendimento",
+            status: "NOVO LEAD",
+            preserveSessionId: true,
+          },
+        }),
+      });
+      onDispatched(run);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao iniciar disparo.");
+    } finally {
+      setDispatching(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Adicionar lista" description={`Modelo: ${model.nome}`} size="lg">
+      <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#ef444420", color: "#ef4444" }}>
+            {error}
+          </div>
+        )}
+
+        {!result ? (
+          <>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                DDI padrão
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ["55", "Brasil +55"],
+                  ["351", "Portugal +351"],
+                  ["1", "EUA +1"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDdi(value)}
+                    className="rounded-lg border px-3 py-2 text-sm font-medium"
+                    style={{
+                      background: ddi === value ? "var(--brand-accent)" : "transparent",
+                      color: ddi === value ? "#fff" : "var(--text-muted)",
+                      borderColor: ddi === value ? "var(--brand-accent)" : "var(--card-border)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                Lista de contatos
+              </label>
+              <textarea
+                value={rawList}
+                onChange={(event) => setRawList(event.target.value)}
+                rows={8}
+                className="w-full resize-none rounded-lg border px-3 py-2 font-mono text-sm outline-none"
+                placeholder={"11999999999, João Silva\n21988888888\n31977777777, Maria"}
+                style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={validate}
+              disabled={validating || !rawList.trim()}
+              className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+              style={{ background: "var(--brand-accent)", color: "#fff" }}
+            >
+              {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Validar números
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg p-3 text-center" style={{ background: "var(--shell-bg)" }}>
+                <p className="text-2xl font-bold" style={{ color: "#10b981" }}>{valid.length}</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>No WhatsApp</p>
+              </div>
+              <div className="rounded-lg p-3 text-center" style={{ background: "var(--shell-bg)" }}>
+                <p className="text-2xl font-bold" style={{ color: "#ef4444" }}>{unavailable.length}</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Revisar</p>
+              </div>
+              <div className="rounded-lg p-3 text-center" style={{ background: "var(--shell-bg)" }}>
+                <p className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>{result.length}</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Total</p>
+              </div>
+            </div>
+
+            {unavailable.length > 0 && (
+              <div className="max-h-44 overflow-y-auto rounded-lg border p-3" style={{ borderColor: "#f59e0b", background: "#f59e0b10" }}>
+                <p className="mb-2 text-xs font-semibold" style={{ color: "#f59e0b" }}>Números que precisam de verificação</p>
+                <div className="space-y-1">
+                  {unavailable.map((item) => (
+                    <p key={`${item.telefone}-${item.nome ?? ""}`} className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                      {item.telefone}{item.nome ? ` - ${item.nome}` : ""}{" "}
+                      {item.duplicate ? "(duplicado)" : item.invalidFormat ? "(formato inválido)" : "(fora do WhatsApp)"}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setResult(null)} className="flex-1 rounded-lg border py-2.5 text-sm" style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
+                Editar lista
+              </button>
+              <button
+                type="button"
+                onClick={dispatch}
+                disabled={dispatching || valid.length === 0}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+                style={{ background: "#10b981", color: "#fff" }}
+              >
+                {dispatching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                Iniciar disparo ({valid.length})
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
 
 export default function InboxWALightPage() {
-  const { id: inboxId } = useParams<{ id: string }>();
+  const { id: inboxIdParam } = useParams<{ id: string }>();
+  const inboxId = String(inboxIdParam || "");
   const router = useRouter();
 
-  const [inboxStatus, setInboxStatus] = useState<InboxStatus | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [modelos, setModelos] = useState<Modelo[]>([]);
-  const [activeDisparo, setActiveDisparo] = useState<Disparo | null>(null);
-  const [conversas, setConversas] = useState<Conversa[]>([]);
-  const [leadAtivo, setLeadAtivo] = useState<string | null>(null);
-  const [contatoAtivo, setContatoAtivo] = useState<ContatoDetail | null>(null);
-  const [mensagens, setMensagens] = useState<Msg[]>([]);
-  const [conversaAtiva, setConversaAtiva] = useState<{ nome: string; telefone: string | null; avatarUrl?: string | null } | null>(null);
-  const [showPhotoModal, setShowPhotoModal] = useState(false);
-  const [texto, setTexto] = useState("");
-  const [enviando, setEnviando] = useState(false);
-  const [busca, setBusca] = useState("");
-  const [soNaoLidas, setSoNaoLidas] = useState(false);
-  const [showCriarModelo, setShowCriarModelo] = useState(false);
-  const [showEditModelo, setShowEditModelo] = useState<Modelo | null>(null);
-  const [showAddLista, setShowAddLista] = useState<Modelo | null>(null);
-  const [qrModal, setQrModal] = useState(false);
-  const [qrStatus, setQrStatus] = useState<string>("CONNECTING");
+  const [status, setStatus] = useState<WaLightInboxStatus | null>(null);
+  const [conversations, setConversations] = useState<WaLightConversation[]>([]);
+  const [models, setModels] = useState<WaLightCampaignModel[]>([]);
+  const [activeRun, setActiveRun] = useState<WaLightCampaignRun | null>(null);
+  const [activeConversation, setActiveConversation] = useState<WaLightConversation | null>(null);
+  const [conversationDetail, setConversationDetail] = useState<WaLightConversationDetail | null>(null);
+  const [text, setText] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "unread" | "tracked" | "leads">("all");
+  const [rightOpen, setRightOpen] = useState(true);
+  const [qrOpen, setQrOpen] = useState(false);
   const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
-  const [confirmCancelDisparo, setConfirmCancelDisparo] = useState(false);
-  const [confirmDesconectar, setConfirmDesconectar] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
+  const [showModelModal, setShowModelModal] = useState<WaLightCampaignModel | null | "new">(null);
+  const [showListModal, setShowListModal] = useState<WaLightCampaignModel | null>(null);
+  const [confirmCancelRun, setConfirmCancelRun] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const pollingMsgRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
 
-  useEffect(() => {
-    const check = () => setIsDark(document.documentElement.classList.contains("dark"));
-    check();
-    const obs = new MutationObserver(check);
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-
+  const activeKey = activeConversation ? conversationKey(activeConversation) : null;
   const chatBg = isDark ? "#0b141a" : "#eae6df";
-  const incomingBg = isDark ? "#1f2c34" : "#ffffff";
+  const incomingBg = isDark ? "#1f2c34" : "#fff";
   const incomingText = isDark ? "#e9edef" : "#111b21";
 
   function showToast(msg: string, type: "error" | "success" = "error") {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
+    window.setTimeout(() => setToast(null), 4200);
   }
-
-  // ── Conversas filtradas ──────────────────────────────────────────────────
-
-  const conversasFiltradas = useMemo(() => {
-    let filtered = conversas;
-    if (soNaoLidas) filtered = filtered.filter((c) => c.naoLidos > 0);
-    if (busca.trim()) {
-      const q = busca.toLowerCase();
-      filtered = filtered.filter(
-        (c) => c.nome.toLowerCase().includes(q) || c.telefone?.includes(q)
-      );
-    }
-    return filtered;
-  }, [conversas, busca, soNaoLidas]);
-
-  const totalNaoLidas = useMemo(() => conversas.reduce((s, c) => s + c.naoLidos, 0), [conversas]);
-
-  // ── Fetch inicial e polling ───────────────────────────────────────────────
 
   const fetchStatus = useCallback(async () => {
     try {
-      const s = await apiFetch(`/inbox-wa-light/${inboxId}/status`);
-      setInboxStatus(s);
-      if (qrModal) { setQrStatus(s.status); if (s.status === "CONNECTED") setQrModal(false); }
+      const next = await apiFetch(`/inbox-wa-light/${inboxId}/status`);
+      setStatus(next);
+      if (next.status === "CONNECTED") setQrOpen(false);
     } catch {}
-  }, [inboxId, qrModal]);
+  }, [inboxId]);
 
-  const fetchModelos = useCallback(async () => {
-    try { setModelos(await apiFetch("/campanhas/modelos")); } catch {}
+  const fetchConversations = useCallback(async () => {
+    try {
+      const data = await apiFetch(`/inbox?sessionId=${inboxId}&includeAll=true`);
+      setConversations(Array.isArray(data) ? data : data.items ?? []);
+    } catch {}
+  }, [inboxId]);
+
+  const fetchModels = useCallback(async () => {
+    try {
+      setModels(await apiFetch("/campanhas/modelos"));
+    } catch {}
   }, []);
 
-  const fetchActiveDisparo = useCallback(async () => {
+  const fetchActiveRun = useCallback(async () => {
     try {
-      const d = await apiFetch(`/campanhas/disparos/active/${inboxId}`);
-      setActiveDisparo(d);
-    } catch {}
+      setActiveRun(await apiFetch(`/campanhas/disparos/active/${inboxId}`));
+    } catch {
+      setActiveRun(null);
+    }
   }, [inboxId]);
 
-  const fetchConversas = useCallback(async () => {
-    try { setConversas(await apiFetch(`/inbox?sessionId=${inboxId}`)); } catch {}
-  }, [inboxId]);
-
-  // fetchMensagens NÃO depende de conversas — avatarUrl vem direto da API agora
-  const fetchMensagens = useCallback(async (lId: string) => {
+  const fetchConversationDetail = useCallback(async (conversation: WaLightConversation) => {
+    setLoadingDetail(true);
     try {
-      const d = await apiFetch(`/inbox/${lId}`);
-      const novos: Msg[] = d.mensagens ?? [];
-      setMensagens((prev) => {
-        // Só atualiza se há mudança real — evita re-render e flickering
-        if (prev.length === novos.length && prev[prev.length - 1]?.id === novos[novos.length - 1]?.id) {
-          return prev;
-        }
-        return novos;
+      if (conversation.leadId) {
+        const detail = await apiFetch(`/inbox/${conversation.leadId}`);
+        setConversationDetail({
+          ...detail,
+          leadId: conversation.leadId,
+          tracked: isTrackedConversation(conversation),
+          campaignId: conversation.campaignId ?? null,
+          mensagens: detail.mensagens ?? [],
+        });
+        return;
+      }
+
+      if (conversation.contatoId) {
+        const detail = await apiFetch(`/inbox/contato/${conversation.contatoId}`);
+        setConversationDetail({
+          nome: detail.nome,
+          telefone: detail.telefone,
+          tracked: true,
+          campaignId: conversation.campaignId ?? null,
+          mensagens: detail.mensagemDisparo
+            ? [{
+                id: `campaign-${detail.contatoId}`,
+                direcao: "out",
+                texto: detail.mensagemDisparo,
+                criadoEm: detail.enviadoEm ?? new Date().toISOString(),
+                mediaUrl: detail.mediaUrl,
+                mediaType: detail.mediaType,
+              }]
+            : [],
+        });
+        return;
+      }
+
+      const chatRef = conversation.chatId ?? conversation.remoteJid ?? conversation.telefone;
+      const detail = await apiFetch(`/inbox-wa-light/${inboxId}/conversations/${encodeURIComponent(String(chatRef))}`);
+      setConversationDetail({ ...detail, mensagens: detail.mensagens ?? [] });
+    } catch (err: unknown) {
+      setConversationDetail({
+        nome: conversation.nome,
+        telefone: conversation.telefone,
+        avatarUrl: conversation.avatarUrl,
+        leadId: conversation.leadId ?? null,
+        tracked: isTrackedConversation(conversation),
+        mensagens: [],
       });
-      setConversaAtiva({ nome: d.nome, telefone: d.telefone ?? null, avatarUrl: d.avatarUrl ?? null });
-    } catch {}
+      if (!conversation.leadId && !conversation.contatoId) {
+        showToast(err instanceof Error ? err.message : "Não foi possível carregar o histórico da conversa.");
+      }
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, [inboxId]);
+
+  useEffect(() => {
+    const checkTheme = () => setIsDark(document.documentElement.classList.contains("dark"));
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    fetchStatus(); fetchModelos(); fetchActiveDisparo(); fetchConversas();
-    const t1 = setInterval(fetchStatus, 8000);
-    const t2 = setInterval(fetchActiveDisparo, 8000);
-    const t3 = setInterval(fetchConversas, 8000);
-    return () => { clearInterval(t1); clearInterval(t2); clearInterval(t3); };
-  }, [fetchStatus, fetchModelos, fetchActiveDisparo, fetchConversas]);
+    fetchStatus();
+    fetchConversations();
+    fetchModels();
+    fetchActiveRun();
+    const statusTimer = window.setInterval(fetchStatus, 7000);
+    const conversationTimer = window.setInterval(fetchConversations, 5000);
+    const runTimer = window.setInterval(fetchActiveRun, 7000);
+    return () => {
+      window.clearInterval(statusTimer);
+      window.clearInterval(conversationTimer);
+      window.clearInterval(runTimer);
+    };
+  }, [fetchActiveRun, fetchConversations, fetchModels, fetchStatus]);
 
   useEffect(() => {
-    if (pollingMsgRef.current) clearInterval(pollingMsgRef.current);
-    if (!leadAtivo) { setMensagens([]); setConversaAtiva(null); return; }
-    fetchMensagens(leadAtivo);
-    pollingMsgRef.current = setInterval(() => fetchMensagens(leadAtivo), 5000);
-    return () => { if (pollingMsgRef.current) clearInterval(pollingMsgRef.current); };
-  }, [leadAtivo, fetchMensagens]);
+      if (!activeConversation) {
+      setConversationDetail(null);
+      return;
+    }
 
-  // Polling de mensagens para contato de campanha — verifica se virou lead
-  useEffect(() => {
-    if (!contatoAtivo) return;
-    const t = setInterval(async () => {
-      try {
-        // Verifica se o contato já respondeu (lead criado)
-        const d = await apiFetch(`/inbox/contato/${contatoAtivo.contatoId}`);
-        setContatoAtivo(d);
-        // Se já tem um lead, recarrega conversas para ele aparecer na lista
-        await fetchConversas();
-      } catch {}
-    }, 8000);
-    return () => clearInterval(t);
-  }, [contatoAtivo, fetchConversas]);
-
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [mensagens]);
-
-  // ── QR countdown ─────────────────────────────────────────────────────────
+    fetchConversationDetail(activeConversation);
+    const timer = window.setInterval(() => fetchConversationDetail(activeConversation), 5000);
+    return () => window.clearInterval(timer);
+  }, [activeConversation, fetchConversationDetail]);
 
   useEffect(() => {
-    if (!qrModal || !inboxStatus?.qrCode) { setQrSecondsLeft(null); return; }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversationDetail?.mensagens.length, activeKey]);
+
+  useEffect(() => {
+    if (!qrOpen || !status?.qrCode) {
+      setQrSecondsLeft(null);
+      return;
+    }
     setQrSecondsLeft(55);
-    const t = setInterval(() => {
-      setQrSecondsLeft((s) => {
-        if (s === null || s <= 1) { clearInterval(t); return 0; }
-        return s - 1;
+    const timer = window.setInterval(() => {
+      setQrSecondsLeft((current) => {
+        if (current === null || current <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return current - 1;
       });
     }, 1000);
-    return () => clearInterval(t);
-  }, [qrModal, inboxStatus?.qrCode]);
+    return () => window.clearInterval(timer);
+  }, [qrOpen, status?.qrCode]);
 
-  // ── Selecionar conversa ──────────────────────────────────────────────────
+  useEffect(() => () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, [audioUrl]);
 
-  function selecionarConversa(c: Conversa) {
-    if (c.type === "campanha" && c.contatoId) {
-      setLeadAtivo(null);
-      setMensagens([]);
-      setConversaAtiva(null);
-      apiFetch(`/inbox/contato/${c.contatoId}`)
-        .then((d) => setContatoAtivo(d))
-        .catch(() => {});
-    } else if (c.leadId) {
-      setContatoAtivo(null);
-      setLeadAtivo(c.leadId);
-      apiFetch(`/inbox/${c.leadId}/read`, { method: "POST" }).catch(() => {});
-      setConversas((prev) => prev.map((x) => x.leadId === c.leadId ? { ...x, naoLidos: 0 } : x));
+  const filteredConversations = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return conversations.filter((conversation) => {
+      if (filter === "unread" && conversation.naoLidos <= 0) return false;
+      if (filter === "tracked" && !isTrackedConversation(conversation)) return false;
+      if (filter === "leads" && !conversation.leadId) return false;
+      if (!q) return true;
+      return [conversation.nome, conversation.telefone, conversation.ultimaMensagem]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q));
+    });
+  }, [conversations, filter, search]);
+
+  const unreadTotal = useMemo(
+    () => conversations.reduce((total, conversation) => total + Number(conversation.naoLidos || 0), 0),
+    [conversations],
+  );
+
+  const activeProgress = activeRun?.totalContatos
+    ? Math.round((activeRun.enviados / activeRun.totalContatos) * 100)
+    : 0;
+
+  function selectConversation(conversation: WaLightConversation) {
+    setActiveConversation(conversation);
+    if (conversation.leadId) {
+      apiFetch(`/inbox/${conversation.leadId}/read`, { method: "POST" }).catch(() => {});
     }
+    setConversations((current) => current.map((item) => (
+      conversationKey(item) === conversationKey(conversation) ? { ...item, naoLidos: 0 } : item
+    )));
   }
 
-  // ── Ações ─────────────────────────────────────────────────────────────────
-
-  async function conectar() {
+  async function connect() {
     try {
       await apiFetch(`/inbox-wa-light/${inboxId}/connect`, { method: "POST" });
-      setQrModal(true);
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao conectar");
+      await fetchStatus();
+      setQrOpen(true);
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao conectar.");
     }
   }
 
-  async function confirmarDesconectar() {
-    setConfirmDesconectar(false);
+  async function disconnect() {
+    setConfirmDisconnect(false);
     try {
       await apiFetch(`/inbox-wa-light/${inboxId}/disconnect`, { method: "POST" });
-      fetchStatus();
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao desconectar");
+      await fetchStatus();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao desconectar.");
     }
   }
 
-  async function enviar() {
-    if (!leadAtivo || !texto.trim() || enviando) return;
-    const textoEnviado = texto.trim();
-    setEnviando(true);
-    setTexto("");
+  async function sendText() {
+    const trimmed = text.trim();
+    if (!activeConversation || !trimmed || sending || !canSendToConversation(activeConversation)) return;
+
+    setSending(true);
+    setText("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     try {
-      await apiFetch(`/inbox/${leadAtivo}/send`, {
-        method: "POST", body: JSON.stringify({ text: textoEnviado }),
-      });
-      // Busca imediata para mostrar a mensagem confirmada
-      fetchMensagens(leadAtivo);
-    } catch (e: any) {
-      setTexto(textoEnviado);
-      showToast(e?.message ?? "Erro ao enviar mensagem");
+      await sendWaLightText(inboxId, activeConversation, trimmed);
+      await fetchConversationDetail(activeConversation);
+      await fetchConversations();
+    } catch (err: unknown) {
+      setText(trimmed);
+      showToast(err instanceof Error ? err.message : "Erro ao enviar mensagem.");
     } finally {
-      setEnviando(false);
+      setSending(false);
     }
   }
 
-  async function disparoAcao(acao: "pause" | "resume" | "cancel") {
-    if (!activeDisparo) return;
-    if (acao === "cancel") { setConfirmCancelDisparo(true); return; }
+  async function sendFile(file: File) {
+    if (!activeConversation || sending || !canSendToConversation(activeConversation)) return;
+    setSending(true);
     try {
-      await apiFetch(`/campanhas/disparos/${activeDisparo.id}/${acao}`, { method: "POST" });
-      fetchActiveDisparo();
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao executar ação");
+      await sendWaLightAttachment(inboxId, activeConversation, file);
+      await fetchConversationDetail(activeConversation);
+      await fetchConversations();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao enviar arquivo.");
+    } finally {
+      setSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
-  async function confirmarCancelDisparo() {
-    if (!activeDisparo) return;
-    setConfirmCancelDisparo(false);
+  function stopStream() {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }
+
+  async function startRecording() {
+    if (recording) return;
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+    }
+    setAudioBlob(null);
+
     try {
-      await apiFetch(`/campanhas/disparos/${activeDisparo.id}/cancel`, { method: "POST" });
-      fetchActiveDisparo();
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao cancelar disparo");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      audioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        stopStream();
+      };
+      recorder.start();
+      setRecording(true);
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Não foi possível acessar o microfone.");
+      stopStream();
     }
   }
 
-  async function excluirModelo(m: Modelo) {
+  function stopRecording() {
     try {
-      await apiFetch(`/campanhas/modelos/${m.id}`, { method: "DELETE" });
-      setModelos((prev) => prev.filter((x) => x.id !== m.id));
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao excluir modelo");
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+    } finally {
+      setRecording(false);
     }
   }
 
-  function onDispatched(d: Disparo) {
-    setActiveDisparo(d);
-    setShowAddLista(null);
-    setSidebarOpen(false);
-    fetchModelos();
+  function discardAudio() {
+    setAudioBlob(null);
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioUrl(null);
   }
 
-  function handleTextoChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setTexto(e.target.value);
+  async function sendAudio() {
+    if (!activeConversation || !audioBlob || sending) return;
+    setSending(true);
+    try {
+      await sendWaLightAudio(inboxId, activeConversation, audioBlob);
+      discardAudio();
+      await fetchConversationDetail(activeConversation);
+      await fetchConversations();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao enviar áudio.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function runAction(action: "pause" | "resume" | "cancel") {
+    if (!activeRun) return;
+    if (action === "cancel") {
+      setConfirmCancelRun(true);
+      return;
+    }
+
+    try {
+      await apiFetch(`/campanhas/disparos/${activeRun.id}/${action}`, { method: "POST" });
+      await fetchActiveRun();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao executar ação.");
+    }
+  }
+
+  async function confirmCancelCampaignRun() {
+    if (!activeRun) return;
+    setConfirmCancelRun(false);
+    try {
+      await apiFetch(`/campanhas/disparos/${activeRun.id}/cancel`, { method: "POST" });
+      await fetchActiveRun();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao cancelar disparo.");
+    }
+  }
+
+  async function deleteModel(model: WaLightCampaignModel) {
+    try {
+      await apiFetch(`/campanhas/modelos/${model.id}`, { method: "DELETE" });
+      setModels((current) => current.filter((item) => item.id !== model.id));
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao excluir modelo.");
+    }
+  }
+
+  function handleTextChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+    setText(event.target.value);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + "px";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 132)}px`;
     }
   }
 
-  const pct = activeDisparo?.totalContatos
-    ? Math.round((activeDisparo.enviados / activeDisparo.totalContatos) * 100)
-    : 0;
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <AppShell title={inboxStatus?.nome ?? "INBOX WA Light"}>
-      {/* -m-6 cancela o p-6 do AppShell; h-[calc(100vh-88px)] preenche o restante após o header */}
-      <div className="-m-6 flex flex-col overflow-hidden" style={{ height: "calc(100vh - 88px)" }}>
+    <AppShell title={status?.nome ?? "INBOX WA Light"}>
+      <div className="-m-6 flex overflow-hidden" style={{ height: "calc(100vh - 88px)" }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) sendFile(file);
+          }}
+        />
 
-        {/* ── Barra de progresso do disparo ─────────────────────────────── */}
-        {activeDisparo && (
-          <div className="shrink-0 px-4 py-2 border-b flex items-center gap-3 flex-wrap"
-            style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-                  {activeDisparo.nome}
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ background: activeDisparo.status === "RODANDO" ? "#3b82f620" : "#f59e0b20", color: activeDisparo.status === "RODANDO" ? "#3b82f6" : "#f59e0b" }}>
-                  {activeDisparo.status}
-                </span>
+        <aside className="flex w-[360px] shrink-0 flex-col border-r" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
+          <div className="border-b px-3 py-3" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+            <div className="mb-3 flex items-center gap-2">
+              <button type="button" onClick={() => router.push("/inbox-wa-light")} className="rounded-lg p-2" style={{ color: "var(--text-muted)" }}>
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{status?.nome ?? "INBOX WA Light"}</p>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <StatusDot status={status?.status ?? "DISCONNECTED"} />
+                  <span>{STATUS_LABEL[status?.status ?? "DISCONNECTED"]}</span>
+                  {status?.phoneNumber && <span className="truncate">- {status.phoneNumber}</span>}
+                </div>
               </div>
-              <div className="flex items-center gap-4 text-xs mb-1.5" style={{ color: "var(--text-muted)" }}>
-                <span>Total: {activeDisparo.totalContatos}</span>
-                <span style={{ color: "#3b82f6" }}>Enviados: {activeDisparo.enviados}</span>
-                <span style={{ color: "#ef4444" }}>Erros: {activeDisparo.falhas}</span>
-                <span style={{ color: "#10b981" }}>Responderam: {activeDisparo.responderam}</span>
-                <span className="font-medium" style={{ color: "var(--brand-accent)" }}>{pct}%</span>
-              </div>
-              <div className="w-full rounded-full h-1.5" style={{ background: "var(--card-border)" }}>
-                <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: "var(--brand-accent)" }} />
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {activeDisparo.status === "RODANDO" && (
-                <button onClick={() => disparoAcao("pause")} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs"
-                  style={{ background: "#f59e0b20", color: "#f59e0b" }}>
-                  <Pause className="w-3.5 h-3.5" /> Pausar
-                </button>
-              )}
-              {activeDisparo.status === "PAUSADA" && (
-                <button onClick={() => disparoAcao("resume")} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs"
-                  style={{ background: "#3b82f620", color: "#3b82f6" }}>
-                  <Play className="w-3.5 h-3.5" /> Retomar
-                </button>
-              )}
-              <button onClick={() => disparoAcao("cancel")} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs"
-                style={{ background: "#ef444420", color: "#ef4444" }}>
-                <XCircle className="w-3.5 h-3.5" /> Cancelar
+              <button type="button" onClick={() => setRightOpen((open) => !open)} className="rounded-lg p-2" style={{ color: rightOpen ? "var(--brand-accent)" : "var(--text-muted)" }}>
+                <Settings className="h-4 w-4" />
               </button>
             </div>
-          </div>
-        )}
 
-        {/* ── Área principal ────────────────────────────────────────────── */}
-        <div className="flex flex-1 overflow-hidden">
-
-          {/* Lista de conversas */}
-          <div className="w-72 shrink-0 flex flex-col border-r overflow-hidden"
-            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
-            <div className="p-3 border-b space-y-2" style={{ borderColor: "var(--card-border)" }}>
-              <div className="flex items-center gap-2">
-                <button onClick={() => router.push("/inbox-wa-light")} className="p-1 rounded" style={{ color: "var(--text-muted)" }}>
-                  <ChevronLeft className="w-4 h-4" />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Pesquisar ou começar uma conversa"
+                className="w-full rounded-lg border py-2 pl-9 pr-8 text-sm outline-none"
+                style={{ borderColor: "var(--card-border)", background: "var(--page-bg)", color: "var(--text-primary)" }}
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }}>
+                  <X className="h-4 w-4" />
                 </button>
-                <span className="text-sm font-semibold flex-1 truncate" style={{ color: "var(--text-primary)" }}>
-                  {inboxStatus?.nome ?? "Inbox"}
-                </span>
-                <button
-                  onClick={() => setSoNaoLidas(!soNaoLidas)}
-                  className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg font-medium"
-                  style={{
-                    background: soNaoLidas ? "var(--brand-accent)" : "var(--card-border)",
-                    color: soNaoLidas ? "#fff" : "var(--text-muted)",
-                  }}
-                  title="Não lidas"
-                >
-                  {totalNaoLidas > 0 && (
-                    <span className="text-[10px] font-bold">{totalNaoLidas}</span>
-                  )}
-                  {!soNaoLidas && <span className="text-[10px]">NL</span>}
-                  {soNaoLidas && <X className="w-3 h-3" />}
-                </button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3" style={{ color: "var(--text-muted)" }} />
-                <input
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Buscar..."
-                  className="w-full pl-7 pr-6 py-1.5 rounded-lg text-xs border outline-none"
-                  style={{ borderColor: "var(--card-border)", background: "var(--page-bg)", color: "var(--text-primary)" }}
-                />
-                {busca && (
-                  <button onClick={() => setBusca("")} className="absolute right-2 top-1/2 -translate-y-1/2">
-                    <X className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
-                  </button>
-                )}
-              </div>
+              )}
             </div>
-            <div className="flex-1 overflow-y-auto">
-              {conversasFiltradas.length === 0 ? (
-                <div className="p-6 text-center text-xs" style={{ color: "var(--text-muted)" }}>
-                  {conversas.length === 0 ? "Sem conversas ainda" : "Nenhuma encontrada"}
-                </div>
-              ) : conversasFiltradas.map((c) => {
-                const isCampanha = c.type === "campanha";
-                const ativa = isCampanha
-                  ? contatoAtivo?.contatoId === c.contatoId
-                  : leadAtivo === c.leadId;
-                const temNaoLidos = c.naoLidos > 0;
-                const itemKey = isCampanha ? `c-${c.contatoId}` : `l-${c.leadId}`;
+
+            <div className="mt-2 flex items-center gap-1 overflow-x-auto">
+              {[
+                ["all", "Todas"],
+                ["unread", `Não lidas${unreadTotal ? ` ${unreadTotal}` : ""}`],
+                ["tracked", "Acompanhadas"],
+                ["leads", "Leads"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFilter(value as typeof filter)}
+                  className="shrink-0 rounded-full px-3 py-1 text-xs font-medium"
+                  style={{
+                    background: filter === value ? "var(--brand-accent)" : "var(--page-bg)",
+                    color: filter === value ? "#fff" : "var(--text-muted)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {filteredConversations.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+                <WifiOff className="mb-3 h-8 w-8 opacity-40" />
+                {conversations.length === 0 ? "Nenhuma conversa carregada para esta sessão." : "Nenhuma conversa encontrada."}
+              </div>
+            ) : (
+              filteredConversations.map((conversation) => {
+                const tracked = isTrackedConversation(conversation);
+                const selected = activeKey === conversationKey(conversation);
                 return (
-                  <button key={itemKey} onClick={() => selecionarConversa(c)}
-                    className="w-full text-left px-3 py-3 flex items-center gap-2.5 transition-colors"
+                  <button
+                    key={conversationKey(conversation)}
+                    type="button"
+                    onClick={() => selectConversation(conversation)}
+                    className="flex w-full items-center gap-3 border-b px-3 py-3 text-left"
                     style={{
-                      background: ativa ? "var(--brand-accent-muted)" : "transparent",
-                      borderBottom: "1px solid var(--card-border)",
-                    }}>
-                    {/* Avatar */}
-                    <div className="relative shrink-0">
-                      {c.avatarUrl ? (
-                        <img src={c.avatarUrl} alt={c.nome}
-                          className="w-10 h-10 rounded-full object-cover"
-                          style={{ border: ativa ? "2px solid var(--brand-accent)" : "2px solid transparent" }} />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
-                          style={{ background: isCampanha ? "#64748b" : "var(--brand-accent)", color: "#fff" }}>
-                          {iniciais(c.nome)}
-                        </div>
-                      )}
-                      {temNaoLidos && (
-                        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2"
-                          style={{ background: "#25d366", borderColor: "var(--shell-bg)" }} />
-                      )}
-                    </div>
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-1 mb-0.5">
-                        <span className="text-sm truncate"
-                          style={{ color: "var(--text-primary)", fontWeight: temNaoLidos ? 700 : 500 }}>
-                          {c.nome}
+                      borderColor: "var(--card-border)",
+                      background: selected ? "var(--brand-accent-muted)" : "transparent",
+                    }}
+                  >
+                    <ConversationAvatar name={conversation.nome} avatarUrl={conversation.avatarUrl} tracked={tracked} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{conversation.nome}</p>
+                        <span className="shrink-0 text-[11px]" style={{ color: conversation.naoLidos > 0 ? "var(--brand-accent)" : "var(--text-muted)" }}>
+                          {formatListTime(conversation.ultimaMensagemEm)}
                         </span>
-                        {c.ultimaMensagemEm && (
-                          <span className="text-[10px] shrink-0"
-                            style={{ color: temNaoLidos ? "var(--brand-accent)" : "var(--text-muted)", fontWeight: temNaoLidos ? 600 : 400 }}>
-                            {hora(c.ultimaMensagemEm)}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <p className="min-w-0 flex-1 truncate text-xs" style={{ color: conversation.naoLidos > 0 ? "var(--text-primary)" : "var(--text-muted)" }}>
+                          {conversation.ultimaMensagemDirecao === "out" && "Você: "}
+                          {conversation.ultimaMensagem ?? conversation.telefone ?? "Sem mensagens"}
+                        </p>
+                        {conversation.naoLidos > 0 && (
+                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold" style={{ background: "#25d366", color: "#fff" }}>
+                            {conversation.naoLidos > 99 ? "99+" : conversation.naoLidos}
                           </span>
                         )}
                       </div>
-                      {c.telefone && (
-                        <p className="text-[10px] mb-0.5 font-mono" style={{ color: "var(--text-muted)" }}>
-                          {c.telefone}
-                        </p>
-                      )}
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs truncate"
-                          style={{ color: temNaoLidos ? "var(--text-primary)" : "var(--text-muted)", fontWeight: temNaoLidos ? 500 : 400 }}>
-                          {c.ultimaMensagemDirecao === "out" && (
-                            <span style={{ color: "var(--text-muted)" }}>Enviado: </span>
-                          )}
-                          {c.ultimaMensagem ?? "Sem mensagens"}
-                        </span>
-                        {temNaoLidos && (
-                          <span className="text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center shrink-0 px-1"
-                            style={{ background: "#25d366", color: "#fff" }}>
-                            {c.naoLidos > 99 ? "99+" : c.naoLidos}
+                      <div className="mt-1 flex items-center gap-1">
+                        {tracked && (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#f59e0b20", color: "#f59e0b" }}>
+                            Campanha
+                          </span>
+                        )}
+                        {conversation.leadId && (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#10b98120", color: "#10b981" }}>
+                            Lead
                           </span>
                         )}
                       </div>
                     </div>
                   </button>
                 );
-              })}
-            </div>
+              })
+            )}
           </div>
+        </aside>
 
-          {/* Chat */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: chatBg }}>
-            {/* ── View de contato de campanha (sem lead ainda) ──────────── */}
-            {contatoAtivo && !leadAtivo ? (
-              <>
-                <div className="px-3 py-2 border-b flex items-center gap-3"
-                  style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", minHeight: 56 }}>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
-                    style={{ background: "#64748b", color: "#fff" }}>
-                    {iniciais(contatoAtivo.nome)}
+        <main className="flex min-w-0 flex-1 flex-col" style={{ background: chatBg }}>
+          {activeRun && (
+            <div className="shrink-0 border-b px-4 py-2" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="truncate text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{activeRun.nome}</span>
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: "#3b82f620", color: "#3b82f6" }}>{activeRun.status}</span>
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>{activeProgress}%</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate" style={{ color: "var(--text-primary)" }}>
-                      {contatoAtivo.nome}
-                    </p>
-                    <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                      {contatoAtivo.telefone}
-                    </p>
+                  <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "var(--card-border)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${activeProgress}%`, background: "var(--brand-accent)" }} />
                   </div>
-                  <span className="text-xs px-2 py-1 rounded-full font-medium shrink-0"
-                    style={{
-                      background: contatoAtivo.status === "ENVIADO" ? "#3b82f620" : "#ef444420",
-                      color: contatoAtivo.status === "ENVIADO" ? "#3b82f6" : "#ef4444",
-                    }}>
-                    {contatoAtivo.status === "ENVIADO" ? "Aguardando resposta" : contatoAtivo.status}
-                  </span>
                 </div>
-                <div className="flex-1 overflow-y-auto px-3 py-3" style={{ background: chatBg }}>
-                  {contatoAtivo.enviadoEm && (
-                    <DateSeparator label={getDataLabel(contatoAtivo.enviadoEm)} />
+                <div className="flex items-center gap-1">
+                  {activeRun.status === "RODANDO" && (
+                    <button type="button" onClick={() => runAction("pause")} className="rounded-lg p-2" style={{ color: "#f59e0b", background: "#f59e0b20" }}>
+                      <Pause className="h-4 w-4" />
+                    </button>
                   )}
-                  {contatoAtivo.mensagemDisparo && (
-                    <div className="flex mb-1 justify-end">
-                      <div style={{
-                        position: "relative", maxWidth: "72%",
-                        padding: "6px 12px 8px",
-                        borderRadius: "12px 12px 2px 12px",
-                        background: "var(--brand-accent)", color: "#fff",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-                        fontSize: 14, lineHeight: 1.45,
-                      }}>
-                        <p style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
-                          {contatoAtivo.mensagemDisparo}
+                  {activeRun.status === "PAUSADA" && (
+                    <button type="button" onClick={() => runAction("resume")} className="rounded-lg p-2" style={{ color: "#3b82f6", background: "#3b82f620" }}>
+                      <Play className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => runAction("cancel")} className="rounded-lg p-2" style={{ color: "#ef4444", background: "#ef444420" }}>
+                    <XCircle className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeConversation && conversationDetail ? (
+            <>
+              <header className="flex h-16 shrink-0 items-center gap-3 border-b px-4" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+                <ConversationAvatar
+                  name={conversationDetail.nome}
+                  avatarUrl={conversationDetail.avatarUrl}
+                  tracked={isTrackedConversation(activeConversation)}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{conversationDetail.nome}</p>
+                  <p className="truncate text-xs" style={{ color: "var(--text-muted)" }}>
+                    {conversationDetail.telefone ?? activeConversation.telefone ?? "WhatsApp Light"}
+                    {isTrackedConversation(activeConversation) && " - acompanhado por campanha"}
+                  </p>
+                </div>
+                {activeConversation.leadId && (
+                  <a
+                    href={`/leads/${activeConversation.leadId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
+                    style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}
+                  >
+                    <UserRoundCheck className="h-3.5 w-3.5" />
+                    Ver Lead
+                  </a>
+                )}
+                <button type="button" className="rounded-lg p-2" style={{ color: "var(--text-muted)" }}>
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </header>
+
+              <section className="flex-1 overflow-y-auto px-4 py-4">
+                {loadingDetail && conversationDetail.mensagens.length === 0 ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--text-muted)" }} />
+                  </div>
+                ) : conversationDetail.mensagens.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-3 text-center" style={{ color: isDark ? "#8696a0" : "#667781" }}>
+                    <Send className="h-8 w-8 opacity-40" />
+                    <p className="text-sm">Nenhuma mensagem nesta conversa.</p>
+                  </div>
+                ) : (
+                  groupMessages(conversationDetail.mensagens).map((group) => (
+                    <div key={group.key}>
+                      <div className="my-3 flex justify-center">
+                        <span className="rounded-full px-3 py-1 text-xs font-medium shadow-sm" style={{ background: "rgba(11,20,26,0.18)", color: "#fff" }}>
+                          {group.label}
+                        </span>
+                      </div>
+                      {group.items.map((message) => (
+                        <MessageBubble key={message.id} message={message} incomingBg={incomingBg} incomingText={incomingText} />
+                      ))}
+                    </div>
+                  ))
+                )}
+                <div ref={messagesEndRef} />
+              </section>
+
+              {audioUrl && (
+                <div className="shrink-0 border-t px-4 py-2" style={{ borderColor: "var(--card-border)", background: isDark ? "#1f2c34" : "#f0f2f5" }}>
+                  <div className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: isDark ? "#2a3942" : "#fff" }}>
+                    <audio controls className="min-w-0 flex-1">
+                      <source src={audioUrl} />
+                    </audio>
+                    <button type="button" onClick={discardAudio} className="rounded-lg p-2" style={{ color: "#ef4444" }}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                    <button type="button" onClick={sendAudio} disabled={sending} className="rounded-lg p-2 disabled:opacity-50" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                      {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <footer className="flex shrink-0 items-end gap-2 px-4 py-3" style={{ background: isDark ? "#1f2c34" : "#f0f2f5", borderTop: "1px solid var(--card-border)" }}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full disabled:opacity-50" style={{ color: "var(--text-muted)" }}>
+                  <Paperclip className="h-5 w-5" />
+                </button>
+                <textarea
+                  ref={textareaRef}
+                  value={text}
+                  onChange={handleTextChange}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendText();
+                    }
+                  }}
+                  rows={1}
+                  placeholder={canSendToConversation(activeConversation) ? "Digite uma mensagem" : "Conversa sem destino de envio"}
+                  disabled={!canSendToConversation(activeConversation)}
+                  className="max-h-32 min-h-10 flex-1 resize-none rounded-[20px] px-4 py-2.5 text-sm outline-none disabled:opacity-60"
+                  style={{ background: isDark ? "#2a3942" : "#fff", color: "var(--text-primary)" }}
+                />
+                {text.trim() ? (
+                  <button type="button" onClick={sendText} disabled={sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full disabled:opacity-50" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={recording ? stopRecording : startRecording}
+                    disabled={sending || !canSendToConversation(activeConversation)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
+                    style={{ background: recording ? "#ef4444" : "var(--brand-accent)", color: "#fff" }}
+                  >
+                    {recording ? <CircleStop className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </button>
+                )}
+              </footer>
+            </>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center" style={{ color: isDark ? "#8696a0" : "#667781" }}>
+              <div className="flex h-20 w-20 items-center justify-center rounded-full" style={{ background: "rgba(0,0,0,0.08)" }}>
+                <Wifi className="h-9 w-9 opacity-40" />
+              </div>
+              <p className="text-base font-medium">Selecione uma conversa</p>
+              <p className="max-w-sm text-sm">Após conectar o QR Code, esta tela deve carregar as conversas da sessão como no WhatsApp Web.</p>
+            </div>
+          )}
+        </main>
+
+        {rightOpen && (
+          <aside className="flex w-[330px] shrink-0 flex-col border-l" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
+            <div className="flex-1 overflow-y-auto p-4">
+              <section className="mb-6">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Conexão</p>
+                <div className="rounded-lg border p-3" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <StatusDot status={status?.status ?? "DISCONNECTED"} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                        {status?.status ? STATUS_LABEL[status.status] : "Carregando"}
+                      </p>
+                      <p className="truncate text-xs" style={{ color: "var(--text-muted)" }}>
+                        {status?.phoneNumber ?? status?.pushName ?? "Nenhum número conectado"}
+                      </p>
+                    </div>
+                  </div>
+                  {status?.status === "CONNECTED" ? (
+                    <button type="button" onClick={() => setConfirmDisconnect(true)} className="w-full rounded-lg border py-2 text-xs font-medium" style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
+                      Desconectar
+                    </button>
+                  ) : status?.status === "QR_PENDING" ? (
+                    <button type="button" onClick={() => setQrOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium" style={{ background: "#6366f1", color: "#fff" }}>
+                      <QrCode className="h-4 w-4" />
+                      Ver QR Code
+                    </button>
+                  ) : (
+                    <button type="button" onClick={connect} className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                      <RefreshCw className="h-4 w-4" />
+                      Conectar
+                    </button>
+                  )}
+                </div>
+              </section>
+
+              {activeConversation && (
+                <section className="mb-6">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Acompanhamento</p>
+                  <div className="rounded-lg border p-3" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
+                    {isTrackedConversation(activeConversation) ? (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2" style={{ color: "#f59e0b" }}>
+                          <AlertTriangle className="h-4 w-4" />
+                          <span className="font-semibold">Conversa de campanha</span>
+                        </div>
+                        <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                          Se o contato responder, o backend deve criar o lead em Pré atendimento / NOVO LEAD e preservar este inbox como origem.
                         </p>
-                        {contatoAtivo.enviadoEm && (
-                          <p style={{ fontSize: 11, textAlign: "right", marginTop: 2, opacity: 0.65, lineHeight: 1 }}>
-                            {horaMsg(contatoAtivo.enviadoEm)}
+                        {activeConversation.leadId ? (
+                          <a href={`/leads/${activeConversation.leadId}`} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                            <UserRoundCheck className="h-4 w-4" />
+                            Ver Lead
+                          </a>
+                        ) : (
+                          <p className="rounded-lg px-3 py-2 text-xs" style={{ background: "#f59e0b14", color: "#f59e0b" }}>
+                            Aguardando resposta para virar lead.
                           </p>
                         )}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                        Conversa normal do WhatsApp Light.
+                      </p>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              <section>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Campanhas</p>
+                  <button type="button" onClick={() => setShowModelModal("new")} className="rounded p-1" style={{ color: "var(--brand-accent)" }}>
+                    <Plus className="h-4 w-4" />
+                  </button>
                 </div>
-                <div className="px-3 py-3 flex items-center justify-center gap-2"
-                  style={{ background: isDark ? "#1f2c34" : "#f0f2f5", borderTop: "1px solid var(--card-border)" }}>
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    Aguardando resposta do contato para iniciar conversa
+
+                {models.length === 0 ? (
+                  <p className="rounded-lg py-6 text-center text-sm" style={{ background: "var(--shell-bg)", color: "var(--text-muted)" }}>
+                    Nenhum modelo criado.
                   </p>
-                </div>
-              </>
-            ) : leadAtivo && conversaAtiva ? (
-              <>
-                <div className="px-3 py-2 border-b flex items-center gap-3"
-                  style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", minHeight: 56 }}>
-                  {/* Avatar */}
-                  <button onClick={() => conversaAtiva.avatarUrl && setShowPhotoModal(true)}
-                    className="shrink-0 rounded-full overflow-hidden"
-                    style={{ cursor: conversaAtiva.avatarUrl ? "pointer" : "default" }}>
-                    {conversaAtiva.avatarUrl ? (
-                      <img src={conversaAtiva.avatarUrl} alt={conversaAtiva.nome}
-                        className="w-10 h-10 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
-                        style={{ background: "var(--brand-accent)", color: "#fff" }}>
-                        {iniciais(conversaAtiva.nome)}
-                      </div>
-                    )}
-                  </button>
-                  {/* Nome e telefone */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate" style={{ color: "var(--text-primary)" }}>
-                      {conversaAtiva.nome}
-                    </p>
-                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      {conversaAtiva.telefone ?? "WhatsApp Light"}
-                    </p>
-                  </div>
-                  {/* Ações */}
-                  <a href={`/leads/${leadAtivo}`} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium shrink-0"
-                    style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
-                    <ExternalLink className="w-3 h-3" /> Ver lead
-                  </a>
-                </div>
-                <div className="flex-1 overflow-y-auto px-3 py-3"
-                  style={{ background: chatBg }}>
-                  {groupByDate(mensagens).map((group) => (
-                    <div key={group.dateKey}>
-                      <DateSeparator label={group.label} />
-                      {group.msgs.map((m) => {
-                        const isOut = m.direcao === "out";
-                        return (
-                          <div key={m.id} className={`flex mb-1 ${isOut ? "justify-end" : "justify-start"}`}>
-                            <div style={{
-                              position: "relative",
-                              maxWidth: "72%",
-                              padding: "6px 12px 8px",
-                              borderRadius: isOut ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-                              background: isOut ? "var(--brand-accent)" : incomingBg,
-                              color: isOut ? "#fff" : incomingText,
-                              boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-                              fontSize: 14,
-                              lineHeight: 1.45,
-                            }}>
-                              <p style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
-                                {m.texto ?? "[mídia]"}
-                              </p>
-                              <p style={{
-                                fontSize: 11, textAlign: "right", marginTop: 2,
-                                opacity: 0.65, lineHeight: 1,
-                              }}>
-                                {horaMsg(m.criadoEm)}
-                              </p>
-                            </div>
+                ) : (
+                  <div className="space-y-2">
+                    {models.map((model) => (
+                      <div key={model.id} className="rounded-lg border p-3" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
+                        <div className="mb-1 flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{model.nome}</p>
+                            <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--text-muted)" }}>{model.mensagem}</p>
                           </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                  {mensagens.length === 0 && (
-                    <div className="flex items-center justify-center h-full">
-                      <p className="text-sm" style={{ color: isDark ? "#8696a0" : "#667781" }}>
-                        Nenhuma mensagem ainda
-                      </p>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-                <div className="px-3 py-2 flex items-end gap-2"
-                  style={{ background: isDark ? "#1f2c34" : "#f0f2f5", borderTop: "1px solid var(--card-border)" }}>
-                  <textarea ref={textareaRef} rows={1} value={texto}
-                    onChange={handleTextoChange}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-                    placeholder="Digite uma mensagem"
-                    className="flex-1 resize-none text-sm outline-none"
-                    style={{
-                      background: isDark ? "#2a3942" : "#ffffff",
-                      color: "var(--text-primary)",
-                      borderRadius: 20,
-                      padding: "9px 14px",
-                      minHeight: 40,
-                      maxHeight: 120,
-                      overflowY: "hidden",
-                      border: "none",
-                      boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-                    }} />
-                  <button onClick={enviar} disabled={enviando || !texto.trim()}
-                    className="flex items-center justify-center disabled:opacity-40 shrink-0 transition-transform active:scale-95"
-                    style={{
-                      width: 40, height: 40, borderRadius: "50%",
-                      background: texto.trim() ? "var(--brand-accent)" : (isDark ? "#2a3942" : "#e2e8f0"),
-                      color: texto.trim() ? "#fff" : "var(--text-muted)",
-                    }}>
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3"
-                style={{ background: chatBg }}>
-                <div className="w-16 h-16 rounded-full flex items-center justify-center"
-                  style={{ background: "rgba(0,0,0,0.08)" }}>
-                  <Send className="w-7 h-7" style={{ color: "rgba(0,0,0,0.25)" }} />
-                </div>
-                <p className="text-sm font-medium" style={{ color: isDark ? "#8696a0" : "#667781" }}>
-                  Selecione uma conversa
-                </p>
-                <p className="text-xs" style={{ color: isDark ? "#667781" : "#aab0b7" }}>
-                  {conversas.length > 0 ? `${conversas.length} conversa${conversas.length !== 1 ? "s" : ""}` : "Nenhuma conversa ainda"}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* ── Sidebar direita ───────────────────────────────────────── */}
-          <div className="shrink-0 flex border-l" style={{ borderColor: "var(--card-border)" }}>
-            <div className="w-10 flex flex-col items-center py-3 gap-3" style={{ background: "var(--shell-bg)" }}>
-              <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg"
-                style={{ color: sidebarOpen ? "var(--brand-accent)" : "var(--text-muted)", background: sidebarOpen ? "var(--brand-accent-muted)" : "transparent" }}>
-                <Settings className="w-4 h-4" />
-              </button>
+                          <button type="button" onClick={() => setShowModelModal(model)} className="rounded p-1" style={{ color: "var(--text-muted)" }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" onClick={() => deleteModel(model)} className="rounded p-1" style={{ color: "#ef4444" }}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <div className="mb-2 flex items-center gap-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                          <Clock className="h-3.5 w-3.5" />
+                          {model.delayMinSegundos}s - {model.delayMaxSegundos}s
+                          {model.mediaUrl && <span>+ mídia</span>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowListModal(model)}
+                          disabled={status?.status !== "CONNECTED"}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium disabled:opacity-40"
+                          style={{ background: "var(--brand-accent)", color: "#fff" }}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Adicionar lista
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
-
-            {sidebarOpen && (
-              <div className="w-72 flex flex-col overflow-hidden border-l" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
-                <div className="flex-1 overflow-y-auto p-3 space-y-4">
-
-                  {/* WhatsApp conexão */}
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
-                      WhatsApp
-                    </p>
-                    <div className="p-3 rounded-xl border" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full shrink-0"
-                          style={{ background: STATUS_COLOR[inboxStatus?.status ?? "DISCONNECTED"] }} />
-                        <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
-                          {inboxStatus?.status === "CONNECTED"
-                            ? (inboxStatus.phoneNumber ?? "Conectado")
-                            : inboxStatus?.status === "QR_PENDING" ? "Aguardando QR"
-                            : inboxStatus?.status === "CONNECTING" ? "Conectando..."
-                            : "Desconectado"}
-                        </span>
-                        {inboxStatus?.pushName && (
-                          <span className="text-[10px] ml-auto" style={{ color: "var(--text-muted)" }}>{inboxStatus.pushName}</span>
-                        )}
-                      </div>
-                      {inboxStatus?.status === "CONNECTED" ? (
-                        <button onClick={() => setConfirmDesconectar(true)} className="w-full text-xs py-1.5 rounded-lg border text-center"
-                          style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
-                          Desconectar
-                        </button>
-                      ) : inboxStatus?.status === "QR_PENDING" ? (
-                        <button onClick={() => setQrModal(true)} className="w-full text-xs py-1.5 rounded-lg text-center"
-                          style={{ background: "#6366f1", color: "#fff" }}>
-                          Ver QR Code
-                        </button>
-                      ) : (
-                        <button onClick={conectar} className="w-full text-xs py-1.5 rounded-lg text-center"
-                          style={{ background: "var(--brand-accent)", color: "#fff" }}>
-                          {inboxStatus?.status === "CONNECTING" ? "Ver QR Code" : "Conectar"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Campanhas / Modelos */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-                        Campanhas
-                      </p>
-                      <button onClick={() => setShowCriarModelo(true)} className="p-1 rounded" style={{ color: "var(--brand-accent)" }}>
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {modelos.length === 0 ? (
-                      <p className="text-xs text-center py-4" style={{ color: "var(--text-muted)" }}>Nenhum modelo criado</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {modelos.map((m) => (
-                          <div key={m.id} className="p-3 rounded-xl border"
-                            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="text-xs font-semibold flex-1 min-w-0 truncate" style={{ color: "var(--text-primary)" }}>{m.nome}</p>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{m._count.disparos}x</span>
-                                <button onClick={() => setShowEditModelo(m)} className="p-0.5 rounded"
-                                  style={{ color: "var(--text-muted)" }} title="Editar modelo">
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                                <button onClick={() => excluirModelo(m)} className="p-0.5 rounded"
-                                  style={{ color: "#ef4444" }} title="Excluir modelo">
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-[11px] mb-2 line-clamp-2" style={{ color: "var(--text-muted)" }}>{m.mensagem}</p>
-                            <button
-                              onClick={() => setShowAddLista(m)}
-                              disabled={inboxStatus?.status !== "CONNECTED"}
-                              className="w-full text-xs py-1.5 rounded-lg font-medium disabled:opacity-40"
-                              style={{ background: "var(--brand-accent)", color: "#fff" }}>
-                              Adicionar lista
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+          </aside>
+        )}
       </div>
 
-      {/* ── Modais ─────────────────────────────────────────────────────── */}
-      {showCriarModelo && (
-        <ModalCriarModelo inboxId={inboxId!} onClose={() => setShowCriarModelo(false)}
-          onSaved={(m) => { setModelos((prev) => [m, ...prev.filter((x) => x.id !== m.id)]); setShowCriarModelo(false); }} />
-      )}
-
-      {showAddLista && (
-        <ModalAdicionarLista modelo={showAddLista} inboxId={inboxId!}
-          onClose={() => setShowAddLista(null)} onDispatched={onDispatched} />
-      )}
-
-      {showEditModelo && (
-        <ModalEditarModelo modelo={showEditModelo} onClose={() => setShowEditModelo(null)}
-          onSaved={(m) => { setModelos((prev) => prev.map((x) => x.id === m.id ? m : x)); setShowEditModelo(null); }} />
-      )}
-
-      {/* Modal foto do contato */}
-      {showPhotoModal && conversaAtiva?.avatarUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
-          onClick={() => setShowPhotoModal(false)}>
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <img src={conversaAtiva.avatarUrl} alt={conversaAtiva.nome}
-              className="rounded-2xl object-cover shadow-2xl"
-              style={{ maxWidth: "min(360px, 90vw)", maxHeight: "min(360px, 90vh)" }} />
-            <div className="absolute bottom-0 left-0 right-0 px-4 py-3 rounded-b-2xl"
-              style={{ background: "rgba(0,0,0,0.6)" }}>
-              <p className="text-white font-semibold text-sm">{conversaAtiva.nome}</p>
-              {conversaAtiva.telefone && <p className="text-white/70 text-xs">{conversaAtiva.telefone}</p>}
-            </div>
-            <button onClick={() => setShowPhotoModal(false)}
-              className="absolute top-2 right-2 p-1.5 rounded-full"
-              style={{ background: "rgba(0,0,0,0.5)", color: "#fff" }}>
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal QR Code */}
-      <Modal open={qrModal && !!inboxStatus} onClose={() => setQrModal(false)}
-        title="Escanear QR Code"
-        description="WhatsApp → Menu → Dispositivos vinculados → Vincular dispositivo"
-        size="sm">
+      <Modal open={qrOpen && !!status} onClose={() => setQrOpen(false)} title="Escanear QR Code" description="WhatsApp > Dispositivos conectados > Conectar dispositivo" size="sm">
         <div className="text-center">
-          {qrStatus === "CONNECTED" ? (
-            <div className="py-6">
-              <Wifi className="w-12 h-12 mx-auto mb-2" style={{ color: "#10b981" }} />
-              <p className="font-semibold" style={{ color: "#10b981" }}>Conectado!</p>
+          {status?.status === "CONNECTED" ? (
+            <div className="py-8">
+              <Wifi className="mx-auto mb-2 h-12 w-12" style={{ color: "#10b981" }} />
+              <p className="font-semibold" style={{ color: "#10b981" }}>Conectado</p>
             </div>
-          ) : inboxStatus?.qrCode ? (
+          ) : status?.qrCode ? (
             <div>
-              <img src={inboxStatus.qrCode} alt="QR" className="w-48 h-48 mx-auto rounded-xl" />
+              <img src={status.qrCode} alt="QR Code" className="mx-auto h-56 w-56 rounded-lg" />
               {qrSecondsLeft !== null && qrSecondsLeft > 0 && (
-                <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-                  Expira em {qrSecondsLeft}s
-                </p>
+                <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>Expira em {qrSecondsLeft}s</p>
               )}
               {qrSecondsLeft === 0 && (
-                <div className="mt-2 px-3 py-2 rounded-lg text-xs" style={{ background: "#ef444420", color: "#ef4444" }}>
-                  QR expirado — clique em Reconectar para gerar um novo
-                </div>
+                <button type="button" onClick={connect} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                  <RefreshCw className="h-4 w-4" />
+                  Reconectar e gerar novo QR
+                </button>
               )}
             </div>
           ) : (
-            <div className="py-6">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" style={{ color: "var(--brand-accent)" }} />
+            <div className="py-8">
+              <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin" style={{ color: "var(--brand-accent)" }} />
               <p className="text-sm" style={{ color: "var(--text-muted)" }}>Gerando QR Code...</p>
             </div>
           )}
         </div>
       </Modal>
 
-      {/* Modal confirmar cancelar disparo */}
-      <Modal open={confirmCancelDisparo} onClose={() => setConfirmCancelDisparo(false)}
-        title="Cancelar disparo" size="sm"
-        footer={<>
-          <button onClick={() => setConfirmCancelDisparo(false)} className="px-4 py-2 rounded-lg text-sm" style={{ color: "var(--text-muted)" }}>
-            Voltar
-          </button>
-          <button onClick={confirmarCancelDisparo}
-            className="px-4 py-2 rounded-lg text-sm font-medium"
-            style={{ background: "#ef4444", color: "#fff" }}>
-            Cancelar disparo
-          </button>
-        </>}>
+      {showModelModal && (
+        <CampaignModelModal
+          model={showModelModal === "new" ? null : showModelModal}
+          onClose={() => setShowModelModal(null)}
+          onSaved={(saved) => {
+            setModels((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+            setShowModelModal(null);
+            showToast("Modelo salvo.", "success");
+          }}
+        />
+      )}
+
+      {showListModal && (
+        <AddListModal
+          model={showListModal}
+          inboxId={inboxId}
+          onClose={() => setShowListModal(null)}
+          onDispatched={(run) => {
+            setActiveRun(run);
+            setShowListModal(null);
+            setRightOpen(false);
+            fetchConversations();
+            showToast("Disparo iniciado.", "success");
+          }}
+        />
+      )}
+
+      <Modal
+        open={confirmCancelRun}
+        onClose={() => setConfirmCancelRun(false)}
+        title="Cancelar disparo"
+        size="sm"
+        footer={
+          <>
+            <button type="button" onClick={() => setConfirmCancelRun(false)} className="rounded-lg px-4 py-2 text-sm" style={{ color: "var(--text-muted)" }}>Voltar</button>
+            <button type="button" onClick={confirmCancelCampaignRun} className="rounded-lg px-4 py-2 text-sm font-medium" style={{ background: "#ef4444", color: "#fff" }}>Cancelar disparo</button>
+          </>
+        }
+      >
         <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-          Tem certeza que deseja cancelar o disparo <strong>{activeDisparo?.nome}</strong>? Esta ação não pode ser desfeita.
+          Tem certeza que deseja cancelar o disparo <strong>{activeRun?.nome}</strong>?
         </p>
       </Modal>
 
-      {/* Modal confirmar desconectar */}
-      <Modal open={confirmDesconectar} onClose={() => setConfirmDesconectar(false)}
-        title="Desconectar WhatsApp" size="sm"
-        footer={<>
-          <button onClick={() => setConfirmDesconectar(false)} className="px-4 py-2 rounded-lg text-sm" style={{ color: "var(--text-muted)" }}>
-            Cancelar
-          </button>
-          <button onClick={confirmarDesconectar}
-            className="px-4 py-2 rounded-lg text-sm font-medium"
-            style={{ background: "#ef4444", color: "#fff" }}>
-            Desconectar
-          </button>
-        </>}>
+      <Modal
+        open={confirmDisconnect}
+        onClose={() => setConfirmDisconnect(false)}
+        title="Desconectar WhatsApp"
+        size="sm"
+        footer={
+          <>
+            <button type="button" onClick={() => setConfirmDisconnect(false)} className="rounded-lg px-4 py-2 text-sm" style={{ color: "var(--text-muted)" }}>Cancelar</button>
+            <button type="button" onClick={disconnect} className="rounded-lg px-4 py-2 text-sm font-medium" style={{ background: "#ef4444", color: "#fff" }}>Desconectar</button>
+          </>
+        }
+      >
         <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-          O número será desconectado e você precisará escanear um novo QR Code para reconectar.
+          O número será desconectado desta sessão. Para voltar a usar, será necessário escanear um novo QR Code.
         </p>
       </Modal>
 
