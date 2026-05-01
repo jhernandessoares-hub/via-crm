@@ -374,7 +374,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   async sendText(sessionId: string, to: string, text: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
-    const jid = this.toJid(to);
+    const jid = await this.resolveJid(socket, to);
     await socket.sendMessage(jid, { text });
   }
 
@@ -420,7 +420,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   private async handleInbound(sessionId: string, msg: any) {
     const session = await this.prisma.whatsappUnofficialSession.findUnique({
       where: { id: sessionId },
-      select: { tenantId: true },
+      select: { tenantId: true, phoneNumber: true },
     });
     if (!session) return;
 
@@ -433,6 +433,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     // Ignora grupos, status e newsletters — nunca criam leads
     if (from.endsWith('@g.us')) return;
     if (from === 'status@broadcast' || from.endsWith('@newsletter')) return;
+
+    // Ignora mensagens cuja origem seja o próprio número da sessão
+    // (notificações do WhatsApp, mensagens salvas, echo de outros dispositivos)
+    if (session.phoneNumber) {
+      const ownDigits = digitsOnly(session.phoneNumber);
+      const fromDigits = digitsOnly(from.split('@')[0].split(':')[0]);
+      if (ownDigits && fromDigits && fromDigits === ownDigits) {
+        logger.log(`Inbound ignorado: mensagem do próprio número da sessão (sessão=${sessionId})`);
+        return;
+      }
+    }
 
     // Resolve JID para telefone. WhatsApp multi-device pode entregar LIDs
     // internos (ex: '95236772601989@lid'), que não podem virar telefone de lead.
@@ -608,6 +619,23 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   private toJid(phone: string): string {
     const digits = phone.replace(/\D/g, '');
+    return `${digits}@s.whatsapp.net`;
+  }
+
+  // Resolve o JID correto via onWhatsApp (trata variações do 9º dígito no Brasil).
+  // Fallback para JID padrão se a consulta falhar ou o número não existir.
+  private async resolveJid(socket: WASocket, phone: string): Promise<string> {
+    const digits = phone.replace(/\D/g, '');
+    try {
+      const res = await Promise.race([
+        socket.onWhatsApp(digits),
+        new Promise<undefined>((r) => setTimeout(() => r(undefined), 3000)),
+      ]);
+      const found = Array.isArray(res) ? res[0] : undefined;
+      if (found?.exists && found.jid) return found.jid;
+    } catch {
+      // fallback abaixo
+    }
     return `${digits}@s.whatsapp.net`;
   }
 }
