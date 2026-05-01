@@ -101,6 +101,23 @@ export class CampanhasService {
     return this.unofficial.validateNumbers(sessionId, numeros);
   }
 
+  async checkRecampanha(tenantId: string, phones: string[]) {
+    if (phones.length === 0) return [];
+    return Promise.all(
+      phones.map(async (phone) => {
+        const suffix = phone.replace(/\D/g, '').slice(-9);
+        if (!suffix) return { telefone: phone, isRecampanha: false };
+        const count = await this.prisma.campanhaContato.count({
+          where: {
+            telefone: { endsWith: suffix },
+            disparo: { tenantId },
+          },
+        });
+        return { telefone: phone, isRecampanha: count > 0 };
+      }),
+    );
+  }
+
   // ── DISPAROS ──────────────────────────────────────────────────────────────
 
   async listDisparos(tenantId: string) {

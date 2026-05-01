@@ -482,10 +482,13 @@ function AddListModal({
   const [validating, setValidating] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [result, setResult] = useState<WaLightValidatedNumber[] | null>(null);
+  const [recampanhaPhones, setRecampanhaPhones] = useState<Set<string>>(new Set());
+  const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
-  const valid = result?.filter((item) => item.existsOnWhatsapp && !item.invalidFormat && !item.duplicate) ?? [];
+  const valid = result?.filter((item) => item.existsOnWhatsapp && !item.invalidFormat && !item.duplicate && !excludedPhones.has(item.telefone)) ?? [];
   const unavailable = result?.filter((item) => !item.existsOnWhatsapp || item.invalidFormat || item.duplicate) ?? [];
+  const recampanhaVisible = Array.from(recampanhaPhones).filter((p) => !excludedPhones.has(p));
 
   function parseList() {
     return rawList
@@ -506,12 +509,27 @@ function AddListModal({
 
     setValidating(true);
     setError(null);
+    setRecampanhaPhones(new Set());
+    setExcludedPhones(new Set());
     try {
       const response = await apiFetch("/campanhas/validate-numbers", {
         method: "POST",
         body: JSON.stringify({ sessionId: inboxId, numeros: numbers.map((item) => item.telefone) }),
       });
-      setResult(normalizeWhatsappValidation(numbers, response));
+      const normalized = normalizeWhatsappValidation(numbers, response);
+      setResult(normalized);
+
+      const validPhones = normalized
+        .filter((item) => item.existsOnWhatsapp && !item.invalidFormat && !item.duplicate)
+        .map((item) => item.telefone);
+
+      if (validPhones.length > 0) {
+        const rcResult: Array<{ telefone: string; isRecampanha: boolean }> = await apiFetch("/campanhas/check-recampanha", {
+          method: "POST",
+          body: JSON.stringify({ phones: validPhones }),
+        });
+        setRecampanhaPhones(new Set(rcResult.filter((r) => r.isRecampanha).map((r) => r.telefone)));
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro ao validar números.");
     } finally {
@@ -627,6 +645,33 @@ function AddListModal({
               </div>
             </div>
 
+            {recampanhaVisible.length > 0 && (
+              <div className="max-h-44 overflow-y-auto rounded-lg border p-3" style={{ borderColor: "#7c3aed", background: "#7c3aed10" }}>
+                <p className="mb-2 text-xs font-semibold" style={{ color: "#7c3aed" }}>ReCampanha — já receberam disparo anterior</p>
+                <div className="space-y-1">
+                  {recampanhaVisible.map((phone) => {
+                    const item = result?.find((r) => r.telefone === phone);
+                    return (
+                      <div key={phone} className="flex items-center justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                          {phone}{item?.nome ? ` - ${item.nome}` : ""}
+                        </p>
+                        <button
+                          type="button"
+                          title="Remover da lista"
+                          onClick={() => setExcludedPhones((prev) => new Set([...prev, phone]))}
+                          className="shrink-0 rounded p-0.5"
+                          style={{ color: "#ef4444" }}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {unavailable.length > 0 && (
               <div className="max-h-44 overflow-y-auto rounded-lg border p-3" style={{ borderColor: "#f59e0b", background: "#f59e0b10" }}>
                 <p className="mb-2 text-xs font-semibold" style={{ color: "#f59e0b" }}>Números que precisam de verificação</p>
@@ -642,7 +687,12 @@ function AddListModal({
             )}
 
             <div className="flex gap-2">
-              <button type="button" onClick={() => setResult(null)} className="flex-1 rounded-lg border py-2.5 text-sm" style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
+              <button
+                type="button"
+                onClick={() => { setResult(null); setRecampanhaPhones(new Set()); setExcludedPhones(new Set()); }}
+                className="flex-1 rounded-lg border py-2.5 text-sm"
+                style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}
+              >
                 Editar lista
               </button>
               <button
@@ -1163,12 +1213,17 @@ export default function InboxWALightPage() {
                         )}
                       </div>
                       <div className="mt-1 flex items-center gap-1">
-                        {tracked && !conversation.leadId && (
+                        {tracked && conversation.isRecampanha && (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#7c3aed20", color: "#7c3aed" }}>
+                            ReCampanha
+                          </span>
+                        )}
+                        {tracked && !conversation.isRecampanha && !conversation.leadId && (
                           <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#f59e0b20", color: "#f59e0b" }}>
                             Campanha
                           </span>
                         )}
-                        {tracked && conversation.leadId && (
+                        {tracked && !conversation.isRecampanha && conversation.leadId && (
                           <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "#10b98120", color: "#10b981" }}>
                             Campanha com resposta
                           </span>

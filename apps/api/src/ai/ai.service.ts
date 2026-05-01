@@ -261,6 +261,7 @@ export class AiService {
     conversationContext?: string;
     mode?: 'REGENERATE' | 'SHORTEN' | 'IMPROVE' | 'VARIATE';
     urgency?: 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+    corretorNome?: string | null;
     onToolCall?: (toolName: string, args: Record<string, any>) => Promise<string>;
   }) {
     let agentTitle = '';
@@ -485,6 +486,7 @@ export class AiService {
     if (knowledgeContext) userParts.push(`Conhecimento disponível:\n${knowledgeContext}`);
     if (productsBlock) userParts.push(productsBlock);
     userParts.push(`Lead: ${params.nome} | Status: ${params.status}`);
+    if (params.corretorNome) userParts.push(`Corretor responsável por este lead: ${params.corretorNome}`);
     if (params.urgency) {
       const urgencyMap: Record<string, string> = {
         BAIXA:   'O lead recebeu sua última mensagem há cerca de 2 horas. Retome a conversa de forma natural e amigável, sem pressão.',

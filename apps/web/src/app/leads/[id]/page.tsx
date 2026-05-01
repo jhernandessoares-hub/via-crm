@@ -424,11 +424,11 @@ function parseIsoToMs(iso?: string | null) {
 
 function isOutgoing(ev: LeadEvent) {
   const ch = String(ev.channel || "").toLowerCase();
-  if (ch.startsWith("whatsapp.out")) return true;
+  if (ch.startsWith("whatsapp.out") || ch === "whatsapp.unofficial.out") return true;
   if (ch.startsWith("ai.")) return true;
   if (ch.startsWith("system.")) return true;
   if (ch === "crm.note") return true;
-  if (ch === "form" || ch.startsWith("whatsapp.in")) return false;
+  if (ch === "form" || ch.startsWith("whatsapp.in") || ch === "whatsapp.unofficial.in") return false;
   return true;
 }
 
@@ -1063,9 +1063,8 @@ function Bubble({
   const p = ev.payloadRaw || {};
   const isAiSuggestion = ch === "ai.suggestion";
   const aiParticipationLabel = getAiParticipationLabel(ev);
-  const channelDisplay = String(ch || "").toLowerCase().startsWith("whatsapp.out")
-    ? ch + " • " + aiParticipationLabel
-    : ch;
+  const isWaOut = String(ch || "").toLowerCase().startsWith("whatsapp.out") || ch === "whatsapp.unofficial.out";
+  const channelDisplay = isWaOut ? ch + " • " + aiParticipationLabel : ch;
 
   const rawText = pickText(ev);
 

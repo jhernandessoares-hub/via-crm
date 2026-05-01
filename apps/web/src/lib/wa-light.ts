@@ -52,6 +52,7 @@ export type WaLightConversation = {
   ultimaMensagem: string | null;
   ultimaMensagemEm: string | null;
   ultimaMensagemDirecao: WaLightDirection | null;
+  isRecampanha?: boolean;
 };
 
 export type WaLightContactDetail = {

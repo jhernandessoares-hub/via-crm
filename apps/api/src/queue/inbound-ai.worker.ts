@@ -495,6 +495,14 @@ async function handleInboundAiJob(
   });
   if (!lead) return;
 
+  const assignedUser = lead.assignedUserId
+    ? await prisma.user.findUnique({
+        where: { id: lead.assignedUserId },
+        select: { nome: true, apelido: true },
+      })
+    : null;
+  const corretorNome = assignedUser?.apelido || assignedUser?.nome || null;
+
   const tenant = await prisma.tenant.findUnique({
     where: { id: lead.tenantId },
     select: {
@@ -664,6 +672,7 @@ async function handleInboundAiJob(
       leadId: lead.id,
       lastLeadMessage,
       conversationContext,
+      corretorNome,
       agentModel: (selectedAgent as any).model ?? undefined,
       agentTemperature: (selectedAgent as any).temperature ?? undefined,
       onToolCall: async (toolName, args) => {
