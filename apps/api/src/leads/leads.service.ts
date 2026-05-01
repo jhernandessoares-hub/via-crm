@@ -59,6 +59,7 @@ import { resolveWhatsappCreds } from '../whatsapp/whatsapp-creds';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { AuditService } from '../audit/audit.service';
 import { QueueService } from '../queue/queue.service';
+import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 
 @Injectable()
 export class LeadsService {
@@ -69,6 +70,7 @@ export class LeadsService {
     private readonly pipelineService: PipelineService,
     private readonly audit: AuditService,
     private readonly queueService: QueueService,
+    private readonly unofficialService: WhatsappUnofficialService,
   ) {}
 
   // =========================================
@@ -2631,6 +2633,56 @@ const aiAssistanceLabel =
         : aiAssistancePercent > 0
           ? 'Parcial IA'
           : 'Humano';
+
+    const isLight = lead.conversaCanal === 'WHATSAPP_LIGHT';
+
+    if (isLight) {
+      if (!lead.conversaSessionId) {
+        throw new Error('Lead WhatsApp Light sem sessão de origem');
+      }
+
+      try {
+        await this.unofficialService.sendText(lead.conversaSessionId, lead.telefone, text);
+      } catch (sendErr: any) {
+        await this.prisma.leadEvent.create({
+          data: {
+            tenantId: user.tenantId,
+            leadId,
+            channel: 'whatsapp.unofficial.out.failed',
+            payloadRaw: {
+              to: lead.telefone,
+              sessionId: lead.conversaSessionId,
+              type: 'text',
+              message: text,
+              error: sendErr?.message || String(sendErr),
+              aiAssistancePercent,
+              aiAssistanceLabel,
+            },
+          },
+        });
+        throw sendErr;
+      }
+
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.unofficial.out',
+          payloadRaw: {
+            to: lead.telefone,
+            sessionId: lead.conversaSessionId,
+            type: 'text',
+            text,
+            message: text,
+            body: text,
+            aiAssistancePercent,
+            aiAssistanceLabel,
+          },
+        },
+      });
+
+      return { ok: true };
+    }
 
     let result: Awaited<ReturnType<typeof this.sendMetaMessage>>;
     try {
