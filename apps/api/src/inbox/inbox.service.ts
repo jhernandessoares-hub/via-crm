@@ -32,6 +32,7 @@ export class InboxService {
       ultimaMensagem: string | null;
       ultimaMensagemEm: string | null;
       ultimaMensagemDirecao: 'in' | 'out' | null;
+      isRecampanha: boolean;
     };
 
     // ── Passo 1: Contatos de campanha (incluindo RESPONDEU) ───────────────
@@ -39,6 +40,7 @@ export class InboxService {
       id: string; telefone: string; nome: string | null;
       enviadoEm: Date | null; disparoId: string;
       leadId: string | null; mensagem: string | null;
+      isRecampanha: boolean;
     };
     let campanhaContatos: CampanhaContactRaw[] = [];
     let campanhaLeadIds: string[] = [];
@@ -60,8 +62,29 @@ export class InboxService {
           orderBy: { enviadoEm: { sort: 'desc', nulls: 'last' } },
         });
 
-        campanhaContatos = contatos.map(c => ({ ...c, mensagem: disparoMsgMap.get(c.disparoId) ?? null }));
-        campanhaLeadIds = contatos.filter(c => c.leadId != null).map(c => c.leadId!);
+        // Deduplicar por telefone — um entry por número, detectar ReCampanha
+        const phoneToGroup = new Map<string, typeof contatos>();
+        for (const c of contatos) {
+          const key = (c.telefone || '').replace(/\D/g, '').slice(-9) || c.telefone || '';
+          if (!phoneToGroup.has(key)) phoneToGroup.set(key, []);
+          phoneToGroup.get(key)!.push(c);
+        }
+
+        for (const [, group] of phoneToGroup) {
+          const disparoIds = new Set(group.map(c => c.disparoId));
+          const isRecampanha = disparoIds.size > 1;
+          // Prefere o que respondeu (tem leadId), depois o mais recente
+          const best = group.reduce((a, b) => {
+            if (b.leadId && !a.leadId) return b;
+            if (a.leadId && !b.leadId) return a;
+            const bTime = b.enviadoEm?.getTime() ?? 0;
+            const aTime = a.enviadoEm?.getTime() ?? 0;
+            return bTime > aTime ? b : a;
+          });
+          campanhaContatos.push({ ...best, mensagem: disparoMsgMap.get(best.disparoId) ?? null, isRecampanha });
+        }
+
+        campanhaLeadIds = campanhaContatos.filter(c => c.leadId != null).map(c => c.leadId!);
       }
     }
 
@@ -169,6 +192,7 @@ export class InboxService {
         ultimaMensagemDirecao: ultimaMensagem
           ? (LIGHT_CHANNELS_IN.includes(ultimaMensagem.channel) ? 'in' : 'out')
           : null,
+        isRecampanha: false,
       };
     });
 
@@ -192,6 +216,7 @@ export class InboxService {
         ultimaMensagemDirecao: ultimaEvento
           ? (LIGHT_CHANNELS_IN.includes(ultimaEvento.channel) ? 'in' : 'out')
           : 'out',
+        isRecampanha: c.isRecampanha,
       };
     });
 

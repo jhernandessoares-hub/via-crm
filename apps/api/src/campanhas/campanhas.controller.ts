@@ -52,6 +52,11 @@ export class CampanhasController {
     return this.service.validateNumbers(body.sessionId, req.user.tenantId, body.numeros ?? []);
   }
 
+  @Post('check-recampanha')
+  checkRecampanha(@Req() req: any, @Body() body: { phones: string[] }) {
+    return this.service.checkRecampanha(req.user.tenantId, body.phones ?? []);
+  }
+
   // ── DISPAROS ──────────────────────────────────────────────────────────────
 
   @Get('disparos')
