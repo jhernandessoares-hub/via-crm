@@ -1,14 +1,18 @@
 import { Injectable, OnModuleDestroy, BadRequestException } from '@nestjs/common';
-import makeWASocket, { WASocket, DisconnectReason } from '@whiskeysockets/baileys';
+import makeWASocket, { WASocket, DisconnectReason, downloadMediaMessage } from '@whiskeysockets/baileys';
 import { initAuthCreds, BufferJSON, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { Prisma } from '@prisma/client';
 import pino from 'pino';
 import * as QRCode from 'qrcode';
+import OpenAI from 'openai';
+import { v2 as cloudinary } from 'cloudinary';
+import { Readable } from 'stream';
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { upsertLeadFromWhatsapp } from '../whatsapp/lead-upsert.helper';
+import { resolveAiModel } from '../ai/resolve-ai-model';
 
 const logger = new Logger('WhatsappUnofficialService');
 
@@ -398,6 +402,37 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     });
   }
 
+  // ── Processamento de áudio inbound (download + Cloudinary + Whisper) ───────
+
+  private async processAudioInbound(msg: any, rawMime: string): Promise<{ mediaUrl: string | null; mimeType: string | null; transcription: string | null }> {
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {}) as Buffer;
+      if (!buffer || buffer.length === 0) return { mediaUrl: null, mimeType: null, transcription: null };
+
+      const mimeType = rawMime.split(';')[0].trim();
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'ogg';
+
+      const mediaUrl = await new Promise<string>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'via-crm/whatsapp-light/audio', resource_type: 'video', format: ext },
+          (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
+        );
+        Readable.from(buffer).pipe(stream);
+      });
+
+      const model = await resolveAiModel(this.prisma, 'TRANSCRIPTION');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const audioFile = new File([new Uint8Array(buffer)], `audio.${ext}`, { type: mimeType });
+      const result = await openai.audio.transcriptions.create({ file: audioFile, model, language: 'pt' });
+
+      logger.log(`🎤 Áudio transcrito (${buffer.length} bytes): "${result.text.slice(0, 80)}"`);
+      return { mediaUrl, mimeType, transcription: result.text };
+    } catch (err: any) {
+      logger.warn(`⚠️ Erro ao processar áudio inbound: ${err?.message}`);
+      return { mediaUrl: null, mimeType: null, transcription: null };
+    }
+  }
+
   // ── Status ────────────────────────────────────────────────────────────────
 
   async getStatus(sessionId: string) {
@@ -470,6 +505,21 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     // Reações não criam lead nem evento
     if (type === 'reaction') return;
+
+    // Processa áudio: baixa buffer, sobe ao Cloudinary, transcreve com Whisper
+    let audioMediaUrl: string | null = null;
+    let audioMimeType: string | null = null;
+    let audioTranscription: string | null = null;
+    if (type === 'audio') {
+      const inner = msg.message?.viewOnceMessage?.message ||
+                    msg.message?.ephemeralMessage?.message ||
+                    msg.message || {};
+      const rawMime: string = inner?.audioMessage?.mimetype ?? 'audio/ogg; codecs=opus';
+      const audioResult = await this.processAudioInbound(msg, rawMime);
+      audioMediaUrl = audioResult.mediaUrl;
+      audioMimeType = audioResult.mimeType;
+      audioTranscription = audioResult.transcription;
+    }
 
     // Verifica se é contato de disparo aguardando resposta
     const phoneSuffix = phone ? phoneMatchSuffix(phone) : '';
@@ -561,6 +611,9 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       rawMsg: msg,
       contactName,
       avatarUrl,
+      mediaUrl: audioMediaUrl,
+      mimeType: audioMimeType,
+      transcription: audioTranscription,
     });
 
     // Se é resposta de campanha e o lead NÃO foi criado pelo worker (fluxo legado),

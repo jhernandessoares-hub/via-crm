@@ -378,6 +378,7 @@ export class InboxService {
 function extractText(payloadRaw: any): string | null {
   if (!payloadRaw || typeof payloadRaw !== 'object') return null;
   const p = payloadRaw as any;
+  if (typeof p.transcription === 'string') return p.transcription; // áudio transcrito tem prioridade
   if (typeof p.text === 'string') return p.text;
   if (typeof p.body === 'string') return p.body;
   if (typeof p.caption === 'string') return p.caption;
@@ -392,16 +393,18 @@ function extractMedia(payloadRaw: any): { mediaUrl: string | null; mediaType: st
   if (!payloadRaw || typeof payloadRaw !== 'object') return empty;
   const p = payloadRaw as any;
 
-  // Imagens enviadas pela IA: { type: 'image', media: { url, mimeType, filename }, caption }
+  // Imagens/vídeos enviados pela IA: { type: 'image'|'video', media: { url, mimeType, filename }, caption }
   if (p.media?.url) {
     const kind = String(p.type || p.media.mimeType || '').toLowerCase();
     const mediaType = kind.includes('video') ? 'video' : kind.includes('audio') ? 'audio' : 'image';
     return { mediaUrl: p.media.url, mediaType, mimeType: p.media.mimeType ?? null, filename: p.media.filename ?? null };
   }
 
-  // Campo direto mediaUrl (e.g., mídia de campanha)
+  // Campo direto mediaUrl: áudio inbound (Baileys), mídia de campanha, etc.
   if (p.mediaUrl) {
-    return { mediaUrl: p.mediaUrl, mediaType: String(p.mediaType || 'image').toLowerCase(), mimeType: null, filename: null };
+    const kind = String(p.type || p.mediaType || '').toLowerCase();
+    const mediaType = kind.includes('audio') ? 'audio' : kind.includes('video') ? 'video' : 'image';
+    return { mediaUrl: p.mediaUrl, mediaType, mimeType: p.mimeType ?? null, filename: null };
   }
 
   return empty;
