@@ -187,9 +187,9 @@ async function registerAiSuggestion(
 
 async function sendImagesForProduct(
   prisma: PrismaService,
-  whatsapp: WhatsappService,
-  lead: { id: string; tenantId: string; telefone: string | null },
+  lead: { id: string; tenantId: string; telefone: string | null; conversaCanal?: string | null; conversaSessionId?: string | null },
   productId: string,
+  unofficialService?: WhatsappUnofficialService,
 ): Promise<string> {
   const productWithImages = await prisma.product.findUnique({
     where: { id: productId },
@@ -210,15 +210,21 @@ async function sendImagesForProduct(
     return 'nenhuma imagem disponível';
   }
 
+  const isLight = lead.conversaCanal === 'WHATSAPP_LIGHT' && !!lead.conversaSessionId && !!unofficialService;
+
   for (const img of images) {
     const caption = img.customLabel || img.title || productWithImages?.title || undefined;
     try {
-      await sendImageViaWhatsapp(prisma, lead.tenantId, lead.telefone, img.url, caption);
+      if (isLight) {
+        await unofficialService!.sendImage(lead.conversaSessionId!, lead.telefone, img.url, caption);
+      } else {
+        await sendImageViaWhatsapp(prisma, lead.tenantId, lead.telefone, img.url, caption);
+      }
       await prisma.leadEvent.create({
         data: {
           tenantId: lead.tenantId,
           leadId: lead.id,
-          channel: 'whatsapp.out',
+          channel: isLight ? 'whatsapp.unofficial.out' : 'whatsapp.out',
           payloadRaw: {
             type: 'image',
             media: {
@@ -239,7 +245,7 @@ async function sendImagesForProduct(
     }
   }
 
-  logger.log(`📸 FERRAMENTA: ${images.length} foto(s) enviada(s) leadId=${lead.id}`);
+  logger.log(`📸 FERRAMENTA: ${images.length} foto(s) enviada(s) leadId=${lead.id} canal=${isLight ? 'LIGHT' : 'OFICIAL'}`);
   return `${images.length} foto(s) enviada(s)`;
 }
 
@@ -676,13 +682,13 @@ async function handleInboundAiJob(
       agentModel: (selectedAgent as any).model ?? undefined,
       agentTemperature: (selectedAgent as any).temperature ?? undefined,
       onToolCall: async (toolName, args) => {
-        if (toolName === 'enviar_fotos_produto' && whatsapp) {
+        if (toolName === 'enviar_fotos_produto') {
           const productId =
             args.productId ||
             (await prisma.lead.findUnique({ where: { id: lead.id }, select: { produtoInteresseId: true } }))
               ?.produtoInteresseId;
           if (productId) {
-            return sendImagesForProduct(prisma, whatsapp, lead, productId);
+            return sendImagesForProduct(prisma, lead, productId, unofficialService);
           }
           return 'produto de interesse não identificado';
         }

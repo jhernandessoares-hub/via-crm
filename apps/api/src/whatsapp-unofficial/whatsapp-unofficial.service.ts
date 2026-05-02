@@ -381,7 +381,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   async sendImage(sessionId: string, to: string, imageUrl: string, caption?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
-    const jid = this.toJid(to);
+    const jid = await this.resolveJid(socket, to);
     await socket.sendMessage(jid, {
       image: { url: imageUrl },
       caption: caption ?? undefined,
