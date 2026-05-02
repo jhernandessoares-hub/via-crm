@@ -286,12 +286,19 @@ export class InboxService {
       avatarUrl: lead.avatarUrl ?? null,
       sessaoId: lead.conversaSessionId,
       sessaoNome: lead.conversaSession?.nome ?? null,
-      mensagens: ordered.map((ev) => ({
-        id: ev.id,
-        direcao: LIGHT_CHANNELS_IN.includes(ev.channel) ? 'in' : 'out',
-        texto: extractText(ev.payloadRaw),
-        criadoEm: ev.criadoEm,
-      })),
+      mensagens: ordered.map((ev) => {
+        const media = extractMedia(ev.payloadRaw);
+        return {
+          id: ev.id,
+          direcao: LIGHT_CHANNELS_IN.includes(ev.channel) ? 'in' : 'out',
+          texto: extractText(ev.payloadRaw),
+          criadoEm: ev.criadoEm,
+          mediaUrl: media.mediaUrl,
+          mediaType: media.mediaType,
+          mimeType: media.mimeType,
+          filename: media.filename,
+        };
+      }),
       hasMore: events.length === 50,
       nextCursor: events.length === 50 ? ordered[0]?.criadoEm?.toISOString() : null,
     };
@@ -373,5 +380,29 @@ function extractText(payloadRaw: any): string | null {
   const p = payloadRaw as any;
   if (typeof p.text === 'string') return p.text;
   if (typeof p.body === 'string') return p.body;
+  if (typeof p.caption === 'string') return p.caption;
+  if (p.type === 'image' || p.media?.url) return '📷 Imagem';
+  if (p.type === 'video') return '🎥 Vídeo';
+  if (p.type === 'audio') return '🎵 Áudio';
   return null;
+}
+
+function extractMedia(payloadRaw: any): { mediaUrl: string | null; mediaType: string | null; mimeType: string | null; filename: string | null } {
+  const empty = { mediaUrl: null, mediaType: null, mimeType: null, filename: null };
+  if (!payloadRaw || typeof payloadRaw !== 'object') return empty;
+  const p = payloadRaw as any;
+
+  // Imagens enviadas pela IA: { type: 'image', media: { url, mimeType, filename }, caption }
+  if (p.media?.url) {
+    const kind = String(p.type || p.media.mimeType || '').toLowerCase();
+    const mediaType = kind.includes('video') ? 'video' : kind.includes('audio') ? 'audio' : 'image';
+    return { mediaUrl: p.media.url, mediaType, mimeType: p.media.mimeType ?? null, filename: p.media.filename ?? null };
+  }
+
+  // Campo direto mediaUrl (e.g., mídia de campanha)
+  if (p.mediaUrl) {
+    return { mediaUrl: p.mediaUrl, mediaType: String(p.mediaType || 'image').toLowerCase(), mimeType: null, filename: null };
+  }
+
+  return empty;
 }
