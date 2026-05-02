@@ -702,8 +702,8 @@ function MediaBlock({
     }
 
     if (type === "audio") {
-      const legacy = p.audioUrl || p?.audio?.url || null;
-      if (legacy) return { kind: "audio", url: String(legacy), mimeType: "audio/ogg", filename: "", id: "" };
+      const legacy = p.audioUrl || p?.audio?.url || p.mediaUrl || null;
+      if (legacy) return { kind: "audio", url: String(legacy), mimeType: p.mimeType || "audio/ogg", filename: "", id: "" };
       const x = pick("audio");
       return { kind: "audio", url: x.url ? String(x.url) : "", mimeType: x.mimeType, filename: x.filename, id: x.id };
     }
