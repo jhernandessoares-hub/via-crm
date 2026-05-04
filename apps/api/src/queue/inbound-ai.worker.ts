@@ -801,9 +801,6 @@ async function handleInboundAiJob(
           valorEntrada: true,
           estadoCivil: true,
           dataNascimento: true,
-          tempoProcurandoImovel: true,
-          conversouComCorretor: true,
-          qualCorretorImobiliaria: true,
           perfilImovel: true,
           produtoInteresseId: true,
           resumoLead: true,
@@ -862,9 +859,6 @@ async function handleInboundAiJob(
     if (u.dataNascimento !== undefined) {
       updateData.dataNascimento = u.dataNascimento ? new Date(u.dataNascimento) : null;
     }
-    if (u.tempoProcurandoImovel !== undefined) updateData.tempoProcurandoImovel = u.tempoProcurandoImovel;
-    if (u.conversouComCorretor !== undefined) updateData.conversouComCorretor = u.conversouComCorretor;
-    if (u.qualCorretorImobiliaria !== undefined) updateData.qualCorretorImobiliaria = u.qualCorretorImobiliaria;
     if (u.perfilImovel !== undefined) updateData.perfilImovel = u.perfilImovel;
     if (u.produtoInteresseId !== undefined) updateData.produtoInteresseId = u.produtoInteresseId;
     if (u.resumoLead !== undefined) updateData.resumoLead = u.resumoLead;
