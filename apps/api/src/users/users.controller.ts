@@ -119,7 +119,7 @@ export class UsersController {
   @Patch("me/notifications")
   async updateNotifications(
     @Req() req: any,
-    @Body() body: { events: string[]; stages: string[] },
+    @Body() body: { events: string[]; stages: string[]; allTenantQualified?: boolean },
   ) {
     return this.usersService.updateNotificationSettings(
       req.user.sub || req.user.id,
