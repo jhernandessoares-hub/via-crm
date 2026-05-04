@@ -246,17 +246,25 @@ export class UsersService {
     return data;
   }
 
-  async getNotificationSettings(_userId: string, _tenantId: string) {
-    // notificationSettings foi removido do schema — retorna padrão
-    return { events: ['new_lead'], stages: [] };
+  async getNotificationSettings(userId: string, _tenantId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { notificationSettings: true },
+    });
+    // null = nunca configurou → opt-out default (só lead_qualified)
+    if (!user?.notificationSettings) return { events: ['lead_qualified'], stages: [], allTenantQualified: false };
+    return user.notificationSettings as { events: string[]; stages: string[]; allTenantQualified?: boolean };
   }
 
   async updateNotificationSettings(
-    _userId: string,
-    _tenantId: string,
-    data: { events: string[]; stages: string[] },
+    userId: string,
+    tenantId: string,
+    data: { events: string[]; stages: string[]; allTenantQualified?: boolean },
   ) {
-    // notificationSettings foi removido do schema — sem-op por ora
+    await this.prisma.user.update({
+      where: { id: userId, tenantId },
+      data: { notificationSettings: data as any },
+    });
     return data;
   }
 }
