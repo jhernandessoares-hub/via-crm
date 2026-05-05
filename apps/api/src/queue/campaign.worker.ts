@@ -64,6 +64,26 @@ async function processNext(
 
   const texto = interpolate(disparo.modelo.mensagem, contato.nome, contato.telefone);
 
+  // Verifica se o número está no WhatsApp antes de tentar enviar.
+  // Evita chamada desnecessária ao servidor WA e reduz risco de ban.
+  const [validation] = await unofficial.validateNumbers(sessionId, [contato.telefone]);
+  if (validation?.noWhatsapp) {
+    await prisma.campanhaContato.update({
+      where: { id: contato.id },
+      data: { status: 'FALHA', erro: 'Número não está no WhatsApp' },
+    });
+    await prisma.campanhaDisparo.update({
+      where: { id: disparoId },
+      data: { falhas: { increment: 1 } },
+    });
+    logger.log(`⏭ ${contato.telefone} não está no WhatsApp — pulado (disparo=${disparoId})`);
+    const minMs = (disparo.modelo.delayMinSegundos ?? 5) * 1000;
+    const maxMs = (disparo.modelo.delayMaxSegundos ?? 15) * 1000;
+    const delayMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+    await queue.scheduleCampaignNext(disparoId, delayMs);
+    return;
+  }
+
   try {
     if (disparo.modelo.mediaUrl) {
       if (disparo.modelo.mediaType === 'VIDEO') {
