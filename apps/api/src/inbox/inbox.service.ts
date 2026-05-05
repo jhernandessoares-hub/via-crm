@@ -236,7 +236,7 @@ export class InboxService {
     const contato = await this.prisma.campanhaContato.findFirst({
       where: { id: contatoId },
       select: {
-        id: true, telefone: true, nome: true, enviadoEm: true, status: true,
+        id: true, telefone: true, nome: true, enviadoEm: true, status: true, previewMessages: true,
         disparo: {
           select: {
             tenantId: true,
@@ -259,6 +259,7 @@ export class InboxService {
       mensagemDisparo: contato.disparo.modelo?.mensagem ?? null,
       mediaUrl: contato.disparo.modelo?.mediaUrl ?? null,
       mediaType: contato.disparo.modelo?.mediaType ?? null,
+      previewMessages: (contato.previewMessages as any[] | null) ?? [],
     };
   }
 

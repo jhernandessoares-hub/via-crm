@@ -190,8 +190,9 @@ export async function upsertLeadFromWhatsapp(
     });
   }
 
-  // Não aciona IA para reações e mensagens de sistema do protocolo WhatsApp
-  if (type !== 'reaction' && type !== 'system') {
+  // Não aciona IA para tipos silenciosos (reações, sistema, sticker, enquete, editada)
+  const AI_SILENT_TYPES = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
+  if (!AI_SILENT_TYPES.has(type)) {
     // Detecta possível auto-reply: resposta em menos de 3s após um outbound
     // (humanos não conseguem ler + responder nesse intervalo)
     const AUTO_REPLY_THRESHOLD_MS = 3000;

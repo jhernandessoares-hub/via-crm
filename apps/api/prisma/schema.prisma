@@ -1590,16 +1590,17 @@ model CampanhaDisparo {
 }
 
 model CampanhaContato {
-  id          String    @id @default(uuid())
-  disparoId   String
-  telefone    String
-  nome        String?
-  leadId      String?
-  status      String    @default("PENDENTE")
-  enviadoEm   DateTime?
-  respondeuEm DateTime?
-  erro        String?
-  criadoEm    DateTime  @default(now())
+  id              String    @id @default(uuid())
+  disparoId       String
+  telefone        String
+  nome            String?
+  leadId          String?
+  status          String    @default("PENDENTE")
+  enviadoEm       DateTime?
+  respondeuEm     DateTime?
+  erro            String?
+  previewMessages Json?
+  criadoEm        DateTime  @default(now())
 
   disparo CampanhaDisparo @relation(fields: [disparoId], references: [id], onDelete: Cascade)
 
