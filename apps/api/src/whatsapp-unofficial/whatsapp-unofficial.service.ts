@@ -16,6 +16,9 @@ import { resolveAiModel } from '../ai/resolve-ai-model';
 
 const logger = new Logger('WhatsappUnofficialService');
 
+// Tipos que não representam intenção do lead — não acionam IA nem criam lead de campanha
+const SILENT_INBOUND_TYPES = new Set(['sticker', 'poll', 'system', 'unknown', 'edited']);
+
 // ── Extrator de texto/tipo de mensagens Baileys ───────────────────────────────
 
 function extractBaileysText(msgContent: any): { type: string; text: string } {
@@ -49,7 +52,8 @@ function extractBaileysText(msgContent: any): { type: string; text: string } {
   }
   if (inner.editedMessage) {
     const edited = inner.editedMessage.message;
-    return extractBaileysText(edited);
+    const extracted = extractBaileysText(edited);
+    return { type: 'edited', text: extracted.text };
   }
 
   // Mensagens de sistema do protocolo WhatsApp — não representam intenção do lead
@@ -600,6 +604,18 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       return;
     }
 
+    // Mensagens silenciosas de contato de campanha: acumula como preview sem criar lead
+    if (contatoDisparo && SILENT_INBOUND_TYPES.has(type)) {
+      const preview = { type, text, at: new Date().toISOString() };
+      const existing = (contatoDisparo.previewMessages as any[] | null) ?? [];
+      await this.prisma.campanhaContato.update({
+        where: { id: contatoDisparo.id },
+        data: { previewMessages: [...existing, preview] },
+      });
+      logger.log(`Mensagem silenciosa (${type}) de campanha → previewMessages contatoId=${contatoDisparo.id}`);
+      return;
+    }
+
     if (contatoDisparo) {
       await this.prisma.$transaction(async (tx) => {
         await tx.campanhaContato.update({
@@ -640,14 +656,16 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     });
 
     // Se é resposta de campanha e o lead NÃO foi criado pelo worker (fluxo legado),
-    // registra a mensagem original como contexto para a IA
+    // registra a mensagem original + previews acumulados como contexto para a IA
     if (contatoDisparo && !contatoDisparo.leadId) {
+      const sentAt = new Date(Date.now() - 2000);
+
+      // 1. Mensagem original da campanha (outbound)
       const mensagemOriginal = contatoDisparo.disparo?.modelo?.mensagem;
       if (mensagemOriginal) {
         const textoEnviado = mensagemOriginal
           .replace(/\{\{nome\}\}/gi, contatoDisparo.nome || 'Prezado(a)')
           .replace(/\{\{telefone\}\}/gi, contatoDisparo.telefone);
-        const sentAt = new Date(Date.now() - 2000);
         await this.prisma.leadEvent.create({
           data: {
             tenantId,
@@ -663,7 +681,27 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
           },
         });
       }
-      // Vincula o lead ao contato da campanha
+
+      // 2. Replay das mensagens silenciosas acumuladas antes da resposta real
+      const previews = (contatoDisparo.previewMessages as any[] | null) ?? [];
+      for (const preview of previews) {
+        const previewAt = preview.at ? new Date(preview.at) : new Date(sentAt.getTime() + 500);
+        await this.prisma.leadEvent.create({
+          data: {
+            tenantId,
+            leadId,
+            channel: 'whatsapp.unofficial.in',
+            criadoEm: previewAt,
+            payloadRaw: {
+              type: preview.type,
+              text: preview.text,
+              source: 'campanha.preview',
+            },
+          },
+        });
+      }
+
+      // 3. Vincula o lead ao contato da campanha
       await this.prisma.campanhaContato.update({
         where: { id: contatoDisparo.id },
         data: { leadId },

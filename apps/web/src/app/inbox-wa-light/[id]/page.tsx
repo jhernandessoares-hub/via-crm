@@ -805,21 +805,28 @@ export default function InboxWALightPage() {
 
       if (conversation.contatoId) {
         const detail = await apiFetch(`/inbox/contato/${conversation.contatoId}`);
+        const previews = (detail.previewMessages ?? []).map((p: { type: string; text: string; at: string }, i: number) => ({
+          id: `preview-${conversation.contatoId}-${i}`,
+          direcao: "in" as const,
+          texto: p.text,
+          criadoEm: p.at ?? new Date().toISOString(),
+        }));
         setConversationDetail({
           nome: detail.nome,
           telefone: detail.telefone,
           tracked: true,
           campaignId: conversation.campaignId ?? null,
-          mensagens: detail.mensagemDisparo
-            ? [{
-                id: `campaign-${detail.contatoId}`,
-                direcao: "out",
-                texto: detail.mensagemDisparo,
-                criadoEm: detail.enviadoEm ?? new Date().toISOString(),
-                mediaUrl: detail.mediaUrl,
-                mediaType: detail.mediaType,
-              }]
-            : [],
+          mensagens: [
+            ...(detail.mensagemDisparo ? [{
+              id: `campaign-${detail.contatoId}`,
+              direcao: "out" as const,
+              texto: detail.mensagemDisparo,
+              criadoEm: detail.enviadoEm ?? new Date().toISOString(),
+              mediaUrl: detail.mediaUrl,
+              mediaType: detail.mediaType,
+            }] : []),
+            ...previews,
+          ],
         });
         return;
       }
