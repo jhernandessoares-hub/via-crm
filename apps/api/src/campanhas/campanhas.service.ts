@@ -36,8 +36,8 @@ export class CampanhasService {
     delayMinSegundos?: number;
     delayMaxSegundos?: number;
   }) {
-    const min = Math.max(5, dto.delayMinSegundos ?? 5);
-    const max = Math.max(min, dto.delayMaxSegundos ?? 15);
+    const min = Math.max(10, dto.delayMinSegundos ?? 10);
+    const max = Math.max(min, dto.delayMaxSegundos ?? 20);
     return this.prisma.campanhaModelo.create({
       data: { tenantId, userId, nome: dto.nome, mensagem: dto.mensagem, delayMinSegundos: min, delayMaxSegundos: max },
     });
@@ -45,8 +45,8 @@ export class CampanhasService {
 
   async updateModelo(id: string, tenantId: string, userId: string, dto: any) {
     await this.assertModeloOwner(id, tenantId, userId);
-    const min = dto.delayMinSegundos != null ? Math.max(5, dto.delayMinSegundos) : undefined;
-    const max = dto.delayMaxSegundos != null ? Math.max(min ?? 5, dto.delayMaxSegundos) : undefined;
+    const min = dto.delayMinSegundos != null ? Math.max(10, dto.delayMinSegundos) : undefined;
+    const max = dto.delayMaxSegundos != null ? Math.max(min ?? 10, dto.delayMaxSegundos) : undefined;
     return this.prisma.campanhaModelo.update({
       where: { id },
       data: { nome: dto.nome, mensagem: dto.mensagem, delayMinSegundos: min, delayMaxSegundos: max },
@@ -180,8 +180,8 @@ export class CampanhasService {
     });
     if (!session) throw new NotFoundException('Sessão não encontrada');
 
-    const min = Math.max(5, dto.delayMinSegundos ?? 5);
-    const max = Math.max(min, dto.delayMaxSegundos ?? 15);
+    const min = Math.max(10, dto.delayMinSegundos ?? 10);
+    const max = Math.max(min, dto.delayMaxSegundos ?? 20);
 
     const modelo = await this.prisma.campanhaModelo.create({
       data: { tenantId, userId, nome: dto.nome, mensagem: dto.mensagem, delayMinSegundos: min, delayMaxSegundos: max },
