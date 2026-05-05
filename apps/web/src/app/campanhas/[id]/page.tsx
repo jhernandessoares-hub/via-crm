@@ -83,6 +83,9 @@ export default function CampanhaDetailPage() {
   const [listaTexto, setListaTexto] = useState("");
   const [adicionando, setAdicionando] = useState(false);
   const [pagina, setPagina] = useState(1);
+  const [etapaLista, setEtapaLista] = useState<"input" | "validando" | "revisao">("input");
+  const [contatosValidos, setContatosValidos] = useState<Array<{ telefone: string; nome?: string }>>([]);
+  const [contatosInvalidos, setContatosInvalidos] = useState<Array<{ telefone: string; nome?: string }>>([]);
 
   const fetch = useCallback(async () => {
     try {
@@ -113,21 +116,53 @@ export default function CampanhaDetailPage() {
     } catch (e: any) { alert(e?.message ?? "Erro"); }
   }
 
-  async function adicionarLista() {
+  function parseLista() {
     const linhas = listaTexto.split("\n").filter((l) => l.trim());
-    const contatos = linhas.map((l) => {
+    return linhas.map((l) => {
       const [telefone, ...restNome] = l.split(",");
       return { telefone: telefone.trim(), nome: restNome.join(",").trim() || undefined };
-    });
+    }).filter((c) => c.telefone);
+  }
+
+  async function validarLista() {
+    const contatos = parseLista();
     if (contatos.length === 0) return;
+    setEtapaLista("validando");
+    try {
+      const numeros = contatos.map((c) => c.telefone);
+      const resultado: Array<{ telefone: string; noWhatsapp: boolean }> = await apiFetch("/campanhas/validate-numbers", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: campanha!.session.id, numeros }),
+      });
+      const invalidos = resultado
+        .filter((r) => r.noWhatsapp)
+        .map((r) => ({ telefone: r.telefone, nome: contatos.find((c) => c.telefone === r.telefone)?.nome }));
+      const validos = contatos.filter((c) => !resultado.find((r) => r.telefone === c.telefone)?.noWhatsapp);
+      setContatosValidos(validos);
+      setContatosInvalidos(invalidos);
+      setEtapaLista("revisao");
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao validar números");
+      setEtapaLista("input");
+    }
+  }
+
+  async function confirmarAdicionarLista() {
+    if (contatosValidos.length === 0) {
+      setEtapaLista("input");
+      return;
+    }
     setAdicionando(true);
     try {
       const r = await apiFetch(`/campanhas/${id}/contatos/lista`, {
         method: "POST",
-        body: JSON.stringify({ contatos }),
+        body: JSON.stringify({ contatos: contatosValidos }),
       });
       alert(`${r.adicionados} contatos adicionados`);
       setListaTexto("");
+      setEtapaLista("input");
+      setContatosValidos([]);
+      setContatosInvalidos([]);
       fetch();
     } catch (e: any) { alert(e?.message ?? "Erro"); }
     finally { setAdicionando(false); }
@@ -199,28 +234,88 @@ export default function CampanhaDetailPage() {
         {isRascunho && (
           <div className="p-5 rounded-xl border space-y-4" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
             <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Adicionar contatos</p>
-            <div>
-              <label className="text-xs font-medium mb-1.5 block" style={{ color: "var(--text-muted)" }}>
-                Lista de números (um por linha: telefone, nome)
-              </label>
-              <textarea
-                value={listaTexto}
-                onChange={(e) => setListaTexto(e.target.value)}
-                placeholder={"11999999999, João Silva\n21988888888, Maria\n31977777777"}
-                rows={5}
-                className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none font-mono"
-                style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
-              />
-              <button
-                onClick={adicionarLista}
-                disabled={adicionando || !listaTexto.trim()}
-                className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                style={{ background: "var(--brand-accent)", color: "#fff" }}
-              >
-                {adicionando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-                Adicionar contatos
-              </button>
-            </div>
+
+            {/* Etapa 1: input */}
+            {etapaLista === "input" && (
+              <div>
+                <label className="text-xs font-medium mb-1.5 block" style={{ color: "var(--text-muted)" }}>
+                  Lista de números (um por linha: telefone, nome)
+                </label>
+                <textarea
+                  value={listaTexto}
+                  onChange={(e) => setListaTexto(e.target.value)}
+                  placeholder={"11999999999, João Silva\n21988888888, Maria\n31977777777"}
+                  rows={5}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none font-mono"
+                  style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+                />
+                <button
+                  onClick={validarLista}
+                  disabled={!listaTexto.trim()}
+                  className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                  style={{ background: "var(--brand-accent)", color: "#fff" }}
+                >
+                  <Users className="w-4 h-4" />
+                  Verificar e adicionar
+                </button>
+              </div>
+            )}
+
+            {/* Etapa 2: validando */}
+            {etapaLista === "validando" && (
+              <div className="flex items-center gap-3 py-4" style={{ color: "var(--text-muted)" }}>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="text-sm">Verificando números no WhatsApp...</span>
+              </div>
+            )}
+
+            {/* Etapa 3: revisão */}
+            {etapaLista === "revisao" && (
+              <div className="space-y-4">
+                {/* Válidos */}
+                <div className="flex items-center gap-2 text-sm" style={{ color: "#10b981" }}>
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span><strong>{contatosValidos.length}</strong> número{contatosValidos.length !== 1 ? "s" : ""} com WhatsApp — serão adicionados</span>
+                </div>
+
+                {/* Inválidos */}
+                {contatosInvalidos.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm" style={{ color: "#ef4444" }}>
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span><strong>{contatosInvalidos.length}</strong> número{contatosInvalidos.length !== 1 ? "s" : ""} sem WhatsApp — serão ignorados</span>
+                    </div>
+                    <div className="rounded-lg p-3 space-y-1" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                      {contatosInvalidos.map((c) => (
+                        <p key={c.telefone} className="text-xs font-mono" style={{ color: "#ef4444" }}>
+                          {c.telefone}{c.nome ? ` — ${c.nome}` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={confirmarAdicionarLista}
+                    disabled={adicionando || contatosValidos.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                    style={{ background: "var(--brand-accent)", color: "#fff" }}
+                  >
+                    {adicionando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+                    {contatosValidos.length === 0 ? "Nenhum válido" : `Adicionar ${contatosValidos.length} contato${contatosValidos.length !== 1 ? "s" : ""}`}
+                  </button>
+                  <button
+                    onClick={() => setEtapaLista("input")}
+                    disabled={adicionando}
+                    className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                    style={{ border: "1px solid var(--card-border)", color: "var(--text-muted)" }}
+                  >
+                    Voltar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
