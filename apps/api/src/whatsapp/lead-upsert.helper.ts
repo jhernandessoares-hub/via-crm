@@ -113,15 +113,17 @@ export async function upsertLeadFromWhatsapp(
   let leadId: string;
   let isReentry: boolean;
 
+  const isSystemMessage = type === 'system';
+
   if (existingLead) {
     leadId = existingLead.id;
     isReentry = true;
     await prisma.lead.update({
       where: { id: leadId },
       data: {
-        lastInboundAt: now,
-        conversaCanal: canal,
-        ...(sessionId ? { conversaSessionId: sessionId } : {}),
+        // Mensagens de sistema não reiniciam o timer de inbound nem alteram canal
+        ...(!isSystemMessage ? { lastInboundAt: now, conversaCanal: canal } : {}),
+        ...(sessionId && !isSystemMessage ? { conversaSessionId: sessionId } : {}),
         ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
         ...(avatarUrl ? { avatarUrl } : {}),
       },
@@ -180,13 +182,17 @@ export async function upsertLeadFromWhatsapp(
     },
   });
 
-  await prisma.leadSla.upsert({
-    where: { leadId },
-    create: { tenantId, leadId, lastInboundAt: now, frozenUntil: null, isActive: true },
-    update: { lastInboundAt: now, frozenUntil: null, isActive: true },
-  });
+  if (!isSystemMessage) {
+    await prisma.leadSla.upsert({
+      where: { leadId },
+      create: { tenantId, leadId, lastInboundAt: now, frozenUntil: null, isActive: true },
+      update: { lastInboundAt: now, frozenUntil: null, isActive: true },
+    });
+  }
 
-  if (type !== 'reaction') {
+  // Não aciona IA nem SLA para mensagens sem intenção real do lead
+  // (reações e mensagens de sistema do protocolo WhatsApp)
+  if (type !== 'reaction' && type !== 'system') {
     await queue.rescheduleSla(leadId);
     await queue.scheduleInboundAi(leadId, { isFirstReply: !isReentry });
   }

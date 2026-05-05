@@ -43,12 +43,35 @@ function extractBaileysText(msgContent: any): { type: string; text: string } {
   if (inner.listResponseMessage) return { type: 'text', text: inner.listResponseMessage.title || '[RESPOSTA LISTA]' };
   if (inner.templateButtonReplyMessage) return { type: 'text', text: inner.templateButtonReplyMessage.selectedDisplayText || '[RESPOSTA]' };
   if (inner.pollUpdateMessage) return { type: 'poll', text: '[VOTAÇÃO]' };
+  if (inner.pollCreationMessage || inner.pollCreationMessageV2 || inner.pollCreationMessageV3) {
+    const question = inner.pollCreationMessage?.name || inner.pollCreationMessageV2?.name || inner.pollCreationMessageV3?.name || '';
+    return { type: 'poll', text: `[ENQUETE: ${question}]` };
+  }
   if (inner.editedMessage) {
     const edited = inner.editedMessage.message;
     return extractBaileysText(edited);
   }
 
-  return { type: 'unknown', text: '[MENSAGEM]' };
+  // Mensagens de sistema do protocolo WhatsApp — não representam intenção do lead
+  if (inner.protocolMessage) {
+    const descriptions: Record<number, string> = {
+      0: '[Mensagem apagada pelo remetente]',
+      3: '[Sincronização de histórico]',
+      4: '[Mensagens temporárias atualizadas]',
+      14: '[Chave de criptografia atualizada]',
+    };
+    const desc = descriptions[inner.protocolMessage.type] ?? '[Mensagem de sistema]';
+    return { type: 'system', text: desc };
+  }
+  if (inner.senderKeyDistributionMessage || (inner as any).senderKeyDistributionMessageWithIdentity) {
+    return { type: 'system', text: '[Protocolo de criptografia]' };
+  }
+  if (inner.callLogMessage) {
+    const missed = inner.callLogMessage.callResult === 'MISSED';
+    return { type: 'system', text: missed ? '[Chamada perdida]' : '[Chamada de voz]' };
+  }
+
+  return { type: 'unknown', text: '[Mensagem não reconhecida]' };
 }
 
 function digitsOnly(value: string | null | undefined) {
