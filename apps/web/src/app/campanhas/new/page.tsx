@@ -15,8 +15,8 @@ export default function NovaCampanhaPage() {
     nome: "",
     sessionId: "",
     mensagem: "",
-    delayMinSegundos: 5,
-    delayMaxSegundos: 15,
+    delayMinSegundos: 10,
+    delayMaxSegundos: 20,
   });
   const [salvando, setSalvando] = useState(false);
   const [preview, setPreview] = useState("");
@@ -40,7 +40,7 @@ export default function NovaCampanhaPage() {
       alert("Preencha nome, sessão e mensagem");
       return;
     }
-    if (form.delayMinSegundos < 5) { alert("Delay mínimo é 5 segundos"); return; }
+    if (form.delayMinSegundos < 10) { alert("Delay mínimo é 10 segundos"); return; }
     if (form.delayMaxSegundos < form.delayMinSegundos) { alert("Delay máximo deve ser ≥ mínimo"); return; }
 
     setSalvando(true);
@@ -150,12 +150,12 @@ export default function NovaCampanhaPage() {
             </label>
             <div className="flex items-center gap-3">
               <div className="flex-1">
-                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Mínimo (≥5s)</label>
+                <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>Mínimo (≥10s)</label>
                 <input
                   type="number"
-                  min={5}
+                  min={10}
                   value={form.delayMinSegundos}
-                  onChange={(e) => set("delayMinSegundos", Math.max(5, Number(e.target.value)))}
+                  onChange={(e) => set("delayMinSegundos", Math.max(10, Number(e.target.value)))}
                   className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
                   style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
                 />
