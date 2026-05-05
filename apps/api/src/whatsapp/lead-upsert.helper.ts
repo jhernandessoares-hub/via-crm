@@ -190,11 +190,26 @@ export async function upsertLeadFromWhatsapp(
     });
   }
 
-  // Não aciona IA nem SLA para mensagens sem intenção real do lead
-  // (reações e mensagens de sistema do protocolo WhatsApp)
+  // Não aciona IA para reações e mensagens de sistema do protocolo WhatsApp
   if (type !== 'reaction' && type !== 'system') {
-    await queue.rescheduleSla(leadId);
-    await queue.scheduleInboundAi(leadId, { isFirstReply: !isReentry });
+    // Detecta possível auto-reply: resposta em menos de 3s após um outbound
+    // (humanos não conseguem ler + responder nesse intervalo)
+    const AUTO_REPLY_THRESHOLD_MS = 3000;
+    const recentOutbound = await prisma.leadEvent.findFirst({
+      where: {
+        leadId,
+        channel: { in: ['whatsapp.unofficial.out', 'whatsapp.out'] },
+        criadoEm: { gte: new Date(now.getTime() - AUTO_REPLY_THRESHOLD_MS) },
+      },
+      select: { id: true },
+    });
+
+    if (recentOutbound) {
+      logger.log(`⚡ Possível auto-reply detectado (< 3s após outbound) — IA não acionada leadId=${leadId}`);
+    } else {
+      await queue.rescheduleSla(leadId);
+      await queue.scheduleInboundAi(leadId, { isFirstReply: !isReentry });
+    }
   }
 
   logger.log(`Lead ${isReentry ? 'atualizado' : 'criado'} — id=${leadId} canal=${canal}`);
