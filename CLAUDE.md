@@ -64,7 +64,7 @@ via-crm/
 | `prisma/` | PrismaService (@Global) |
 | `admin/ai-providers.service.ts` | Provedores de IA — CRUD de provedores, configuração de modelo por função, saldo OpenAI |
 | `whatsapp-unofficial/` | WhatsApp Light — sessões Baileys multi-tenant (QR Code), envio de texto/imagem/vídeo, inbound de mensagens; filtros: ignora @g.us (grupos), status@broadcast, @newsletter e reações; mensagens de sistema do protocolo WA (`protocolMessage`, `senderKeyDistributionMessage`, `callLogMessage`) retornam type `'system'` com texto descritivo — evento salvo mas sem acionar IA/SLA; `profilePictureUrl` com timeout 2s; desconexão manual via flag `manuallyDisconnected` não reconecta automaticamente; resolve LIDs via mapa `lidToPhone` (populado por `contacts.upsert`/`contacts.update`), com fallback para dígitos do LID se mapeamento ainda não disponível |
-| `campanhas/` | Campanhas de disparo via WhatsApp Light — CRUD modelos (com mídia), CRUD disparos, contatos (leads ou lista externa), controle start/pause/resume/cancel, variáveis `{{nome}}`/`{{telefone}}`; lead criado **somente quando contato responde** (não ao enviar); ao responder, evento da mensagem original da campanha é registrado no lead (2s antes do inbound) para contexto da IA |
+| `campanhas/` | Campanhas de disparo via WhatsApp Light — CRUD modelos (com mídia), CRUD disparos, contatos (leads ou lista externa), controle start/pause/resume/cancel, variáveis `{{nome}}`/`{{telefone}}`; lead criado **somente quando contato responde** (não ao enviar); ao responder, evento da mensagem original da campanha é registrado no lead (2s antes do inbound) para contexto da IA; antes de cada envio o worker valida via `onWhatsApp()` — contatos sem WhatsApp marcados como `FALHA` sem tentativa de envio |
 | `inbox/` | Inbox WA Light — lista conversas por sessão (`GET /inbox?sessionId=X`), mensagens paginadas, envio (`POST /inbox/:leadId/send`), marcar como lida (`POST /inbox/:leadId/read`); filtra por `conversaSessionId`; naoLidos calculado em 2 queries (não N+1); `GET /inbox/:leadId` retorna `avatarUrl` |
 
 ---
@@ -80,7 +80,7 @@ Todos inicializados em `main.ts` após health check do Redis.
 | `WhatsappInboundWorker` | `whatsapp-inbound-queue` | Processa payloads de webhook (3 tentativas, exponential backoff) |
 | `WhatsappMediaWorker` | `whatsapp-media-queue` | Download e resolução de mídia (áudio/imagem) via Cloudinary |
 | `ReminderWorker` | `reminder-queue` | Lembretes de eventos do calendário 30min antes (cron `*/5 * * * *`) |
-| `CampaignWorker` | `campaign-queue` | Disparo encadeado de campanhas WhatsApp Light — um job por vez, agenda próximo com delay aleatório entre `delayMin` e `delayMax` |
+| `CampaignWorker` | `campaign-queue` | Disparo encadeado de campanhas WhatsApp Light — um job por vez, valida número via `onWhatsApp()` antes de enviar (sem WA → FALHA imediata sem envio), agenda próximo com delay aleatório entre `delayMin` e `delayMax` |
 
 ---
 
@@ -146,7 +146,7 @@ SiteTemplate      → template de site (scope: PADRAO/EXCLUSIVO/INTERNO, siteTyp
 TenantSite        → site do tenant — fork independente do template (contentJson ≠ template após customização)
                     slug único, publishedJson separado do contentJson (rascunho vs publicado)
 WhatsappUnofficialSession → sessão Baileys por tenant (múltiplas por tenant): nome, status (DISCONNECTED|CONNECTING|CONNECTED|QR_PENDING), qrCode base64, phoneNumber, pushName, authStateJson (creds+keys Baileys). FK em Lead (onDelete: SetNull) e CampanhaDisparo (onDelete: SetNull)
-CampanhaModelo    → template de campanha: nome, mensagem ({{nome}}/{{telefone}}), mediaUrl, mediaType, delayMinSegundos (≥5), delayMaxSegundos. Delete bloqueia se há disparo ativo; remove histórico de disparos antes de deletar
+CampanhaModelo    → template de campanha: nome, mensagem ({{nome}}/{{telefone}}), mediaUrl, mediaType, delayMinSegundos (≥10), delayMaxSegundos. Delete bloqueia se há disparo ativo; remove histórico de disparos antes de deletar
 CampanhaDisparo   → disparo de campanha: sessionId? (nullable, onDelete: SetNull), modeloId, status (RODANDO|PAUSADA|CONCLUIDA|CANCELADA), contadores. Rota `GET /campanhas/disparos/active/:sessionId` deve ficar ANTES de `GET /campanhas/disparos/:id` no controller (NestJS resolve em ordem)
 CampanhaContato   → contato de campanha: telefone, nome, leadId? (preenchido quando contato responde), status (PENDENTE|ENVIADO|FALHA|RESPONDEU), enviadoEm, respondeuEm
 Lead.avatarUrl    → foto de perfil do contato WhatsApp (buscado com timeout 2s via profilePictureUrl do Baileys, salvo no upsert)
