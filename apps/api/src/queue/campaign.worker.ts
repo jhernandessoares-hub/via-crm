@@ -77,8 +77,8 @@ async function processNext(
       data: { falhas: { increment: 1 } },
     });
     logger.log(`⏭ ${contato.telefone} não está no WhatsApp — pulado (disparo=${disparoId})`);
-    const minMs = (disparo.modelo.delayMinSegundos ?? 10) * 1000;
-    const maxMs = (disparo.modelo.delayMaxSegundos ?? 20) * 1000;
+    const minMs = disparo.modelo.delayMinSegundos * 1000;
+    const maxMs = disparo.modelo.delayMaxSegundos * 1000;
     const delayMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
     await queue.scheduleCampaignNext(disparoId, delayMs);
     return;
@@ -117,8 +117,8 @@ async function processNext(
     logger.warn(`Falha ao enviar para ${contato.telefone}: ${e?.message}`);
   }
 
-  const minMs = (disparo.modelo.delayMinSegundos ?? 10) * 1000;
-  const maxMs = (disparo.modelo.delayMaxSegundos ?? 20) * 1000;
+  const minMs = disparo.modelo.delayMinSegundos * 1000;
+  const maxMs = disparo.modelo.delayMaxSegundos * 1000;
   const delayMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
   await queue.scheduleCampaignNext(disparoId, delayMs);
 }
