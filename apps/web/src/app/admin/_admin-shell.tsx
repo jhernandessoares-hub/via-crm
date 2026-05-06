@@ -61,21 +61,18 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [admin, setAdmin] = useState<AdminUser | null>(null);
 
   useEffect(() => {
-    setAdminToken(localStorage.getItem("adminToken"));
+    const token = localStorage.getItem("adminToken");
+    setAdminToken(token);
     try {
       const raw = localStorage.getItem("adminUser");
       setAdmin(raw ? (JSON.parse(raw) as AdminUser) : null);
     } catch {
       setAdmin(null);
     }
-  }, []);
-
-  useEffect(() => {
-    if (adminToken === undefined) return; // ainda carregando
-    if (!isLoginRoute && !adminToken) {
+    if (!isLoginRoute && !token) {
       router.push("/admin/login");
     }
-  }, [adminToken, isLoginRoute, router]);
+  }, [isLoginRoute, router]);
 
   if (isLoginRoute) return <>{children}</>;
 
