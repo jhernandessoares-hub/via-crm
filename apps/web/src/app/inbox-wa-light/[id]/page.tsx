@@ -637,7 +637,7 @@ function AddListModal({
               </div>
               <div className="rounded-lg p-3 text-center" style={{ background: "var(--shell-bg)" }}>
                 <p className="text-2xl font-bold" style={{ color: "#ef4444" }}>{unavailable.length}</p>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Revisar</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Não enviados</p>
               </div>
               <div className="rounded-lg p-3 text-center" style={{ background: "var(--shell-bg)" }}>
                 <p className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>{result.length}</p>
