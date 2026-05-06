@@ -155,7 +155,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           {/* Heading */}
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Bem-vindo de volta</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Bem-vindo de volta ✓</h2>
             <p className="text-sm text-gray-500 mt-1">Entre com suas credenciais para continuar</p>
           </div>
 
