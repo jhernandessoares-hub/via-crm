@@ -1548,8 +1548,8 @@ model CampanhaModelo {
   mediaUrl         String?
   mediaPublicId    String?
   mediaType        String?
-  delayMinSegundos Int       @default(5)
-  delayMaxSegundos Int       @default(15)
+  delayMinSegundos Int       @default(10)
+  delayMaxSegundos Int       @default(20)
   criadoEm         DateTime  @default(now())
   atualizadoEm     DateTime  @updatedAt
 
