@@ -228,8 +228,10 @@ export class AuthService {
       select: { id: true, tenantId: true, nome: true, email: true },
     });
 
-    // Sempre retorna 200 para não revelar se o email existe (LGPD / segurança)
-    if (!user) return;
+    if (!user) {
+      await this.email.sendEmailNotFound(normalizedEmail);
+      return;
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hora

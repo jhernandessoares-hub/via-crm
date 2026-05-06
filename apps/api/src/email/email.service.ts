@@ -107,6 +107,26 @@ export class EmailService {
     );
   }
 
+  async sendEmailNotFound(to: string): Promise<void> {
+    const support = process.env.EMAIL_FROM
+      ? process.env.EMAIL_FROM.replace(/^.*<(.+)>$/, '$1')
+      : 'suportecrmvia@vexcia.com';
+    await this.send(
+      to,
+      'Recuperação de senha — VIA CRM',
+      `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <h2 style="color:#1a1a1a">Olá!</h2>
+        <p>Recebemos uma solicitação de recuperação de senha para este endereço de email, mas ele não está cadastrado no <strong>VIA CRM</strong>.</p>
+        <p>Se você é cliente e acredita que isso é um erro, entre em contato com o suporte pelo email <a href="mailto:${support}" style="color:#2563eb">${support}</a>.</p>
+        <p style="color:#666;font-size:13px">Se não foi você quem fez essa solicitação, pode ignorar este email.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:32px 0">
+        <p style="color:#999;font-size:12px">VIA CRM · Todos os direitos reservados</p>
+      </div>
+      `,
+    );
+  }
+
   async sendTenantActivated(to: string, tenantNome: string, ownerNome: string): Promise<void> {
     await this.send(
       to,
