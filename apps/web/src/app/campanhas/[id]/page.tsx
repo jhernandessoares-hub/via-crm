@@ -256,7 +256,7 @@ export default function CampanhaDetailPage() {
                   style={{ background: "var(--brand-accent)", color: "#fff" }}
                 >
                   <Users className="w-4 h-4" />
-                  Verificar e adicionar
+                  Validar números
                 </button>
               </div>
             )}
@@ -283,7 +283,7 @@ export default function CampanhaDetailPage() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm" style={{ color: "#ef4444" }}>
                       <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span><strong>{contatosInvalidos.length}</strong> número{contatosInvalidos.length !== 1 ? "s" : ""} sem WhatsApp — serão ignorados</span>
+                      <span><strong>{contatosInvalidos.length}</strong> número{contatosInvalidos.length !== 1 ? "s" : ""} fora do WhatsApp — não serão enviados</span>
                     </div>
                     <div className="rounded-lg p-3 space-y-1" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
                       {contatosInvalidos.map((c) => (
