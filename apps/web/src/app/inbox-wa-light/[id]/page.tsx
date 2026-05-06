@@ -674,7 +674,7 @@ function AddListModal({
 
             {unavailable.length > 0 && (
               <div className="max-h-44 overflow-y-auto rounded-lg border p-3" style={{ borderColor: "#f59e0b", background: "#f59e0b10" }}>
-                <p className="mb-2 text-xs font-semibold" style={{ color: "#f59e0b" }}>Números que precisam de verificação</p>
+                <p className="mb-2 text-xs font-semibold" style={{ color: "#f59e0b" }}>Números fora do WhatsApp — não serão enviados</p>
                 <div className="space-y-1">
                   {unavailable.map((item) => (
                     <p key={`${item.telefone}-${item.nome ?? ""}`} className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
