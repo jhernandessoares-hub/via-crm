@@ -1374,23 +1374,27 @@ enum LearningStatus {
 // ─── Gestão de Empreendimentos ───────────────────────────────────────────────
 
 model Development {
-  id             String    @id @default(uuid())
-  tenantId       String
-  nome           String
-  tipo           String    // VERTICAL | HORIZONTAL
-  subtipo        String    // APARTAMENTO | CASA | LOTEAMENTO
-  endereco       String?
-  cidade         String?
-  estado         String?
-  sunOrientation String    @default("LESTE") // NORTE | SUL | LESTE | OESTE
-  prazoEntrega   DateTime?
-  status         String    @default("LANCAMENTO") // LANCAMENTO | EM_OBRA | CONCLUIDO
-  gridRows       Int       @default(10)
-  gridCols       Int       @default(10)
-  gridLayout     Json?     // [{row, col, type: UNIT|EMPTY|VEGETATION|PORTARIA|RUA|CASA_MAQUINAS|CAIXA_DAGUA}]
-  descricao      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  tenantId            String
+  nome                String
+  tipo                String    // VERTICAL | HORIZONTAL
+  subtipo             String    // APARTAMENTO | CASA | LOTEAMENTO
+  endereco            String?
+  cidade              String?
+  estado              String?
+  sunOrientation      String    @default("LESTE") // NORTE | SUL | LESTE | OESTE
+  prazoEntrega        DateTime?
+  status              String    @default("LANCAMENTO") // LANCAMENTO | EM_OBRA | CONCLUIDO
+  gridRows            Int       @default(10)
+  gridCols            Int       @default(10)
+  gridLayout          Json?
+  descricao           String?
+  lat                 Float?    // GPS latitude do centro do terreno
+  lng                 Float?    // GPS longitude do centro do terreno
+  implantacaoUrl      String?   // URL Cloudinary da planta de implantação
+  implantacaoPublicId String?   // Cloudinary public ID para delete
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   tenant           Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   towers           Tower[]
@@ -1412,6 +1416,13 @@ model Tower {
   gridY         Int?
   gridWidth     Int      @default(1)
   gridHeight    Int      @default(1)
+  offsetX       Float    @default(0)    // metros do centro do desenvolvimento (eixo E-W)
+  offsetY       Float    @default(0)    // metros do centro (eixo N-S)
+  larguraM      Float    @default(20)   // largura da torre/quadra em metros
+  profundidadeM Float    @default(15)   // profundidade em metros
+  alturaAndarM  Float    @default(3.0)  // altura por andar (VERTICAL) ou da casa (HORIZONTAL)
+  rotacao       Float    @default(0)    // rotação em graus
+  lados         String   @default("FRENTE,FUNDO,ESQUERDA,DIREITA") // faces com unidades
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -1439,6 +1450,12 @@ model DevelopmentUnit {
   vagas          Int?
   valorVenda     Float?
   valorAvaliado  Float?
+  finalPrice     Float?   // preço final negociado (vendido/reservado)
+  comprador      String?  // nome do comprador
+  loteNum        String?  // identificador do lote (ex: "L01", "Lote 15") — para HORIZONTAL
+  loteAreaM2     Float?   // área real do lote em m²
+  loteFrente     Float?   // dimensão de frente em metros
+  loteFundo      Float?   // dimensão de fundo em metros
   soldAt         DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

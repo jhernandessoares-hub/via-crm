@@ -38,6 +38,10 @@ export class DevelopmentsService {
         cidade: data.cidade,
         estado: data.estado,
         descricao: data.descricao,
+        sunOrientation: data.sunOrientation || 'LESTE',
+        prazoEntrega: data.prazoEntrega ? new Date(data.prazoEntrega) : undefined,
+        lat: data.lat ?? null,
+        lng: data.lng ?? null,
         gridRows: data.gridRows || 10,
         gridCols: data.gridCols || 10,
       },
@@ -93,7 +97,20 @@ export class DevelopmentsService {
     const dev = await this.prisma.development.findFirst({ where: { id: developmentId, tenantId } });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
     return this.prisma.tower.create({
-      data: { tenantId, developmentId, nome: data.nome, floors: data.floors || 1, unitsPerFloor: data.unitsPerFloor || 1 },
+      data: {
+        tenantId,
+        developmentId,
+        nome: data.nome,
+        floors: data.floors || 1,
+        unitsPerFloor: data.unitsPerFloor || 1,
+        larguraM: data.larguraM ?? 20,
+        profundidadeM: data.profundidadeM ?? 15,
+        alturaAndarM: data.alturaAndarM ?? 3.0,
+        rotacao: data.rotacao ?? 0,
+        offsetX: data.offsetX ?? 0,
+        offsetY: data.offsetY ?? 0,
+        lados: data.lados ?? 'FRENTE,FUNDO,ESQUERDA,DIREITA',
+      },
     });
   }
 
@@ -167,13 +184,21 @@ export class DevelopmentsService {
     const dev = await this.prisma.development.findFirst({ where: { id, tenantId } });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
 
-    const url = await new Promise<string>((resolve, reject) => {
+    // Remove imagem anterior se existir
+    if ((dev as any).implantacaoPublicId) {
+      await cloudinary.uploader.destroy((dev as any).implantacaoPublicId).catch(() => {});
+    }
+
+    const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
       cloudinary.uploader.upload_stream(
-        { folder: `via-crm/developments/${tenantId}`, resource_type: 'image' },
-        (err, res) => { if (err) return reject(err); resolve(res!.secure_url); },
+        { folder: `via-crm/developments/${tenantId}/implantacao`, resource_type: 'image' },
+        (err, res) => { if (err) return reject(err); resolve(res as any); },
       ).end(file.buffer);
     });
 
-    return this.prisma.development.update({ where: { id }, data: { implantationImageUrl: url } as any });
+    return this.prisma.development.update({
+      where: { id },
+      data: { implantacaoUrl: result.secure_url, implantacaoPublicId: result.public_id } as any,
+    });
   }
 }
