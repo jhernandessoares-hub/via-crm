@@ -2,7 +2,7 @@ import { Body, Controller, Delete, ForbiddenException, Get, InternalServerErrorE
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { UsageService, ALL_USAGE_KEYS } from '../plans/usage.service';
+import { UsageService, ALL_USAGE_KEYS, USAGE_TO_LIMIT_KEY } from '../plans/usage.service';
 import { LimitsService } from '../plans/limits.service';
 
 function requireOwner(req: any) {
@@ -146,16 +146,18 @@ export class TenantsController {
     const role = req.user?.role;
     if (role !== 'OWNER' && role !== 'MANAGER') throw new ForbiddenException('Acesso restrito ao OWNER e MANAGER.');
     const tenantId = req.user.tenantId;
+    const tenant = await this.tenantsService.getById(tenantId);
     const limits = await this.limitsService.getLimitsForTenant(tenantId);
     const result: Record<string, any> = {};
     for (const key of ALL_USAGE_KEYS) {
-      const limit = limits[key] ?? -1;
+      const limitKey = USAGE_TO_LIMIT_KEY[key] ?? key;
+      const limit = limits[limitKey] ?? -1;
       if (limit < 0) {
         result[key] = { used: await this.usageService.getCounter(tenantId, key), limit: -1, remaining: -1, percent: 0 };
       } else {
         result[key] = await this.usageService.getUsage(tenantId, key, limit);
       }
     }
-    return result;
+    return { plan: (tenant as any).plan, usage: result };
   }
 }

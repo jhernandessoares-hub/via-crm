@@ -21,7 +21,7 @@ const LABEL_MAP: Record<string, string> = {
 
 export default function UsoPage() {
   const [role, setRole] = useState<string>('');
-  const { usage, loading, error } = useUsage();
+  const { usage, plan, loading, error } = useUsage();
   const [fallback, setFallback] = useState('');
   const [savingFallback, setSavingFallback] = useState(false);
   const [savedFallback, setSavedFallback] = useState(false);
@@ -65,7 +65,14 @@ export default function UsoPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Uso e Limites</h1>
-            <p className="text-sm text-gray-500 mt-1">Acompanhe o consumo do seu plano</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Acompanhe o consumo do seu plano
+              {plan && (
+                <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-semibold ${{ STARTER: 'bg-gray-100 text-gray-600', PRO: 'bg-blue-100 text-blue-700', BUSINESS: 'bg-purple-100 text-purple-700' }[plan] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {plan}
+                </span>
+              )}
+            </p>
           </div>
           {hasCritical && (
             <span className="text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 px-3 py-1 rounded-full font-medium">

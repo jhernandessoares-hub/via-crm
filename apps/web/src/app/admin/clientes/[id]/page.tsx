@@ -198,7 +198,7 @@ export default function AdminClienteDetailPage() {
         <div className="flex items-center gap-3 mt-2">
           <h1 className="text-2xl font-bold">{tenant.nome}</h1>
           <span className={`text-xs px-2 py-1 rounded-full ${tenant.ativo ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{tenant.ativo ? "Ativo" : "Suspenso"}</span>
-          <span className={`text-xs px-2 py-1 rounded-full ${tenant.plan === "PREMIUM" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-600"}`}>{tenant.plan}</span>
+          <span className={`text-xs px-2 py-1 rounded-full ${{ STARTER: "bg-gray-100 text-gray-600", PRO: "bg-blue-100 text-blue-700", BUSINESS: "bg-purple-100 text-purple-700" }[tenant.plan as string] ?? "bg-gray-100 text-gray-600"}`}>{tenant.plan}</span>
         </div>
         <p className="text-sm text-gray-400 mt-1">slug: {tenant.slug} · id: {tenant.id}</p>
       </div>
@@ -370,12 +370,59 @@ export default function AdminClienteDetailPage() {
           </button>
           <select onChange={(e) => changePlan(e.target.value)} value={tenant.plan} className="text-sm border rounded-md px-3 py-2">
             <option value="STARTER">Starter</option>
-            <option value="PREMIUM">Premium</option>
+            <option value="PRO">Pro</option>
+            <option value="BUSINESS">Business</option>
           </select>
           <button onClick={exportData} className="text-sm px-4 py-2 rounded-md border hover:bg-gray-50">
             Exportar dados (JSON)
           </button>
         </div>
+      </div>
+
+      {/* Add-ons */}
+      <div className="border rounded-lg bg-white p-5 space-y-3">
+        <h2 className="font-semibold text-sm">Add-ons ativos</h2>
+        <div className="flex flex-wrap gap-2">
+          {(tenant.addons ?? []).length === 0 && (
+            <span className="text-xs text-gray-400">Nenhum add-on ativo</span>
+          )}
+          {(tenant.addons ?? []).map((addon: string) => (
+            <div key={addon} className="flex items-center gap-1.5 rounded-full bg-indigo-100 text-indigo-700 px-3 py-1 text-xs font-medium">
+              {addon}
+              <button
+                onClick={async () => {
+                  if (!confirm(`Remover add-on ${addon}?`)) return;
+                  try {
+                    await adminFetch(`/admin/tenants/${id}/addons/remove`, { method: "POST", body: JSON.stringify({ addon }) });
+                    msg("success", `Add-on ${addon} removido.`);
+                    load();
+                  } catch (e: any) { msg("error", e?.message || "Erro."); }
+                }}
+                className="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
+              >×</button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 items-center">
+          <select id="addon-select" className="text-sm border rounded-md px-3 py-1.5">
+            <option value="DEVELOPMENTS">Gestão de Empreendimentos</option>
+          </select>
+          <button
+            onClick={async () => {
+              const sel = (document.getElementById("addon-select") as HTMLSelectElement)?.value;
+              if (!sel) return;
+              try {
+                await adminFetch(`/admin/tenants/${id}/addons/add`, { method: "POST", body: JSON.stringify({ addon: sel }) });
+                msg("success", `Add-on ${sel} ativado.`);
+                load();
+              } catch (e: any) { msg("error", e?.message || "Erro ao ativar add-on."); }
+            }}
+            className="text-sm px-3 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+          >
+            + Ativar
+          </button>
+        </div>
+        <p className="text-xs text-gray-400">Gestão de Empreendimentos requer plano BUSINESS.</p>
       </div>
 
       {/* Users */}

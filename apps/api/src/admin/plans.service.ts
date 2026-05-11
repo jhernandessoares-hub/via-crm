@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LimitsService } from '../plans/limits.service';
+import { UsageService, ALL_USAGE_KEYS, USAGE_TO_LIMIT_KEY } from '../plans/usage.service';
 import { Logger } from '../logger';
 import { PlanTier } from '@prisma/client';
 
@@ -11,6 +12,7 @@ export class PlansService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly limitsService: LimitsService,
+    private readonly usageService: UsageService,
   ) {}
 
   async listPlans() {
@@ -150,13 +152,23 @@ export class PlansService {
   async listAllTenantsUsage() {
     const tenants = await this.prisma.tenant.findMany({
       where: { ativo: true },
-      select: { id: true, nome: true, plan: true },
+      select: { id: true, nome: true, plan: true, addons: true },
     });
 
-    const result: Array<typeof tenants[number] & { counters: Awaited<ReturnType<typeof this.prisma.usageCounter.findMany>> }> = [];
+    const result: Array<{ id: string; nome: string; plan: string; addons: string[]; usage: Record<string, any> }> = [];
     for (const t of tenants) {
-      const counters = await this.prisma.usageCounter.findMany({ where: { tenantId: t.id } });
-      result.push({ ...t, counters });
+      const limits = await this.limitsService.getLimitsForTenant(t.id);
+      const usage: Record<string, any> = {};
+      for (const key of ALL_USAGE_KEYS) {
+        const limitKey = USAGE_TO_LIMIT_KEY[key] ?? key;
+        const limit = limits[limitKey] ?? -1;
+        if (limit < 0) {
+          usage[key] = { used: await this.usageService.getCounter(t.id, key), limit: -1, remaining: -1, percent: 0 };
+        } else {
+          usage[key] = await this.usageService.getUsage(t.id, key, limit);
+        }
+      }
+      result.push({ ...t, usage });
     }
     return result;
   }

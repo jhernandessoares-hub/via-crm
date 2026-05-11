@@ -3,44 +3,62 @@
 import { useEffect, useState } from 'react';
 import AdminShell from '../_admin-shell';
 import { adminFetch } from '@/lib/admin-api';
+import { MeterCard } from '@/components/MeterCard';
 
 interface TenantUsage {
   id: string;
   nome: string;
   plan: string;
-  counters: Array<{ key: string; value: number; periodYearMonth: string | null }>;
+  addons: string[];
+  usage: Record<string, { used: number; limit: number; remaining: number; percent: number; willResetAt?: string | null }>;
 }
 
-const MONTHLY_KEYS = ['monthlyAiLeads', 'monthlyAiMessages', 'monthlyCampaigns', 'monthlyCampaignContacts', 'monthlyDocClassifications'];
+const LABEL_MAP: Record<string, string> = {
+  totalUsers: 'Usuários',
+  monthlyAiLeads: 'Leads atendidos pela IA / mês',
+  monthlyAiMessages: 'Mensagens IA / mês',
+  maxWaSessions: 'Sessões WhatsApp Light',
+  maxSites: 'Sites publicados',
+  maxKnowledgeBases: 'Bases de Conhecimento',
+  maxIngestChannels: 'Canais de entrada',
+  monthlyCampaigns: 'Campanhas / mês',
+  monthlyCampaignContacts: 'Contatos de campanha / mês',
+  monthlyDocClassifications: 'Classificações de documentos / mês',
+  waSessionsConnected: 'Sessões WA conectadas',
+  sitesPublished: 'Sites publicados',
+};
+
+const PLAN_BADGE: Record<string, string> = {
+  STARTER: 'bg-gray-100 text-gray-600',
+  PRO: 'bg-blue-100 text-blue-700',
+  BUSINESS: 'bg-purple-100 text-purple-700',
+};
 
 export default function UsageAdminPage() {
   const [tenants, setTenants] = useState<TenantUsage[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     adminFetch('/admin/usage')
-      .then(setTenants)
+      .then((data) => {
+        setTenants(data);
+        // Expande o primeiro por padrão se houver só um
+        if (data.length === 1) setExpanded(new Set([data[0].id]));
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  function currentPeriod() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }
-
-  function getMonthlyValue(counters: TenantUsage['counters'], key: string) {
-    const period = currentPeriod();
-    return counters.find((c) => c.key === key && c.periodYearMonth === period)?.value ?? 0;
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
   const filtered = tenants.filter((t) => t.nome.toLowerCase().includes(search.toLowerCase()));
-
-  const PLAN_BADGE: Record<string, string> = {
-    STARTER: 'bg-gray-100 text-gray-600',
-    PRO: 'bg-blue-100 text-blue-700',
-    BUSINESS: 'bg-purple-100 text-purple-700',
-  };
 
   return (
     <AdminShell>
@@ -48,7 +66,7 @@ export default function UsageAdminPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard de Uso</h1>
-            <p className="text-sm text-gray-500 mt-1">Consumo mensal por tenant</p>
+            <p className="text-sm text-gray-500 mt-1">Consumo e limites por tenant</p>
           </div>
           <input
             value={search}
@@ -58,43 +76,71 @@ export default function UsageAdminPage() {
           />
         </div>
 
-        {loading && <div className="h-60 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-lg" />}
+        {loading && (
+          <div className="space-y-4">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-48 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-xl" />
+            ))}
+          </div>
+        )}
+
+        {!loading && filtered.length === 0 && (
+          <div className="py-12 text-center text-sm text-gray-400">Nenhum tenant encontrado.</div>
+        )}
 
         {!loading && (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  <th className="text-left px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">Tenant</th>
-                  <th className="text-left px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">Plano</th>
-                  <th className="text-right px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">IA Leads</th>
-                  <th className="text-right px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">IA Msgs</th>
-                  <th className="text-right px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">Campanhas</th>
-                  <th className="text-right px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">Contatos</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {filtered.map((t) => (
-                  <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{t.nome}</td>
-                    <td className="px-4 py-3">
+          <div className="space-y-4">
+            {filtered.map((t) => {
+              const isOpen = expanded.has(t.id);
+              const hasCritical = Object.values(t.usage).some((u) => u.limit > 0 && u.percent >= 95);
+
+              return (
+                <div key={t.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                  {/* Header */}
+                  <div
+                    className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    onClick={() => toggleExpand(t.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-gray-900 dark:text-white">{t.nome}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_BADGE[t.plan] ?? 'bg-gray-100 text-gray-600'}`}>
                         {t.plan}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">{getMonthlyValue(t.counters, 'monthlyAiLeads').toLocaleString('pt-BR')}</td>
-                    <td className="px-4 py-3 text-right">{getMonthlyValue(t.counters, 'monthlyAiMessages').toLocaleString('pt-BR')}</td>
-                    <td className="px-4 py-3 text-right">{getMonthlyValue(t.counters, 'monthlyCampaigns').toLocaleString('pt-BR')}</td>
-                    <td className="px-4 py-3 text-right">{getMonthlyValue(t.counters, 'monthlyCampaignContacts').toLocaleString('pt-BR')}</td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-400">Nenhum tenant encontrado.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      {t.addons.length > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">
+                          +{t.addons.join(', ')}
+                        </span>
+                      )}
+                      {hasCritical && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                          ⚠ Limite crítico
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-gray-400 text-sm">{isOpen ? '▾' : '▸'}</span>
+                  </div>
+
+                  {/* MeterCards */}
+                  {isOpen && (
+                    <div className="px-5 pb-5 border-t border-gray-100 dark:border-gray-700">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                        {Object.entries(t.usage).map(([key, info]) => (
+                          <MeterCard
+                            key={key}
+                            label={LABEL_MAP[key] ?? key}
+                            used={info.used}
+                            limit={info.limit}
+                            remaining={info.remaining}
+                            percent={info.percent}
+                            willResetAt={info.willResetAt}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

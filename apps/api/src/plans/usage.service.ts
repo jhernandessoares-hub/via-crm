@@ -125,6 +125,13 @@ export class UsageService {
   }
 }
 
+// Mapeia chave de counter → chave de limite (quando os nomes diferem)
+export const USAGE_TO_LIMIT_KEY: Record<string, string> = {
+  totalUsers: 'maxUsers',
+  waSessionsConnected: 'maxWaSessions',
+  sitesPublished: 'maxSites',
+};
+
 export const MONTHLY_KEYS = new Set([
   'monthlyAiLeads',
   'monthlyAiMessages',
