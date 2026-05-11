@@ -24,6 +24,7 @@ import { startInboundAiWorker } from "./queue/inbound-ai.worker";
 import { startWhatsappInboundWorker } from "./queue/whatsapp-inbound.worker";
 import { startReminderWorker } from "./queue/reminder.worker";
 import { startCampaignWorker } from "./queue/campaign.worker";
+import { startUsageRolloverWorker } from "./queue/usage-rollover.worker";
 import { PrismaService } from "./prisma/prisma.service";
 import { AiService } from "./ai/ai.service";
 import { QueueService } from "./queue/queue.service";
@@ -31,6 +32,7 @@ import { WhatsappService } from "./secretary/whatsapp.service";
 import { WhatsappUnofficialService } from "./whatsapp-unofficial/whatsapp-unofficial.service";
 import { NestLogger, Logger } from "./logger";
 import { seedAiModelDefaults } from "./ai/resolve-ai-model";
+import { seedPlanConfigs } from "./plans/plans.seed";
 import { initCloudinary } from "./cloudinary/cloudinary-init";
 
 const logger = new Logger('Bootstrap');
@@ -88,6 +90,13 @@ async function bootstrap() {
     logger.warn(`seedAiModelDefaults ignorado (${e?.code ?? e?.message}) — será tentado na próxima reinicialização`);
   }
 
+  try {
+    await seedPlanConfigs(app.get(PrismaService));
+    logger.log('Configurações de plano verificadas/aplicadas');
+  } catch (e: any) {
+    logger.warn(`seedPlanConfigs ignorado (${e?.code ?? e?.message}) — será tentado na próxima reinicialização`);
+  }
+
   // 🔍 Verificar Redis antes de iniciar os workers
   const queueService = app.get(QueueService);
   const redisCheck = await queueService.redisHealthCheck();
@@ -114,6 +123,9 @@ async function bootstrap() {
 
   // 📣 INICIAR WORKER DE CAMPANHAS WHATSAPP LIGHT
   startCampaignWorker(app.get(PrismaService), queueService, app.get(WhatsappUnofficialService));
+
+  // 📊 INICIAR WORKER DE ROLLOVER MENSAL DE USO
+  startUsageRolloverWorker(app.get(PrismaService), queueService);
 
   // 🔌 RECONECTAR SESSÕES WHATSAPP LIGHT que estavam ativas antes do restart
   app.get(WhatsappUnofficialService).reconnectAll();

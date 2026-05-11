@@ -2,12 +2,17 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Logger } from '../logger';
+import { LimitsService } from '../plans/limits.service';
+import { LimitExceededException } from '../plans/usage.service';
 
 @Injectable()
 export class SitesService {
   private readonly logger = new Logger('SitesService');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly limitsService: LimitsService,
+  ) {}
 
   // ── Admin: SiteTemplates ────────────────────────────────────────────────────
 
@@ -145,6 +150,12 @@ export class SitesService {
   }) {
     const existing = await this.prisma.tenantSite.findUnique({ where: { slug: data.slug } });
     if (existing) throw new BadRequestException('Slug já está em uso.');
+
+    const siteCount = await this.prisma.tenantSite.count({ where: { tenantId, status: { not: 'ARCHIVED' } } });
+    const maxSites = await this.limitsService.resolveLimit(tenantId, 'maxSites');
+    if (maxSites >= 0 && siteCount >= maxSites) {
+      throw new LimitExceededException('maxSites', siteCount, maxSites);
+    }
 
     if (data.templateId) {
       const tpl = await this.prisma.siteTemplate.findUnique({ where: { id: data.templateId } });

@@ -50,7 +50,10 @@ model Tenant {
   nome                   String
   slug                   String                  @unique
   ativo                  Boolean                 @default(true)
-  plan                   String                  @default("STARTER")
+  plan                   PlanTier                @default(STARTER)
+  addons                 String[]                @default([])
+  limits                 Json?
+  aiLimitFallbackMessage String?
   autopilotEnabled       Boolean                 @default(true)
   businessHours          Json?
   outsideHoursMessage    String?
@@ -274,6 +277,8 @@ model Lead {
   @@index([tenantId, branchId])
   @@index([tenantId, pipelineId])
   @@index([tenantId, stageId])
+  aiAttendedMonths        String[]               @default([])
+
   @@index([tenantId, conversaCanal])
   @@map("leads")
 }
@@ -1133,6 +1138,12 @@ model LeadParticipante {
   @@map("lead_participantes")
 }
 
+enum PlanTier {
+  STARTER
+  PRO
+  BUSINESS
+}
+
 enum UserRole {
   OWNER
   MANAGER
@@ -1371,6 +1382,46 @@ enum LearningStatus {
   APPLIED
 }
 
+// ─── Planos e Billing ────────────────────────────────────────────────────────
+
+model PlanConfig {
+  tier      PlanTier @id
+  limits    Json
+  prices    Json
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("plan_configs")
+}
+
+model AddonConfig {
+  key          String    @id
+  name         String
+  description  String?
+  limits       Json?
+  prices       Json
+  requiresTier PlanTier?
+  active       Boolean   @default(true)
+  updatedAt    DateTime  @updatedAt
+  updatedBy    String?
+
+  @@map("addon_configs")
+}
+
+model UsageCounter {
+  id              String   @id @default(uuid())
+  tenantId        String
+  key             String
+  periodYearMonth String?
+  value           Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, key, periodYearMonth], name: "tenantId_key_period")
+  @@index([tenantId, key])
+  @@map("usage_counters")
+}
+
 // ─── Gestão de Empreendimentos ───────────────────────────────────────────────
 
 model Development {
@@ -1391,8 +1442,13 @@ model Development {
   descricao           String?
   lat                 Float?    // GPS latitude do centro do terreno
   lng                 Float?    // GPS longitude do centro do terreno
+  entranceLat         Float?    // GPS latitude da entrada principal (usado pelo Street View 3D)
+  entranceLng         Float?    // GPS longitude da entrada principal
   implantacaoUrl      String?   // URL Cloudinary da planta de implantação
   implantacaoPublicId String?   // Cloudinary public ID para delete
+  implantacaoMode     String?   // SATELITE | IMAGEM — modo de posicionamento das torres
+  terrainDesign       Json?     // Desenho do terreno: { version, shapes: [{id, type, points, ...}] }
+  publishedAt         DateTime? // null = rascunho (visível só para OWNER); preenchido = publicado para todo o tenant
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -1423,6 +1479,21 @@ model Tower {
   alturaAndarM  Float    @default(3.0)  // altura por andar (VERTICAL) ou da casa (HORIZONTAL)
   rotacao       Float    @default(0)    // rotação em graus
   lados         String   @default("FRENTE,FUNDO,ESQUERDA,DIREITA") // faces com unidades
+  facadeImageUrl String?  // URL da imagem de textura da fachada
+  roofType      String?  @default("FLAT") // FLAT, GABLED, PYRAMID
+  roofColor     String?  @default("#808080") // Cor do telhado
+  facadeColor   String?  @default("#e5e7eb") // Cor da fachada (hex)
+  balconyType   String?  @default("NONE")   // NONE | JULIET | SLAB | GLASS | FRENCH
+  floorPlan     Json?    // Planta do andar: {cols, rows, cells:[APT|HALL|EMPTY], cellWidthM, cellDepthM}
+  hasLobbyFloor Boolean  @default(false)    // Térreo sem apartamentos (só hall/entrada)
+  // Implantação modo IMAGEM — coordenadas relativas (0..1) sobre a imagem de implantação
+  implantacaoX  Float?
+  implantacaoY  Float?
+  implantacaoW  Float?
+  implantacaoH  Float?
+  // Implantação modo SATELITE — coordenadas GPS reais da torre
+  implantacaoLat Float?
+  implantacaoLng Float?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -1452,6 +1523,8 @@ model DevelopmentUnit {
   valorAvaliado  Float?
   finalPrice     Float?   // preço final negociado (vendido/reservado)
   comprador      String?  // nome do comprador
+  balconyType    String?  @default("NONE") // NONE, JULIET, STANDARD (sem sacada, sacada julieta, sacada padrão)
+  windowLayout   Json?    // Posições e tamanhos das janelas para renderização 3D
   loteNum        String?  // identificador do lote (ex: "L01", "Lote 15") — para HORIZONTAL
   loteAreaM2     Float?   // área real do lote em m²
   loteFrente     Float?   // dimensão de frente em metros

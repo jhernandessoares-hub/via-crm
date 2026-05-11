@@ -2,6 +2,8 @@ import { Body, Controller, Delete, ForbiddenException, Get, InternalServerErrorE
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TenantsService } from './tenants.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UsageService, ALL_USAGE_KEYS } from '../plans/usage.service';
+import { LimitsService } from '../plans/limits.service';
 
 function requireOwner(req: any) {
   if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER.');
@@ -9,7 +11,11 @@ function requireOwner(req: any) {
 
 @Controller('tenants')
 export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(
+    private readonly tenantsService: TenantsService,
+    private readonly usageService: UsageService,
+    private readonly limitsService: LimitsService,
+  ) {}
 
   // Requer segredo de provisionamento para criar tenants (protege criação pública)
   @Post()
@@ -132,5 +138,24 @@ export class TenantsController {
   async removeFavicon(@Req() req: any) {
     requireOwner(req);
     return this.tenantsService.removeBrandingImage(req.user.tenantId, 'favicon');
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('usage')
+  async getUsage(@Req() req: any) {
+    const role = req.user?.role;
+    if (role !== 'OWNER' && role !== 'MANAGER') throw new ForbiddenException('Acesso restrito ao OWNER e MANAGER.');
+    const tenantId = req.user.tenantId;
+    const limits = await this.limitsService.getLimitsForTenant(tenantId);
+    const result: Record<string, any> = {};
+    for (const key of ALL_USAGE_KEYS) {
+      const limit = limits[key] ?? -1;
+      if (limit < 0) {
+        result[key] = { used: await this.usageService.getCounter(tenantId, key), limit: -1, remaining: -1, percent: 0 };
+      } else {
+        result[key] = await this.usageService.getUsage(tenantId, key, limit);
+      }
+    }
+    return result;
   }
 }

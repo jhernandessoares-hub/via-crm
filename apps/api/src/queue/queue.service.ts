@@ -11,6 +11,7 @@ export class QueueService implements OnModuleDestroy {
   private whatsappInboundQueue: Queue;
   private campaignQueue: Queue;
   reminderQueue: Queue;
+  private usageRolloverQueue: Queue;
 
   constructor(private readonly prisma: PrismaService) {
     const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -45,15 +46,27 @@ export class QueueService implements OnModuleDestroy {
     this.campaignQueue = new Queue('campaign-queue', {
       connection: { host, port, password },
     });
+
+    this.usageRolloverQueue = new Queue('usage-rollover-queue', {
+      connection: { host, port, password },
+    });
   }
 
   async scheduleReminderRepeat() {
-    // Remove agendamentos antigos antes de recriar (evita duplicatas após restart)
     await this.reminderQueue.removeRepeatable('reminder-check', { pattern: '*/5 * * * *' });
     await this.reminderQueue.add(
       'reminder-check',
       {},
       { repeat: { pattern: '*/5 * * * *' }, removeOnComplete: true, removeOnFail: false },
+    );
+  }
+
+  async scheduleUsageRollover() {
+    await this.usageRolloverQueue.removeRepeatable('usage-rollover', { pattern: '0 0 1 * *' });
+    await this.usageRolloverQueue.add(
+      'usage-rollover',
+      {},
+      { repeat: { pattern: '0 0 1 * *' }, removeOnComplete: true, removeOnFail: false },
     );
   }
 
@@ -578,5 +591,6 @@ export class QueueService implements OnModuleDestroy {
     await this.whatsappInboundQueue.close();
     await this.reminderQueue.close();
     await this.campaignQueue.close();
+    await this.usageRolloverQueue.close();
   }
 }

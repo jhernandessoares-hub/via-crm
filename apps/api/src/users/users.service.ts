@@ -2,12 +2,16 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException 
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from "../prisma/prisma.service";
 import { EmailService } from "../email/email.service";
+import { LimitsService } from "../plans/limits.service";
+import { UsageService, LimitExceededException } from "../plans/usage.service";
 
 @Injectable()
 export class UsersService {
   constructor(
     private prisma: PrismaService,
     private email: EmailService,
+    private limitsService: LimitsService,
+    private usageService: UsageService,
   ) {}
 
   async listByTenant(tenantId: string) {
@@ -64,6 +68,12 @@ export class UsersService {
 
     const existing = await this.prisma.user.findFirst({ where: { tenantId, email } });
     if (existing) throw new BadRequestException('E-mail já cadastrado neste tenant.');
+
+    const activeUsers = await this.prisma.user.count({ where: { tenantId, ativo: true } });
+    const maxUsers = await this.limitsService.resolveLimit(tenantId, 'maxUsers');
+    if (maxUsers >= 0 && activeUsers >= maxUsers) {
+      throw new LimitExceededException('maxUsers', activeUsers, maxUsers);
+    }
 
     const validRoles = ['MANAGER', 'AGENT'];
     const role = (data.role && validRoles.includes(data.role)) ? data.role : 'AGENT';
@@ -157,7 +167,7 @@ export class UsersService {
         ativo: true,
         criadoEm: true,
         tenant: {
-          select: { nome: true, brandPalette: true, logoUrl: true, faviconUrl: true },
+          select: { nome: true, brandPalette: true, logoUrl: true, faviconUrl: true, plan: true, addons: true },
         },
       },
     });

@@ -7,6 +7,8 @@ import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unoff
 import { Logger } from '../logger';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
+import { LimitsService } from '../plans/limits.service';
+import { UsageService, LimitExceededException } from '../plans/usage.service';
 
 const logger = new Logger('CampanhasService');
 
@@ -16,6 +18,8 @@ export class CampanhasService {
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
     private readonly unofficial: WhatsappUnofficialService,
+    private readonly limitsService: LimitsService,
+    private readonly usageService: UsageService,
   ) {}
 
   // ── MODELOS ───────────────────────────────────────────────────────────────
@@ -219,6 +223,9 @@ export class CampanhasService {
     const d = await this.prisma.campanhaDisparo.findFirst({ where: { id, tenantId, status: 'RASCUNHO' } });
     if (!d) throw new BadRequestException('Campanha não está em rascunho');
     if (d.totalContatos === 0) throw new BadRequestException('Adicione contatos antes de iniciar');
+
+    await this.limitsService.enforceLimit(tenantId, 'monthlyCampaigns');
+    await this.usageService.incrementUsage(tenantId, 'monthlyCampaigns');
 
     await this.prisma.campanhaDisparo.update({ where: { id }, data: { status: 'RODANDO' } });
     await this.queue.scheduleCampaignNext(id, 0);

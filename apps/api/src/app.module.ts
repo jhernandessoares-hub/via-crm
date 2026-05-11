@@ -33,6 +33,7 @@ import { WhatsappUnofficialModule } from './whatsapp-unofficial/whatsapp-unoffic
 import { CampanhasModule } from './campanhas/campanhas.module';
 import { InboxModule } from './inbox/inbox.module';
 import { DevelopmentsModule } from './developments/developments.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { DevelopmentsModule } from './developments/developments.module';
     CampanhasModule,
     InboxModule,
     DevelopmentsModule,
+    PlansModule,
   ],
   controllers: [AppController],
   providers: [
