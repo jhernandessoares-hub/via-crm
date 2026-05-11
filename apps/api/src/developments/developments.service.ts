@@ -6,15 +6,21 @@ import { v2 as cloudinary } from 'cloudinary';
 export class DevelopmentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(tenantId: string) {
+  async findAll(tenantId: string, role?: string) {
+    // Não-OWNER só vê empreendimentos publicados
+    const where: any = { tenantId };
+    if (role && role !== 'OWNER') where.publishedAt = { not: null };
     return this.prisma.development.findMany({
-      where: { tenantId },
-      include: { _count: { select: { towers: true, units: true } } },
+      where,
+      include: {
+        _count: { select: { towers: true, units: true } },
+        towers: { include: { units: true } }
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(tenantId: string, id: string) {
+  async findOne(tenantId: string, id: string, role?: string) {
     const dev = await this.prisma.development.findFirst({
       where: { id, tenantId },
       include: {
@@ -23,7 +29,29 @@ export class DevelopmentsService {
       },
     });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+    // Não-OWNER não pode ver rascunho
+    if (role && role !== 'OWNER' && !(dev as any).publishedAt) {
+      throw new NotFoundException('Empreendimento não encontrado');
+    }
     return dev;
+  }
+
+  async publish(tenantId: string, id: string) {
+    const dev = await this.prisma.development.findFirst({ where: { id, tenantId } });
+    if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+    return this.prisma.development.update({
+      where: { id },
+      data: { publishedAt: new Date() } as any,
+    });
+  }
+
+  async unpublish(tenantId: string, id: string) {
+    const dev = await this.prisma.development.findFirst({ where: { id, tenantId } });
+    if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+    return this.prisma.development.update({
+      where: { id },
+      data: { publishedAt: null } as any,
+    });
   }
 
   async create(tenantId: string, data: any) {
@@ -39,11 +67,11 @@ export class DevelopmentsService {
         estado: data.estado,
         descricao: data.descricao,
         sunOrientation: data.sunOrientation || 'LESTE',
-        prazoEntrega: data.prazoEntrega ? new Date(data.prazoEntrega) : undefined,
-        lat: data.lat ?? null,
-        lng: data.lng ?? null,
-        gridRows: data.gridRows || 10,
-        gridCols: data.gridCols || 10,
+        prazoEntrega: data.prazoEntrega?.trim() ? new Date(data.prazoEntrega) : undefined,
+        lat: data.lat != null && data.lat !== '' ? Number(data.lat) : null,
+        lng: data.lng != null && data.lng !== '' ? Number(data.lng) : null,
+        gridRows: data.gridRows ? Number(data.gridRows) : 10,
+        gridCols: data.gridCols ? Number(data.gridCols) : 10,
       },
     });
   }
@@ -51,7 +79,56 @@ export class DevelopmentsService {
   async update(tenantId: string, id: string, data: any) {
     const dev = await this.prisma.development.findFirst({ where: { id, tenantId } });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
-    return this.prisma.development.update({ where: { id }, data });
+
+    // Monta explicitamente apenas os campos conhecidos pelo schema Prisma
+    // (evita Internal Server Error quando campos novos ainda não foram gerados no client)
+    const safeNum = (v: any) => (v != null && v !== '') ? Number(v) : null;
+    const safeStr = (v: any) => (v != null ? String(v) : null);
+
+    const updateData: any = {};
+
+    if (data.nome !== undefined)        updateData.nome        = data.nome;
+    if (data.tipo !== undefined)        updateData.tipo        = data.tipo;
+    if (data.subtipo !== undefined)     updateData.subtipo     = data.subtipo;
+    if (data.status !== undefined)      updateData.status      = data.status;
+    if (data.descricao !== undefined)   updateData.descricao   = data.descricao;
+    if (data.sunOrientation !== undefined) updateData.sunOrientation = data.sunOrientation;
+    if (data.endereco !== undefined)    updateData.endereco    = data.endereco;
+    if (data.cidade !== undefined)      updateData.cidade      = data.cidade;
+    if (data.estado !== undefined)      updateData.estado      = data.estado;
+    if (data.gridRows !== undefined)    updateData.gridRows    = Number(data.gridRows);
+    if (data.gridCols !== undefined)    updateData.gridCols    = Number(data.gridCols);
+    if (data.gridLayout !== undefined)  updateData.gridLayout  = data.gridLayout;
+    if (data.lat !== undefined)         updateData.lat         = safeNum(data.lat);
+    if (data.lng !== undefined)         updateData.lng         = safeNum(data.lng);
+    if (data.prazoEntrega !== undefined) {
+      updateData.prazoEntrega = data.prazoEntrega?.trim() ? new Date(data.prazoEntrega) : null;
+    }
+
+    // Campos adicionados no rebuild — requerem prisma generate para funcionar.
+    // Se o Prisma client ainda não os conhece, são ignorados silenciosamente.
+    const prismaHasNewFields = 'entranceLat' in (this.prisma.development.fields ?? {});
+    if (prismaHasNewFields || true) {
+      // Tentamos sempre — o try/catch no bloco abaixo protege contra client desatualizado
+      if (data.entranceLat !== undefined)   updateData.entranceLat   = safeNum(data.entranceLat);
+      if (data.entranceLng !== undefined)   updateData.entranceLng   = safeNum(data.entranceLng);
+      if (data.implantacaoMode !== undefined) {
+        const m = safeStr(data.implantacaoMode)?.toUpperCase();
+        updateData.implantacaoMode = (m === 'SATELITE' || m === 'IMAGEM') ? m : null;
+      }
+      if (data.terrainDesign !== undefined) updateData.terrainDesign = data.terrainDesign;
+    }
+
+    try {
+      return await this.prisma.development.update({ where: { id }, data: updateData });
+    } catch (e: any) {
+      // Se o Prisma client ainda não conhece os campos novos, tenta sem eles
+      if (e?.message?.includes('Unknown field') || e?.code === 'P2009') {
+        const { entranceLat, entranceLng, implantacaoMode, terrainDesign, publishedAt, ...safeData } = updateData;
+        return await this.prisma.development.update({ where: { id }, data: safeData });
+      }
+      throw e;
+    }
   }
 
   async remove(tenantId: string, id: string) {
@@ -100,16 +177,33 @@ export class DevelopmentsService {
       data: {
         tenantId,
         developmentId,
-        nome: data.nome,
-        floors: data.floors || 1,
-        unitsPerFloor: data.unitsPerFloor || 1,
-        larguraM: data.larguraM ?? 20,
-        profundidadeM: data.profundidadeM ?? 15,
-        alturaAndarM: data.alturaAndarM ?? 3.0,
-        rotacao: data.rotacao ?? 0,
-        offsetX: data.offsetX ?? 0,
-        offsetY: data.offsetY ?? 0,
+        nome: data.nome || 'Nova Torre',
+        floors: data.floors ? Number(data.floors) : 1,
+        unitsPerFloor: data.unitsPerFloor ? Number(data.unitsPerFloor) : 1,
+        gridX: data.gridX != null ? Number(data.gridX) : null,
+        gridY: data.gridY != null ? Number(data.gridY) : null,
+        gridWidth: data.gridWidth != null ? Number(data.gridWidth) : 1,
+        gridHeight: data.gridHeight != null ? Number(data.gridHeight) : 1,
+        larguraM: data.larguraM != null ? Number(data.larguraM) : 20,
+        profundidadeM: data.profundidadeM != null ? Number(data.profundidadeM) : 15,
+        alturaAndarM: data.alturaAndarM != null ? Number(data.alturaAndarM) : 3.0,
+        rotacao: data.rotacao != null ? Number(data.rotacao) : 0,
+        offsetX: data.offsetX != null ? Number(data.offsetX) : 0,
+        offsetY: data.offsetY != null ? Number(data.offsetY) : 0,
         lados: data.lados ?? 'FRENTE,FUNDO,ESQUERDA,DIREITA',
+        facadeImageUrl: data.facadeImageUrl,
+        roofType: data.roofType ?? 'PLANO',
+        roofColor: data.roofColor,
+        facadeColor: data.facadeColor ?? '#e5e7eb',
+        balconyType: data.balconyType ?? 'NONE',
+        floorPlan: data.floorPlan ?? undefined,
+        hasLobbyFloor: data.hasLobbyFloor ? true : false,
+        implantacaoX: data.implantacaoX != null && data.implantacaoX !== '' ? Number(data.implantacaoX) : null,
+        implantacaoY: data.implantacaoY != null && data.implantacaoY !== '' ? Number(data.implantacaoY) : null,
+        implantacaoW: data.implantacaoW != null && data.implantacaoW !== '' ? Number(data.implantacaoW) : null,
+        implantacaoH: data.implantacaoH != null && data.implantacaoH !== '' ? Number(data.implantacaoH) : null,
+        implantacaoLat: data.implantacaoLat != null && data.implantacaoLat !== '' ? Number(data.implantacaoLat) : null,
+        implantacaoLng: data.implantacaoLng != null && data.implantacaoLng !== '' ? Number(data.implantacaoLng) : null,
       },
     });
   }
@@ -117,7 +211,27 @@ export class DevelopmentsService {
   async updateTower(tenantId: string, developmentId: string, towerId: string, data: any) {
     const tower = await this.prisma.tower.findFirst({ where: { id: towerId, developmentId, tenantId } });
     if (!tower) throw new NotFoundException('Torre não encontrada');
-    return this.prisma.tower.update({ where: { id: towerId }, data });
+    const { units, ...updateData } = data; // Evita que o Prisma reclame de campos de relação
+    
+    if (updateData.floors !== undefined) updateData.floors = Number(updateData.floors);
+    if (updateData.unitsPerFloor !== undefined) updateData.unitsPerFloor = Number(updateData.unitsPerFloor);
+    if (updateData.larguraM !== undefined) updateData.larguraM = Number(updateData.larguraM);
+    if (updateData.profundidadeM !== undefined) updateData.profundidadeM = Number(updateData.profundidadeM);
+    if (updateData.alturaAndarM !== undefined) updateData.alturaAndarM = Number(updateData.alturaAndarM);
+    if (updateData.rotacao !== undefined) updateData.rotacao = Number(updateData.rotacao);
+    if (updateData.offsetX !== undefined) updateData.offsetX = Number(updateData.offsetX);
+    if (updateData.offsetY !== undefined) updateData.offsetY = Number(updateData.offsetY);
+    if (updateData.gridX !== undefined) updateData.gridX = updateData.gridX != null ? Number(updateData.gridX) : null;
+    if (updateData.gridY !== undefined) updateData.gridY = updateData.gridY != null ? Number(updateData.gridY) : null;
+    if (updateData.gridWidth !== undefined) updateData.gridWidth = updateData.gridWidth != null ? Number(updateData.gridWidth) : null;
+    if (updateData.gridHeight !== undefined) updateData.gridHeight = updateData.gridHeight != null ? Number(updateData.gridHeight) : null;
+    for (const k of ['implantacaoX','implantacaoY','implantacaoW','implantacaoH','implantacaoLat','implantacaoLng'] as const) {
+      if (updateData[k] !== undefined) {
+        updateData[k] = updateData[k] != null && updateData[k] !== '' ? Number(updateData[k]) : null;
+      }
+    }
+
+    return this.prisma.tower.update({ where: { id: towerId }, data: updateData });
   }
 
   async removeTower(tenantId: string, developmentId: string, towerId: string) {
@@ -133,8 +247,11 @@ export class DevelopmentsService {
 
     const prefix = data.prefix?.trim() || 'Apto';
     const units: any[] = [];
-    for (let andar = 1; andar <= data.floors; andar++) {
-      for (let pos = 1; pos <= data.unitsPerFloor; pos++) {
+    const floorsNum = Number(data.floors) || 1;
+    const unitsPerFloorNum = Number(data.unitsPerFloor) || 1;
+
+    for (let andar = 1; andar <= floorsNum; andar++) {
+      for (let pos = 1; pos <= unitsPerFloorNum; pos++) {
         const numero = `${andar}${pos.toString().padStart(2, '0')}`;
         units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${numero}`, andar, posicao: pos, status: 'DISPONIVEL' });
       }
@@ -146,15 +263,35 @@ export class DevelopmentsService {
   async bulkUpdateUnits(tenantId: string, developmentId: string, towerId: string, data: { andar?: number; updates: any }) {
     const tower = await this.prisma.tower.findFirst({ where: { id: towerId, developmentId, tenantId } });
     if (!tower) throw new NotFoundException('Torre não encontrada');
-    const where: any = { towerId, tenantId, ...(data.andar !== undefined ? { andar: data.andar } : {}) };
-    await this.prisma.developmentUnit.updateMany({ where, data: data.updates });
+    const where: any = { towerId, tenantId, ...(data.andar !== undefined ? { andar: Number(data.andar) } : {}) };
+    
+    const updates = { ...data.updates };
+    if (updates.valorVenda !== undefined) updates.valorVenda = updates.valorVenda != null && updates.valorVenda !== '' ? Number(updates.valorVenda) : null;
+    if (updates.finalPrice !== undefined) updates.finalPrice = updates.finalPrice != null && updates.finalPrice !== '' ? Number(updates.finalPrice) : null;
+    if (updates.areaM2 !== undefined) updates.areaM2 = updates.areaM2 != null && updates.areaM2 !== '' ? Number(updates.areaM2) : null;
+
+    await this.prisma.developmentUnit.updateMany({ where, data: updates });
     return { message: 'Unidades atualizadas' };
   }
 
   async updateUnit(tenantId: string, developmentId: string, unitId: string, data: any) {
     const unit = await this.prisma.developmentUnit.findFirst({ where: { id: unitId, developmentId, tenantId } });
     if (!unit) throw new NotFoundException('Unidade não encontrada');
-    return this.prisma.developmentUnit.update({ where: { id: unitId }, data });
+    
+    const updateData = { ...data };
+    if (updateData.areaM2 !== undefined) updateData.areaM2 = updateData.areaM2 != null && updateData.areaM2 !== '' ? Number(updateData.areaM2) : null;
+    if (updateData.quartos !== undefined) updateData.quartos = updateData.quartos != null && updateData.quartos !== '' ? Number(updateData.quartos) : null;
+    if (updateData.suites !== undefined) updateData.suites = updateData.suites != null && updateData.suites !== '' ? Number(updateData.suites) : null;
+    if (updateData.banheiros !== undefined) updateData.banheiros = updateData.banheiros != null && updateData.banheiros !== '' ? Number(updateData.banheiros) : null;
+    if (updateData.vagas !== undefined) updateData.vagas = updateData.vagas != null && updateData.vagas !== '' ? Number(updateData.vagas) : null;
+    if (updateData.valorVenda !== undefined) updateData.valorVenda = updateData.valorVenda != null && updateData.valorVenda !== '' ? Number(updateData.valorVenda) : null;
+    if (updateData.valorAvaliado !== undefined) updateData.valorAvaliado = updateData.valorAvaliado != null && updateData.valorAvaliado !== '' ? Number(updateData.valorAvaliado) : null;
+    if (updateData.finalPrice !== undefined) updateData.finalPrice = updateData.finalPrice != null && updateData.finalPrice !== '' ? Number(updateData.finalPrice) : null;
+    if (updateData.loteAreaM2 !== undefined) updateData.loteAreaM2 = updateData.loteAreaM2 != null && updateData.loteAreaM2 !== '' ? Number(updateData.loteAreaM2) : null;
+    if (updateData.loteFrente !== undefined) updateData.loteFrente = updateData.loteFrente != null && updateData.loteFrente !== '' ? Number(updateData.loteFrente) : null;
+    if (updateData.loteFundo !== undefined) updateData.loteFundo = updateData.loteFundo != null && updateData.loteFundo !== '' ? Number(updateData.loteFundo) : null;
+
+    return this.prisma.developmentUnit.update({ where: { id: unitId }, data: updateData });
   }
 
   async getPaymentCondition(tenantId: string, developmentId: string) {
@@ -166,17 +303,36 @@ export class DevelopmentsService {
   async upsertPaymentCondition(tenantId: string, developmentId: string, data: any) {
     const dev = await this.prisma.development.findFirst({ where: { id: developmentId, tenantId } });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+    
+    const payload = {
+      aceitaFinanciamento: data.aceitaFinanciamento ?? true,
+      valorAto: data.valorAto != null && data.valorAto !== '' ? Number(data.valorAto) : null,
+      entradaPercentual: data.entradaPercentual != null && data.entradaPercentual !== '' ? Number(data.entradaPercentual) : null,
+      entradaParcelas: data.entradaParcelas != null && data.entradaParcelas !== '' ? Number(data.entradaParcelas) : null,
+      descontoAVista: data.descontoAVista != null && data.descontoAVista !== '' ? Number(data.descontoAVista) : null,
+      financiamentoBase: data.financiamentoBase,
+      financiamentoPercentual: data.financiamentoPercentual != null && data.financiamentoPercentual !== '' ? Number(data.financiamentoPercentual) : null,
+      proSoluto: data.proSoluto ?? false,
+      proSolutoPercentual: data.proSolutoPercentual != null && data.proSolutoPercentual !== '' ? Number(data.proSolutoPercentual) : null,
+      proSolutoParcelas: data.proSolutoParcelas != null && data.proSolutoParcelas !== '' ? Number(data.proSolutoParcelas) : null,
+      obs: data.obs,
+    };
+
     return this.prisma.developmentPaymentCondition.upsert({
       where: { developmentId },
-      create: { tenantId, developmentId, ...data },
-      update: data,
+      create: { tenantId, developmentId, ...payload },
+      update: payload,
     });
   }
 
   async updateGrid(tenantId: string, id: string, data: { gridRows: number; gridCols: number; gridLayout: any }) {
     const dev = await this.prisma.development.findFirst({ where: { id, tenantId } });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
-    return this.prisma.development.update({ where: { id }, data: { gridRows: data.gridRows, gridCols: data.gridCols, gridLayout: data.gridLayout } as any });
+    return this.prisma.development.update({ where: { id }, data: { 
+      gridRows: Number(data.gridRows), 
+      gridCols: Number(data.gridCols), 
+      gridLayout: data.gridLayout 
+    } as any });
   }
 
   async uploadImplantationImage(tenantId: string, id: string, file: any) {
