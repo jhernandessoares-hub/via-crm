@@ -4,8 +4,8 @@ import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import {
   getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
-  bulkCreateUnits, bulkUpdateUnits, updateUnit, getDashboard,
-  getPaymentCondition, upsertPaymentCondition,
+  bulkCreateUnits, updateUnit, getDashboard, getPaymentCondition, upsertPaymentCondition,
+  uploadImplantacao,
   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
   type PaymentCondition, type Dashboard,
 } from "@/lib/developments.service";
@@ -15,13 +15,17 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Tipos ───────────────────────────────────────────────────────────────────
+
+type Tab = "cadastro" | "espelho" | "precos" | "dashboard";
+
+// ─── Constantes ──────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<UnitStatus, string> = {
   DISPONIVEL: "#22c55e",
   RESERVADO:  "#f59e0b",
   VENDIDO:    "#ef4444",
-  BLOQUEADO:  "#6b7280",
+  BLOQUEADO:  "#9ca3af",
 };
 
 const STATUS_LABEL: Record<UnitStatus, string> = {
@@ -31,1025 +35,928 @@ const STATUS_LABEL: Record<UnitStatus, string> = {
   BLOQUEADO:  "Bloqueado",
 };
 
-const CELL_COLORS: Record<string, { bg: string; label: string; emoji: string }> = {
-  UNIT:          { bg: "var(--shell-card-bg)", label: "Unidade",        emoji: "" },
-  EMPTY:         { bg: "transparent",           label: "Vazio",          emoji: "" },
-  VEGETATION:    { bg: "#bbf7d0",               label: "Vegetação",      emoji: "🌳" },
-  PORTARIA:      { bg: "#bfdbfe",               label: "Portaria",       emoji: "🏪" },
-  RUA:           { bg: "#d1d5db",               label: "Rua",            emoji: "🛣️" },
-  MURO:          { bg: "#9ca3af",               label: "Muro",           emoji: "🧱" },
-  GARAGEM:       { bg: "#fde68a",               label: "Garagem",        emoji: "🚗" },
-  PISCINA:       { bg: "#7dd3fc",               label: "Piscina",        emoji: "🏊" },
-  QUADRA:        { bg: "#a7f3d0",               label: "Quadra",         emoji: "🏀" },
-  CHURRASQUEIRA: { bg: "#fca5a5",               label: "Churrasqueira",  emoji: "🔥" },
-  SALAO_FESTA:   { bg: "#ddd6fe",               label: "Salão de Festa", emoji: "🎉" },
-  AREA_LAZER:    { bg: "#d1fae5",               label: "Área de Lazer",  emoji: "🌿" },
-  CASA_MAQUINAS: { bg: "#fef9c3",               label: "Casa de Maq.",   emoji: "⚙️" },
-  CAIXA_DAGUA:   { bg: "#e0f2fe",               label: "Caixa d'água",   emoji: "💧" },
+const STATUS_BG: Record<UnitStatus, string> = {
+  DISPONIVEL: "bg-green-500",
+  RESERVADO:  "bg-amber-400",
+  VENDIDO:    "bg-red-500",
+  BLOQUEADO:  "bg-gray-400",
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const inp = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] transition-colors";
 
 function fmt(v: number | null | undefined) {
   if (!v) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
 
-function SunIndicator({ orientation }: { orientation: string }) {
-  const arrows: Record<string, { arrow: string; label: string; pos: string }> = {
-    NORTE: { arrow: "↑", label: "Nascente", pos: "top-0 left-1/2 -translate-x-1/2 -translate-y-full" },
-    SUL:   { arrow: "↓", label: "Nascente", pos: "bottom-0 left-1/2 -translate-x-1/2 translate-y-full" },
-    LESTE: { arrow: "→", label: "Nascente", pos: "right-0 top-1/2 -translate-y-1/2 translate-x-full" },
-    OESTE: { arrow: "←", label: "Nascente", pos: "left-0 top-1/2 -translate-y-1/2 -translate-x-full" },
-  };
-  const s = arrows[orientation] ?? arrows.LESTE;
-  return (
-    <div className={`absolute ${s.pos} flex flex-col items-center gap-0.5 pointer-events-none`}>
-      <span className="text-yellow-500 text-xl">{s.arrow}</span>
-      <span className="text-[10px] font-semibold text-yellow-600 bg-yellow-50 rounded px-1">☀️ {s.label}</span>
-    </div>
-  );
-}
+// ─── Modal genérico ──────────────────────────────────────────────────────────
 
-// ─── UnitTooltip ─────────────────────────────────────────────────────────────
-
-function UnitTooltip({ unit, x, y }: { unit: DevelopmentUnit; x: number; y: number }) {
-  return (
-    <div className="fixed z-50 pointer-events-none w-48 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-3 shadow-xl text-xs"
-      style={{ left: x + 12, top: y }}>
-      <p className="font-semibold text-[var(--shell-text)] mb-1">{unit.nome}</p>
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: STATUS_COLOR[unit.status] }} />
-        <span className="text-[var(--shell-subtext)]">{STATUS_LABEL[unit.status]}</span>
-      </div>
-      {unit.valorVenda && <p className="text-[var(--shell-subtext)]">Valor: <span className="font-medium text-[var(--shell-text)]">{fmt(unit.valorVenda)}</span></p>}
-      {unit.areaM2 && <p className="text-[var(--shell-subtext)]">Área: <span className="font-medium text-[var(--shell-text)]">{unit.areaM2} m²</span></p>}
-      {unit.quartos && <p className="text-[var(--shell-subtext)]">Quartos: <span className="font-medium text-[var(--shell-text)]">{unit.quartos}</span></p>}
-      {unit.bloqueioMotivo && <p className="mt-1 text-red-600">🔒 {unit.bloqueioMotivo}</p>}
-    </div>
-  );
-}
-
-// ─── TerrainGrid ─────────────────────────────────────────────────────────────
-
-
-function BtnPlusMinus({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button type="button" onClick={onClick} title={label}
-      className="flex h-5 w-5 items-center justify-center rounded bg-[var(--brand-accent)] text-white text-xs font-bold hover:opacity-80 transition-opacity shrink-0">
-      +
-    </button>
-  );
-}
-
-function BtnMinus({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button type="button" onClick={onClick} title={label}
-      className="flex h-5 w-5 items-center justify-center rounded border border-red-300 bg-red-50 text-red-500 text-xs font-bold hover:bg-red-100 transition-colors shrink-0">
-      −
-    </button>
-  );
-}
-
-// ─── SunCompass ───────────────────────────────────────────────────────────────
-
-const SUN_POSITIONS = [
-  { key: "LESTE",     angle: 0,   label: "L"  },
-  { key: "SUDESTE",   angle: 45,  label: "SE" },
-  { key: "SUL",       angle: 90,  label: "S"  },
-  { key: "SUDOESTE",  angle: 135, label: "SO" },
-  { key: "OESTE",     angle: 180, label: "O"  },
-  { key: "NOROESTE",  angle: 225, label: "NO" },
-  { key: "NORTE",     angle: 270, label: "N"  },
-  { key: "NORDESTE",  angle: 315, label: "NE" },
-];
-
-function snapSun(angleDeg: number): string {
-  const deg = ((angleDeg % 360) + 360) % 360;
-  let best = SUN_POSITIONS[0];
-  let bestD = Infinity;
-  for (const p of SUN_POSITIONS) {
-    const d = Math.min(Math.abs(deg - p.angle), 360 - Math.abs(deg - p.angle));
-    if (d < bestD) { bestD = d; best = p; }
-  }
-  return best.key;
-}
-
-function SunCompass({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const R      = 38;
-  const SIZE   = 104;
-  const CENTER = SIZE / 2;
-  const ref    = useRef<HTMLDivElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const [live,     setLive]     = useState<string | null>(null);
-
-  function angleFrom(clientX: number, clientY: number) {
-    const rect = ref.current!.getBoundingClientRect();
-    const dx = clientX - (rect.left + CENTER);
-    const dy = clientY - (rect.top  + CENTER);
-    let deg = Math.atan2(dy, dx) * 180 / Math.PI;
-    if (deg < 0) deg += 360;
-    return deg;
-  }
-
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: MouseEvent) => setLive(snapSun(angleFrom(e.clientX, e.clientY)));
-    const onUp   = (e: MouseEvent) => {
-      const k = snapSun(angleFrom(e.clientX, e.clientY));
-      onChange(k); setDragging(false); setLive(null);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup",   onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-  }, [dragging]);
-
-  const display = live ?? value;
-  const cur     = SUN_POSITIONS.find((p) => p.key === display) ?? SUN_POSITIONS[0];
-  const sunRad  = cur.angle * Math.PI / 180;
-  const sunX    = CENTER + R * Math.cos(sunRad);
-  const sunY    = CENTER + R * Math.sin(sunRad);
-
-  return (
-    <div className="flex flex-col items-center gap-1 select-none">
-      <p className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nascente ☀️</p>
-      <div ref={ref} style={{ width: SIZE, height: SIZE, position: "relative" }}>
-        <svg width={SIZE} height={SIZE} style={{ position: "absolute", top: 0, left: 0 }}>
-          {/* Anel externo */}
-          <circle cx={CENTER} cy={CENTER} r={R} fill="none" stroke="#e2e8f0" strokeWidth="2" />
-          {/* Raios */}
-          {SUN_POSITIONS.map((p) => {
-            const rad = p.angle * Math.PI / 180;
-            return <line key={p.key}
-              x1={CENTER + (R - 8) * Math.cos(rad)} y1={CENTER + (R - 8) * Math.sin(rad)}
-              x2={CENTER + R * Math.cos(rad)}        y2={CENTER + R * Math.sin(rad)}
-              stroke={display === p.key ? "#f59e0b" : "#e2e8f0"} strokeWidth="2" />;
-          })}
-          {/* Labels das 8 posições */}
-          {SUN_POSITIONS.map((p) => {
-            const rad = p.angle * Math.PI / 180;
-            const lx  = CENTER + (R + 12) * Math.cos(rad);
-            const ly  = CENTER + (R + 12) * Math.sin(rad);
-            const active = display === p.key;
-            return <text key={p.key} x={lx} y={ly + 3.5} textAnchor="middle"
-              fontSize="9" fontWeight="700"
-              fill={active ? "#92400e" : "#94a3b8"}>{p.label}</text>;
-          })}
-          {/* Seta indicando direção atual */}
-          <line x1={CENTER} y1={CENTER}
-            x2={CENTER + (R - 12) * Math.cos(sunRad)}
-            y2={CENTER + (R - 12) * Math.sin(sunRad)}
-            stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
-          {/* Ponto central */}
-          <circle cx={CENTER} cy={CENTER} r={3} fill="#f59e0b" />
-        </svg>
-        {/* ☀️ arrastável */}
-        <div
-          onMouseDown={(e) => { e.preventDefault(); setDragging(true); }}
-          style={{
-            position: "absolute",
-            left: sunX - 12, top: sunY - 12,
-            fontSize: 24,
-            cursor: dragging ? "grabbing" : "grab",
-            userSelect: "none", pointerEvents: "all",
-            filter: dragging ? "drop-shadow(0 0 4px #f59e0b)" : "none",
-            transition: dragging ? "none" : "left 0.15s, top 0.15s",
-          }}>
-          ☀️
-        </div>
-        {/* Label central */}
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-          <span className="text-[10px] font-bold text-amber-600">{cur.label}</span>
-        </div>
-      </div>
-      <p className="text-[9px] text-[var(--shell-subtext)]">Arraste o ☀️ para girar</p>
-    </div>
-  );
-}
-
-// ─── TerrainGrid ───────────────────────────────────────────────────────────────
-
-function TerrainGrid({ dev, onSelectTower, onSave, onSunChange, onPlaceTower, onClearTowerPosition }: {
-  dev: Development;
-  onSelectTower: (t: Tower) => void;
-  onSave: (layout: any[], rows: number, cols: number, sun: string) => Promise<void>;
-  onSunChange: (sun: string) => void;
-  onPlaceTower: (towerId: string, col: number, row: number, w: number, h: number) => Promise<void>;
-  onClearTowerPosition: (towerId: string) => Promise<void>;
+function Modal({ open, onClose, title, children, wide }: {
+  open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean;
 }) {
-  const [layout,  setLayout]  = useState<Record<string, string>>(() => {
-    const map: Record<string, string> = {};
-    if (dev.gridLayout) (dev.gridLayout as any[]).forEach((c: any) => { map[`${c.row}-${c.col}`] = c.type; });
-    return map;
-  });
-  const [brushType,      setBrushType]      = useState<string>("EMPTY");
-  const [painting,       setPainting]       = useState(false);
-  const [saving,         setSaving]         = useState(false);
-  const [saved,          setSaved]          = useState(true);
-  const [rows,           setRows]           = useState(dev.gridRows);
-  const [cols,           setCols]           = useState(dev.gridCols);
-  const [sun,            setSun]            = useState(dev.sunOrientation);
-  const [placingTowerId, setPlacingTowerId] = useState<string | null>(null);
-  const [placingW,       setPlacingW]       = useState(1);
-  const [placingH,       setPlacingH]       = useState(1);
-  const [hoverCell,      setHoverCell]      = useState<{ row: number; col: number } | null>(null);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.55)" }} onClick={onClose}>
+      <div className={`w-full ${wide ? "max-w-2xl" : "max-w-md"} mx-4 rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl`}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold text-[var(--shell-text)]">{title}</h3>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
-  // footprint map cobre todas as células de cada torre
-  const towerMap: Record<string, Tower> = {};
-  dev.towers.forEach((t) => {
-    if (t.gridX != null && t.gridY != null) {
-      for (let dy = 0; dy < (t.gridHeight ?? 1); dy++)
-        for (let dx = 0; dx < (t.gridWidth ?? 1); dx++)
-          towerMap[`${t.gridY + dy}-${t.gridX + dx}`] = t;
-    }
-  });
+// ─── Modal de Unidade ─────────────────────────────────────────────────────────
 
-  const placingTower = placingTowerId ? dev.towers.find((t) => t.id === placingTowerId) ?? null : null;
+function UnitModal({ unit, devId, onClose, onUpdated }: {
+  unit: DevelopmentUnit; devId: string; onClose: () => void; onUpdated: (u: DevelopmentUnit) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [comprador, setComprador] = useState(unit.comprador ?? "");
+  const [finalPrice, setFinalPrice] = useState(String(unit.finalPrice ?? unit.valorVenda ?? ""));
+  const [bloqueioMotivo, setBloqueioMotivo] = useState(unit.bloqueioMotivo ?? "");
+  const [status, setStatus] = useState<UnitStatus>(unit.status);
 
-  const previewCells = new Set<string>();
-  if (placingTower && hoverCell) {
-    for (let dy = 0; dy < placingH; dy++)
-      for (let dx = 0; dx < placingW; dx++)
-        previewCells.add(`${hoverCell.row + dy}-${hoverCell.col + dx}`);
-  }
-  const previewConflict = placingTower && hoverCell && Array.from(previewCells).some((k) => towerMap[k]);
-
-  const cancelPlacing = useCallback(() => { setPlacingTowerId(null); setHoverCell(null); }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cancelPlacing(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [cancelPlacing]);
-
-  function mark()                          { setSaved(false); }
-  function paintCell(r: number, c: number) { mark(); setLayout((p) => ({ ...p, [`${r}-${c}`]: brushType })); }
-
-  function addRow(atIndex: number) {
-    setLayout((prev) => {
-      const next: Record<string, string> = {};
-      Object.entries(prev).forEach(([key, type]) => {
-        const [r, c] = key.split("-").map(Number);
-        next[r >= atIndex ? `${r + 1}-${c}` : key] = type;
-      });
-      return next;
-    });
-    setRows((r) => r + 1); mark();
-  }
-
-  function removeRow(atIndex: number) {
-    if (rows <= 1) return;
-    setLayout((prev) => {
-      const next: Record<string, string> = {};
-      Object.entries(prev).forEach(([key, type]) => {
-        const [r, c] = key.split("-").map(Number);
-        if (r === atIndex) return;
-        next[r > atIndex ? `${r - 1}-${c}` : key] = type;
-      });
-      return next;
-    });
-    setRows((r) => r - 1); mark();
-  }
-
-  function addCol(atIndex: number) {
-    setLayout((prev) => {
-      const next: Record<string, string> = {};
-      Object.entries(prev).forEach(([key, type]) => {
-        const [r, c] = key.split("-").map(Number);
-        next[c >= atIndex ? `${r}-${c + 1}` : key] = type;
-      });
-      return next;
-    });
-    setCols((c) => c + 1); mark();
-  }
-
-  function removeCol(atIndex: number) {
-    if (cols <= 1) return;
-    setLayout((prev) => {
-      const next: Record<string, string> = {};
-      Object.entries(prev).forEach(([key, type]) => {
-        const [r, c] = key.split("-").map(Number);
-        if (c === atIndex) return;
-        next[c > atIndex ? `${r}-${c - 1}` : key] = type;
-      });
-      return next;
-    });
-    setCols((c) => c - 1); mark();
-  }
-
-  function layoutToArray() {
-    return Object.entries(layout).filter(([, t]) => t !== "UNIT").map(([key, type]) => {
-      const [r, c] = key.split("-").map(Number);
-      return { row: r, col: c, type };
-    });
-  }
-
-  async function handleSave() {
+  async function changeStatus(newStatus: UnitStatus) {
+    if (newStatus === "VENDIDO" && !confirm(`Confirmar venda da unidade ${unit.nome}?`)) return;
     setSaving(true);
-    try { await onSave(layoutToArray(), rows, cols, sun); setSaved(true); }
-    finally { setSaving(false); }
+    try {
+      const updated = await updateUnit(devId, unit.id, {
+        status: newStatus,
+        comprador: comprador || null,
+        finalPrice: finalPrice ? parseFloat(finalPrice) : null,
+        bloqueioMotivo: newStatus === "BLOQUEADO" ? bloqueioMotivo || null : null,
+        soldAt: newStatus === "VENDIDO" ? new Date().toISOString() : null,
+      } as any);
+      setStatus(newStatus);
+      onUpdated({ ...unit, ...updated });
+    } finally { setSaving(false); }
   }
 
-  function handleSunChange(k: string) { setSun(k); onSunChange(k); mark(); }
-
-  // ─── Cell width constant
-  const CW = 40; // px (w-10 = 2.5rem)
+  const allActions: { label: string; status: UnitStatus; color: string }[] = [
+    { label: "Disponível", status: "DISPONIVEL" as UnitStatus, color: "bg-green-500 hover:bg-green-600" },
+    { label: "Reservar",   status: "RESERVADO"  as UnitStatus, color: "bg-amber-400 hover:bg-amber-500" },
+    { label: "Vender",     status: "VENDIDO"    as UnitStatus, color: "bg-red-500 hover:bg-red-600" },
+    { label: "Bloquear",   status: "BLOQUEADO"  as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" },
+  ];
+  const actions = allActions.filter((a) => a.status !== status);
 
   return (
-    <div className="space-y-4">
+    <Modal open title={`Unidade — ${unit.nome}`} onClose={onClose}>
+      <div className="space-y-4">
+        {/* Status atual */}
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-white ${STATUS_BG[status]}`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+            {STATUS_LABEL[status]}
+          </span>
+        </div>
 
-      {/* Banner modo posicionamento */}
-      {placingTower && (
-        <div className="flex items-center justify-between rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 gap-4 flex-wrap">
-          <p className="text-sm font-semibold text-blue-700">
-            📍 Posicionando <span className="font-bold">{placingTower.nome}</span>
-          </p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-blue-700">
-              <span className="font-semibold">Tamanho:</span>
-              <BtnMinus onClick={() => setPlacingW((w) => Math.max(1, w - 1))} label="−" />
-              <span className="w-5 text-center font-bold">{placingW}</span>
-              <BtnPlusMinus onClick={() => setPlacingW((w) => Math.min(cols, w + 1))} label="+" />
-              <span className="text-blue-500">col ×</span>
-              <BtnMinus onClick={() => setPlacingH((h) => Math.max(1, h - 1))} label="−" />
-              <span className="w-5 text-center font-bold">{placingH}</span>
-              <BtnPlusMinus onClick={() => setPlacingH((h) => Math.min(rows, h + 1))} label="+" />
-              <span className="text-blue-500">lin</span>
+        {/* Dados da unidade */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {unit.andar && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Andar</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.andar}º</p>
             </div>
-            <span className="text-xs text-blue-400">Hover = preview · clique = confirma · ESC cancela</span>
-            <button onClick={cancelPlacing} className="text-blue-500 hover:text-blue-700 text-lg font-bold">✕</button>
-          </div>
+          )}
+          {unit.areaM2 && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.areaM2} m²</p>
+            </div>
+          )}
+          {unit.quartos && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Quartos</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.quartos}</p>
+            </div>
+          )}
+          {unit.vagas && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Vagas</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.vagas}</p>
+            </div>
+          )}
+          {unit.valorVenda && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Valor</p>
+              <p className="font-semibold text-[var(--brand-accent)]">{fmt(unit.valorVenda)}</p>
+            </div>
+          )}
+          {unit.loteNum && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Lote</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.loteNum}</p>
+            </div>
+          )}
+          {unit.loteAreaM2 && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área do lote</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.loteAreaM2} m²</p>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Torres no terreno */}
-      {dev.towers.length > 0 && (
-        <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-3">
-          <p className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-2">Torres no terreno</p>
-          <div className="flex flex-wrap gap-2">
-            {dev.towers.map((t) => {
-              const placed    = t.gridX != null && t.gridY != null;
-              const isPlacing = placingTowerId === t.id;
-              const w = t.gridWidth ?? 1; const h = t.gridHeight ?? 1;
-              return (
-                <div key={t.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors
-                  ${isPlacing ? "border-blue-400 bg-blue-50" : placed ? "border-[#3b82f6] bg-[#1e3a5f]/10" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]"}`}>
-                  <span className={`font-semibold ${placed ? "text-blue-600" : "text-[var(--shell-subtext)]"}`}>
-                    {placed ? "🏢" : "⬜"} {t.nome}
-                  </span>
-                  {placed && (
-                    <span className="text-[10px] text-[var(--shell-subtext)]">
-                      L{(t.gridY ?? 0) + 1} C{(t.gridX ?? 0) + 1}{(w > 1 || h > 1) ? ` · ${w}×${h}` : ""}
-                    </span>
-                  )}
-                  <button onClick={() => { setPlacingTowerId(isPlacing ? null : t.id); setPlacingW(w); setPlacingH(h); setHoverCell(null); }}
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors
-                      ${isPlacing ? "bg-blue-200 text-blue-700" : "bg-[var(--brand-accent)]/10 text-[var(--brand-accent)] hover:bg-[var(--brand-accent)]/20"}`}>
-                    {isPlacing ? "Cancelar" : placed ? "Mover" : "📍 Posicionar"}
-                  </button>
-                  {placed && !isPlacing && (
-                    <button onClick={() => onClearTowerPosition(t.id)}
-                      className="rounded px-1 py-0.5 text-[10px] text-red-400 hover:text-red-600 hover:bg-red-50"
-                      title="Remover do terreno">✕</button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Toolbar: pincéis + sol + salvar */}
-      <div className="flex items-start gap-4 flex-wrap">
-        {/* Pincéis */}
-        {!placingTower && (
-          <div className="flex-1 flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-semibold text-[var(--shell-subtext)] mr-1">Pincel:</span>
-            {Object.entries(CELL_COLORS).filter(([k]) => k !== "UNIT").map(([type, cfg]) => (
-              <button key={type} type="button" onClick={() => setBrushType(type)}
-                className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors
-                  ${brushType === type ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-border)] hover:bg-[var(--shell-hover)]"}`}>
-                {cfg.emoji} {cfg.label}
-              </button>
-            ))}
+        {/* Comprador / Preço final (para reserva/venda) */}
+        {(status === "RESERVADO" || status === "VENDIDO" || actions.find(a => a.status === "RESERVADO" || a.status === "VENDIDO")) && (
+          <div className="space-y-3 pt-2 border-t border-[var(--shell-card-border)]">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Comprador / Interessado</label>
+              <input value={comprador} onChange={(e) => setComprador(e.target.value)} placeholder="Nome completo" className={inp} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Valor negociado (R$)</label>
+              <input type="number" value={finalPrice} onChange={(e) => setFinalPrice(e.target.value)} placeholder={String(unit.valorVenda ?? "")} className={inp} />
+            </div>
+            {(status === "BLOQUEADO" || actions.find(a => a.status === "BLOQUEADO")) && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Motivo do bloqueio</label>
+                <input value={bloqueioMotivo} onChange={(e) => setBloqueioMotivo(e.target.value)} placeholder="Ex: Pendência documental" className={inp} />
+              </div>
+            )}
           </div>
         )}
 
-        {/* Sol arrastável */}
-        <SunCompass value={sun} onChange={handleSunChange} />
-
-        {/* Salvar */}
-        <div className="flex items-end pb-2">
-          <button type="button" onClick={handleSave} disabled={saving || saved}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors
-              ${saved ? "border border-green-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`}>
-            {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar terreno"}
-          </button>
+        {/* Botões de ação */}
+        <div className="flex flex-wrap gap-2 pt-2">
+          {actions.map((a) => (
+            <button key={a.status} type="button" disabled={saving} onClick={() => changeStatus(a.status)}
+              className={`rounded-lg px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${a.color}`}>
+              {saving ? "..." : a.label}
+            </button>
+          ))}
         </div>
       </div>
-
-      {/* Grade centralizada */}
-      <div className="flex justify-center overflow-auto">
-        <div className="inline-flex flex-col" style={{ gap: 0 }}>
-
-          {/* ── N (topo) ── */}
-          <div className="flex justify-center py-1">
-            <span className="text-[11px] font-bold text-slate-400">N</span>
-          </div>
-
-          <div className="flex items-stretch" style={{ gap: 0 }}>
-            {/* ── O (esquerda) ── */}
-            <div className="flex items-center justify-center pr-2">
-              <span className="text-[11px] font-bold text-slate-400" style={{ writingMode: "vertical-lr", transform: "rotate(180deg)" }}>O</span>
-            </div>
-
-            {/* Bloco central: controles cols (topo) + linhas */}
-            <div className="flex flex-col" style={{ gap: 0 }}>
-
-              {/* Controles de colunas — TOPO */}
-              {!placingTower && (
-                <div className="flex" style={{ gap: 1, marginBottom: 2 }}>
-                  {/* espaço do controle de linhas à esquerda */}
-                  <div style={{ width: 44 }} />
-                  {/* +/- por coluna */}
-                  {Array.from({ length: cols }, (_, col) => (
-                    <div key={col} className="flex flex-col items-center gap-0.5" style={{ width: CW }}>
-                      <BtnPlusMinus onClick={() => addCol(col)}    label={`+ col ${col + 1}`} />
-                      <BtnMinus     onClick={() => removeCol(col)} label={`− col ${col + 1}`} />
-                    </div>
-                  ))}
-                  {/* + adicionar coluna no final */}
-                  <div className="flex items-start justify-center" style={{ width: CW }}>
-                    <BtnPlusMinus onClick={() => addCol(cols)} label="+ col fim" />
-                  </div>
-                </div>
-              )}
-
-              {/* Linhas com controles à esquerda */}
-              {Array.from({ length: rows }, (_, row) => (
-                <div key={row} className="flex items-center" style={{ gap: 1, marginBottom: 1 }}>
-
-                  {/* Controles de linha — ESQUERDA */}
-                  {!placingTower ? (
-                    <div className="flex items-center gap-0.5" style={{ width: 44 }}>
-                      <BtnPlusMinus onClick={() => addRow(row)}    label={`+ lin ${row + 1}`} />
-                      <BtnMinus     onClick={() => removeRow(row)} label={`− lin ${row + 1}`} />
-                    </div>
-                  ) : (
-                    <div style={{ width: 44 }} />
-                  )}
-
-                  {/* Células */}
-                  <div className="flex" style={{ gap: 1 }}
-                    onMouseLeave={() => { setPainting(false); setHoverCell(null); }}>
-                    {Array.from({ length: cols }, (_, col) => {
-                      const key      = `${row}-${col}`;
-                      const cellType = layout[key] ?? "UNIT";
-                      const tower    = towerMap[key];
-                      const cfg      = CELL_COLORS[cellType];
-                      const inPrev   = previewCells.has(key);
-                      const isAnchor = inPrev && hoverCell?.row === row && hoverCell?.col === col;
-
-                      let bg    = tower ? "#1e3a5f" : cfg?.bg;
-                      let bord  = tower ? "#3b82f6" : "rgba(0,0,0,0.1)";
-                      if (inPrev) { bg = previewConflict ? "#dc2626" : "#2563eb"; bord = previewConflict ? "#b91c1c" : "#1d4ed8"; }
-
-                      return (
-                        <div key={key}
-                          className={`flex items-center justify-center text-sm select-none rounded border transition-colors
-                            ${placingTower ? (!previewConflict ? "cursor-crosshair" : "cursor-not-allowed") : "cursor-pointer"}`}
-                          style={{ width: CW, height: CW, backgroundColor: bg, borderColor: bord }}
-                          onMouseEnter={() => { if (placingTower) { setHoverCell({ row, col }); return; } if (painting) paintCell(row, col); }}
-                          onMouseDown={() => { if (!placingTower) { setPainting(true); paintCell(row, col); } }}
-                          onMouseUp={() => setPainting(false)}
-                          onClick={async () => {
-                            if (placingTowerId) {
-                              if (previewConflict || !hoverCell) return;
-                              await onPlaceTower(placingTowerId, hoverCell.col, hoverCell.row, placingW, placingH);
-                              cancelPlacing(); return;
-                            }
-                            if (tower) onSelectTower(tower);
-                          }}>
-                          {isAnchor
-                            ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{placingTower?.nome}</span>
-                            : tower
-                              ? <span className="text-[9px] font-bold text-white text-center leading-tight px-0.5">{tower.nome}</span>
-                              : <span>{cfg?.emoji}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-
-              {/* + adicionar linha no final */}
-              {!placingTower && (
-                <div className="flex items-center" style={{ gap: 1, marginTop: 2 }}>
-                  <div className="flex items-center justify-center" style={{ width: 44 }}>
-                    <BtnPlusMinus onClick={() => addRow(rows)} label="+ lin fim" />
-                  </div>
-                </div>
-              )}
-
-            </div>
-
-            {/* ── L (direita) ── */}
-            <div className="flex items-center justify-center pl-2">
-              <span className="text-[11px] font-bold text-slate-400" style={{ writingMode: "vertical-lr" }}>L</span>
-            </div>
-          </div>
-
-          {/* ── S (rodapé) ── */}
-          <div className="flex justify-center py-1">
-            <span className="text-[11px] font-bold text-slate-400">S</span>
-          </div>
-
-        </div>
-      </div>
-
-      <p className="text-xs text-center text-[var(--shell-subtext)]">
-        {placingTower
-          ? `${placingW}×${placingH} células · hover = preview · clique = confirma · ESC cancela`
-          : "Pintar: clique e arraste · Controles de linha/coluna: esquerda e topo · Sol: arraste ☀️"}
-      </p>
-    </div>
+    </Modal>
   );
 }
 
-// ─── BuildingIsometric ───────────────────────────────────────────────────────
+// ─── Espelho 2D ───────────────────────────────────────────────────────────────
 
-function BuildingIsometric({ tower, onSelectUnit }: { tower: Tower; onSelectUnit: (u: DevelopmentUnit) => void }) {
-  const [tooltip, setTooltip] = useState<{ unit: DevelopmentUnit; x: number; y: number } | null>(null);
+function EspelhoVertical({ tower, devId, onUnitUpdated }: {
+  tower: Tower; devId: string; onUnitUpdated: (u: DevelopmentUnit) => void;
+}) {
+  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
 
   const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
-  for (const u of tower.units) {
+  tower.units.forEach((u) => {
     const f = u.andar ?? 1;
     if (!unitsByFloor[f]) unitsByFloor[f] = [];
     unitsByFloor[f].push(u);
-  }
+  });
   const floors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
-
-  if (tower.units.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-[var(--shell-subtext)]">
-        <p className="text-sm">Nenhuma unidade cadastrada nesta torre.</p>
-      </div>
-    );
-  }
-
-  const UW   = 46;   // largura de cada unidade
-  const UH   = 34;   // altura de cada andar
-  const DX   = 18;   // offset X da profundidade
-  const DY   = 11;   // offset Y da profundidade (pra cima)
-  const PAD  = 10;
-
-  const maxCols  = Math.max(...floors.map((f) => (unitsByFloor[f] ?? []).length));
-  const nFloors  = floors.length;
-  const FRONT_W  = maxCols * UW;
-  const FRONT_H  = nFloors * UH;
-  const TOP_PAD  = DY + PAD;
-  const SVG_W    = PAD + FRONT_W + DX + PAD + 20; // +20 para labels de andar
-  const SVG_H    = TOP_PAD + FRONT_H + PAD;
-
-  const pt = (x: number, y: number) => `${x},${y}`;
-
-  const topFacePoints = [
-    pt(PAD, TOP_PAD),
-    pt(PAD + FRONT_W, TOP_PAD),
-    pt(PAD + FRONT_W + DX, TOP_PAD - DY),
-    pt(PAD + DX, TOP_PAD - DY),
-  ].join(" ");
-
-  const rightFacePoints = [
-    pt(PAD + FRONT_W,      TOP_PAD),
-    pt(PAD + FRONT_W + DX, TOP_PAD - DY),
-    pt(PAD + FRONT_W + DX, TOP_PAD - DY + FRONT_H),
-    pt(PAD + FRONT_W,      TOP_PAD + FRONT_H),
-  ].join(" ");
 
   return (
     <div className="overflow-auto">
-      <svg width={SVG_W} height={SVG_H} style={{ display: "block" }}>
-        {/* Face de topo */}
-        <polygon points={topFacePoints} fill="#94a3b8" opacity={0.55} />
-        {/* Face lateral direita */}
-        <polygon points={rightFacePoints} fill="#64748b" opacity={0.65} />
-
-        {/* Unidades na fachada frontal */}
-        {floors.map((floor, fi) =>
-          (unitsByFloor[floor] ?? []).map((unit, col) => {
-            const x = PAD + col * UW;
-            const y = TOP_PAD + fi * UH;
-            const color = STATUS_COLOR[unit.status];
-            const W = UW - 2; const H = UH - 2;
-            const pw = (W - 9) / 2; const ph = (H - 9) / 2;
-            return (
-              <g key={unit.id} style={{ cursor: "pointer" }}
-                onClick={() => onSelectUnit(unit)}
-                onMouseEnter={(e) => setTooltip({ unit, x: e.clientX, y: e.clientY })}
-                onMouseLeave={() => setTooltip(null)}>
-                <rect x={x + 1} y={y + 1} width={W} height={H}
-                  fill={color + "30"} stroke={color} strokeWidth={1.5} rx={2} />
-                {/* 4 vidraças */}
-                {([[0,0],[1,0],[0,1],[1,1]] as [number,number][]).map(([wx, wy], i) => (
-                  <rect key={i}
-                    x={x + 4 + wx * (pw + 1)} y={y + 4 + wy * (ph + 1)}
-                    width={pw} height={ph}
-                    fill={color + "70"} rx={1} />
+      {floors.length === 0 ? (
+        <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade nesta torre</div>
+      ) : (
+        <div className="space-y-1.5 min-w-max">
+          {floors.map((floor) => (
+            <div key={floor} className="flex items-center gap-2">
+              <span className="w-10 text-right text-xs font-bold text-[var(--shell-subtext)] shrink-0">{floor}º</span>
+              <div className="flex gap-1.5">
+                {(unitsByFloor[floor] ?? []).sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0)).map((unit) => (
+                  <button
+                    key={unit.id}
+                    type="button"
+                    onClick={() => setSelectedUnit(unit)}
+                    title={`${unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
+                    className="relative w-16 h-10 rounded-lg border-2 text-[10px] font-bold text-white transition-all duration-150 hover:scale-110 hover:shadow-lg hover:z-10 focus:outline-none focus:ring-2 focus:ring-[var(--brand-accent)]"
+                    style={{ backgroundColor: STATUS_COLOR[unit.status], borderColor: STATUS_COLOR[unit.status] }}
+                  >
+                    <span className="truncate px-0.5 leading-tight block">{unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}</span>
+                  </button>
                 ))}
-                <text x={x + UW / 2} y={y + UH - 4}
-                  textAnchor="middle" fontSize={7} fill={color} fontWeight="bold">
-                  {unit.nome.replace(/\D/g, "").slice(-3)}
-                </text>
-              </g>
-            );
-          })
-        )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* Labels de andar à direita */}
-        {floors.map((floor, fi) => (
-          <text key={floor}
-            x={PAD + FRONT_W + DX + 4}
-            y={TOP_PAD - DY + fi * UH + UH / 2 + 3}
-            fontSize={8} fill="#94a3b8" fontWeight="600">
-            {floor}°
-          </text>
-        ))}
-
-        {/* Linha de base do prédio */}
-        <line x1={PAD} y1={TOP_PAD + FRONT_H}
-          x2={PAD + FRONT_W} y2={TOP_PAD + FRONT_H}
-          stroke="#475569" strokeWidth={2} />
-      </svg>
-
-      {tooltip && <UnitTooltip unit={tooltip.unit} x={tooltip.x} y={tooltip.y} />}
-
-      {/* Legenda */}
-      <div className="flex items-center gap-3 mt-3 text-xs text-[var(--shell-subtext)]">
-        {(Object.keys(STATUS_COLOR) as UnitStatus[]).map((s) => (
-          <span key={s} className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-sm border-2" style={{ backgroundColor: STATUS_COLOR[s] + "33", borderColor: STATUS_COLOR[s] }} />
-            {STATUS_LABEL[s]}
-          </span>
-        ))}
-      </div>
+      {selectedUnit && (
+        <UnitModal
+          unit={selectedUnit}
+          devId={devId}
+          onClose={() => setSelectedUnit(null)}
+          onUpdated={(u) => { onUnitUpdated(u); setSelectedUnit(u); }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── BuildingFacade ───────────────────────────────────────────────────────────
-
-function BuildingFacade({ tower, onSelectUnit }: { tower: Tower; onSelectUnit: (u: DevelopmentUnit) => void }) {
-  const [tooltip, setTooltip] = useState<{ unit: DevelopmentUnit; x: number; y: number } | null>(null);
-
-  const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
-  for (const u of tower.units) {
-    const f = u.andar ?? 1;
-    if (!unitsByFloor[f]) unitsByFloor[f] = [];
-    unitsByFloor[f].push(u);
-  }
-  const floors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
-
-  if (tower.units.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-[var(--shell-subtext)]">
-        <p className="text-sm">Nenhuma unidade cadastrada nesta torre.</p>
-        <p className="text-xs mt-1">Use o botão "Gerar Unidades" para criar.</p>
-      </div>
-    );
-  }
+function EspelhoHorizontal({ tower, devId, onUnitUpdated, isLoteamento }: {
+  tower: Tower; devId: string; onUnitUpdated: (u: DevelopmentUnit) => void; isLoteamento: boolean;
+}) {
+  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
+  const units = [...tower.units].sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
+  const cols = Math.ceil(Math.sqrt(units.length)) || 1;
 
   return (
-    <div className="relative space-y-1 overflow-x-auto p-2">
-      {floors.map((floor) => (
-        <div key={floor} className="flex items-center gap-1">
-          <span className="w-8 shrink-0 text-right text-[10px] font-medium text-[var(--shell-subtext)]">{floor}º</span>
-          <div className="flex gap-1">
-            {(unitsByFloor[floor] ?? []).map((unit) => (
-              <button key={unit.id} type="button"
-                onMouseEnter={(e) => {
-                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  setTooltip({ unit, x: r.right, y: r.top });
-                }}
-                onMouseLeave={() => setTooltip(null)}
-                onClick={() => onSelectUnit(unit)}
-                className="relative flex flex-col items-center justify-center rounded border text-center transition-all hover:scale-110 hover:z-10"
-                style={{
-                  width: "3rem", height: "2.5rem",
-                  backgroundColor: STATUS_COLOR[unit.status] + "33",
-                  borderColor: STATUS_COLOR[unit.status],
-                  borderWidth: "2px",
-                }}>
-                {/* Window effect */}
-                <div className="grid grid-cols-2 gap-0.5 w-5 h-3 mb-0.5">
-                  {[0,1,2,3].map((i) => (
-                    <div key={i} className="rounded-sm" style={{ backgroundColor: STATUS_COLOR[unit.status] + "99" }} />
-                  ))}
-                </div>
-                <span className="text-[8px] font-bold leading-none" style={{ color: STATUS_COLOR[unit.status] }}>
-                  {unit.nome.replace(/\D/g, "").slice(-3)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-      {/* Telhado / cobertura */}
-      <div className="flex items-end gap-1 pl-9 mt-1">
-        {Array.from({ length: Math.max(...floors.map((f) => (unitsByFloor[f] ?? []).length)) }, (_, i) => (
-          <div key={i} className="w-12 h-1.5 bg-slate-600 rounded-sm" />
+    <div>
+      <div
+        className="inline-grid gap-2 p-4 rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {units.map((unit) => (
+          <button
+            key={unit.id}
+            type="button"
+            onClick={() => setSelectedUnit(unit)}
+            title={`${unit.loteNum ?? unit.nome}\n${STATUS_LABEL[unit.status]}`}
+            className="relative flex flex-col items-center justify-center rounded-xl border-2 w-20 h-16 transition-all duration-150 hover:scale-105 hover:shadow-lg hover:z-10 focus:outline-none"
+            style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
+          >
+            <span className="text-xs font-bold truncate px-1" style={{ color: STATUS_COLOR[unit.status] }}>
+              {unit.loteNum ?? unit.nome}
+            </span>
+            {!isLoteamento && (
+              <span className="text-[9px] text-[var(--shell-subtext)]">Casa</span>
+            )}
+            {unit.loteAreaM2 && (
+              <span className="text-[9px] text-[var(--shell-subtext)]">{unit.loteAreaM2}m²</span>
+            )}
+          </button>
         ))}
       </div>
 
-      {tooltip && <UnitTooltip unit={tooltip.unit} x={tooltip.x} y={tooltip.y} />}
-
-      {/* Legenda */}
-      <div className="flex items-center gap-3 mt-3 text-xs text-[var(--shell-subtext)]">
-        {(Object.keys(STATUS_COLOR) as UnitStatus[]).map((s) => (
-          <span key={s} className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-sm border-2" style={{ backgroundColor: STATUS_COLOR[s] + "33", borderColor: STATUS_COLOR[s] }} />
-            {STATUS_LABEL[s]}
-          </span>
-        ))}
-      </div>
+      {selectedUnit && (
+        <UnitModal
+          unit={selectedUnit}
+          devId={devId}
+          onClose={() => setSelectedUnit(null)}
+          onUpdated={(u) => { onUnitUpdated(u); setSelectedUnit(u); }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Export ───────────────────────────────────────────────────────────────────
+function EspelhoVendas({ dev, onUnitUpdated }: {
+  dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
+}) {
+  const [selectedTowerId, setSelectedTowerId] = useState<string | null>(dev.towers[0]?.id ?? null);
+  const selectedTower = dev.towers.find((t) => t.id === selectedTowerId) ?? dev.towers[0] ?? null;
 
-function exportExcel(dev: Development, paymentCondition: PaymentCondition | null | undefined) {
-  const wb = XLSX.utils.book_new();
+  const total = dev.towers.flatMap((t) => t.units).length;
+  const vendido = dev.towers.flatMap((t) => t.units).filter((u) => u.status === "VENDIDO").length;
+  const reservado = dev.towers.flatMap((t) => t.units).filter((u) => u.status === "RESERVADO").length;
+  const disponivel = dev.towers.flatMap((t) => t.units).filter((u) => u.status === "DISPONIVEL").length;
 
-  // Aba 1: Tabela de Preços
-  const header = ["Torre", "Unidade", "Andar", "Status", "Área m²", "Quartos", "Suítes", "Banheiros", "Vagas", "Valor Venda (R$)", "Valor Avaliado (R$)"];
-  const rows: any[][] = [header];
-  dev.towers.forEach((t) =>
-    t.units.forEach((u) =>
-      rows.push([t.nome, u.nome, u.andar ?? "", STATUS_LABEL[u.status], u.areaM2 ?? "", u.quartos ?? "", u.suites ?? "", u.banheiros ?? "", u.vagas ?? "", u.valorVenda ?? "", u.valorAvaliado ?? ""])
-    )
-  );
-  const ws1 = XLSX.utils.aoa_to_sheet(rows);
-  ws1["!cols"] = header.map(() => ({ wch: 16 }));
-  XLSX.utils.book_append_sheet(wb, ws1, "Tabela de Preços");
+  const isVertical = dev.tipo === "VERTICAL";
+  const isLoteamento = dev.subtipo === "LOTEAMENTO";
 
-  // Aba 2: Condições de Pagamento
-  if (paymentCondition) {
-    const pc = paymentCondition;
-    const pcRows: any[][] = [
-      ["Campo", "Valor"],
-      ["Aceita Financiamento Bancário", pc.aceitaFinanciamento ? "Sim" : "Não"],
-      ["Valor de Ato (R$)", pc.valorAto ?? "—"],
-      ["Entrada (%)", pc.entradaPercentual != null ? `${pc.entradaPercentual}%` : "—"],
-      ["Parcelas da Entrada", pc.entradaParcelas ?? "—"],
-      ["Desconto à Vista (%)", pc.descontoAVista != null ? `${pc.descontoAVista}%` : "—"],
-      ["Base do Financiamento", pc.financiamentoBase ?? "—"],
-      ["Financiamento (%)", pc.financiamentoPercentual != null ? `${pc.financiamentoPercentual}%` : "—"],
-      ["Pro-soluto", pc.proSoluto ? "Sim" : "Não"],
-      ["Pro-soluto (%)", pc.proSolutoPercentual != null ? `${pc.proSolutoPercentual}%` : "—"],
-      ["Pro-soluto (parcelas)", pc.proSolutoParcelas ?? "—"],
-      ["Observações", pc.obs ?? "—"],
-    ];
-    const ws2 = XLSX.utils.aoa_to_sheet(pcRows);
-    ws2["!cols"] = [{ wch: 32 }, { wch: 20 }];
-    XLSX.utils.book_append_sheet(wb, ws2, "Condições de Pagamento");
+  function printEspelho() {
+    window.print();
   }
 
-  XLSX.writeFile(wb, `${dev.nome} — Tabela de Preços.xlsx`);
-}
-
-function exportPDF(dev: Development, paymentCondition: PaymentCondition | null | undefined) {
-  const win = window.open("", "_blank");
-  if (!win) return;
-
-  const rows = dev.towers.flatMap((t) =>
-    t.units.map((u) => `
-      <tr>
-        <td>${t.nome}</td><td>${u.nome}</td><td>${u.andar ?? "—"}</td>
-        <td style="color:${STATUS_COLOR[u.status]};font-weight:600">${STATUS_LABEL[u.status]}</td>
-        <td>${u.areaM2 ?? "—"}</td><td>${u.quartos ?? "—"}</td>
-        <td>${u.valorVenda ? `R$ ${Number(u.valorVenda).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}</td>
-        <td>${u.valorAvaliado ? `R$ ${Number(u.valorAvaliado).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}</td>
-      </tr>`)
-  ).join("");
-
-  const pcTable = paymentCondition ? `
-    <h3>Condições de Pagamento</h3>
-    <table>
-      <tr><td><b>Aceita Financiamento</b></td><td>${paymentCondition.aceitaFinanciamento ? "Sim" : "Não"}</td></tr>
-      ${paymentCondition.valorAto ? `<tr><td><b>Valor de Ato</b></td><td>R$ ${paymentCondition.valorAto.toLocaleString("pt-BR")}</td></tr>` : ""}
-      ${paymentCondition.entradaPercentual ? `<tr><td><b>Entrada</b></td><td>${paymentCondition.entradaPercentual}% em ${paymentCondition.entradaParcelas ?? "?"} parcelas</td></tr>` : ""}
-      ${paymentCondition.descontoAVista ? `<tr><td><b>Desconto à Vista</b></td><td>${paymentCondition.descontoAVista}%</td></tr>` : ""}
-      ${paymentCondition.financiamentoPercentual ? `<tr><td><b>Financiamento</b></td><td>${paymentCondition.financiamentoPercentual}% sobre ${paymentCondition.financiamentoBase === "AVALIADO" ? "valor avaliado" : "valor de venda"}</td></tr>` : ""}
-      ${paymentCondition.proSoluto ? `<tr><td><b>Pro-soluto</b></td><td>${paymentCondition.proSolutoPercentual}% em ${paymentCondition.proSolutoParcelas ?? "?"} parcelas</td></tr>` : ""}
-      ${paymentCondition.obs ? `<tr><td><b>Obs.</b></td><td>${paymentCondition.obs}</td></tr>` : ""}
-    </table>` : "";
-
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-    <title>${dev.nome} — Tabela de Preços</title>
-    <style>
-      body { font-family: Arial, sans-serif; font-size: 11px; color: #1e293b; padding: 24px; }
-      h2 { margin: 0 0 4px; font-size: 16px; } h3 { margin: 20px 0 6px; font-size: 13px; }
-      p  { margin: 0 0 16px; color: #64748b; font-size: 10px; }
-      table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
-      th { background: #f1f5f9; font-weight: 700; text-align: left; padding: 6px 8px; border: 1px solid #e2e8f0; }
-      td { padding: 5px 8px; border: 1px solid #e2e8f0; }
-      tr:nth-child(even) { background: #f8fafc; }
-      @media print { body { padding: 12px; } }
-    </style></head><body>
-    <h2>${dev.nome}</h2>
-    <p>${dev.cidade ?? ""}${dev.cidade && dev.estado ? ` / ${dev.estado}` : dev.estado ?? ""} · Gerado em ${new Date().toLocaleDateString("pt-BR")}</p>
-    <h3>Tabela de Preços</h3>
-    <table>
-      <thead><tr><th>Torre</th><th>Unidade</th><th>Andar</th><th>Status</th><th>Área m²</th><th>Quartos</th><th>Vl. Venda</th><th>Vl. Avaliado</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    ${pcTable}
-    </body></html>`);
-  win.document.close();
-  setTimeout(() => { win.focus(); win.print(); }, 400);
-}
-
-// ─── PriceTable ───────────────────────────────────────────────────────────────
-
-const inpSm = "w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-1.5 py-1 text-xs text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] text-right";
-
-function fmtCur(v: number | null | undefined) {
-  if (!v) return "—";
-  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-}
-
-function parsePt(v: string): number | null {
-  const n = parseFloat(v.replace(/\./g, "").replace(",", "."));
-  return isNaN(n) ? null : n;
-}
-
-function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
-  const [edits, setEdits] = useState<Record<string, Partial<DevelopmentUnit>>>({});
-  const [saving, setSaving] = useState<string | null>(null);
-  const [bulkTower, setBulkTower] = useState<string | null>(null);
-  const [bulkFloor, setBulkFloor] = useState<string>("all");
-  const [bulkFields, setBulkFields] = useState({ areaM2: "", quartos: "", suites: "", banheiros: "", vagas: "", valorVenda: "", valorAvaliado: "" });
-  const [applyingBulk, setApplyingBulk] = useState(false);
-
-  function setField(unitId: string, field: keyof DevelopmentUnit, val: string) {
-    const num = parsePt(val);
-    setEdits((p) => ({ ...p, [unitId]: { ...p[unitId], [field]: num } }));
-  }
-
-  async function saveUnit(devId: string, unitId: string) {
-    const e = edits[unitId];
-    if (!e || Object.keys(e).length === 0) return;
-    setSaving(unitId);
-    try {
-      await updateUnit(devId, unitId, e);
-      setEdits((p) => { const n = { ...p }; delete n[unitId]; return n; });
-      onSaved();
-    } finally { setSaving(null); }
-  }
-
-  async function applyBulk() {
-    if (!bulkTower) return;
-    setApplyingBulk(true);
-    const updates: any = {};
-    if (bulkFields.areaM2)      updates.areaM2      = parsePt(bulkFields.areaM2);
-    if (bulkFields.quartos)     updates.quartos     = parseInt(bulkFields.quartos);
-    if (bulkFields.suites)      updates.suites      = parseInt(bulkFields.suites);
-    if (bulkFields.banheiros)   updates.banheiros   = parseInt(bulkFields.banheiros);
-    if (bulkFields.vagas)       updates.vagas       = parseInt(bulkFields.vagas);
-    if (bulkFields.valorVenda)  updates.valorVenda  = parsePt(bulkFields.valorVenda);
-    if (bulkFields.valorAvaliado) updates.valorAvaliado = parsePt(bulkFields.valorAvaliado);
-    if (Object.keys(updates).length === 0) { setApplyingBulk(false); return; }
-    try {
-      await bulkUpdateUnits(dev.id, bulkTower, {
-        ...(bulkFloor !== "all" ? { andar: parseInt(bulkFloor) } : {}),
-        updates,
-      });
-      setBulkFields({ areaM2: "", quartos: "", suites: "", banheiros: "", vagas: "", valorVenda: "", valorAvaliado: "" });
-      setBulkTower(null);
-      onSaved();
-    } finally { setApplyingBulk(false); }
+  if (dev.towers.length === 0) {
+    return (
+      <div className="py-16 text-center">
+        <div className="text-5xl mb-4">🏗️</div>
+        <p className="text-sm font-semibold text-[var(--shell-text)]">Nenhuma torre/quadra cadastrada</p>
+        <p className="text-xs text-[var(--shell-subtext)] mt-1">Vá para a aba Cadastro e adicione torres para ver o espelho</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-5">
-      {/* Painel preenchimento em massa */}
-      <div className="rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent)]/5 p-4 space-y-3">
-        <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Preencher em massa</p>
-        <div className="flex flex-wrap gap-2 items-end">
-          <div className="space-y-1">
-            <label className="text-[10px] text-[var(--shell-subtext)]">Torre</label>
-            <select value={bulkTower ?? ""} onChange={(e) => setBulkTower(e.target.value || null)}
-              className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)]">
-              <option value="">Selecione</option>
-              {dev.towers.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-            </select>
+      {/* Resumo */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: "Total",      value: total,      color: "text-[var(--shell-text)]",  bg: "bg-[var(--shell-bg)]" },
+          { label: "Disponível", value: disponivel, color: "text-green-600",             bg: "bg-green-50 dark:bg-green-900/20" },
+          { label: "Reservado",  value: reservado,  color: "text-amber-600",             bg: "bg-amber-50 dark:bg-amber-900/20" },
+          { label: "Vendido",    value: vendido,    color: "text-red-600",               bg: "bg-red-50 dark:bg-red-900/20" },
+        ].map((c) => (
+          <div key={c.label} className={`rounded-xl border border-[var(--shell-card-border)] ${c.bg} px-4 py-3 text-center`}>
+            <p className={`text-2xl font-bold ${c.color}`}>{c.value}</p>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{c.label}</p>
           </div>
-          {bulkTower && (
-            <div className="space-y-1">
-              <label className="text-[10px] text-[var(--shell-subtext)]">Andar</label>
-              <select value={bulkFloor} onChange={(e) => setBulkFloor(e.target.value)}
-                className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)]">
-                <option value="all">Todos</option>
-                {Array.from({ length: dev.towers.find((t) => t.id === bulkTower)?.floors ?? 0 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>{i + 1}º andar</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {(["areaM2", "quartos", "suites", "banheiros", "vagas", "valorVenda", "valorAvaliado"] as const).map((f) => (
-            <div key={f} className="space-y-1">
-              <label className="text-[10px] text-[var(--shell-subtext)] whitespace-nowrap">
-                {f === "areaM2" ? "Área m²" : f === "valorVenda" ? "Vl. Venda" : f === "valorAvaliado" ? "Vl. Avaliado" : f.charAt(0).toUpperCase() + f.slice(1)}
-              </label>
-              <input value={bulkFields[f]} onChange={(e) => setBulkFields((p) => ({ ...p, [f]: e.target.value }))}
-                placeholder="—" className="w-20 rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-right text-[var(--shell-text)]" />
-            </div>
-          ))}
-          <button onClick={applyBulk} disabled={!bulkTower || applyingBulk}
-            className="rounded-lg bg-[var(--brand-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
-            {applyingBulk ? "Aplicando..." : "Aplicar"}
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* Tabela por torre */}
-      {dev.towers.map((tower) => (
-        <div key={tower.id} className="space-y-2">
-          <p className="text-sm font-semibold text-[var(--shell-text)]">{tower.nome}</p>
-          <div className="overflow-x-auto rounded-xl border border-[var(--shell-card-border)]">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[var(--shell-card-border)] bg-[var(--shell-bg)]">
-                  {["Unidade", "Andar", "Status", "Área m²", "Quartos", "Suítes", "Banheiros", "Vagas", "Vl. Venda", "Vl. Avaliado", ""].map((h) => (
-                    <th key={h} className="px-2 py-2 text-left font-semibold text-[var(--shell-subtext)] whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tower.units.map((unit) => {
-                  const e = edits[unit.id] ?? {};
-                  const dirty = Object.keys(e).length > 0;
-                  return (
-                    <tr key={unit.id} className={`border-b border-[var(--shell-card-border)] last:border-0 ${dirty ? "bg-yellow-50 dark:bg-yellow-900/10" : ""}`}>
-                      <td className="px-2 py-1.5 font-medium text-[var(--shell-text)] whitespace-nowrap">{unit.nome}</td>
-                      <td className="px-2 py-1.5 text-[var(--shell-subtext)] text-center">{unit.andar ?? "—"}</td>
-                      <td className="px-2 py-1.5">
-                        <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                          style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", color: STATUS_COLOR[unit.status] }}>
-                          {STATUS_LABEL[unit.status]}
-                        </span>
-                      </td>
-                      {(["areaM2", "quartos", "suites", "banheiros", "vagas"] as const).map((f) => (
-                        <td key={f} className="px-2 py-1 min-w-[60px]">
-                          <input defaultValue={unit[f] ?? ""} onBlur={(e) => setField(unit.id, f, e.target.value)}
-                            className={inpSm} />
-                        </td>
-                      ))}
-                      {(["valorVenda", "valorAvaliado"] as const).map((f) => (
-                        <td key={f} className="px-2 py-1 min-w-[90px]">
-                          <input defaultValue={unit[f] ?? ""} onBlur={(e) => setField(unit.id, f, e.target.value)}
-                            className={inpSm} />
-                        </td>
-                      ))}
-                      <td className="px-2 py-1">
-                        {dirty && (
-                          <button onClick={() => saveUnit(dev.id, unit.id)} disabled={saving === unit.id}
-                            className="rounded bg-[var(--brand-accent)] px-2 py-0.5 text-[10px] font-semibold text-white hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
-                            {saving === unit.id ? "..." : "Salvar"}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* Legenda */}
+      <div className="flex items-center gap-4 flex-wrap">
+        {Object.entries(STATUS_LABEL).map(([k, l]) => (
+          <div key={k} className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)]">
+            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: STATUS_COLOR[k as UnitStatus] }} />
+            {l}
           </div>
+        ))}
+        <button onClick={printEspelho}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
+          🖨️ Imprimir
+        </button>
+      </div>
+
+      {/* Seletor de torre */}
+      {dev.towers.length > 1 && (
+        <div className="flex gap-2 flex-wrap border-b border-[var(--shell-card-border)] pb-3">
+          {dev.towers.map((t) => (
+            <button key={t.id} type="button"
+              onClick={() => setSelectedTowerId(t.id)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                selectedTower?.id === t.id
+                  ? "bg-[var(--brand-accent)] text-white shadow-sm"
+                  : "border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+              }`}>
+              {t.nome}
+              <span className="ml-2 text-[10px] opacity-70">{t.units.length} unid.</span>
+            </button>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* Grade */}
+      {selectedTower && (
+        <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 shadow-sm">
+          <p className="text-sm font-semibold text-[var(--shell-text)] mb-4">{selectedTower.nome}</p>
+          {isVertical ? (
+            <EspelhoVertical
+              tower={selectedTower}
+              devId={dev.id}
+              onUnitUpdated={(u) => onUnitUpdated(selectedTower.id, u)}
+            />
+          ) : (
+            <EspelhoHorizontal
+              tower={selectedTower}
+              devId={dev.id}
+              onUnitUpdated={(u) => onUnitUpdated(selectedTower.id, u)}
+              isLoteamento={isLoteamento}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── PaymentConditionForm ─────────────────────────────────────────────────────
+// ─── Helpers 3D compartilhados ───────────────────────────────────────────────
+
+function buildThreeScene(THREE: any, dev: Development) {
+  const scene = new THREE.Scene();
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const sun = new THREE.DirectionalLight(0xffeedd, 1.2);
+  sun.position.set(100, 200, 100);
+  scene.add(sun);
+
+  const isVertical = dev.tipo === "VERTICAL";
+  const isLoteamento = dev.subtipo === "LOTEAMENTO";
+  const interactiveObjects: any[] = [];
+  const unitMap = new Map<string, DevelopmentUnit>();
+
+  dev.towers.forEach((tower) => {
+    const bx = tower.offsetX;
+    const bz = -tower.offsetY;
+    const activeFaces = (tower.lados ?? "FRENTE,FUNDO,ESQUERDA,DIREITA").split(",");
+
+    if (isVertical) {
+      const buildingH = tower.floors * tower.alturaAndarM;
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(tower.larguraM, buildingH, tower.profundidadeM),
+        new THREE.MeshLambertMaterial({ color: 0xd0d8e8 }),
+      );
+      body.position.set(bx, buildingH / 2, bz);
+      scene.add(body);
+
+      const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
+      tower.units.forEach((u) => { const f = u.andar ?? 1; if (!unitsByFloor[f]) unitsByFloor[f] = []; unitsByFloor[f].push(u); });
+
+      Object.entries(unitsByFloor).forEach(([floorStr, floorUnits]) => {
+        const floor = parseInt(floorStr);
+        const y = (floor - 0.5) * tower.alturaAndarM;
+        const perFace = Math.ceil(floorUnits.length / activeFaces.length);
+        activeFaces.forEach((face, fi) => {
+          const faceUnits = floorUnits.slice(fi * perFace, (fi + 1) * perFace);
+          if (!faceUnits.length) return;
+          const cols = faceUnits.length;
+          faceUnits.forEach((unit, idx) => {
+            let wx = bx, wz = bz;
+            let gw = 1, gh = tower.alturaAndarM * 0.5, gd = 0.3;
+            if (face === "FRENTE") { wx = bx - tower.larguraM/2 + tower.larguraM/(cols+1)*(idx+1); wz = bz - tower.profundidadeM/2 - 0.05; gw = tower.larguraM/(cols+1)*0.6; }
+            else if (face === "FUNDO") { wx = bx - tower.larguraM/2 + tower.larguraM/(cols+1)*(idx+1); wz = bz + tower.profundidadeM/2 + 0.05; gw = tower.larguraM/(cols+1)*0.6; }
+            else if (face === "ESQUERDA") { wx = bx - tower.larguraM/2 - 0.05; wz = bz - tower.profundidadeM/2 + tower.profundidadeM/(cols+1)*(idx+1); gw = 0.3; gd = tower.profundidadeM/(cols+1)*0.6; }
+            else if (face === "DIREITA") { wx = bx + tower.larguraM/2 + 0.05; wz = bz - tower.profundidadeM/2 + tower.profundidadeM/(cols+1)*(idx+1); gw = 0.3; gd = tower.profundidadeM/(cols+1)*0.6; }
+            const win = new THREE.Mesh(
+              new THREE.BoxGeometry(gw, gh, gd),
+              new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), emissive: new THREE.Color(STATUS_COLOR[unit.status]), emissiveIntensity: 0.4 }),
+            );
+            win.position.set(wx, y, wz);
+            win.userData = { unitId: unit.id };
+            scene.add(win);
+            interactiveObjects.push(win);
+            unitMap.set(win.uuid, unit);
+          });
+        });
+      });
+
+    } else if (isLoteamento) {
+      const cols = Math.ceil(Math.sqrt(tower.units.length)) || 1;
+      const lotW = tower.larguraM / cols, lotD = tower.profundidadeM / cols;
+      tower.units.forEach((unit, idx) => {
+        const col = idx % cols, row = Math.floor(idx / cols);
+        const lot = new THREE.Mesh(
+          new THREE.PlaneGeometry(lotW * 0.9, lotD * 0.9),
+          new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), opacity: 0.8, transparent: true }),
+        );
+        lot.rotation.x = -Math.PI / 2;
+        lot.position.set(bx - tower.larguraM/2 + lotW*(col+0.5), 0.1, bz - tower.profundidadeM/2 + lotD*(row+0.5));
+        lot.userData = { unitId: unit.id };
+        scene.add(lot); interactiveObjects.push(lot); unitMap.set(lot.uuid, unit);
+      });
+
+    } else {
+      const cols = Math.ceil(Math.sqrt(tower.units.length)) || 1;
+      const lotW = tower.larguraM / cols, lotD = tower.profundidadeM / cols;
+      tower.units.forEach((unit, idx) => {
+        const col = idx % cols, row = Math.floor(idx / cols);
+        const lx = bx - tower.larguraM/2 + lotW*(col+0.5), lz = bz - tower.profundidadeM/2 + lotD*(row+0.5);
+        const houseH = tower.alturaAndarM;
+        const house = new THREE.Mesh(
+          new THREE.BoxGeometry(lotW*0.7, houseH, lotD*0.7),
+          new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]).lerp(new THREE.Color(0xffffff), 0.4) }),
+        );
+        house.position.set(lx, houseH/2, lz);
+        house.userData = { unitId: unit.id };
+        scene.add(house); interactiveObjects.push(house); unitMap.set(house.uuid, unit);
+        const roof = new THREE.Mesh(
+          new THREE.ConeGeometry(Math.max(lotW,lotD)*0.55, houseH*0.5, 4),
+          new THREE.MeshLambertMaterial({ color: 0x8b4513 }),
+        );
+        roof.position.set(lx, houseH + houseH*0.25, lz);
+        roof.rotation.y = Math.PI/4;
+        scene.add(roof);
+      });
+    }
+  });
+
+  return { scene, interactiveObjects, unitMap };
+}
+
+// ─── Visão 3D ────────────────────────────────────────────────────────────────
+
+function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void }) {
+  const aerialRef = useRef<HTMLDivElement>(null);
+  const walkRef   = useRef<HTMLDivElement>(null);
+  const walkSceneRef = useRef<any>(null);
+  const [mode, setMode] = useState<"aerial" | "walk">("aerial");
+  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
+  const [loadingAerial, setLoadingAerial] = useState(true);
+  const [walkActive, setWalkActive] = useState(false);
+  const hasGps = !!(dev.lat && dev.lng);
+
+  // ── Modo Aéreo: Google Maps + OverlayView Canvas ────────────────────────────
+  useEffect(() => {
+    if (!aerialRef.current || !hasGps) { setLoadingAerial(false); return; }
+    let cancelled = false;
+    let overlayRef: any = null;
+
+    async function initAerial() {
+      const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+      if (!key) { setLoadingAerial(false); return; }
+      await new Promise<void>((resolve) => {
+        if (window.google?.maps) { resolve(); return; }
+        const t = setInterval(() => { if (window.google?.maps) { clearInterval(t); resolve(); } }, 100);
+      });
+      if (cancelled || !aerialRef.current) return;
+
+      const map = new window.google.maps.Map(aerialRef.current, {
+        center: { lat: dev.lat!, lng: dev.lng! },
+        zoom: 19, tilt: 0,
+        mapTypeId: "satellite",
+        mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
+      });
+
+      const cosLat = Math.cos(dev.lat! * Math.PI / 180);
+      const latPerM = 1 / 111320;
+      const lngPerM = 1 / (111320 * cosLat);
+
+      const ov = new window.google.maps.OverlayView();
+      overlayRef = ov;
+      let canvas: HTMLCanvasElement | null = null;
+
+      ov.onAdd = function () {
+        canvas = document.createElement("canvas");
+        canvas.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;";
+        (this as any).getPanes()!.overlayLayer.appendChild(canvas);
+      };
+
+      ov.draw = function () {
+        if (!canvas || !aerialRef.current) return;
+        const proj = (this as any).getProjection();
+        if (!proj) return;
+        canvas.width  = aerialRef.current.clientWidth;
+        canvas.height = aerialRef.current.clientHeight;
+        const ctx = canvas.getContext("2d")!;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // pixels per meter at current zoom
+        const cPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng!))!;
+        const rPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng! + lngPerM))!;
+        const ppm = Math.abs(rPx.x - cPx.x);
+
+        dev.towers.forEach((tower) => {
+          const tLat = dev.lat! + tower.offsetY * latPerM;
+          const tLng = dev.lng! + tower.offsetX * lngPerM;
+          const tPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(tLat, tLng))!;
+          const tw = tower.larguraM * ppm;
+          const th = tower.profundidadeM * ppm;
+          const rx = tPx.x - tw / 2;
+          const ry = tPx.y - th / 2;
+
+          if (dev.tipo === "VERTICAL") {
+            ctx.fillStyle = "rgba(37,99,235,0.78)";
+            ctx.fillRect(rx, ry, tw, th);
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(rx, ry, tw, th);
+            ctx.fillStyle = "#fff";
+            const fz = Math.max(9, Math.min(13, tw / 6));
+            ctx.font = `bold ${fz}px sans-serif`;
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(tower.nome, tPx.x, tPx.y - (tw > 50 ? fz / 2 : 0));
+            if (tw > 50) {
+              ctx.font = `${fz - 1}px sans-serif`;
+              ctx.fillText(`${tower.floors} and · ${tower.units.length} un`, tPx.x, tPx.y + fz);
+            }
+          } else {
+            const cols = Math.max(1, Math.ceil(Math.sqrt(tower.units.length)));
+            const rows = Math.max(1, Math.ceil(tower.units.length / cols));
+            const cellW = tw / cols;
+            const cellH = th / rows;
+            tower.units.forEach((unit, idx) => {
+              const col = idx % cols;
+              const row = Math.floor(idx / cols);
+              const x = rx + col * cellW;
+              const y = ry + row * cellH;
+              ctx.fillStyle = STATUS_COLOR[unit.status] + "cc";
+              ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
+              ctx.strokeStyle = "rgba(255,255,255,0.6)";
+              ctx.lineWidth = 1;
+              ctx.strokeRect(x + 1, y + 1, cellW - 2, cellH - 2);
+              if (cellW > 18) {
+                ctx.fillStyle = "#fff";
+                ctx.font = `${Math.min(10, cellW / 3)}px sans-serif`;
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText(unit.loteNum || String(idx + 1), x + cellW / 2, y + cellH / 2);
+              }
+            });
+          }
+        });
+      };
+
+      ov.onRemove = function () {
+        if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        canvas = null;
+      };
+
+      ov.setMap(map);
+      setLoadingAerial(false);
+
+      map.addListener("click", (e: any) => {
+        const proj = (overlayRef as any)?.getProjection();
+        if (!proj) return;
+        const clickPx = proj.fromLatLngToDivPixel(e.latLng)!;
+        const cPx2 = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng!))!;
+        const rPx2 = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng! + lngPerM))!;
+        const ppm = Math.abs(rPx2.x - cPx2.x);
+
+        for (const tower of dev.towers) {
+          const tLat = dev.lat! + tower.offsetY * latPerM;
+          const tLng = dev.lng! + tower.offsetX * lngPerM;
+          const tPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(tLat, tLng))!;
+          const tw = tower.larguraM * ppm;
+          const th = tower.profundidadeM * ppm;
+          const rx = tPx.x - tw / 2, ry = tPx.y - th / 2;
+
+          if (clickPx.x >= rx && clickPx.x <= rx + tw && clickPx.y >= ry && clickPx.y <= ry + th) {
+            if (dev.tipo === "VERTICAL") {
+              setSelectedUnit(tower.units[0] ?? null);
+            } else {
+              const cols = Math.max(1, Math.ceil(Math.sqrt(tower.units.length)));
+              const cellW = tw / cols;
+              const cellH = th / Math.max(1, Math.ceil(tower.units.length / cols));
+              const col = Math.floor((clickPx.x - rx) / cellW);
+              const row = Math.floor((clickPx.y - ry) / cellH);
+              const idx = row * cols + col;
+              if (tower.units[idx]) setSelectedUnit(tower.units[idx]);
+            }
+            return;
+          }
+        }
+        setSelectedUnit(null);
+      });
+    }
+
+    initAerial();
+    return () => {
+      cancelled = true;
+      if (overlayRef) { try { overlayRef.setMap(null); } catch {} overlayRef = null; }
+    };
+  }, [dev, hasGps]);
+
+  // ── Modo Walk: Three.js standalone ──────────────────────────────────────────
+  useEffect(() => {
+    if (mode !== "walk" || !walkRef.current) return;
+    let cancelled = false;
+    let animId = 0;
+
+    async function initWalk() {
+      if (!walkRef.current) return;
+      const THREE = await import("three");
+      const { PointerLockControls } = await import("three/examples/jsm/controls/PointerLockControls.js" as any);
+      if (cancelled) return;
+
+      const { scene, interactiveObjects, unitMap } = buildThreeScene(THREE, dev);
+      scene.background = new THREE.Color(0x87ceeb);
+
+      if (dev.implantacaoUrl) {
+        const tex = await new THREE.TextureLoader().loadAsync(dev.implantacaoUrl);
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ map: tex }));
+        ground.rotation.x = -Math.PI / 2; scene.add(ground);
+      } else {
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: 0x4a7c59 }));
+        ground.rotation.x = -Math.PI / 2; scene.add(ground);
+      }
+
+      const W = walkRef.current.clientWidth, H = walkRef.current.clientHeight;
+      const camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 2000);
+      camera.position.set(0, 1.7, 60);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(W, H);
+      walkRef.current.appendChild(renderer.domElement);
+
+      const controls = new PointerLockControls(camera, renderer.domElement);
+      const keys: Record<string, boolean> = {};
+      const onKD = (e: KeyboardEvent) => { keys[e.code] = true; if (e.code === "Escape") controls.unlock(); };
+      const onKU = (e: KeyboardEvent) => { keys[e.code] = false; };
+      document.addEventListener("keydown", onKD);
+      document.addEventListener("keyup", onKU);
+      controls.addEventListener("lock", () => setWalkActive(true));
+      controls.addEventListener("unlock", () => setWalkActive(false));
+
+      // Click para selecionar unidade
+      const raycaster = new THREE.Raycaster();
+      renderer.domElement.addEventListener("click", (e: MouseEvent) => {
+        if (!controls.isLocked) { controls.lock(); return; }
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const hits = raycaster.intersectObjects(interactiveObjects);
+        if (hits.length > 0) {
+          const unit = unitMap.get(hits[0].object.uuid);
+          if (unit) setSelectedUnit(unit);
+        }
+      });
+
+      const ro = new ResizeObserver(() => {
+        if (!walkRef.current) return;
+        const w = walkRef.current.clientWidth, h = walkRef.current.clientHeight;
+        renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+      });
+      ro.observe(walkRef.current);
+
+      function animate() {
+        animId = requestAnimationFrame(animate);
+        if (controls.isLocked) {
+          const spd = 0.3;
+          if (keys["KeyW"] || keys["ArrowUp"])    controls.moveForward(spd);
+          if (keys["KeyS"] || keys["ArrowDown"])  controls.moveForward(-spd);
+          if (keys["KeyA"] || keys["ArrowLeft"])  controls.moveRight(-spd);
+          if (keys["KeyD"] || keys["ArrowRight"]) controls.moveRight(spd);
+        }
+        renderer.render(scene, camera);
+      }
+      animate();
+      walkSceneRef.current = { controls, renderer, ro, onKD, onKU };
+    }
+
+    initWalk();
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animId);
+      const s = walkSceneRef.current;
+      if (s) {
+        document.removeEventListener("keydown", s.onKD);
+        document.removeEventListener("keyup", s.onKU);
+        s.ro?.disconnect();
+        s.renderer?.dispose();
+        if (walkRef.current?.contains(s.renderer?.domElement)) walkRef.current.removeChild(s.renderer.domElement);
+      }
+      walkSceneRef.current = null;
+      setWalkActive(false);
+    };
+  }, [mode, dev]);
+
+  return (
+    <div className="space-y-4">
+      {!hasGps && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+          Defina as coordenadas GPS do empreendimento na aba Cadastro para usar a visão no Maps.
+        </div>
+      )}
+
+      {/* Toggle de modo */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex rounded-xl border border-[var(--shell-card-border)] overflow-hidden">
+          {[{ k: "aerial", l: "🛰️ Satélite (Maps)" }, { k: "walk", l: "🚶 Passeio Virtual" }].map(({ k, l }) => (
+            <button key={k} type="button"
+              onClick={() => { setMode(k as any); setSelectedUnit(null); }}
+              className={`px-4 py-2.5 text-sm font-medium transition-colors ${mode === k ? "bg-[var(--brand-accent)] text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {mode === "walk" && !walkActive && <p className="text-xs text-[var(--shell-subtext)]">Clique na cena para ativar · WASD para mover · ESC para sair</p>}
+        {walkActive && <span className="rounded-full bg-green-500 px-3 py-1 text-xs font-semibold text-white animate-pulse">Passeio ativo — ESC para sair</span>}
+      </div>
+
+      {/* Containers */}
+      <div className="relative rounded-2xl overflow-hidden border border-[var(--shell-card-border)] shadow-md" style={{ height: 540 }}>
+        {/* Aéreo: Google Maps + OverlayView */}
+        <div ref={aerialRef} className="absolute inset-0" style={{ display: mode === "aerial" ? "block" : "none" }} />
+        {mode === "aerial" && loadingAerial && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--shell-bg)] z-10">
+            <div className="text-center space-y-2">
+              <div className="w-8 h-8 border-2 border-[var(--brand-accent)] border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-[var(--shell-subtext)]">Carregando mapa...</p>
+            </div>
+          </div>
+        )}
+        {/* Walk: Three.js */}
+        {mode === "walk" && <div ref={walkRef} className="absolute inset-0" />}
+      </div>
+
+      {/* Painel de unidade selecionada */}
+      {selectedUnit && (
+        <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-bold text-[var(--shell-text)] text-base">{selectedUnit.nome}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
+                  style={{ backgroundColor: STATUS_COLOR[selectedUnit.status] }}>
+                  {STATUS_LABEL[selectedUnit.status]}
+                </span>
+                {selectedUnit.valorVenda && <span className="text-sm font-semibold text-[var(--brand-accent)]">{fmt(selectedUnit.valorVenda)}</span>}
+              </div>
+            </div>
+            <button onClick={() => setSelectedUnit(null)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl">×</button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
+            {selectedUnit.andar && <div><p className="text-xs text-[var(--shell-subtext)]">Andar</p><p className="font-medium">{selectedUnit.andar}º</p></div>}
+            {selectedUnit.areaM2 && <div><p className="text-xs text-[var(--shell-subtext)]">Área</p><p className="font-medium">{selectedUnit.areaM2}m²</p></div>}
+            {selectedUnit.quartos && <div><p className="text-xs text-[var(--shell-subtext)]">Quartos</p><p className="font-medium">{selectedUnit.quartos}</p></div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Aba Espelho (unificada 2D + 3D) ─────────────────────────────────────────
+
+function AbaEspelho({ dev, onUnitUpdated }: {
+  dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
+}) {
+  const [view, setView] = useState<"2d" | "3d">("2d");
+  const [show3d, setShow3d] = useState(false);
+
+  return (
+    <div className="space-y-5">
+      {/* Toggle de visão */}
+      <div className="flex items-center gap-3">
+        <div className="flex rounded-xl border border-[var(--shell-card-border)] overflow-hidden shadow-sm">
+          {[{ k: "2d", l: "📋 2D Estático" }, { k: "3d", l: "🏗️ 3D Interativo" }].map(({ k, l }) => (
+            <button key={k} type="button"
+              onClick={() => {
+                setView(k as any);
+                if (k === "3d") setShow3d(true);
+              }}
+              className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
+                view === k
+                  ? "bg-[var(--brand-accent)] text-white"
+                  : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+              }`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {view === "3d" && (
+          <span className="text-xs text-[var(--shell-subtext)]">Arraste para orbitar · Scroll para zoom · Clique para selecionar</span>
+        )}
+      </div>
+
+      {view === "2d" && <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} />}
+      {view === "3d" && show3d && <View3D dev={dev} onUnitUpdated={onUnitUpdated} />}
+    </div>
+  );
+}
+
+// ─── Tabela de Preços ─────────────────────────────────────────────────────────
+
+function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  const [edits, setEdits] = useState<Record<string, Partial<DevelopmentUnit>>>({});
+  const [saving, setSaving] = useState(false);
+
+  function setEdit(unitId: string, field: string, val: any) {
+    setEdits((p) => ({ ...p, [unitId]: { ...(p[unitId] ?? {}), [field]: val === "" ? null : (isNaN(Number(val)) ? val : Number(val)) } }));
+  }
+
+  async function saveAll() {
+    setSaving(true);
+    try {
+      await Promise.all(Object.entries(edits).map(([unitId, data]) =>
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/developments/${dev.id}/units/${unitId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
+          body: JSON.stringify(data),
+        }),
+      ));
+      setEdits({});
+      onSaved();
+    } finally { setSaving(false); }
+  }
+
+  const allUnits = dev.towers.flatMap((t) => t.units.map((u) => ({ ...u, towerNome: t.nome })));
+
+  return (
+    <div className="space-y-4">
+      {Object.keys(edits).length > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent)]/5 px-4 py-3">
+          <p className="text-sm text-[var(--shell-text)]">{Object.keys(edits).length} unidade(s) com alterações</p>
+          <button onClick={saveAll} disabled={saving}
+            className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+            {saving ? "Salvando..." : "Salvar alterações"}
+          </button>
+        </div>
+      )}
+      <div className="overflow-auto rounded-xl border border-[var(--shell-card-border)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--shell-bg)]">
+            <tr>
+              {["Torre", "Unidade", "Andar", "Status", "Área m²", "Quartos", "Suítes", "Banheiros", "Vagas", "Vl. Venda (R$)", "Vl. Avaliado (R$)"].map((h) => (
+                <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {allUnits.map((unit, i) => {
+              const edit = edits[unit.id] ?? {};
+              const cellCls = "px-3 py-2 border-t border-[var(--shell-card-border)]";
+              const editInp = "w-20 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-1.5 py-0.5 text-xs outline-none focus:border-[var(--brand-accent)]";
+              return (
+                <tr key={unit.id} className={i % 2 === 0 ? "bg-[var(--shell-card-bg)]" : "bg-[var(--shell-bg)]"}>
+                  <td className={cellCls}><span className="text-xs text-[var(--shell-subtext)]">{unit.towerNome}</span></td>
+                  <td className={`${cellCls} font-medium text-[var(--shell-text)]`}>{unit.nome}</td>
+                  <td className={cellCls}>{unit.andar ?? "—"}</td>
+                  <td className={cellCls}>
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                      style={{ backgroundColor: STATUS_COLOR[(edit.status ?? unit.status) as UnitStatus] }}>
+                      {STATUS_LABEL[(edit.status ?? unit.status) as UnitStatus]}
+                    </span>
+                  </td>
+                  <td className={cellCls}><input className={editInp} defaultValue={unit.areaM2 ?? ""} onChange={(e) => setEdit(unit.id, "areaM2", e.target.value)} /></td>
+                  <td className={cellCls}><input className={editInp} defaultValue={unit.quartos ?? ""} onChange={(e) => setEdit(unit.id, "quartos", e.target.value)} /></td>
+                  <td className={cellCls}><input className={editInp} defaultValue={unit.suites ?? ""} onChange={(e) => setEdit(unit.id, "suites", e.target.value)} /></td>
+                  <td className={cellCls}><input className={editInp} defaultValue={unit.banheiros ?? ""} onChange={(e) => setEdit(unit.id, "banheiros", e.target.value)} /></td>
+                  <td className={cellCls}><input className={editInp} defaultValue={unit.vagas ?? ""} onChange={(e) => setEdit(unit.id, "vagas", e.target.value)} /></td>
+                  <td className={cellCls}><input className={`${editInp} w-28`} defaultValue={unit.valorVenda ?? ""} onChange={(e) => setEdit(unit.id, "valorVenda", e.target.value)} /></td>
+                  <td className={cellCls}><input className={`${editInp} w-28`} defaultValue={unit.valorAvaliado ?? ""} onChange={(e) => setEdit(unit.id, "valorAvaliado", e.target.value)} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Condições de Pagamento ───────────────────────────────────────────────────
 
 function PaymentConditionForm({ devId, initial, onSaved }: {
-  devId: string;
-  initial: PaymentCondition | null | undefined;
-  onSaved: () => void;
+  devId: string; initial?: PaymentCondition | null; onSaved: () => void;
 }) {
   const [form, setForm] = useState({
-    aceitaFinanciamento:     initial?.aceitaFinanciamento ?? true,
-    valorAto:                String(initial?.valorAto ?? ""),
-    entradaPercentual:       String(initial?.entradaPercentual ?? ""),
-    entradaParcelas:         String(initial?.entradaParcelas ?? ""),
-    descontoAVista:          String(initial?.descontoAVista ?? ""),
-    financiamentoBase:       initial?.financiamentoBase ?? "AVALIADO",
+    aceitaFinanciamento: initial?.aceitaFinanciamento ?? true,
+    proSoluto: initial?.proSoluto ?? false,
+    valorAto: String(initial?.valorAto ?? ""),
+    entradaPercentual: String(initial?.entradaPercentual ?? ""),
+    entradaParcelas: String(initial?.entradaParcelas ?? ""),
+    descontoAVista: String(initial?.descontoAVista ?? ""),
+    financiamentoBase: initial?.financiamentoBase ?? "AVALIADO",
     financiamentoPercentual: String(initial?.financiamentoPercentual ?? ""),
-    proSoluto:               initial?.proSoluto ?? false,
-    proSolutoPercentual:     String(initial?.proSolutoPercentual ?? ""),
-    proSolutoParcelas:       String(initial?.proSolutoParcelas ?? ""),
-    obs:                     initial?.obs ?? "",
+    proSolutoPercentual: String(initial?.proSolutoPercentual ?? ""),
+    proSolutoParcelas: String(initial?.proSolutoParcelas ?? ""),
+    obs: initial?.obs ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1060,195 +967,136 @@ function PaymentConditionForm({ devId, initial, onSaved }: {
     setSaving(true);
     try {
       await upsertPaymentCondition(devId, {
-        aceitaFinanciamento:     form.aceitaFinanciamento,
-        valorAto:                form.valorAto ? parseFloat(form.valorAto) : null,
-        entradaPercentual:       form.entradaPercentual ? parseFloat(form.entradaPercentual) : null,
-        entradaParcelas:         form.entradaParcelas ? parseInt(form.entradaParcelas) : null,
-        descontoAVista:          form.descontoAVista ? parseFloat(form.descontoAVista) : null,
-        financiamentoBase:       form.financiamentoBase as any,
+        aceitaFinanciamento: form.aceitaFinanciamento,
+        valorAto: form.valorAto ? parseFloat(form.valorAto) : null,
+        entradaPercentual: form.entradaPercentual ? parseFloat(form.entradaPercentual) : null,
+        entradaParcelas: form.entradaParcelas ? parseInt(form.entradaParcelas) : null,
+        descontoAVista: form.descontoAVista ? parseFloat(form.descontoAVista) : null,
+        financiamentoBase: form.financiamentoBase as any,
         financiamentoPercentual: form.financiamentoPercentual ? parseFloat(form.financiamentoPercentual) : null,
-        proSoluto:               form.proSoluto,
-        proSolutoPercentual:     form.proSolutoPercentual ? parseFloat(form.proSolutoPercentual) : null,
-        proSolutoParcelas:       form.proSolutoParcelas ? parseInt(form.proSolutoParcelas) : null,
-        obs:                     form.obs || null,
+        proSoluto: form.proSoluto,
+        proSolutoPercentual: form.proSolutoPercentual ? parseFloat(form.proSolutoPercentual) : null,
+        proSolutoParcelas: form.proSolutoParcelas ? parseInt(form.proSolutoParcelas) : null,
+        obs: form.obs || null,
       });
       setSaved(true);
       onSaved();
     } finally { setSaving(false); }
   }
 
-  const inpPc = "rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] w-full";
-
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Aceita financiamento bancário */}
-        <label className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] p-3 cursor-pointer">
+        <label className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] p-3 cursor-pointer hover:bg-[var(--shell-hover)] transition-colors">
           <input type="checkbox" checked={form.aceitaFinanciamento} onChange={(e) => set("aceitaFinanciamento", e.target.checked)}
             className="h-4 w-4 rounded accent-[var(--brand-accent)]" />
           <span className="text-sm font-medium text-[var(--shell-text)]">Aceita financiamento bancário</span>
         </label>
-
-        {/* Pro-soluto */}
-        <label className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] p-3 cursor-pointer">
+        <label className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] p-3 cursor-pointer hover:bg-[var(--shell-hover)] transition-colors">
           <input type="checkbox" checked={form.proSoluto} onChange={(e) => set("proSoluto", e.target.checked)}
             className="h-4 w-4 rounded accent-[var(--brand-accent)]" />
           <span className="text-sm font-medium text-[var(--shell-text)]">Tem pro-soluto</span>
         </label>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Valor de ato */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Valor de Ato (R$)</label>
-          <input value={form.valorAto} onChange={(e) => set("valorAto", e.target.value)} placeholder="Ex.: 5000" className={inpPc} />
-        </div>
-        {/* Desconto à vista */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Desconto à Vista (%)</label>
-          <input value={form.descontoAVista} onChange={(e) => set("descontoAVista", e.target.value)} placeholder="Ex.: 5" className={inpPc} />
-        </div>
-        {/* Prazo entrega */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Observações Gerais</label>
-          <input value={form.obs} onChange={(e) => set("obs", e.target.value)} placeholder="Obs. adicionais" className={inpPc} />
-        </div>
+        {[
+          { k: "valorAto", l: "Valor de Ato (R$)", p: "Ex.: 5000" },
+          { k: "descontoAVista", l: "Desconto à Vista (%)", p: "Ex.: 5" },
+          { k: "obs", l: "Observações", p: "Obs. adicionais" },
+        ].map(({ k, l, p }) => (
+          <div key={k} className="space-y-1.5">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{l}</label>
+            <input value={(form as any)[k]} onChange={(e) => set(k, e.target.value)} placeholder={p} className={inp} />
+          </div>
+        ))}
       </div>
-
-      {/* Entrada */}
       <div className="rounded-xl border border-[var(--shell-card-border)] p-4 space-y-3">
         <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Entrada Parcelada</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-xs text-[var(--shell-subtext)]">% da entrada sobre valor de venda</label>
-            <input value={form.entradaPercentual} onChange={(e) => set("entradaPercentual", e.target.value)}
-              placeholder="Ex.: 20" className={inpPc} />
+            <input value={form.entradaPercentual} onChange={(e) => set("entradaPercentual", e.target.value)} placeholder="Ex.: 20" className={inp} />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs text-[var(--shell-subtext)]">Nº de parcelas até entrega das chaves</label>
-            <input value={form.entradaParcelas} onChange={(e) => set("entradaParcelas", e.target.value)}
-              placeholder="Ex.: 24" className={inpPc} />
+            <input value={form.entradaParcelas} onChange={(e) => set("entradaParcelas", e.target.value)} placeholder="Ex.: 24" className={inp} />
           </div>
         </div>
       </div>
-
-      {/* Financiamento */}
       {form.aceitaFinanciamento && (
         <div className="rounded-xl border border-[var(--shell-card-border)] p-4 space-y-3">
           <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Financiamento Bancário</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs text-[var(--shell-subtext)]">Base de cálculo</label>
-              <select value={form.financiamentoBase} onChange={(e) => set("financiamentoBase", e.target.value)}
-                className={inpPc}>
+              <select value={form.financiamentoBase} onChange={(e) => set("financiamentoBase", e.target.value)} className={inp}>
                 <option value="AVALIADO">Valor Avaliado</option>
                 <option value="VENDA">Valor de Venda</option>
               </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs text-[var(--shell-subtext)]">% sobre a base para financiar</label>
-              <input value={form.financiamentoPercentual} onChange={(e) => set("financiamentoPercentual", e.target.value)}
-                placeholder="Ex.: 80" className={inpPc} />
+              <input value={form.financiamentoPercentual} onChange={(e) => set("financiamentoPercentual", e.target.value)} placeholder="Ex.: 80" className={inp} />
             </div>
           </div>
         </div>
       )}
-
-      {/* Pro-soluto */}
-      {form.proSoluto && (
-        <div className="rounded-xl border border-[var(--shell-card-border)] p-4 space-y-3">
-          <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Pro-soluto (Financiamento Direto Pós-Entrega)</p>
-          <p className="text-xs text-[var(--shell-subtext)]">Parcelas pagas diretamente à incorporadora após entrega das chaves — % sobre o valor de venda.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-[var(--shell-subtext)]">% sobre valor de venda (ex.: 3–5%)</label>
-              <input value={form.proSolutoPercentual} onChange={(e) => set("proSolutoPercentual", e.target.value)}
-                placeholder="Ex.: 4" className={inpPc} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-[var(--shell-subtext)]">Nº de parcelas do pro-soluto</label>
-              <input value={form.proSolutoParcelas} onChange={(e) => set("proSolutoParcelas", e.target.value)}
-                placeholder="Ex.: 12" className={inpPc} />
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="flex justify-end">
         <button onClick={handleSave} disabled={saving}
-          className={`rounded-xl px-6 py-2.5 text-sm font-semibold transition-colors ${saved ? "border border-green-300 bg-green-50 text-green-600" : "bg-[var(--brand-accent)] text-white hover:opacity-90"} disabled:opacity-60`}>
-          {saving ? "Salvando..." : saved ? "✓ Salvo" : "Salvar Condições"}
+          className="rounded-xl bg-[var(--brand-accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shadow-sm">
+          {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar Condições"}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── DashboardView ────────────────────────────────────────────────────────────
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Development }) {
-  const vgvCards = [
-    { label: "VGV Total",       value: dashboard.vgvTotal,      color: "text-[var(--shell-text)]" },
-    { label: "VGV Vendido",     value: dashboard.vgvVendido,    color: "text-red-600" },
-    { label: "VGV Reservado",   value: dashboard.vgvReservado,  color: "text-yellow-600" },
-    { label: "VGV a Vender",    value: dashboard.vgvDisponivel, color: "text-green-600" },
-  ];
-
-  const statusCards = [
-    { label: "Total",       value: dashboard.total,      color: "#6b7280" },
-    { label: "Disponível",  value: dashboard.disponivel, color: STATUS_COLOR.DISPONIVEL },
-    { label: "Reservado",   value: dashboard.reservado,  color: STATUS_COLOR.RESERVADO },
-    { label: "Vendido",     value: dashboard.vendido,    color: STATUS_COLOR.VENDIDO },
-    { label: "Bloqueado",   value: dashboard.bloqueado,  color: STATUS_COLOR.BLOQUEADO },
-  ];
-
-  const chartData = dashboard.monthly.map((m) => ({
-    name: m.mes.slice(5),
-    vendas: m.vendas,
-    vgv: Math.round(m.vgv / 1000),
-  }));
-
+  const fmtCur = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const chartData = dashboard.monthly.map((m) => ({ name: m.mes.slice(5), vendas: m.vendas, vgv: Math.round(m.vgv / 1000) }));
   return (
     <div className="space-y-6">
-      {/* VSO e % vendido */}
       <div className="flex items-center gap-4 flex-wrap">
-        <div className="rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-accent)]/5 px-5 py-3 text-center">
-          <p className="text-3xl font-bold text-[var(--brand-accent)]">{dashboard.percentualVendido}%</p>
-          <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Vendido</p>
-        </div>
-        <div className="rounded-xl border border-slate-300 px-5 py-3 text-center">
-          <p className="text-3xl font-bold text-slate-700 dark:text-slate-300">{dashboard.vso}%</p>
-          <p className="text-xs text-[var(--shell-subtext)] mt-0.5">VSO (vendido + reservado)</p>
-        </div>
-        {dev.prazoEntrega && (
-          <div className="rounded-xl border border-slate-300 px-5 py-3 text-center">
-            <p className="text-lg font-bold text-[var(--shell-text)]">{new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}</p>
-            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Previsão entrega</p>
+        {[
+          { v: `${dashboard.percentualVendido}%`, l: "Vendido", accent: true },
+          { v: `${dashboard.vso}%`, l: "VSO (vendido + reservado)" },
+          dev.prazoEntrega && { v: new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "short", year: "numeric" }), l: "Previsão entrega" },
+        ].filter(Boolean).map((c: any, i) => (
+          <div key={i} className={`rounded-xl border px-5 py-3 text-center ${c.accent ? "border-[var(--brand-accent)]/40 bg-[var(--brand-accent)]/5" : "border-[var(--shell-card-border)]"}`}>
+            <p className={`text-3xl font-bold ${c.accent ? "text-[var(--brand-accent)]" : "text-[var(--shell-text)]"}`}>{c.v}</p>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{c.l}</p>
           </div>
-        )}
+        ))}
       </div>
-
-      {/* Unidades por status */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {statusCards.map((c) => (
-          <div key={c.label} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-4 py-3 text-center">
-            <p className="text-2xl font-bold" style={{ color: c.color }}>{c.value}</p>
-            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{c.label}</p>
+        {[
+          { l: "Total",      v: dashboard.total,      c: "#6b7280" },
+          { l: "Disponível", v: dashboard.disponivel, c: STATUS_COLOR.DISPONIVEL },
+          { l: "Reservado",  v: dashboard.reservado,  c: STATUS_COLOR.RESERVADO },
+          { l: "Vendido",    v: dashboard.vendido,    c: STATUS_COLOR.VENDIDO },
+          { l: "Bloqueado",  v: dashboard.bloqueado,  c: STATUS_COLOR.BLOQUEADO },
+        ].map((c) => (
+          <div key={c.l} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-4 py-3 text-center">
+            <p className="text-2xl font-bold" style={{ color: c.c }}>{c.v}</p>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{c.l}</p>
           </div>
         ))}
       </div>
-
-      {/* VGV */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {vgvCards.map((c) => (
-          <div key={c.label} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-4 py-3">
-            <p className={`text-lg font-bold truncate ${c.color}`}>{fmtCur(c.value)}</p>
-            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{c.label}</p>
+        {[
+          { l: "VGV Total",    v: dashboard.vgvTotal,      cls: "text-[var(--shell-text)]" },
+          { l: "VGV Vendido",  v: dashboard.vgvVendido,    cls: "text-red-600" },
+          { l: "VGV Reservado",v: dashboard.vgvReservado,  cls: "text-amber-600" },
+          { l: "VGV a Vender", v: dashboard.vgvDisponivel, cls: "text-green-600" },
+        ].map((c) => (
+          <div key={c.l} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-4 py-3">
+            <p className={`text-lg font-bold truncate ${c.cls}`}>{fmtCur(c.v)}</p>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{c.l}</p>
           </div>
         ))}
       </div>
-
-      {/* Gráfico mensal de vendas */}
       <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
         <p className="text-sm font-semibold text-[var(--shell-text)] mb-4">Vendas mensais — últimos 12 meses</p>
         <ResponsiveContainer width="100%" height={220}>
@@ -1256,416 +1104,592 @@ function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Developm
             <CartesianGrid strokeDasharray="3 3" stroke="var(--shell-card-border)" />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="var(--shell-subtext)" />
             <YAxis tick={{ fontSize: 11 }} stroke="var(--shell-subtext)" allowDecimals={false} />
-            <RechartsTooltip
-              formatter={(value: any, name: any) =>
-                name === "vgv" ? [`R$ ${value}k`, "VGV (R$k)"] : [value, "Unidades vendidas"]
-              }
-              contentStyle={{ fontSize: 12 }}
-            />
-            <Bar dataKey="vendas" fill={STATUS_COLOR.VENDIDO} radius={[4, 4, 0, 0]} name="vendas" />
+            <RechartsTooltip contentStyle={{ fontSize: 12 }} />
+            <Bar dataKey="vendas" fill={STATUS_COLOR.VENDIDO} radius={[4, 4, 0, 0]} name="Vendidas" />
           </BarChart>
         </ResponsiveContainer>
-        <p className="text-xs text-[var(--shell-subtext)] mt-2">* Unidades marcadas como Vendido no mês</p>
-      </div>
-
-      {/* Resumo por torre */}
-      {dev.towers.length > 0 && (
-        <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
-          <p className="text-sm font-semibold text-[var(--shell-text)] mb-3">Resumo por torre</p>
-          <div className="space-y-2">
-            {dev.towers.map((t) => {
-              const total  = t.units.length;
-              const vend   = t.units.filter((u) => u.status === "VENDIDO").length;
-              const res    = t.units.filter((u) => u.status === "RESERVADO").length;
-              const disp   = t.units.filter((u) => u.status === "DISPONIVEL").length;
-              const pct    = total > 0 ? Math.round((vend / total) * 100) : 0;
-              return (
-                <div key={t.id} className="flex items-center gap-3">
-                  <span className="w-20 text-xs font-medium text-[var(--shell-text)] truncate">{t.nome}</span>
-                  <div className="flex-1 h-4 rounded-full bg-[var(--shell-bg)] overflow-hidden flex">
-                    <div style={{ width: `${pct}%`, backgroundColor: STATUS_COLOR.VENDIDO }} />
-                    <div style={{ width: `${total > 0 ? Math.round((res / total) * 100) : 0}%`, backgroundColor: STATUS_COLOR.RESERVADO }} />
-                    <div style={{ width: `${total > 0 ? Math.round((disp / total) * 100) : 0}%`, backgroundColor: STATUS_COLOR.DISPONIVEL + "55" }} />
-                  </div>
-                  <span className="text-xs text-[var(--shell-subtext)] whitespace-nowrap">{vend}/{total} vendidas</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Modals ───────────────────────────────────────────────────────────────────
-
-const inp = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)]";
-
-function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }} onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-[var(--shell-text)]">{title}</h3>
-          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-lg">✕</button>
-        </div>
-        {children}
       </div>
     </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Aba Cadastro ─────────────────────────────────────────────────────────────
 
-export default function EmpreendimentoPage() {
-  const { id } = useParams<{ id: string }>();
-  const router = useRouter();
-
-  const [dev, setDev] = useState<Development | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [tab,      setTab]      = useState<"terreno" | "fachada" | "precos" | "dashboard">("terreno");
-  const [view3d,   setView3d]   = useState(false);
-  const [selectedTower, setSelectedTower] = useState<Tower | null>(null);
-  const [selectedUnit,  setSelectedUnit]  = useState<DevelopmentUnit | null>(null);
-
-  // Tower modal
+function AbaCadastro({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [showTowerModal, setShowTowerModal] = useState(false);
-  const [towerNome,   setTowerNome]   = useState("");
+  const [uploadingImg, setUploadingImg] = useState(false);
+
+  // Campos do desenvolvimento
+  const [nome, setNome] = useState(dev.nome);
+  const [tipo, setTipo] = useState(dev.tipo);
+  const [subtipo, setSubtipo] = useState(dev.subtipo);
+  const [status, setStatus] = useState(dev.status);
+  const [prazoEntrega, setPrazoEntrega] = useState(dev.prazoEntrega ? dev.prazoEntrega.split("T")[0] : "");
+  const [endereco, setEndereco] = useState(dev.endereco ?? "");
+  const [cidade, setCidade] = useState(dev.cidade ?? "");
+  const [estado, setEstado] = useState(dev.estado ?? "");
+  const [descricao, setDescricao] = useState(dev.descricao ?? "");
+  const [lat, setLat] = useState<number | null>(dev.lat ?? null);
+  const [lng, setLng] = useState<number | null>(dev.lng ?? null);
+  const [implantacaoUrl, setImplantacaoUrl] = useState<string | null>(dev.implantacaoUrl ?? null);
+
+  // Towers editáveis
+  const [towers, setTowers] = useState<Tower[]>(dev.towers);
+
+  // Modal nova torre
+  const [towerNome, setTowerNome] = useState("");
   const [towerFloors, setTowerFloors] = useState("10");
-  const [towerUPF,    setTowerUPF]    = useState("4");
-  const [towerPrefix, setTowerPrefix] = useState("Apto");
+  const [towerUPF, setTowerUPF] = useState("4");
+  const [towerPrefix, setTowerPrefix] = useState(dev.tipo === "VERTICAL" ? "Apto" : dev.subtipo === "LOTEAMENTO" ? "Lote" : "Casa");
+  const [towerLargura, setTowerLargura] = useState("20");
+  const [towerProfundidade, setTowerProfundidade] = useState("15");
+  const [towerAlturaAndar, setTowerAlturaAndar] = useState("3");
   const [savingTower, setSavingTower] = useState(false);
 
-  // Unit status modal
-  const [showUnitModal,        setShowUnitModal]        = useState(false);
-  const [unitStatus,           setUnitStatus]           = useState<UnitStatus>("DISPONIVEL");
-  const [unitBloqueioMotivo,   setUnitBloqueioMotivo]   = useState("");
-  const [savingUnit,           setSavingUnit]           = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
 
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const [d, dash] = await Promise.all([getDevelopment(id), getDashboard(id)]);
-      setDev(d);
-      setDashboard(dash);
-      if (d.towers.length > 0 && !selectedTower) setSelectedTower(d.towers[0]);
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao carregar");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { setTowers(dev.towers); }, [dev]);
 
   useEffect(() => {
-    if (dev && selectedTower) {
-      const updated = dev.towers.find((t) => t.id === selectedTower.id);
-      if (updated) setSelectedTower(updated);
-    }
-  }, [dev]);
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+    if (!key || !mapRef.current) return;
+    function doInit() {
+      if (!mapRef.current || !window.google?.maps) return;
+      const center = lat && lng ? { lat, lng } : { lat: -15.7942, lng: -47.8822 };
+      const map = new window.google.maps.Map(mapRef.current!, {
+        center, zoom: 16, mapTypeId: "satellite", tilt: 0,
+        disableDefaultUI: false, zoomControl: true, mapTypeControl: false, streetViewControl: false,
+      });
+      mapInstanceRef.current = map;
+      const marker = new window.google.maps.Marker({
+        map, position: lat && lng ? { lat, lng } : undefined,
+        draggable: true, visible: !!(lat && lng),
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: "#2563eb", fillOpacity: 0.9, strokeColor: "#fff", strokeWeight: 2 },
+      });
+      markerRef.current = marker;
+      map.addListener("click", (e: any) => {
+        const la = e.latLng.lat(); const ln = e.latLng.lng();
+        setLat(la); setLng(ln); marker.setPosition({ lat: la, lng: ln }); marker.setVisible(true);
+      });
+      marker.addListener("dragend", (e: any) => { setLat(e.latLng.lat()); setLng(e.latLng.lng()); });
 
-  async function handleSaveLayout(layout: any[], rows: number, cols: number, sun: string) {
-    await updateDevelopment(id, { gridLayout: layout, gridRows: rows, gridCols: cols, sunOrientation: sun } as any);
-    await load();
+      if (window.google.maps.places && addressInputRef.current) {
+        const ac = new window.google.maps.places.Autocomplete(addressInputRef.current, {
+          types: ["geocode"],
+          componentRestrictions: { country: "br" },
+        });
+        ac.addListener("place_changed", () => {
+          const place = ac.getPlace();
+          if (!place.geometry?.location) return;
+          const la = place.geometry.location.lat();
+          const ln = place.geometry.location.lng();
+          setLat(la); setLng(ln);
+          map.setCenter({ lat: la, lng: ln }); map.setZoom(17);
+          marker.setPosition({ lat: la, lng: ln }); marker.setVisible(true);
+          const comps = place.address_components ?? [];
+          const get = (type: string) => comps.find((c: any) => c.types.includes(type))?.long_name ?? "";
+          const getShort = (type: string) => comps.find((c: any) => c.types.includes(type))?.short_name ?? "";
+          setEndereco(place.formatted_address ?? ""); setSaved(false);
+          setCidade(get("administrative_area_level_2") || get("locality")); setSaved(false);
+          setEstado(getShort("administrative_area_level_1")); setSaved(false);
+        });
+      }
+    }
+    if (window.google?.maps) { doInit(); return; }
+    if (document.querySelector('script[src*="maps.googleapis.com"]')) {
+      const wait = setInterval(() => { if (window.google?.maps) { clearInterval(wait); doInit(); } }, 100);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=places`;
+    script.async = true; script.onload = doInit;
+    document.head.appendChild(script);
+  }, []);
+
+  async function handleSave() {
+    setSaving(true); setSaved(false);
+    try {
+      await updateDevelopment(dev.id, {
+        nome, tipo, subtipo, status, descricao: descricao || undefined,
+        endereco: endereco || undefined, cidade: cidade || undefined, estado: estado || undefined,
+        prazoEntrega: prazoEntrega || undefined,
+        lat: lat ?? undefined, lng: lng ?? undefined,
+      } as any);
+      setSaved(true);
+      onSaved();
+    } finally { setSaving(false); }
   }
 
-  async function handleCreateTowerWithUnits() {
+  async function handleImplantacaoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImg(true);
+    try {
+      const result = await uploadImplantacao(dev.id, file);
+      setImplantacaoUrl((result as any).implantacaoUrl ?? null);
+      onSaved();
+    } catch { alert("Erro ao fazer upload da implantação"); }
+    finally { setUploadingImg(false); }
+  }
+
+  async function handleCreateTower() {
     if (!towerNome.trim()) return;
     setSavingTower(true);
     try {
-      const t = await createTower(id, {
-        nome: towerNome.trim(),
-        floors: parseInt(towerFloors),
-        unitsPerFloor: parseInt(towerUPF),
+      const tower = await createTower(dev.id, {
+        nome: towerNome.trim(), floors: parseInt(towerFloors) || 1,
+        unitsPerFloor: parseInt(towerUPF) || 1,
+        larguraM: parseFloat(towerLargura) || 20,
+        profundidadeM: parseFloat(towerProfundidade) || 15,
+        alturaAndarM: parseFloat(towerAlturaAndar) || 3,
       });
-      await bulkCreateUnits(id, t.id, {
-        floors: parseInt(towerFloors),
-        unitsPerFloor: parseInt(towerUPF),
+      await bulkCreateUnits(dev.id, tower.id, {
+        floors: parseInt(towerFloors) || 1,
+        unitsPerFloor: parseInt(towerUPF) || 1,
         prefix: towerPrefix,
       });
       setShowTowerModal(false);
       setTowerNome(""); setTowerFloors("10"); setTowerUPF("4");
-      await load();
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao criar torre");
-    } finally {
-      setSavingTower(false);
-    }
+      onSaved();
+    } catch (e: any) { alert(e?.message ?? "Erro ao criar torre"); }
+    finally { setSavingTower(false); }
   }
 
-  async function handleUpdateUnitStatus() {
-    if (!selectedUnit || !dev) return;
-    if (unitStatus === "BLOQUEADO" && !unitBloqueioMotivo.trim()) return;
-    setSavingUnit(true);
-    try {
-      await updateUnit(id, selectedUnit.id, {
-        status: unitStatus,
-        bloqueioMotivo: unitStatus === "BLOQUEADO" ? unitBloqueioMotivo.trim() : null,
-      });
-      setShowUnitModal(false);
-      await load();
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao atualizar unidade");
-    } finally {
-      setSavingUnit(false);
-    }
+  async function handleUpdateTower(towerId: string, field: string, val: any) {
+    await updateTower(dev.id, towerId, { [field]: val });
+    setTowers((p) => p.map((t) => t.id === towerId ? { ...t, [field]: val } : t));
   }
 
-  function openUnitModal(unit: DevelopmentUnit) {
-    setSelectedUnit(unit);
-    setUnitStatus(unit.status);
-    setUnitBloqueioMotivo(unit.bloqueioMotivo ?? "");
-    setShowUnitModal(true);
+  async function handleDeleteTower(towerId: string) {
+    if (!confirm("Excluir esta torre? Todas as unidades serão removidas.")) return;
+    await deleteTower(dev.id, towerId);
+    setTowers((p) => p.filter((t) => t.id !== towerId));
+    onSaved();
   }
 
-  if (loading) return <AppShell title="Empreendimento"><div className="flex items-center justify-center h-64 text-sm text-[var(--shell-subtext)]">Carregando...</div></AppShell>;
-  if (!dev) return <AppShell title="Empreendimento"><div className="flex items-center justify-center h-64 text-sm text-red-500">{error ?? "Empreendimento não encontrado"}</div></AppShell>;
-
-  const isVertical = dev.tipo === "VERTICAL";
-
-  const TABS = [
-    { key: "terreno",   label: "🗺️ Terreno" },
-    { key: "fachada",   label: "🏢 Fachada" },
-    { key: "precos",    label: "💰 Preços" },
-    { key: "dashboard", label: "📊 Dashboard" },
-  ] as const;
+  const isVertical = tipo === "VERTICAL";
+  const towerLabel = isVertical ? "Torre" : "Quadra";
 
   return (
-    <AppShell title={dev.nome}>
-      <div className="mx-auto max-w-7xl px-4 py-6 space-y-5">
-
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <button onClick={() => router.back()} className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)] mb-1">← Gestão de Empreendimentos</button>
-            <h1 className="text-xl font-bold text-[var(--shell-text)]">{dev.nome}</h1>
-            <p className="text-sm text-[var(--shell-subtext)]">{dev.cidade}{dev.cidade && dev.estado ? ` / ${dev.estado}` : dev.estado}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {(tab === "terreno" || tab === "fachada") && (
-              <button onClick={() => setShowTowerModal(true)}
-                className="rounded-xl bg-[var(--brand-accent)] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
-                + {isVertical ? "Nova Torre" : "Nova Quadra"}
-              </button>
-            )}
-          </div>
+    <div className="space-y-5 max-w-3xl">
+      {/* Identificação */}
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Identificação</p>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nome</label>
+          <input value={nome} onChange={(e) => { setNome(e.target.value); setSaved(false); }} className={inp} />
         </div>
-
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-
-        {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-[var(--shell-card-border)]">
-          {TABS.map(({ key, label }) => (
-            <button key={key} type="button" onClick={() => setTab(key)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === key ? "border-[var(--brand-accent)] text-[var(--brand-accent)]" : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Terreno ── */}
-        {tab === "terreno" && (
-          <div className="flex gap-5 items-start">
-            {dev.towers.length > 0 && (
-              <div className="w-44 shrink-0 space-y-2">
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide px-1">
-                  {isVertical ? "Torres" : "Quadras"}
-                </p>
-                {dev.towers.map((t) => (
-                  <button key={t.id} type="button"
-                    onClick={() => { setSelectedTower(t); setTab("fachada"); }}
-                    className="w-full rounded-xl border px-3 py-2.5 text-left text-sm transition-colors border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-text)] hover:bg-[var(--shell-hover)]">
-                    <p className="font-medium">{t.nome}</p>
-                    <p className="text-[11px] text-[var(--shell-subtext)]">{t.units.length} unid. · {t.floors} and.</p>
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex-1 min-w-0 rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
-              <TerrainGrid dev={dev}
-                onSelectTower={(t) => { setSelectedTower(t); setTab("fachada"); }}
-                onSave={handleSaveLayout}
-                onSunChange={(sun) => setDev((d) => d ? { ...d, sunOrientation: sun } : d)}
-                onPlaceTower={async (towerId, col, row, w, h) => {
-                  await updateTower(id, towerId, { gridX: col, gridY: row, gridWidth: w, gridHeight: h });
-                  await load();
-                }}
-                onClearTowerPosition={async (towerId) => {
-                  await updateTower(id, towerId, { gridX: null, gridY: null });
-                  await load();
-                }} />
-            </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Tipo</label>
+            <select value={tipo} onChange={(e) => { setTipo(e.target.value as any); setSaved(false); }} className={inp}>
+              <option value="VERTICAL">Vertical (Prédio)</option>
+              <option value="HORIZONTAL">Horizontal</option>
+            </select>
           </div>
-        )}
-
-        {/* ── Fachada ── */}
-        {tab === "fachada" && (
-          <div className="flex gap-5 items-start">
-            {dev.towers.length > 0 && (
-              <div className="w-44 shrink-0 space-y-2">
-                <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide px-1">
-                  {isVertical ? "Torres" : "Quadras"}
-                </p>
-                {dev.towers.map((t) => (
-                  <button key={t.id} type="button" onClick={() => setSelectedTower(t)}
-                    className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${selectedTower?.id === t.id ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold text-[var(--brand-accent)]" : "border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] text-[var(--shell-text)] hover:bg-[var(--shell-hover)]"}`}>
-                    <p className="font-medium">{t.nome}</p>
-                    <p className="text-[11px] text-[var(--shell-subtext)]">{t.units.length} unid. · {t.floors} and.</p>
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex-1 min-w-0 rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
-              {selectedTower ? (
-                <>
-                  {/* Toggle 2D / 3D */}
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-xs text-[var(--shell-subtext)] font-medium">Vista:</span>
-                    {[{ k: false, l: "⬛ 2D Frontal" }, { k: true, l: "🏗️ 3D Isométrico" }].map(({ k, l }) => (
-                      <button key={String(k)} type="button" onClick={() => setView3d(k as boolean)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors
-                          ${view3d === k ? "bg-slate-900 text-white" : "border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                  {view3d
-                    ? <BuildingIsometric tower={selectedTower} onSelectUnit={openUnitModal} />
-                    : <BuildingFacade    tower={selectedTower} onSelectUnit={openUnitModal} />}
-                </>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Subtipo</label>
+            <select value={subtipo} onChange={(e) => { setSubtipo(e.target.value as any); setSaved(false); }} className={inp}>
+              {tipo === "VERTICAL" ? (
+                <option value="APARTAMENTO">Apartamentos</option>
               ) : (
-                <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Selecione uma torre para ver a fachada</div>
+                <>
+                  <option value="CASA">Casas</option>
+                  <option value="LOTEAMENTO">Loteamento / Terrenos</option>
+                </>
               )}
-            </div>
+            </select>
           </div>
-        )}
-
-        {/* ── Preços ── */}
-        {tab === "precos" && (
-          <div className="space-y-8">
-            <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-base font-semibold text-[var(--shell-text)]">Tabela de Preços</h2>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => exportExcel(dev, dev.paymentCondition)}
-                    className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors">
-                    📊 Excel
-                  </button>
-                  <button onClick={() => exportPDF(dev, dev.paymentCondition)}
-                    className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors">
-                    📄 PDF
-                  </button>
-                </div>
-              </div>
-              <PriceTable dev={dev} onSaved={load} />
-            </div>
-            <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6">
-              <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Condições de Pagamento</h2>
-              <p className="text-xs text-[var(--shell-subtext)] mb-5">Definições comerciais aplicáveis a todas as unidades deste empreendimento.</p>
-              <PaymentConditionForm devId={id} initial={dev.paymentCondition} onSaved={load} />
-            </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Status</label>
+            <select value={status} onChange={(e) => { setStatus(e.target.value); setSaved(false); }} className={inp}>
+              <option value="LANCAMENTO">Lançamento</option>
+              <option value="EM_OBRA">Em Obra</option>
+              <option value="CONCLUIDO">Concluído</option>
+            </select>
           </div>
-        )}
-
-        {/* ── Dashboard ── */}
-        {tab === "dashboard" && dashboard && (
-          <DashboardView dashboard={dashboard} dev={dev} />
-        )}
-        {tab === "dashboard" && !dashboard && (
-          <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Carregando dashboard...</div>
-        )}
-
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Previsão de entrega</label>
+            <input type="date" value={prazoEntrega} onChange={(e) => { setPrazoEntrega(e.target.value); setSaved(false); }} className={inp} />
+          </div>
+        </div>
       </div>
 
-      {/* Modal: Nova Torre */}
-      <Modal open={showTowerModal} onClose={() => setShowTowerModal(false)} title={`Nova ${isVertical ? "Torre" : "Quadra"}`}>
+      {/* Localização */}
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Localização</p>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Endereço</label>
+          <input ref={addressInputRef} value={endereco} onChange={(e) => { setEndereco(e.target.value); setSaved(false); }} placeholder="Digite para buscar no mapa..." className={inp} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Cidade</label>
+            <input value={cidade} onChange={(e) => { setCidade(e.target.value); setSaved(false); }} placeholder="São Paulo" className={inp} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Estado</label>
+            <input value={estado} onChange={(e) => { setEstado(e.target.value); setSaved(false); }} maxLength={2} placeholder="SP" className={inp} />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Localização no mapa</label>
+          {process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Latitude</label>
+                  <input
+                    type="number" step="any"
+                    value={lat ?? ""}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      const newLat = isNaN(v) ? null : v;
+                      setLat(newLat); setSaved(false);
+                      if (newLat && lng) {
+                        mapInstanceRef.current?.setCenter({ lat: newLat, lng });
+                        mapInstanceRef.current?.setZoom(17);
+                        markerRef.current?.setPosition({ lat: newLat, lng });
+                        markerRef.current?.setVisible(true);
+                      }
+                    }}
+                    placeholder="-23.550520"
+                    className={inp}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Longitude</label>
+                  <input
+                    type="number" step="any"
+                    value={lng ?? ""}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      const newLng = isNaN(v) ? null : v;
+                      setLng(newLng); setSaved(false);
+                      if (lat && newLng) {
+                        mapInstanceRef.current?.setCenter({ lat, lng: newLng });
+                        mapInstanceRef.current?.setZoom(17);
+                        markerRef.current?.setPosition({ lat, lng: newLng });
+                        markerRef.current?.setVisible(true);
+                      }
+                    }}
+                    placeholder="-46.633608"
+                    className={inp}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-[var(--shell-subtext)]">Ou clique diretamente no mapa para marcar o terreno</p>
+              <div ref={mapRef} className="w-full h-56 rounded-xl overflow-hidden border border-[var(--shell-card-border)]" />
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs text-[var(--shell-subtext)]">Latitude</label>
+                <input type="number" step="any" value={lat ?? ""} onChange={(e) => { setLat(parseFloat(e.target.value) || null); setSaved(false); }} placeholder="-23.5505" className={inp} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-[var(--shell-subtext)]">Longitude</label>
+                <input type="number" step="any" value={lng ?? ""} onChange={(e) => { setLng(parseFloat(e.target.value) || null); setSaved(false); }} placeholder="-46.6333" className={inp} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Implantação */}
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Planta de Implantação</p>
+        <p className="text-xs text-[var(--shell-subtext)]">Faça upload da planta fornecida pelo arquiteto. Ela será usada como textura do chão na visão 3D.</p>
+        {implantacaoUrl && (
+          <div className="relative inline-block">
+            <img src={implantacaoUrl} alt="Implantação" className="max-h-48 rounded-xl border border-[var(--shell-card-border)] object-contain" />
+          </div>
+        )}
+        <label className={`inline-flex items-center gap-2 cursor-pointer rounded-xl border border-dashed border-[var(--shell-card-border)] px-5 py-3 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors ${uploadingImg ? "opacity-50 pointer-events-none" : ""}`}>
+          {uploadingImg ? "Fazendo upload..." : implantacaoUrl ? "Trocar imagem" : "📎 Upload da planta (PNG / JPG)"}
+          <input type="file" accept="image/*" className="hidden" onChange={handleImplantacaoUpload} disabled={uploadingImg} />
+        </label>
+      </div>
+
+      {/* Torres / Quadras */}
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">{towerLabel}s</p>
+          <button type="button" onClick={() => setShowTowerModal(true)}
+            className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
+            + Nova {towerLabel}
+          </button>
+        </div>
+        {towers.length === 0 ? (
+          <p className="text-sm text-[var(--shell-subtext)] text-center py-4">Nenhuma {towerLabel.toLowerCase()} cadastrada</p>
+        ) : (
+          <div className="space-y-3">
+            {towers.map((t) => (
+              <div key={t.id} className="rounded-xl border border-[var(--shell-card-border)] p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-[var(--shell-text)] text-sm">{t.nome}</p>
+                  <div className="flex items-center gap-2 text-xs text-[var(--shell-subtext)]">
+                    <span>{t.floors} {isVertical ? "andares" : "linhas"}</span>
+                    <span>·</span>
+                    <span>{t.units.length} unidades</span>
+                    <button onClick={() => handleDeleteTower(t.id)} className="text-red-400 hover:text-red-600 ml-2">Excluir</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  {[
+                    { l: "Largura (m)", k: "larguraM", v: t.larguraM },
+                    { l: "Prof. (m)", k: "profundidadeM", v: t.profundidadeM },
+                    { l: isVertical ? "Alt./andar (m)" : "Alt. casa (m)", k: "alturaAndarM", v: t.alturaAndarM },
+                  ].map(({ l, k, v }) => (
+                    <div key={k} className="space-y-1">
+                      <label className="text-[var(--shell-subtext)] font-medium">{l}</label>
+                      <input type="number" step="0.5" defaultValue={v}
+                        onBlur={(e) => handleUpdateTower(t.id, k, parseFloat(e.target.value) || v)}
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)]" />
+                    </div>
+                  ))}
+                </div>
+                {isVertical && (
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Faces com unidades</label>
+                    <div className="flex gap-3 flex-wrap">
+                      {(["FRENTE","FUNDO","ESQUERDA","DIREITA"] as const).map((lado) => {
+                        const ativos = (t.lados ?? "FRENTE,FUNDO,ESQUERDA,DIREITA").split(",");
+                        const ativo = ativos.includes(lado);
+                        return (
+                          <label key={lado} className="flex items-center gap-1.5 cursor-pointer text-xs text-[var(--shell-text)]">
+                            <input
+                              type="checkbox"
+                              checked={ativo}
+                              onChange={() => {
+                                const novo = ativo
+                                  ? ativos.filter(l => l !== lado)
+                                  : [...ativos, lado];
+                                if (novo.length === 0) return;
+                                handleUpdateTower(t.id, "lados", novo.join(","));
+                              }}
+                              className="h-3.5 w-3.5 rounded accent-[var(--brand-accent)]"
+                            />
+                            {lado.charAt(0) + lado.slice(1).toLowerCase()}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Botão salvar */}
+      <div className="flex justify-end gap-3">
+        <button onClick={handleSave} disabled={saving}
+          className="rounded-xl bg-[var(--brand-accent)] px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shadow-sm">
+          {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar alterações"}
+        </button>
+      </div>
+
+      {/* Modal nova torre */}
+      <Modal open={showTowerModal} onClose={() => setShowTowerModal(false)} title={`Nova ${towerLabel}`}>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nome</label>
-            <input value={towerNome} onChange={(e) => setTowerNome(e.target.value)} placeholder="Ex.: Torre A" className={inp} />
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nome *</label>
+            <input value={towerNome} onChange={(e) => setTowerNome(e.target.value)} placeholder={isVertical ? "Ex.: Torre A" : "Ex.: Quadra 1"} className={inp} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Andares</label>
+              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Andares" : "Linhas de lotes"}</label>
               <input type="number" value={towerFloors} onChange={(e) => setTowerFloors(e.target.value)} min={1} className={inp} />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Unid. por andar</label>
+              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Unid./andar" : "Lotes por linha"}</label>
               <input type="number" value={towerUPF} onChange={(e) => setTowerUPF(e.target.value)} min={1} className={inp} />
             </div>
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Prefixo das unidades</label>
-            <input value={towerPrefix} onChange={(e) => setTowerPrefix(e.target.value)} placeholder="Apto" className={inp} />
+            <input value={towerPrefix} onChange={(e) => setTowerPrefix(e.target.value)} placeholder={isVertical ? "Apto" : "Lote"} className={inp} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { l: "Largura (m)", s: towerLargura, fn: setTowerLargura },
+              { l: "Prof. (m)",   s: towerProfundidade, fn: setTowerProfundidade },
+              { l: isVertical ? "Alt/andar (m)" : "Alt. casa (m)", s: towerAlturaAndar, fn: setTowerAlturaAndar },
+            ].map(({ l, s, fn }) => (
+              <div key={l} className="space-y-1.5">
+                <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{l}</label>
+                <input type="number" step="0.5" value={s} onChange={(e) => fn(e.target.value)} className={inp} />
+              </div>
+            ))}
           </div>
           <p className="text-xs text-[var(--shell-subtext)]">
             Serão criadas {parseInt(towerFloors || "0") * parseInt(towerUPF || "0")} unidades automaticamente.
-            Ex.: {towerPrefix}101, {towerPrefix}102...
           </p>
           <div className="flex gap-3 justify-end pt-2">
             <button onClick={() => setShowTowerModal(false)}
-              className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]">
+              className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
               Cancelar
             </button>
-            <button onClick={handleCreateTowerWithUnits} disabled={savingTower || !towerNome.trim()}
-              className="rounded-lg bg-[var(--brand-accent)] px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
-              {savingTower ? "Criando..." : "Criar Torre"}
+            <button onClick={handleCreateTower} disabled={savingTower || !towerNome.trim()}
+              className="rounded-lg bg-[var(--brand-accent)] px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {savingTower ? "Criando..." : `Criar ${towerLabel}`}
             </button>
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
 
-      {/* Modal: Status da Unidade */}
-      <Modal open={showUnitModal} onClose={() => setShowUnitModal(false)} title={selectedUnit?.nome ?? "Unidade"}>
-        {selectedUnit && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-3 text-sm space-y-1">
-              {selectedUnit.areaM2 && <p className="text-[var(--shell-subtext)]">Área: <span className="font-medium text-[var(--shell-text)]">{selectedUnit.areaM2} m²</span></p>}
-              {selectedUnit.valorVenda && <p className="text-[var(--shell-subtext)]">Valor: <span className="font-medium text-[var(--shell-text)]">{fmt(selectedUnit.valorVenda)}</span></p>}
-              {selectedUnit.quartos && <p className="text-[var(--shell-subtext)]">Quartos: <span className="font-medium text-[var(--shell-text)]">{selectedUnit.quartos}</span></p>}
+// ─── Página Principal ─────────────────────────────────────────────────────────
+
+const STATUS_LABEL_DEV: Record<string, string> = { LANCAMENTO: "Lançamento", EM_OBRA: "Em Obra", CONCLUIDO: "Concluído" };
+const STATUS_COLOR_DEV: Record<string, string> = {
+  LANCAMENTO: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  EM_OBRA:    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  CONCLUIDO:  "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+};
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "cadastro",  label: "📋 Cadastro" },
+  { key: "espelho",   label: "🏢 Espelho de Vendas" },
+  { key: "precos",    label: "💰 Preços" },
+  { key: "dashboard", label: "📊 Dashboard" },
+];
+
+export default function EmpreendimentoDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const [dev, setDev] = useState<Development | null>(null);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<Tab>("espelho");
+
+  async function load() {
+    try {
+      const [d, db] = await Promise.all([getDevelopment(id), getDashboard(id).catch(() => null)]);
+      setDev(d);
+      setDashboard(db);
+    } catch { /* noop */ }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { load(); }, [id]);
+
+  function handleUnitUpdated(towerId: string, unit: DevelopmentUnit) {
+    setDev((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        towers: prev.towers.map((t) =>
+          t.id !== towerId ? t : { ...t, units: t.units.map((u) => u.id === unit.id ? unit : u) }
+        ),
+      };
+    });
+  }
+
+  if (loading) {
+    return (
+      <AppShell title="Empreendimento">
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-[var(--brand-accent)] border-t-transparent rounded-full animate-spin" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!dev) {
+    return (
+      <AppShell title="Empreendimento">
+        <div className="flex flex-col items-center justify-center h-64 gap-3">
+          <p className="text-[var(--shell-text)]">Empreendimento não encontrado</p>
+          <button onClick={() => router.push("/gestao-empreendimentos")}
+            className="text-sm text-[var(--brand-accent)] hover:underline">← Voltar</button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell title={dev.nome}>
+      <div className="mx-auto max-w-7xl px-4 py-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <button onClick={() => router.push("/gestao-empreendimentos")}
+              className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)] mb-2 flex items-center gap-1 transition-colors">
+              ← Gestão de Empreendimentos
+            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-2xl font-bold text-[var(--shell-text)]">{dev.nome}</h1>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR_DEV[dev.status] ?? "bg-slate-100 text-slate-600"}`}>
+                {STATUS_LABEL_DEV[dev.status] ?? dev.status}
+              </span>
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Status</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(Object.keys(STATUS_COLOR) as UnitStatus[]).map((s) => (
-                  <button key={s} type="button" onClick={() => setUnitStatus(s)}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${unitStatus === s ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 font-semibold" : "border-[var(--shell-card-border)] hover:bg-[var(--shell-hover)]"}`}>
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: STATUS_COLOR[s] }} />
-                    {STATUS_LABEL[s]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {unitStatus === "BLOQUEADO" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Motivo do bloqueio *</label>
-                <input value={unitBloqueioMotivo} onChange={(e) => setUnitBloqueioMotivo(e.target.value)}
-                  placeholder="Informe o motivo..." className={inp} />
-              </div>
-            )}
-
-            <div className="flex gap-3 justify-end pt-2">
-              <button onClick={() => setShowUnitModal(false)}
-                className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]">
-                Cancelar
-              </button>
-              <button onClick={handleUpdateUnitStatus} disabled={savingUnit || (unitStatus === "BLOQUEADO" && !unitBloqueioMotivo.trim())}
-                className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
-                {savingUnit ? "Salvando..." : "Confirmar"}
-              </button>
-            </div>
+            <p className="text-sm text-[var(--shell-subtext)] mt-1">
+              {dev.cidade && dev.estado ? `${dev.cidade}, ${dev.estado}` : dev.cidade || dev.estado || ""}
+              {dev.prazoEntrega && ` · Entrega: ${new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
+            </p>
           </div>
-        )}
-      </Modal>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-[var(--shell-card-border)]">
+          <div className="flex gap-1">
+            {TABS.map(({ key, label }) => (
+              <button key={key} type="button" onClick={() => setTab(key)}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  tab === key
+                    ? "border-[var(--brand-accent)] text-[var(--brand-accent)]"
+                    : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Conteúdo das abas */}
+        <div>
+          {tab === "cadastro" && (
+            <AbaCadastro dev={dev} onSaved={load} />
+          )}
+
+          {tab === "espelho" && (
+            <AbaEspelho dev={dev} onUnitUpdated={handleUnitUpdated} />
+          )}
+
+          {tab === "precos" && (
+            <div className="space-y-8">
+              <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
+                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-5">Tabela de Preços</h2>
+                <PriceTable dev={dev} onSaved={load} />
+              </div>
+              <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
+                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Condições de Pagamento</h2>
+                <p className="text-xs text-[var(--shell-subtext)] mb-5">Definições comerciais aplicáveis a todas as unidades.</p>
+                <PaymentConditionForm devId={dev.id} initial={dev.paymentCondition} onSaved={load} />
+              </div>
+            </div>
+          )}
+
+          {tab === "dashboard" && dashboard && (
+            <DashboardView dashboard={dashboard} dev={dev} />
+          )}
+          {tab === "dashboard" && !dashboard && (
+            <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
+          )}
+        </div>
+      </div>
     </AppShell>
   );
 }

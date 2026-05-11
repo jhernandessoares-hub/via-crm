@@ -4,6 +4,8 @@ export type UnitStatus = "DISPONIVEL" | "RESERVADO" | "VENDIDO" | "BLOQUEADO";
 
 export type DevelopmentUnit = {
   id: string;
+  towerId: string;
+  developmentId: string;
   nome: string;
   andar?: number | null;
   posicao?: number | null;
@@ -16,6 +18,12 @@ export type DevelopmentUnit = {
   vagas?: number | null;
   valorVenda?: number | null;
   valorAvaliado?: number | null;
+  finalPrice?: number | null;
+  comprador?: string | null;
+  loteNum?: string | null;
+  loteAreaM2?: number | null;
+  loteFrente?: number | null;
+  loteFundo?: number | null;
   soldAt?: string | null;
 };
 
@@ -28,6 +36,13 @@ export type Tower = {
   gridY?: number | null;
   gridWidth?: number | null;
   gridHeight?: number | null;
+  offsetX: number;
+  offsetY: number;
+  larguraM: number;
+  profundidadeM: number;
+  alturaAndarM: number;
+  rotacao: number;
+  lados: string;
   units: DevelopmentUnit[];
 };
 
@@ -62,6 +77,10 @@ export type Development = {
   gridCols: number;
   gridLayout?: any[] | null;
   descricao?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  implantacaoUrl?: string | null;
+  implantacaoPublicId?: string | null;
   towers: Tower[];
   paymentCondition?: PaymentCondition | null;
 };
@@ -90,7 +109,7 @@ export async function getDevelopment(id: string): Promise<Development> {
   return apiFetch(`/developments/${id}`);
 }
 
-export async function createDevelopment(body: Partial<Development>): Promise<Development> {
+export async function createDevelopment(body: Partial<Development> & { nome: string }): Promise<Development> {
   return apiFetch("/developments", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -106,7 +125,7 @@ export async function createTower(devId: string, body: any): Promise<Tower> {
   return apiFetch(`/developments/${devId}/towers`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export async function updateTower(devId: string, towerId: string, body: any): Promise<Tower> {
+export async function updateTower(devId: string, towerId: string, body: Partial<Tower>): Promise<Tower> {
   return apiFetch(`/developments/${devId}/towers/${towerId}`, { method: "PATCH", body: JSON.stringify(body) });
 }
 
@@ -114,7 +133,7 @@ export async function deleteTower(devId: string, towerId: string): Promise<void>
   await apiFetch(`/developments/${devId}/towers/${towerId}`, { method: "DELETE" });
 }
 
-export async function bulkCreateUnits(devId: string, towerId: string, body: any) {
+export async function bulkCreateUnits(devId: string, towerId: string, body: { floors: number; unitsPerFloor: number; prefix?: string }) {
   return apiFetch(`/developments/${devId}/towers/${towerId}/units/bulk`, { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -122,7 +141,7 @@ export async function bulkUpdateUnits(devId: string, towerId: string, body: { an
   return apiFetch(`/developments/${devId}/towers/${towerId}/units/bulk`, { method: "PATCH", body: JSON.stringify(body) });
 }
 
-export async function updateUnit(devId: string, unitId: string, body: Partial<DevelopmentUnit>) {
+export async function updateUnit(devId: string, unitId: string, body: Partial<DevelopmentUnit>): Promise<DevelopmentUnit> {
   return apiFetch(`/developments/${devId}/units/${unitId}`, { method: "PATCH", body: JSON.stringify(body) });
 }
 
@@ -136,4 +155,10 @@ export async function getPaymentCondition(devId: string): Promise<PaymentConditi
 
 export async function upsertPaymentCondition(devId: string, body: Partial<PaymentCondition>): Promise<PaymentCondition> {
   return apiFetch(`/developments/${devId}/payment-condition`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function uploadImplantacao(devId: string, file: File): Promise<Development> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch(`/developments/${devId}/implantation/image`, { method: "POST", body: form });
 }

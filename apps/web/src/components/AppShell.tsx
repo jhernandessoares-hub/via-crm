@@ -61,6 +61,8 @@ function AppShellInner({
   const [counts, setCounts] = useState<Counts | null>(null);
   const [pendingDeletions, setPendingDeletions] = useState(0);
   const [branding, setBranding] = useState<TenantBranding>({});
+  const [tenantAddons, setTenantAddons] = useState<string[]>([]);
+  const [tenantPlan, setTenantPlan] = useState<string>('');
 
   useEffect(() => {
     try {
@@ -86,6 +88,8 @@ function AppShellInner({
           faviconUrl: (p as any)?.tenant?.faviconUrl,
         };
         setBranding(b);
+        setTenantAddons((p as any)?.tenant?.addons ?? []);
+        setTenantPlan((p as any)?.tenant?.plan ?? '');
         applyPalette(getPalette(b.brandPalette));
         if (b.faviconUrl) {
           let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
@@ -143,7 +147,7 @@ function AppShellInner({
     >
       <EnvBanner />
       <div className="flex flex-1 min-h-0">
-        <Sidebar role={role} tenantNome={tenantNome} counts={counts} branding={branding} />
+        <Sidebar role={role} tenantNome={tenantNome} counts={counts} branding={branding} addons={tenantAddons} plan={tenantPlan} />
         <div className="flex-1 flex flex-col min-w-0">
           <Header
             title={title}

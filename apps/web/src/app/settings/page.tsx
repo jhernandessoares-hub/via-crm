@@ -4,37 +4,50 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 
 export default function SettingsPage() {
-  const [isOwner, setIsOwner] = useState(false);
+  const [role, setRole] = useState("");
 
   useEffect(() => {
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
-      setIsOwner(user?.role === "OWNER");
+      setRole(user?.role ?? "");
     } catch {}
   }, []);
 
+  const isOwner = role === "OWNER";
+  const isManagerOrOwner = role === "OWNER" || role === "MANAGER";
+
   const items = [
+    {
+      href: "/settings/uso",
+      title: "Uso e Limites",
+      desc: "Acompanhe o consumo do seu plano",
+      show: isManagerOrOwner,
+    },
     {
       href: "/settings/whatsapp",
       title: "WhatsApp",
       desc: "Configure seu número de WhatsApp Business",
+      show: isOwner,
     },
     {
       href: "/settings/bot",
       title: "Config. IA",
       desc: "Configure o comportamento dos agentes de IA",
+      show: isOwner,
     },
     {
       href: "/settings/notifications",
       title: "Notificações",
       desc: "Escolha quais eventos e etapas te notificam pelo WhatsApp",
+      show: true,
     },
-    ...(isOwner ? [{
+    {
       href: "/settings/branding",
       title: "Personalização",
       desc: "Logo, favicon e paleta de cores da sua imobiliária",
-    }] : []),
-  ];
+      show: isOwner,
+    },
+  ].filter((i) => i.show);
 
   return (
     <AppShell title="Configurações">

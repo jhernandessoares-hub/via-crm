@@ -1,16 +1,22 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Request, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Post, Patch, Delete, Put, Body, Param, Request, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AddonGuard, RequiresAddon } from '../auth/plan.guard';
 import { DevelopmentsService } from './developments.service';
 
-@UseGuards(JwtAuthGuard)
+function requireOwner(req: any) {
+  if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER do tenant.');
+}
+
+@UseGuards(JwtAuthGuard, AddonGuard)
+@RequiresAddon('DEVELOPMENTS')
 @Controller('developments')
 export class DevelopmentsController {
   constructor(private readonly svc: DevelopmentsService) {}
 
   @Get()
   findAll(@Request() req: any) {
-    return this.svc.findAll(req.user.tenantId);
+    return this.svc.findAll(req.user.tenantId, req.user.role);
   }
 
   @Post()
@@ -20,7 +26,19 @@ export class DevelopmentsController {
 
   @Get(':id')
   findOne(@Request() req: any, @Param('id') id: string) {
-    return this.svc.findOne(req.user.tenantId, id);
+    return this.svc.findOne(req.user.tenantId, id, req.user.role);
+  }
+
+  @Post(':id/publish')
+  publish(@Request() req: any, @Param('id') id: string) {
+    requireOwner(req);
+    return this.svc.publish(req.user.tenantId, id);
+  }
+
+  @Post(':id/unpublish')
+  unpublish(@Request() req: any, @Param('id') id: string) {
+    requireOwner(req);
+    return this.svc.unpublish(req.user.tenantId, id);
   }
 
   @Patch(':id')

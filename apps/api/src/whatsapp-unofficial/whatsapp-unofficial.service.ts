@@ -13,6 +13,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { upsertLeadFromWhatsapp } from '../whatsapp/lead-upsert.helper';
 import { resolveAiModel } from '../ai/resolve-ai-model';
+import { LimitsService } from '../plans/limits.service';
+import { LimitExceededException } from '../plans/usage.service';
 
 const logger = new Logger('WhatsappUnofficialService');
 
@@ -246,6 +248,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
+    private readonly limitsService: LimitsService,
   ) {}
 
   async onModuleDestroy() {
@@ -257,6 +260,11 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   // ── Criação e reconexão ───────────────────────────────────────────────────
 
   async createSession(tenantId: string, nome: string) {
+    const existing = await this.prisma.whatsappUnofficialSession.count({ where: { tenantId } });
+    const maxWaSessions = await this.limitsService.resolveLimit(tenantId, 'maxWaSessions');
+    if (maxWaSessions >= 0 && existing >= maxWaSessions) {
+      throw new LimitExceededException('maxWaSessions', existing, maxWaSessions);
+    }
     const session = await this.prisma.whatsappUnofficialSession.create({
       data: { tenantId, nome, status: 'CONNECTING' },
     });

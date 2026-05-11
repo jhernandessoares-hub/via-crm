@@ -79,7 +79,7 @@ export class AdminService {
     const tenant = await this.prisma.$transaction(async (tx) => {
       const t = await tx.tenant.create({
         data: {
-          nome: data.nome, slug: data.slug, plan: data.plan || 'STARTER',
+          nome: data.nome, slug: data.slug, plan: (data.plan as any) || 'STARTER',
           logradouro: data.logradouro || null, numero: data.numero || null,
           bairro: data.bairro || null, cep: data.cep || null,
           cidade: data.cidade || null, estado: data.estado || null,
@@ -165,8 +165,8 @@ export class AdminService {
   }
 
   async updatePlan(id: string, plan: string) {
-    if (!['STARTER', 'PREMIUM'].includes(plan)) throw new BadRequestException('Plano inválido.');
-    const tenant = await this.prisma.tenant.update({ where: { id }, data: { plan } });
+    if (!['STARTER', 'PRO', 'BUSINESS'].includes(plan)) throw new BadRequestException('Plano inválido.');
+    const tenant = await this.prisma.tenant.update({ where: { id }, data: { plan: plan as any } });
     this.audit.log({ action: 'PLATFORM_CHANGE_PLAN', resourceType: 'tenant', resourceId: id, metadata: { plan } });
     return tenant;
   }
