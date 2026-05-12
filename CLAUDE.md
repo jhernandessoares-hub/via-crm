@@ -2,6 +2,8 @@
 
 Sistema CRM SaaS multi-tenant para imobiliárias brasileiras. Gerencia leads, funil de vendas, atendimento via WhatsApp com IA, catálogo de imóveis e secretária pessoal por voz/texto.
 
+> **Agents:** este arquivo é o contexto **global** compartilhado por todos os agents. Detalhes específicos de cada domínio ficam em `.claude/agents/<squad>.md`. Plano de squads em `AGENTS_PLAN.md`.
+
 ---
 
 ## Estrutura do Monorepo
@@ -63,9 +65,11 @@ via-crm/
 | `sites/` | Gerenciador de Sites — templates admin, sites dos tenants, rotas públicas |
 | `prisma/` | PrismaService (@Global) |
 | `admin/ai-providers.service.ts` | Provedores de IA — CRUD de provedores, configuração de modelo por função, saldo OpenAI |
-| `whatsapp-unofficial/` | WhatsApp Light — sessões Baileys multi-tenant (QR Code), envio de texto/imagem/vídeo, inbound de mensagens; filtros: ignora @g.us (grupos), status@broadcast, @newsletter e reações; mensagens de sistema do protocolo WA (`protocolMessage`, `senderKeyDistributionMessage`, `callLogMessage`) retornam type `'system'` com texto descritivo — evento salvo mas sem acionar IA/SLA; `profilePictureUrl` com timeout 2s; desconexão manual via flag `manuallyDisconnected` não reconecta automaticamente; resolve LIDs via mapa `lidToPhone` (populado por `contacts.upsert`/`contacts.update`), com fallback para dígitos do LID se mapeamento ainda não disponível |
-| `campanhas/` | Campanhas de disparo via WhatsApp Light — CRUD modelos (com mídia), CRUD disparos, contatos (leads ou lista externa), controle start/pause/resume/cancel, variáveis `{{nome}}`/`{{telefone}}`; lead criado **somente quando contato responde** (não ao enviar); ao responder, evento da mensagem original da campanha é registrado no lead (2s antes do inbound) para contexto da IA; antes de cada envio o worker valida via `onWhatsApp()` — contatos sem WhatsApp marcados como `FALHA` sem tentativa de envio |
-| `inbox/` | Inbox WA Light — lista conversas por sessão (`GET /inbox?sessionId=X`), mensagens paginadas, envio (`POST /inbox/:leadId/send`), marcar como lida (`POST /inbox/:leadId/read`); filtra por `conversaSessionId`; naoLidos calculado em 2 queries (não N+1); `GET /inbox/:leadId` retorna `avatarUrl` |
+| `whatsapp-unofficial/` | WhatsApp Light — sessões Baileys multi-tenant (QR Code). Detalhes (filtros, LIDs, reconexão) em futuro `squad-comunicacao.md` |
+| `campanhas/` | Disparo WhatsApp Light — modelos, contatos, lead criado só quando contato responde. Detalhes em futuro `squad-comunicacao.md` |
+| `inbox/` | Inbox WA Light — conversas/mensagens por `sessionId`. Detalhes em futuro `squad-comunicacao.md` |
+| `messaging/` | Envio Meta WhatsApp Cloud API (texto/áudio/imagem/vídeo/documento), upload/download de mídia, conversão de áudio ffmpeg. Extraído de `leads.service.ts` (2026-05-12) |
+| `lead-documents/` | Documentos do lead — upload Cloudinary autenticado, classificação IA Claude Vision, cadastro fill, lista/CRUD. Extraído de `leads.service.ts` (2026-05-12). LeadsService delega via injection. |
 
 ---
 
@@ -109,20 +113,8 @@ User              → role: OWNER | MANAGER | AGENT
                     preferences Json? — preferências do usuário: { theme: 'light' | 'dark' }
                     recebeLeads Boolean @default(true) — participa da roleta de distribuição de leads
 Branch            → filial/equipe dentro do tenant
-LeadDocument      → documentos solicitados para o lead: tipo (RG|CNH|CPF|COMP_RENDA|COMP_ENDERECO|FGTS|DECL_IR|CERT_ESTADO_CIVIL|CONTRATO_TRABALHO|OUTRO), nome, status (PENDENTE|ENVIADO), url/publicId Cloudinary
-                    participanteNome String? — nome do participante dono do documento (null = lead principal)
-                    participanteClassificacao String? — classificação do participante (CONJUGE|SOCIO|FIADOR|OUTRO)
-                    classificadoPorIA Boolean @default(false) — documento foi classificado automaticamente pela IA
-                    pendingReview Boolean @default(false) — documento aguarda revisão humana (não enquadrado pela IA)
-                    observacao String? — observação sobre o documento
-                    Endpoints: GET/POST /leads/:id/documents, PATCH /leads/:id/documents/:docId, POST /leads/:id/documents/:docId/upload, DELETE /leads/:id/documents/:docId
-                    POST /leads/:id/documents/toggle-na — marcar tipo como não aplicável
-                    POST /leads/:id/documents/classify-bulk — upload em massa: fase 1 síncrona (Cloudinary, retorna imediatamente com pendingReview=true) + fase 2 background (IA classifica sem bloquear o request); frontend polling a cada 5s
-                    POST /leads/:id/ai-cadastro — preenche campos de cadastro lendo documentos enviados (Claude vision)
-LeadParticipante  → participantes do lead além do lead principal (@@map("lead_participantes"))
-                    campos: nome, classificacao (CONJUGE|SOCIO|FIADOR|OUTRO), dados pessoais (cpf, rg, profissao, empresa, renda, naturalidade, endereco, cep, cidade, uf, estadoCivil, dataNascimento, telefone, email)
-                    cadastroOrigem Json? — mapa de origem por campo: { cpf: "IA"|null, rg: "IA"|null, ... }
-                    Endpoints: GET/POST /leads/:id/participantes, PATCH/DELETE /leads/:id/participantes/:partId
+LeadDocument      → documentos do lead (RG/CNH/CPF/COMP_RENDA/...) com classificação IA, upload Cloudinary autenticado. Detalhes em squad-atendimento.md
+LeadParticipante  → cônjuge/sócio/fiador do lead com dados pessoais e origem (IA|MANUAL). Detalhes em squad-atendimento.md
 Lead              → campos de cadastro pessoal: cpf, rg, profissao, empresa, naturalidade, endereco, cep, cidade, uf + cadastroOrigem Json?
                     nomeCorreto String? — nome real confirmado (IA ou humano); nomeCorretoOrigem String? ("IA"|"MANUAL")
                     Prioridade de exibição: nomeCorreto ?? nome em toda a UI e notificações
@@ -165,28 +157,17 @@ RefreshToken      → revogação de refresh token por jti: campos jti (unique),
 
 ## Autenticação e Segurança
 
-- **JWT access token:** 15 minutos
-- **JWT refresh token:** 7 dias (`type: 'refresh'` no payload) — revogação por jti: login persiste jti no banco, refresh valida+revoga+emite novo (rotation), logout revoga
-- **Platform Admin JWT:** 8 horas (`isPlatformAdmin: true` no payload)
-- **Endpoint refresh:** `POST /auth/refresh` com `{ refreshToken }`
-- **Endpoint logout:** `POST /auth/logout` com `{ refreshToken }` — revoga jti no banco antes de responder
-- **Recuperação de senha:** `POST /auth/forgot-password` → email com token 1h; `POST /auth/reset-password`
-- **Frontend (`api.ts`):** renova token automaticamente no 401; `apiLogout()` revoga no servidor antes de limpar localStorage; AppShell usa `apiLogout()` no logout
-- **JWT Strategy:** valida `sub` no banco a cada request; rejeita refresh tokens usados como access tokens (campo `type`)
-- **AuthenticatedUser / JwtPayload:** interfaces em `auth/types.ts` — usar em controllers e guards no lugar de `any`
-- **PlanGuard:** existe no código mas **não está aplicado** — lógica de planos removida, todos os tenants têm acesso total
-- **PlatformAdminGuard:** valida `isPlatformAdmin: true` no JWT — rotas `/admin/*`
-- **Rate limiting:** 120 req/min global; 10 tent./15min em `/auth/login`; 5 tent./15min em `/auth/register-master` e `/auth/forgot-password`
-- **Helmet:** headers de segurança ativos (CSP, HSTS, X-Frame-Options, etc.)
-- **Webhook tokens:** armazenados como HMAC-SHA256 (`webhookTokenHash`), com fallback para plaintext em canais antigos
-- **HMAC Meta:** verifica `X-Hub-Signature-256` nos webhooks Meta Ads se `appSecret` configurado
-- **Soft delete leads:** nunca apaga fisicamente — usa `deletedAt/deletedBy/deletionReason` (LGPD Art. 17)
-- **Branch isolation:** role AGENT só vê leads da própria `branchId`
-- **`POST /tenants` e `POST /auth/register-master`:** protegidos por `REGISTER_MASTER_SECRET` env
-- **`POST /admin/bootstrap`:** protegido por `PLATFORM_ADMIN_SECRET` env (cria primeiro admin)
-- **WhatsApp token encrypt-at-rest:** `Tenant.whatsappToken` armazenado cifrado (AES-256-GCM, prefixo `ENC:`). `field-crypto.util.ts` em `src/crypto/`; `resolveWhatsappCreds` decifra ao ler; `tenants.service` cifra ao salvar. Requer `ENCRYPTION_KEY` (64 chars hex). Graceful degradation sem chave (loga warning, continua sem cifrar).
-- **Cloudinary documentos privados:** uploads de `LeadDocument` usam `type: 'authenticated'` — URL direta nunca funciona sem assinatura. `viewDocument` gera URL assinada (validade 2 min) via `buildSignedCloudinaryDownloadUrl()`. Imagens de produto e mídia WhatsApp continuam públicas.
-- **Cloudinary singleton:** `initCloudinary()` em `cloudinary/cloudinary-init.ts`, chamado uma vez no `main.ts`. Nenhum módulo chama `cloudinary.config()` diretamente.
+> **Detalhes completos:** `.claude/agents/squad-seguranca.md`. Resumo essencial abaixo.
+
+- **JWT:** access 15min + refresh 7d (rotation com jti em `RefreshToken`) + Platform Admin 8h
+- **JWT Strategy:** valida `sub` no banco a cada request; rejeita refresh usado como access
+- **Crypto at-rest:** `Tenant.whatsappToken` cifrado AES-256-GCM via `crypto/field-crypto.util.ts` (prefixo `ENC:`, requer `ENCRYPTION_KEY` 64 hex)
+- **Webhook tokens:** HMAC-SHA256 em `Channel.webhookTokenHash` + HMAC Meta `X-Hub-Signature-256` (opt-in via `appSecret`)
+- **Cloudinary privado:** `LeadDocument` usa `type: 'authenticated'`, URL assinada 2min via `buildSignedCloudinaryDownloadUrl()`. Singleton em `main.ts` — nunca `cloudinary.config()` direto
+- **LGPD:** soft delete em leads (`deletedAt/deletedBy/deletionReason`), `AuditService` `@Global()` com try/catch silencioso
+- **Boundaries:** `REGISTER_MASTER_SECRET` (tenants/master), `PLATFORM_ADMIN_SECRET` (bootstrap), `PlatformAdminGuard` em `/admin/*`
+- **Rate limiting:** 120/min global, 10/15min em `/auth/login`, 5/15min em registro e forgot-password. Helmet ativo
+- **Tipos:** `AuthenticatedUser` / `JwtPayload` em `auth/types.ts` — nunca `any` em controllers/guards
 
 ---
 
@@ -387,9 +368,7 @@ NEXT_PUBLIC_API_URL=
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
 - `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
 - `/admin/ia/provedores` → Provedores de IA — configuração de modelo por função do sistema (DEFAULT, FOLLOW_UP, PDF_EXTRACTION, TRANSCRIPTION, DOC_CLASSIFICATION) sem deploy. DOC_CLASSIFICATION e PDF_EXTRACTION restritos a modelos Anthropic (visão).
-- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — listagem com thumbnail, cards com VSO e barra de progresso. 4 abas: Cadastro, Espelho de Vendas, Preços, Dashboard. Backend: `DevelopmentsModule` em `api/src/developments/`. Modelos: `Development`, `Tower`, `DevelopmentUnit`, `DevelopmentPaymentCondition`.
-- `/gestao-empreendimentos/novo` → Criação com mapa Google Maps + Google Places Autocomplete para endereço/cidade/estado; lat/lng como método primário; sem campo de orientação solar ou descrição.
-- `/gestao-empreendimentos/[id]` → Detalhe com 4 abas: Cadastro (dados + mapa + Autocomplete + lat/lng inputs + upload implantação + torres com dimensões/lados por face), Espelho (2D color-coded + 3D interativo), Preços (tabela + condições de pagamento), Dashboard (VSO, VGV, gráfico). O espelho 2D diferencia VERTICAL (grade por andar) de HORIZONTAL/CASA e HORIZONTAL/LOTEAMENTO (top-down lotes). O 3D tem dois modos: **Satélite** usa `google.maps.OverlayView` + canvas 2D para desenhar footprints das torres sobre o mapa satellite (sem necessidade de Map ID — NÃO usa WebGLOverlayView); **Passeio Virtual** usa Three.js standalone + PointerLockControls FPS, geração procedural por tipo, raycasting para seleção. `tower.lados` (CSV) define quais faces têm unidades no 3D. Env necessária: `NEXT_PUBLIC_GOOGLE_MAPS_KEY` (Maps JS API). Deps: `three`, `@types/three`, `@googlemaps/js-api-loader`.
+- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — 4 abas (Cadastro, Espelho 2D/3D, Preços, Dashboard). Backend: `DevelopmentsModule`. 3D usa Google Maps OverlayView (satélite) + Three.js standalone (passeio virtual FPS). Detalhes completos em futuro `squad-empreendimentos.md`. Env: `NEXT_PUBLIC_GOOGLE_MAPS_KEY`. Deps: `three`, `@googlemaps/js-api-loader`.
 - `/my-site` → Gerenciador de Sites do tenant (OWNER only) — 1 site por tenant, fluxo adaptado com/sem site ativo; Publicar/Tirar do ar ficam em Configurações.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
@@ -450,13 +429,7 @@ NEXT_PUBLIC_API_URL=
 
 ## Distribuição de Leads (Round-Robin)
 
-- **Automática na entrada:** `IngestService.roundRobinAssign(tenantId, branchId)` chamado ao criar um lead novo (não em re-entrada de lead existente)
-- **Algoritmo:** busca usuários com `ativo=true, recebeLeads=true, role in eligibleRoles, branchId match`; ordena por data do último lead assignado ASC → atribui ao que esperou mais tempo
-- **Roles elegíveis:** sempre inclui AGENT; inclui MANAGER se `roundRobinConfig.incluirGerentes=true`; inclui OWNER se `roundRobinConfig.incluirOwner=true`
-- **Fallback:** se nenhum elegível encontrado, lead fica sem responsável (`assignedUserId = null`)
-- **Manual:** OWNER/MANAGER podem reatribuir lead via `<select>` no detalhe do lead → `POST /leads/:id/assign`
-- **Configuração:** `GET /users/round-robin` e `PATCH /users/round-robin` (OWNER only) — persiste em `Tenant.roundRobinConfig`
-- **Elegibilidade individual:** `recebeLeads Boolean @default(true)` no User — toggle na tela `/equipe`
+> **Detalhes:** `.claude/agents/squad-atendimento.md`. Resumo: `IngestService.roundRobinAssign()` na criação ordena candidatos (`ativo=true, recebeLeads=true`) por último lead recebido ASC. Config em `Tenant.roundRobinConfig` (incluirGerentes/incluirOwner). Reatribuição manual: `POST /leads/:id/assign` (OWNER/MANAGER).
 
 ---
 
