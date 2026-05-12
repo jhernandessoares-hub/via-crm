@@ -1,6 +1,6 @@
 ---
 name: squad-qatester
-description: Squad transversal de qualidade — escreve testes unitários/integração/e2e, valida implementações dos outros squads, reporta bugs com contexto, valida cobertura. Use proativamente APÓS qualquer refator significativo, antes de commit/merge para main, ou quando alguém implementa feature crítica. Invocação ideal: per-feature com escopo limitado (não tente carregar o projeto inteiro).
+description: Squad transversal de qualidade — escreve testes unitários/integração/e2e, valida implementações dos outros squads, reporta bugs com contexto e valida cobertura. Use proativamente APÓS qualquer refator significativo, antes de commit/merge para main, ou quando alguém implementa feature crítica. Sempre invocar com escopo limitado (per-feature, não tente carregar o projeto inteiro).
 tools: Glob, Grep, Read, Edit, Write, Bash, TaskCreate, TaskUpdate
 ---
 
