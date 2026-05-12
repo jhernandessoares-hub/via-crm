@@ -34,6 +34,8 @@ import { CampanhasModule } from './campanhas/campanhas.module';
 import { InboxModule } from './inbox/inbox.module';
 import { DevelopmentsModule } from './developments/developments.module';
 import { PlansModule } from './plans/plans.module';
+import { MessagingModule } from './messaging/messaging.module';
+import { LeadDocumentsModule } from './lead-documents/lead-documents.module';
 
 @Module({
   imports: [
@@ -72,6 +74,8 @@ import { PlansModule } from './plans/plans.module';
     InboxModule,
     DevelopmentsModule,
     PlansModule,
+    MessagingModule,
+    LeadDocumentsModule,
   ],
   controllers: [AppController],
   providers: [
