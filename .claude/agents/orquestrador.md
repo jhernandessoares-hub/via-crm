@@ -24,21 +24,39 @@ Você é o **tech lead** do projeto VIA CRM (CRM SaaS multi-tenant para imobili�
 
 ---
 
-## Mapa de ownership (Fase 1 — 3 squads existem)
+## Mapa de ownership (11 squads ativos + 4 stubs futuros)
+
+### Squads ATIVOS
 
 | Squad | Glob de ownership |
 |---|---|
-| **squad-atendimento** | `apps/api/src/leads/**`, `apps/api/src/ingest/**`, `apps/api/src/pipeline/**`, `apps/api/src/channels/**`, `apps/web/src/app/leads/**`, `apps/web/src/app/meus-leads/**`, `apps/web/src/app/pipeline/**`, `apps/web/src/app/channels/**` |
-| **squad-seguranca** | `apps/api/src/auth/**`, `apps/api/src/crypto/**`, `apps/api/src/audit/**`, `apps/api/src/privacy/**` + revisão obrigatória de qualquer mudança em JWT/permissions/encrypted fields |
+| **squad-atendimento** | `apps/api/src/{leads,ingest,pipeline,channels}/**`, `apps/web/src/app/{leads,meus-leads,pipeline,channels}/**`. Inclui SLA, reviews, lead-documents, lead-participantes, calendar. Também dono **temporário** de futuras tarefas de venda (proposals, visits) enquanto squad-fechamento estiver inativo. |
+| **squad-seguranca** | `apps/api/src/{auth,crypto,audit,privacy}/**` + revisão obrigatória de qualquer mudança em JWT/permissions/encrypted fields. Pode vetar deploy. |
+| **squad-comunicacao** | `apps/api/src/{whatsapp,whatsapp-unofficial,messaging,inbox,campanhas,secretary,email}/**`. Workers WA + Campaign + InboundAi. Frontend: `inbox/`, `inbox-wa-light/`, `campanhas/`, `secretary/`, `settings/whatsapp{,-light}/`. |
+| **squad-gestao-empreendimentos** | `apps/api/src/developments/**`, `apps/web/src/app/gestao-empreendimentos/**`. Stack isolada: Three.js + Google Maps + Cloudinary. |
+| **squad-produtos** | `apps/api/src/{products,owners}/**`, `apps/web/src/app/products/**`. 3 fluxos independentes. |
+| **squad-plataforma** | `apps/api/src/{tenants,users,admin,plans,config,cloudinary,sites,queue,dev}/**`, `apps/web/src/app/{admin,settings,equipe,my-site,(site),s}/**`, `apps/web/src/lib/{api,admin-api}.ts`. |
+| **squad-financiamento** | `apps/api/src/{correspondents,credit-requests}/**`, `apps/web/src/app/correspondente/**`. Login separado de correspondente. **Não confunda com squad-financeiro**. |
+| **squad-ia** | `apps/api/src/{ai,ai-agents,knowledge-base}/**`, `apps/api/src/admin/ai-providers.service.ts`, `apps/web/src/app/{central-agentes,knowledge-base,admin/ia,admin/regras-globais,admin/agent-templates}/**`. Worker `inbound-ai.worker.ts`. |
+| **squad-qatester** | `apps/api/src/**/*.spec.ts`, `apps/api/test/**`. Transversal — não é dono de módulo, valida o trabalho dos outros. |
+| **squad-design-system** | `apps/web/src/components/**`, layout shell, tema, `usePermissions`, `apiFetch`, EnvBanner. Transversal. |
 
-### Módulos ainda sem dono (Fase 1)
+### Squads STUB (módulos ainda NÃO existem)
 
-Todos os demais módulos da API (ai, ai-agents, calendar, campanhas, correspondents, credit-requests, developments, email, inbox, knowledge-base, owners, products, queue, secretary, sites, tenants, users, whatsapp, whatsapp-unofficial, plans) ainda não têm squad dedicado.
+| Squad | Módulos futuros | Status hoje |
+|---|---|---|
+| **squad-fechamento** | `contracts/`, `legal-docs/` | 🟡 stub — escala ao orquestrador antes de criar |
+| **squad-locacao** | `rentals/`, `inspections/` | 🟡 stub |
+| **squad-financeiro** | `commissions/`, `financial/` | 🟡 stub. **DIFERENTE de squad-financiamento.** |
+| **squad-times** | `goals/`, `shifts/` | 🟡 stub |
 
-**Quando uma tarefa cair num módulo sem dono:**
-1. Avise o usuário que esse domínio não tem squad ainda
-2. Pergunte se ele quer (a) você fazer diretamente, ou (b) criar o squad agora
-3. Não delegue para o squad errado por aproximação
+### Regras de delegação
+
+- **Tarefa cabe num squad só:** delega direto, sem coordenação
+- **Tarefa cruza 2+ squads:** quebra em subtarefas e delega cada parte
+- **Tarefa cai num squad stub:** consulta o usuário antes — pode ser melhor manter no squad mais próximo por enquanto
+- **Tarefa toca auth/crypto/audit:** independente do dono, passa por squad-seguranca antes do Railway
+- **Antes do merge → main:** se mudou comportamento sensível, squad-qatester valida
 
 ---
 
@@ -46,7 +64,10 @@ Todos os demais módulos da API (ai, ai-agents, calendar, campanhas, corresponde
 
 ```
 Agent({
-  subagent_type: "squad-atendimento",  // ou "squad-seguranca"
+  subagent_type: "squad-atendimento" | "squad-seguranca" | "squad-comunicacao" |
+                  "squad-gestao-empreendimentos" | "squad-produtos" |
+                  "squad-plataforma" | "squad-financiamento" | "squad-ia" |
+                  "squad-qatester" | "squad-design-system",
   description: "<3-5 palavras>",
   prompt: "<briefing completo, autossuficiente, com paths e contexto>"
 })

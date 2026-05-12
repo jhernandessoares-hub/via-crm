@@ -2,77 +2,127 @@
 
 Estrutura aprovada de squads para o time de desenvolvimento via Claude Code agents.
 
-**Decisão (2026-05-12):** começar pequeno com 3 agents, expandir por fases após validação.
+**Estrutura final (2026-05-12):** 11 squads ativos + 4 stubs futuros = 15 total (incluindo orquestrador).
 
 ---
 
 ## Princípios
 
-1. **Fullstack por domínio** — cada squad é dono do backend **e** do frontend do seu domínio. Sem `squad-frontend` horizontal.
+1. **Fullstack por domínio** — cada squad é dono do backend **e** do frontend do seu domínio.
 2. **Ownership único por glob** — cada módulo tem 1 dono. Conflito = escalar para orquestrador.
 3. **Não reorganizar pastas** — ownership vive no system prompt do agent, não no filesystem.
 4. **Segurança sempre revisa** — qualquer mudança em `auth/`, `crypto/`, `audit/` passa pelo `squad-seguranca` antes do Railway.
-5. **CLAUDE.md global** continua compartilhado por todos os agents (stack, padrões, regras universais).
+5. **QA é per-feature** — `squad-qatester` é invocado com escopo limitado, não "lê tudo".
+6. **Stubs ficam dormindo** — agents para módulos inexistentes têm `.md` placeholder; ativam quando o módulo nascer.
+7. **CLAUDE.md global** continua compartilhado por todos os agents.
 
 ---
 
-## Estrutura completa (12 squads)
+## Estrutura completa
+
+### Squads ATIVOS (11)
 
 | # | Squad | Módulos existentes | Módulos a construir |
 |---|---|---|---|
 | 1 | **orquestrador** | (lê todos) | — |
-| 2 | **squad-design-system** | components/, shared UI | — |
-| 3 | **squad-empreendimentos** | developments | unit-holds |
-| 4 | **squad-imoveis** | products, owners | rentals, acquisition, portals-outbound, appraisals, inspections, legal-docs, post-sale |
-| 5 | **squad-atendimento** | leads, ingest, pipeline, channels | sla, reviews, visits, proposals, lead-documents, lead-participantes |
-| 6 | **squad-vendas** | — | contracts, commissions, financial, goals, shifts |
-| 7 | **squad-financiamento** | correspondents, credit-requests | partners, investors |
-| 8 | **squad-comunicacao** | whatsapp, whatsapp-unofficial, inbox, campanhas, secretary, email | messaging, notifications, marketing-email |
-| 9 | **squad-ia** | ai, ai-agents, knowledge-base | learnings, analytics, reports |
-| 10 | **squad-plataforma** | users, tenants, admin, plans, config, cloudinary, sites, queue, dev | billing, integrations-hub, storage |
-| 11 | **squad-seguranca** | auth, crypto, audit, privacy | lgpd-center, incidents |
-| 12 | **squad-qa** | (testa todos) | — |
+| 2 | **squad-atendimento** | leads, ingest, pipeline, channels, calendar | sla expansão, reviews, visits, proposals, lead-participantes |
+| 3 | **squad-seguranca** | auth, crypto, audit, privacy | lgpd-center, incidents |
+| 4 | **squad-comunicacao** | whatsapp, whatsapp-unofficial, messaging, inbox, campanhas, secretary, email | notifications, marketing-email |
+| 5 | **squad-gestao-empreendimentos** | developments | unit-holds |
+| 6 | **squad-produtos** | products, owners | acquisition, portals-outbound, appraisals, post-sale |
+| 7 | **squad-plataforma** | users, tenants, admin, plans, config, cloudinary, sites, queue, dev | billing, integrations-hub, storage |
+| 8 | **squad-financiamento** | correspondents, credit-requests | partners, investors |
+| 9 | **squad-ia** | ai, ai-agents, knowledge-base | learnings expansão, analytics, reports |
+| 10 | **squad-qatester** | (transversal — testa todos) | — |
+| 11 | **squad-design-system** | components shared, layout shell, tema | — |
+
+### Squads STUB (4) — módulos ainda não existem
+
+| # | Squad | Módulos futuros |
+|---|---|---|
+| 12 | **squad-fechamento** | contracts (venda + locação), legal-docs (due diligence), integração Clicksign/D4Sign/Autentique |
+| 13 | **squad-locacao** | rentals, inspections, boletos mensais, reajuste IGPM/IPCA, repasse, garantia, vacância |
+| 14 | **squad-financeiro** | commissions, financial (contas pagar/receber, DRE, conciliação) — **NÃO confundir com squad-financiamento** |
+| 15 | **squad-times** | goals (metas), shifts (plantão) |
+
+---
+
+## Diferenças críticas de naming
+
+| Nome | Domínio |
+|---|---|
+| **squad-financiamento** ✅ ativo | Correspondente bancário + pedido de crédito do **lead** (cliente final) |
+| **squad-financeiro** 🟡 stub | Caixa da **imobiliária** (comissões, DRE, conciliação) |
+
+Não confundir.
 
 ---
 
 ## Fases de criação
 
-### ✅ Fase 1 — Validação (atual)
+### ✅ Fase 1 — Validação (concluída)
 
-Apenas **3 agents**, escolhidos pela dor real do código hoje:
+- `orquestrador`, `squad-atendimento`, `squad-seguranca`
 
-- `orquestrador`
-- `squad-atendimento` — porque `leads.service.ts` tem 3.644 linhas (maior dívida técnica)
-- `squad-seguranca` — porque deploy vai direto pro Railway sem revisão humana
+**Tarefa de validação:** extrair `messaging` e `lead-documents` de `leads.service.ts` — ✅ concluído (3.644 → 2.437 linhas).
 
-**Tarefa de validação:** extrair `messaging` (envio Meta API) de `leads.service.ts` para módulo próprio.
+### ✅ Fase 2 — Expansão completa (concluída)
 
-### 🟡 Fase 2 — Após validação
+8 squads ativos + 4 stubs criados em 2026-05-12.
 
-Adicionar 4 agents:
-- `squad-empreendimentos`
-- `squad-comunicacao`
-- `squad-plataforma`
-- `squad-qa`
+### 🔵 Fase 3 — Ativação dos stubs (futuro)
 
-### 🔵 Fase 3 — Quando time crescer
-
-Os 5 restantes (`design-system`, `imoveis`, `vendas`, `financiamento`, `ia`).
+Cada stub vira agent ativo quando o módulo correspondente for criado. Critérios em cada `.md` de stub.
 
 ---
 
-## Regras de interação
+## Como funciona cada cruzamento de domínio
 
-- **Quem pode editar o quê:** definido no glob do system prompt de cada agent
-- **Conflito de ownership:** agent escala para `orquestrador`, que delega corretamente
-- **Mudança em arquivo cross-domínio:** orquestrador coordena handoff
-- **Antes do Railway:** se mexeu em auth/crypto/audit, passa por `squad-seguranca`
-- **Antes de merge dev→main:** `squad-qa` valida testes (quando existir)
+### Lead vira venda
+```
+squad-atendimento (lead muda etapa pra PROPOSTA/CONTRATO)
+        ↓
+squad-fechamento (gera contrato — quando ativo)
+        ↓
+squad-financeiro (provisiona comissão — quando ativo)
+```
+
+### Lead vira inquilino (locação)
+```
+squad-atendimento (lead procura aluguel)
+        ↓
+squad-fechamento (contrato de locação)
+        ↓
+squad-locacao (boleto mensal + repasse + reajuste)
+        ↓
+squad-financeiro (DRE)
+```
+
+### Inbound de WhatsApp dispara IA
+```
+squad-comunicacao (recebe via webhook/Baileys)
+        ↓
+[InboundAiWorker — coordenado entre squad-comunicacao e squad-ia]
+        ↓
+squad-comunicacao (envia resposta IA via MessagingService)
+```
+
+---
+
+## Regras invioláveis
+
+- Cada agent é fullstack (backend + frontend do seu domínio)
+- Ownership por glob no system prompt (não reorganizar pastas)
+- Conflito de ownership = escalar para orquestrador
+- `squad-seguranca` revisa qualquer mudança em auth/crypto/audit antes do Railway
+- `squad-qatester` invocado per-feature, não "lê tudo"
+- Stubs só são ativados após confirmação do usuário + criação do módulo
+- CLAUDE.md continua sendo contexto global compartilhado por TODOS os agents
 
 ---
 
 ## Arquivos relacionados
 
-- `.claude/agents/*.md` — system prompts de cada agent
+- `.claude/agents/*.md` — system prompts de cada agent (15 arquivos)
 - `CLAUDE.md` — contexto global compartilhado por todos
 - `~/.claude/.../memory/project_agents_plan.md` — memória persistente desta decisão
