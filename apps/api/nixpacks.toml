@@ -1,2 +1,5 @@
 [phases.install]
 cmds = ["npm ci --legacy-peer-deps --include=dev"]
+
+[phases.build]
+cmds = ["npm run prisma:generate", "npm run build"]
