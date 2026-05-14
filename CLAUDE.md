@@ -319,6 +319,7 @@ NEXT_PUBLIC_API_URL=
 - **Permissões configuráveis:** usar `GET /tenants/permissions-public` + hook `usePermissions()` do frontend para verificar permissões de MANAGER/AGENT. Nunca hardcodar restrições que deveriam ser configuráveis.
 - **Platform Admin:** rotas `/admin/*` protegidas por `PlatformAdminGuard` — token separado, nunca misturar com JWT de tenant.
 - **Email:** `EmailService` é `@Global()` — injetar direto. Sempre envolto em try/catch para não quebrar fluxo.
+- **Scripts fora de `src/`:** qualquer arquivo `.ts` fora de `src/` (ex: `scripts/`) **deve** ser adicionado ao `exclude` de `apps/api/tsconfig.build.json`. Arquivos fora de `src/` mudam o `rootDir` inferido pelo TypeScript de `./src` para `./`, deslocando o output de `dist/main.js` para `dist/src/main.js` e causando crash silencioso no Railway (`Cannot find module '/app/dist/main'`).
 
 ---
 
@@ -474,7 +475,8 @@ npm run start:dev          # dev com watch
 npx prisma studio          # GUI do banco
 npx prisma db push         # push schema sem migration (dev)
 npx prisma generate        # regenerar client após schema change
-npx tsc --noEmit           # checar tipos sem compilar
+npx tsc --noEmit           # checar tipos sem compilar (usa tsconfig.json)
+npx tsc -p tsconfig.build.json --noEmit  # checar tipos do build de prod (exclui scripts/)
 
 # Web
 cd apps/web
