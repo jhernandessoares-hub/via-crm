@@ -1,13 +1,15 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef, useMemo, forwardRef, useImperativeHandle, type ForwardedRef } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { computeCompleteness, STEP_LABELS, type Completeness } from "@/lib/empreendimento-completeness";
 import AppShell from "@/components/AppShell";
 import {
   getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
   bulkCreateUnits, updateUnit, getDashboard, getPaymentCondition, upsertPaymentCondition,
-  uploadImplantacao,
+  uploadImplantacao, publishDevelopment, unpublishDevelopment,
   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
   type PaymentCondition, type Dashboard,
+  type TerrainShape, type TerrainShapeType,
 } from "@/lib/developments.service";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
@@ -196,10 +198,135 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
   );
 }
 
-// ─── Espelho 2D ───────────────────────────────────────────────────────────────
+// ─── Espelho 2D — filtros e helpers ──────────────────────────────────────────
 
-function EspelhoVertical({ tower, devId, onUnitUpdated }: {
-  tower: Tower; devId: string; onUnitUpdated: (u: DevelopmentUnit) => void;
+type EspelhoFilters = {
+  statuses: Set<UnitStatus>;
+  priceMin: number | null;
+  priceMax: number | null;
+  floorMin: number | null;
+  floorMax: number | null;
+};
+
+function emptyFilters(): EspelhoFilters {
+  return {
+    statuses: new Set<UnitStatus>(["DISPONIVEL", "RESERVADO", "VENDIDO", "BLOQUEADO"]),
+    priceMin: null, priceMax: null, floorMin: null, floorMax: null,
+  };
+}
+
+function isFiltersActive(f: EspelhoFilters): boolean {
+  return f.statuses.size !== 4
+    || f.priceMin !== null || f.priceMax !== null
+    || f.floorMin !== null || f.floorMax !== null;
+}
+
+function unitMatches(u: DevelopmentUnit, f: EspelhoFilters, isVertical: boolean): boolean {
+  if (!f.statuses.has(u.status)) return false;
+  if (f.priceMin !== null || f.priceMax !== null) {
+    const price = u.valorVenda;
+    if (price == null) return false;
+    if (f.priceMin !== null && price < f.priceMin) return false;
+    if (f.priceMax !== null && price > f.priceMax) return false;
+  }
+  if (isVertical && (f.floorMin !== null || f.floorMax !== null)) {
+    const a = u.andar ?? 0;
+    if (f.floorMin !== null && a < f.floorMin) return false;
+    if (f.floorMax !== null && a > f.floorMax) return false;
+  }
+  return true;
+}
+
+// ─── Popover de filtros ──────────────────────────────────────────────────────
+
+function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
+  filters: EspelhoFilters;
+  setFilters: (f: EspelhoFilters) => void;
+  isVertical: boolean;
+  allFloors: number[];
+}) {
+  const [open, setOpen] = useState(false);
+  const active = isFiltersActive(filters);
+
+  function toggleStatus(s: UnitStatus) {
+    const next = new Set(filters.statuses);
+    if (next.has(s)) next.delete(s); else next.add(s);
+    setFilters({ ...filters, statuses: next });
+  }
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(!open)}
+        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+          active
+            ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]"
+            : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+        }`}>
+        🎚️ Filtros{active ? " ●" : ""}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-4 shadow-xl space-y-4">
+            <div>
+              <div className="text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Status</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["DISPONIVEL","RESERVADO","VENDIDO","BLOQUEADO"] as UnitStatus[]).map((s) => (
+                  <label key={s} className="flex items-center gap-1.5 cursor-pointer text-xs text-[var(--shell-text)]">
+                    <input type="checkbox" checked={filters.statuses.has(s)}
+                      onChange={() => toggleStatus(s)}
+                      className="h-3.5 w-3.5 rounded accent-[var(--brand-accent)]" />
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: STATUS_COLOR[s] }} />
+                    {STATUS_LABEL[s]}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Faixa de preço (R$)</div>
+              <div className="grid grid-cols-2 gap-2">
+                <input type="number" placeholder="Min" value={filters.priceMin ?? ""}
+                  onChange={(e) => setFilters({ ...filters, priceMin: e.target.value ? Number(e.target.value) : null })}
+                  className={`${inp} text-xs py-1.5`} />
+                <input type="number" placeholder="Máx" value={filters.priceMax ?? ""}
+                  onChange={(e) => setFilters({ ...filters, priceMax: e.target.value ? Number(e.target.value) : null })}
+                  className={`${inp} text-xs py-1.5`} />
+              </div>
+              <p className="text-[10px] text-[var(--shell-subtext)] mt-1">Unidades sem preço cadastrado ficam ocultas quando há faixa.</p>
+            </div>
+            {isVertical && allFloors.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Faixa de andar</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="number" placeholder={`Min (${Math.min(...allFloors)})`}
+                    value={filters.floorMin ?? ""}
+                    onChange={(e) => setFilters({ ...filters, floorMin: e.target.value ? Number(e.target.value) : null })}
+                    className={`${inp} text-xs py-1.5`} />
+                  <input type="number" placeholder={`Máx (${Math.max(...allFloors)})`}
+                    value={filters.floorMax ?? ""}
+                    onChange={(e) => setFilters({ ...filters, floorMax: e.target.value ? Number(e.target.value) : null })}
+                    className={`${inp} text-xs py-1.5`} />
+                </div>
+              </div>
+            )}
+            {active && (
+              <button onClick={() => setFilters(emptyFilters())}
+                className="w-full text-xs font-medium text-[var(--brand-accent)] hover:underline">
+                Limpar filtros
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Espelho 2D — VERTICAL (estilo construtora) ──────────────────────────────
+
+function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
+  tower: Tower; devId: string; filters: EspelhoFilters;
+  onUnitUpdated: (u: DevelopmentUnit) => void;
 }) {
   const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
 
@@ -210,80 +337,80 @@ function EspelhoVertical({ tower, devId, onUnitUpdated }: {
     unitsByFloor[f].push(u);
   });
   const floors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
+  const maxCols = Math.max(0, ...Object.values(unitsByFloor).map((arr) => arr.length));
+
+  if (floors.length === 0) {
+    return <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade nesta torre</div>;
+  }
+
+  const colHeaders = Array.from({ length: maxCols }, (_, i) => `Final ${String(i + 1).padStart(2, "0")}`);
 
   return (
     <div className="overflow-auto">
-      {floors.length === 0 ? (
-        <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade nesta torre</div>
-      ) : (
-        <div className="space-y-1.5 min-w-max">
-          {floors.map((floor) => (
-            <div key={floor} className="flex items-center gap-2">
-              <span className="w-10 text-right text-xs font-bold text-[var(--shell-subtext)] shrink-0">{floor}º</span>
-              <div className="flex gap-1.5">
-                {(unitsByFloor[floor] ?? []).sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0)).map((unit) => (
-                  <button
-                    key={unit.id}
-                    type="button"
-                    onClick={() => setSelectedUnit(unit)}
-                    title={`${unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
-                    className="relative w-16 h-10 rounded-lg border-2 text-[10px] font-bold text-white transition-all duration-150 hover:scale-110 hover:shadow-lg hover:z-10 focus:outline-none focus:ring-2 focus:ring-[var(--brand-accent)]"
-                    style={{ backgroundColor: STATUS_COLOR[unit.status], borderColor: STATUS_COLOR[unit.status] }}
-                  >
-                    <span className="truncate px-0.5 leading-tight block">{unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}</span>
-                  </button>
-                ))}
+      <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
+        {/* Cabeçalho TOPO */}
+        <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
+          <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▲ Topo</div>
+          <div className="text-sm font-bold tracking-wider mt-0.5">{tower.nome}</div>
+        </div>
+
+        {/* Header de colunas (Final 01, Final 02, ...) */}
+        <div className="flex bg-slate-100 dark:bg-slate-800/60 border-b border-slate-300 dark:border-slate-700">
+          <div className="w-14 shrink-0 border-r border-slate-300 dark:border-slate-700" />
+          <div className="flex-1 flex">
+            {colHeaders.map((h, i) => (
+              <div key={i} className="flex-1 min-w-[5rem] text-center text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 py-2 border-r border-slate-300 dark:border-slate-700 last:border-r-0">
+                {h}
+              </div>
+            ))}
+          </div>
+          <div className="w-14 shrink-0 border-l border-slate-300 dark:border-slate-700" />
+        </div>
+
+        {/* Linhas (andares) */}
+        {floors.map((floor, idx) => {
+          const units = (unitsByFloor[floor] ?? []).sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
+          const zebra = idx % 2 === 0 ? "bg-[var(--shell-card-bg)]" : "bg-[var(--shell-bg)]";
+          return (
+            <div key={floor} className={`flex border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${zebra}`}>
+              <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-700 py-1">
+                {floor}º
+              </div>
+              <div className="flex-1 flex">
+                {Array.from({ length: maxCols }).map((_, i) => {
+                  const unit = units[i];
+                  if (!unit) {
+                    return <div key={i} className="flex-1 min-w-[5rem] border-r border-slate-200 dark:border-slate-700 last:border-r-0" />;
+                  }
+                  const visible = unitMatches(unit, filters, true);
+                  return (
+                    <button key={unit.id} type="button"
+                      onClick={() => setSelectedUnit(unit)}
+                      title={`${unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
+                      className={`flex-1 min-w-[5rem] border-r border-white/30 last:border-r-0 px-2 py-2 text-left transition-all hover:brightness-110 hover:z-10 hover:shadow ${visible ? "" : "opacity-20 grayscale"}`}
+                      style={{ backgroundColor: STATUS_COLOR[unit.status] }}
+                    >
+                      <div className="text-[11px] font-bold text-white drop-shadow leading-tight">
+                        {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
+                      </div>
+                      {unit.areaM2 && (
+                        <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-l border-slate-200 dark:border-slate-700 py-1">
+                {floor}º
               </div>
             </div>
-          ))}
+          );
+        })}
+
+        {/* Rodapé TÉRREO */}
+        <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900">
+          <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▼ Térreo</div>
         </div>
-      )}
-
-      {selectedUnit && (
-        <UnitModal
-          unit={selectedUnit}
-          devId={devId}
-          onClose={() => setSelectedUnit(null)}
-          onUpdated={(u) => { onUnitUpdated(u); setSelectedUnit(u); }}
-        />
-      )}
-    </div>
-  );
-}
-
-function EspelhoHorizontal({ tower, devId, onUnitUpdated, isLoteamento }: {
-  tower: Tower; devId: string; onUnitUpdated: (u: DevelopmentUnit) => void; isLoteamento: boolean;
-}) {
-  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
-  const units = [...tower.units].sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
-  const cols = Math.ceil(Math.sqrt(units.length)) || 1;
-
-  return (
-    <div>
-      <div
-        className="inline-grid gap-2 p-4 rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-      >
-        {units.map((unit) => (
-          <button
-            key={unit.id}
-            type="button"
-            onClick={() => setSelectedUnit(unit)}
-            title={`${unit.loteNum ?? unit.nome}\n${STATUS_LABEL[unit.status]}`}
-            className="relative flex flex-col items-center justify-center rounded-xl border-2 w-20 h-16 transition-all duration-150 hover:scale-105 hover:shadow-lg hover:z-10 focus:outline-none"
-            style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
-          >
-            <span className="text-xs font-bold truncate px-1" style={{ color: STATUS_COLOR[unit.status] }}>
-              {unit.loteNum ?? unit.nome}
-            </span>
-            {!isLoteamento && (
-              <span className="text-[9px] text-[var(--shell-subtext)]">Casa</span>
-            )}
-            {unit.loteAreaM2 && (
-              <span className="text-[9px] text-[var(--shell-subtext)]">{unit.loteAreaM2}m²</span>
-            )}
-          </button>
-        ))}
       </div>
 
       {selectedUnit && (
@@ -298,22 +425,159 @@ function EspelhoHorizontal({ tower, devId, onUnitUpdated, isLoteamento }: {
   );
 }
 
+function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento }: {
+  tower: Tower; devId: string; filters: EspelhoFilters;
+  onUnitUpdated: (u: DevelopmentUnit) => void; isLoteamento: boolean;
+}) {
+  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
+  const units = [...tower.units].sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
+  const cols = Math.ceil(Math.sqrt(units.length)) || 1;
+
+  return (
+    <div className="overflow-auto">
+      <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
+        {/* Cabeçalho */}
+        <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
+          <div className="text-sm font-bold tracking-wider">{tower.nome}</div>
+          <div className="text-[10px] uppercase tracking-[0.2em] opacity-70 mt-0.5">{units.length} {isLoteamento ? "lotes" : "casas"}</div>
+        </div>
+
+        {/* Grade de lotes/casas */}
+        <div className="p-4 grid gap-2 bg-[var(--shell-bg)]"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(6rem, 1fr))` }}>
+          {units.map((unit) => {
+            const visible = unitMatches(unit, filters, false);
+            return (
+              <button key={unit.id} type="button"
+                onClick={() => setSelectedUnit(unit)}
+                title={`${unit.loteNum ?? unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
+                className={`relative flex flex-col items-stretch rounded-md border-2 px-2.5 py-2 text-left transition-all hover:scale-105 hover:shadow-lg hover:z-10 ${visible ? "" : "opacity-20 grayscale"}`}
+                style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
+              >
+                <div className="text-sm font-bold leading-tight" style={{ color: STATUS_COLOR[unit.status] }}>
+                  {unit.loteNum ?? unit.nome}
+                </div>
+                {!isLoteamento && (
+                  <div className="text-[9px] text-[var(--shell-subtext)] mt-0.5">Casa</div>
+                )}
+                {unit.loteAreaM2 && (
+                  <div className="text-[10px] font-medium text-[var(--shell-subtext)]">{unit.loteAreaM2} m²</div>
+                )}
+                {unit.valorVenda && (
+                  <div className="text-[10px] font-semibold mt-1" style={{ color: STATUS_COLOR[unit.status] }}>
+                    {fmt(unit.valorVenda)}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedUnit && (
+        <UnitModal
+          unit={selectedUnit}
+          devId={devId}
+          onClose={() => setSelectedUnit(null)}
+          onUpdated={(u) => { onUnitUpdated(u); setSelectedUnit(u); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Modal Street View ───────────────────────────────────────────────────────
+
+function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onClose: () => void }) {
+  const svRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!svRef.current) return;
+    function init() {
+      if (!svRef.current || !window.google?.maps) return;
+      new window.google.maps.StreetViewPanorama(svRef.current, {
+        position: { lat, lng },
+        pov: { heading: 0, pitch: 0 },
+        zoom: 1,
+        addressControl: false,
+        fullscreenControl: true,
+      });
+    }
+    if (window.google?.maps) { init(); return; }
+    const t = setInterval(() => { if (window.google?.maps) { clearInterval(t); init(); } }, 100);
+    return () => clearInterval(t);
+  }, [lat, lng]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.75)" }} onClick={onClose}>
+      <div className="w-full max-w-3xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] overflow-hidden shadow-xl"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--shell-card-border)]">
+          <h3 className="text-base font-bold text-[var(--shell-text)]">Ver Entorno (Street View)</h3>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">×</button>
+        </div>
+        <div ref={svRef} style={{ height: 480 }} />
+        <p className="px-5 py-2 text-xs text-[var(--shell-subtext)]">
+          Navegue com o mouse · Street View pode não estar disponível para este endereço
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function EspelhoVendas({ dev, onUnitUpdated }: {
   dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
 }) {
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(dev.towers[0]?.id ?? null);
+  const [filters, setFilters] = useState<EspelhoFilters>(emptyFilters());
+  const [exporting, setExporting] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
   const selectedTower = dev.towers.find((t) => t.id === selectedTowerId) ?? dev.towers[0] ?? null;
-
-  const total = dev.towers.flatMap((t) => t.units).length;
-  const vendido = dev.towers.flatMap((t) => t.units).filter((u) => u.status === "VENDIDO").length;
-  const reservado = dev.towers.flatMap((t) => t.units).filter((u) => u.status === "RESERVADO").length;
-  const disponivel = dev.towers.flatMap((t) => t.units).filter((u) => u.status === "DISPONIVEL").length;
-
   const isVertical = dev.tipo === "VERTICAL";
   const isLoteamento = dev.subtipo === "LOTEAMENTO";
 
-  function printEspelho() {
-    window.print();
+  const allUnits = dev.towers.flatMap((t) => t.units);
+  const total = allUnits.length;
+  const vendido = allUnits.filter((u) => u.status === "VENDIDO").length;
+  const reservado = allUnits.filter((u) => u.status === "RESERVADO").length;
+  const disponivel = allUnits.filter((u) => u.status === "DISPONIVEL").length;
+
+  const allFloors = isVertical && selectedTower
+    ? Array.from(new Set(selectedTower.units.map((u) => u.andar ?? 0))).filter((n) => n > 0).sort((a, b) => a - b)
+    : [];
+
+  async function captureCanvas() {
+    if (!exportRef.current) throw new Error("nada para exportar");
+    const html2canvas = (await import("html2canvas")).default;
+    const bg = getComputedStyle(document.body).backgroundColor || "#ffffff";
+    return html2canvas(exportRef.current, { backgroundColor: bg, scale: 2, logging: false });
+  }
+
+  async function exportPNG() {
+    setExporting(true);
+    try {
+      const canvas = await captureCanvas();
+      const link = document.createElement("a");
+      link.download = `${dev.nome}-${selectedTower?.nome ?? "espelho"}-${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (e: any) { alert("Erro ao exportar PNG: " + (e?.message ?? e)); }
+    finally { setExporting(false); }
+  }
+
+  async function exportPDF() {
+    setExporting(true);
+    try {
+      const canvas = await captureCanvas();
+      const { jsPDF } = await import("jspdf");
+      const orient = canvas.width > canvas.height ? "landscape" : "portrait";
+      const pdf = new jsPDF({ orientation: orient as any, unit: "px", format: [canvas.width, canvas.height] });
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, canvas.width, canvas.height);
+      pdf.save(`${dev.nome}-${selectedTower?.nome ?? "espelho"}-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e: any) { alert("Erro ao exportar PDF: " + (e?.message ?? e)); }
+    finally { setExporting(false); }
   }
 
   if (dev.towers.length === 0) {
@@ -343,18 +607,25 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
         ))}
       </div>
 
-      {/* Legenda */}
-      <div className="flex items-center gap-4 flex-wrap">
+      {/* Legenda + Filtros + Exportação */}
+      <div className="flex items-center gap-3 flex-wrap">
         {Object.entries(STATUS_LABEL).map(([k, l]) => (
           <div key={k} className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)]">
             <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: STATUS_COLOR[k as UnitStatus] }} />
             {l}
           </div>
         ))}
-        <button onClick={printEspelho}
-          className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
-          🖨️ Imprimir
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <FiltersPopover filters={filters} setFilters={setFilters} isVertical={isVertical} allFloors={allFloors} />
+          <button onClick={exportPNG} disabled={exporting}
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors disabled:opacity-50">
+            🖼️ {exporting ? "..." : "PNG"}
+          </button>
+          <button onClick={exportPDF} disabled={exporting}
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors disabled:opacity-50">
+            📄 {exporting ? "..." : "PDF"}
+          </button>
+        </div>
       </div>
 
       {/* Seletor de torre */}
@@ -375,20 +646,21 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
         </div>
       )}
 
-      {/* Grade */}
+      {/* Grade — região exportada (PNG/PDF) */}
       {selectedTower && (
-        <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 shadow-sm">
-          <p className="text-sm font-semibold text-[var(--shell-text)] mb-4">{selectedTower.nome}</p>
+        <div ref={exportRef} className="bg-[var(--shell-bg)] p-4 rounded-2xl">
           {isVertical ? (
             <EspelhoVertical
               tower={selectedTower}
               devId={dev.id}
+              filters={filters}
               onUnitUpdated={(u) => onUnitUpdated(selectedTower.id, u)}
             />
           ) : (
             <EspelhoHorizontal
               tower={selectedTower}
               devId={dev.id}
+              filters={filters}
               onUnitUpdated={(u) => onUnitUpdated(selectedTower.id, u)}
               isLoteamento={isLoteamento}
             />
@@ -400,6 +672,179 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
 }
 
 // ─── Helpers 3D compartilhados ───────────────────────────────────────────────
+
+const GROUND_SIZE = 200;
+
+function getTowerWorldPosition(tower: Tower, dev: Development): { x: number; z: number; w: number; d: number } {
+  const mode = dev.implantacaoMode;
+  if (mode === "IMAGEM" && tower.implantacaoX != null && tower.implantacaoY != null) {
+    const cx = tower.implantacaoX + (tower.implantacaoW ?? 0.2) / 2;
+    const cy = tower.implantacaoY + (tower.implantacaoH ?? 0.15) / 2;
+    return {
+      x: (cx - 0.5) * GROUND_SIZE,
+      z: (cy - 0.5) * GROUND_SIZE,
+      w: Math.max(2, (tower.implantacaoW ?? 0.2) * GROUND_SIZE),
+      d: Math.max(2, (tower.implantacaoH ?? 0.15) * GROUND_SIZE),
+    };
+  }
+  if (mode === "SATELITE" && tower.implantacaoLat != null && tower.implantacaoLng != null && dev.lat != null && dev.lng != null) {
+    const cosLat = Math.cos(dev.lat * Math.PI / 180);
+    const x = (tower.implantacaoLng - dev.lng) * 111320 * cosLat;
+    const z = -(tower.implantacaoLat - dev.lat) * 111320;
+    return { x, z, w: tower.larguraM, d: tower.profundidadeM };
+  }
+  return { x: tower.offsetX, z: -tower.offsetY, w: tower.larguraM, d: tower.profundidadeM };
+}
+
+function pointToWorld(p: any, dev: Development): { x: number; z: number } {
+  if (dev.implantacaoMode === "SATELITE" && p?.lat != null && dev.lat != null && dev.lng != null) {
+    const cosLat = Math.cos(dev.lat * Math.PI / 180);
+    return { x: (p.lng - dev.lng) * 111320 * cosLat, z: -(p.lat - dev.lat) * 111320 };
+  }
+  if (dev.implantacaoMode === "IMAGEM" && p?.x != null) {
+    return { x: (p.x - 0.5) * GROUND_SIZE, z: (p.y - 0.5) * GROUND_SIZE };
+  }
+  return { x: 0, z: 0 };
+}
+
+function buildTerrainFromDesign(THREE: any, scene: any, dev: Development): { gate: { x: number; z: number; angle: number } | null } {
+  const td = dev.terrainDesign;
+  if (!td?.shapes?.length) return { gate: null };
+
+  // Ordem de render: áreas → ruas → contorno (muro)
+  // Áreas (jardim, piscina, salão, garagem, quadra)
+  for (const s of td.shapes) {
+    if (!["JARDIM","PISCINA","SALAO","GARAGEM","QUADRA"].includes(s.type)) continue;
+    const pts = s.points.map((p) => pointToWorld(p, dev));
+    if (pts.length < 3) continue;
+    const shape2d = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, p.z)));
+    const geo = new THREE.ShapeGeometry(shape2d);
+    const colors: Record<string, number> = { JARDIM: 0x22c55e, PISCINA: 0x0ea5e9, SALAO: 0xfde68a, GARAGEM: 0x9ca3af, QUADRA: 0xfb923c };
+    const mat = new THREE.MeshLambertMaterial({ color: colors[s.type] ?? 0x808080, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = Math.PI / 2;
+    mesh.position.y = 0.05;
+    scene.add(mesh);
+
+    if (s.type === "SALAO" || s.type === "GARAGEM") {
+      const box = new THREE.Box3().setFromPoints(pts.map((p) => new THREE.Vector3(p.x, 0, p.z)));
+      const size = new THREE.Vector3(); box.getSize(size);
+      const center = new THREE.Vector3(); box.getCenter(center);
+      const height = s.type === "SALAO" ? 4 : 2.5;
+      const cBuilding = s.type === "SALAO" ? 0xfde68a : 0x6b7280;
+      const building = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(2, size.x * 0.85), height, Math.max(2, size.z * 0.85)),
+        new THREE.MeshLambertMaterial({ color: cBuilding }),
+      );
+      building.position.set(center.x, height / 2, center.z);
+      scene.add(building);
+    }
+  }
+
+  // Ruas
+  for (const s of td.shapes) {
+    if (s.type !== "RUA") continue;
+    const pts = s.points.map((p) => pointToWorld(p, dev));
+    const width = s.width ?? 6;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      const angle = Math.atan2(dz, dx);
+      const road = new THREE.Mesh(
+        new THREE.PlaneGeometry(len, width),
+        new THREE.MeshLambertMaterial({ color: 0x37404a }),
+      );
+      road.rotation.x = -Math.PI / 2;
+      road.rotation.z = -angle;
+      road.position.set((a.x + b.x) / 2, 0.08, (a.z + b.z) / 2);
+      scene.add(road);
+    }
+  }
+
+  // Contorno (muro com gap no segmento mais ao sul)
+  const contorno = td.shapes.find((s) => s.type === "CONTORNO");
+  let gate: { x: number; z: number; angle: number } | null = null;
+  if (contorno && contorno.points.length >= 3) {
+    const pts = contorno.points.map((p) => pointToWorld(p, dev));
+    let southestIdx = 0, southestZ = -Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length;
+      const cz = (pts[i].z + pts[j].z) / 2;
+      if (cz > southestZ) { southestZ = cz; southestIdx = i; }
+    }
+    const wallH = 2.5, wallT = 0.3, gateW = 12;
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0xb6b1a8 });
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length;
+      const a = pts[i], b = pts[j];
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      const angle = Math.atan2(dz, dx);
+      const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
+      if (i === southestIdx && len > gateW + 4) {
+        const segLen = (len - gateW) / 2;
+        [-1, 1].forEach((sign) => {
+          const offset = sign * (gateW / 2 + segLen / 2);
+          const w = new THREE.Mesh(new THREE.BoxGeometry(segLen, wallH, wallT), wallMat);
+          w.rotation.y = -angle;
+          w.position.set(cx + Math.cos(angle) * offset, wallH / 2, cz + Math.sin(angle) * offset);
+          scene.add(w);
+        });
+        gate = { x: cx, z: cz, angle };
+        const pillarMat = new THREE.MeshLambertMaterial({ color: 0x4b5563 });
+        [-1, 1].forEach((sign) => {
+          const offset = sign * (gateW / 2);
+          const p = new THREE.Mesh(new THREE.BoxGeometry(0.8, wallH + 1, 0.8), pillarMat);
+          p.rotation.y = -angle;
+          p.position.set(cx + Math.cos(angle) * offset, (wallH + 1) / 2, cz + Math.sin(angle) * offset);
+          scene.add(p);
+        });
+        const gateTop = new THREE.Mesh(new THREE.BoxGeometry(gateW + 1, 0.6, 0.4), new THREE.MeshLambertMaterial({ color: 0x374151 }));
+        gateTop.rotation.y = -angle;
+        gateTop.position.set(cx, wallH + 0.7, cz);
+        scene.add(gateTop);
+      } else {
+        const w = new THREE.Mesh(new THREE.BoxGeometry(len, wallH, wallT), wallMat);
+        w.rotation.y = -angle;
+        w.position.set(cx, wallH / 2, cz);
+        scene.add(w);
+      }
+    }
+  }
+
+  return { gate };
+}
+
+function buildDefaultTerrain(THREE: any, scene: any): { gate: { x: number; z: number; angle: number } } {
+  const wallH = 2.5, wallT = 0.3, half = GROUND_SIZE / 2, gateW = 12;
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0xb6b1a8 });
+  const wallSideL = new THREE.Mesh(new THREE.BoxGeometry((GROUND_SIZE - gateW) / 2, wallH, wallT), wallMat);
+  wallSideL.position.set(-(half + gateW / 2) / 2 - gateW / 4, wallH / 2, half);
+  scene.add(wallSideL);
+  const wallSideR = new THREE.Mesh(new THREE.BoxGeometry((GROUND_SIZE - gateW) / 2, wallH, wallT), wallMat);
+  wallSideR.position.set((half + gateW / 2) / 2 + gateW / 4, wallH / 2, half);
+  scene.add(wallSideR);
+  const wallBack = new THREE.Mesh(new THREE.BoxGeometry(GROUND_SIZE, wallH, wallT), wallMat);
+  wallBack.position.set(0, wallH / 2, -half); scene.add(wallBack);
+  const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, GROUND_SIZE), wallMat);
+  wallLeft.position.set(-half, wallH / 2, 0); scene.add(wallLeft);
+  const wallRight = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, GROUND_SIZE), wallMat);
+  wallRight.position.set(half, wallH / 2, 0); scene.add(wallRight);
+  const pillarMat = new THREE.MeshLambertMaterial({ color: 0x4b5563 });
+  const pillarGeo = new THREE.BoxGeometry(0.8, wallH + 1, 0.8);
+  const pillarL = new THREE.Mesh(pillarGeo, pillarMat); pillarL.position.set(-gateW / 2, (wallH + 1) / 2, half); scene.add(pillarL);
+  const pillarR = new THREE.Mesh(pillarGeo, pillarMat); pillarR.position.set(gateW / 2, (wallH + 1) / 2, half); scene.add(pillarR);
+  const gateTop = new THREE.Mesh(new THREE.BoxGeometry(gateW + 1, 0.6, 0.4), new THREE.MeshLambertMaterial({ color: 0x374151 }));
+  gateTop.position.set(0, wallH + 0.7, half); scene.add(gateTop);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(gateW, 1.2, 0.1), new THREE.MeshLambertMaterial({ color: 0x1f2937 }));
+  sign.position.set(0, wallH + 1.5, half + 0.05); scene.add(sign);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(8, GROUND_SIZE * 0.6), new THREE.MeshLambertMaterial({ color: 0x37404a }));
+  road.rotation.x = -Math.PI / 2;
+  road.position.set(0, 0.02, half - GROUND_SIZE * 0.3);
+  scene.add(road);
+  return { gate: { x: 0, z: half, angle: 0 } };
+}
 
 function buildThreeScene(THREE: any, dev: Development) {
   const scene = new THREE.Scene();
@@ -413,19 +858,40 @@ function buildThreeScene(THREE: any, dev: Development) {
   const interactiveObjects: any[] = [];
   const unitMap = new Map<string, DevelopmentUnit>();
 
+  // Constrói terreno (contorno + ruas + áreas) ou fallback
+  const terrainResult = buildTerrainFromDesign(THREE, scene, dev);
+  const gate = terrainResult.gate ?? buildDefaultTerrain(THREE, scene).gate;
+
+  // ── Torres ────────────────────────────────────────────────────────────────
   dev.towers.forEach((tower) => {
-    const bx = tower.offsetX;
-    const bz = -tower.offsetY;
+    const pos = getTowerWorldPosition(tower, dev);
+    const bx = pos.x, bz = pos.z;
+    const tw = pos.w, td = pos.d;
     const activeFaces = (tower.lados ?? "FRENTE,FUNDO,ESQUERDA,DIREITA").split(",");
 
     if (isVertical) {
       const buildingH = tower.floors * tower.alturaAndarM;
       const body = new THREE.Mesh(
-        new THREE.BoxGeometry(tower.larguraM, buildingH, tower.profundidadeM),
+        new THREE.BoxGeometry(tw, buildingH, td),
         new THREE.MeshLambertMaterial({ color: 0xd0d8e8 }),
       );
       body.position.set(bx, buildingH / 2, bz);
       scene.add(body);
+
+      // Etiqueta no topo (placa com nome) — Sprite com canvas
+      const cnv = document.createElement("canvas");
+      cnv.width = 256; cnv.height = 64;
+      const ctx = cnv.getContext("2d")!;
+      ctx.fillStyle = "rgba(15,23,42,0.9)"; ctx.fillRect(0, 0, 256, 64);
+      ctx.fillStyle = "#ffffff"; ctx.font = "bold 32px sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(tower.nome, 128, 32);
+      const tex = new THREE.CanvasTexture(cnv);
+      const labelMat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+      const label = new THREE.Sprite(labelMat);
+      label.scale.set(12, 3, 1);
+      label.position.set(bx, buildingH + 4, bz);
+      scene.add(label);
 
       const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
       tower.units.forEach((u) => { const f = u.andar ?? 1; if (!unitsByFloor[f]) unitsByFloor[f] = []; unitsByFloor[f].push(u); });
@@ -440,14 +906,14 @@ function buildThreeScene(THREE: any, dev: Development) {
           const cols = faceUnits.length;
           faceUnits.forEach((unit, idx) => {
             let wx = bx, wz = bz;
-            let gw = 1, gh = tower.alturaAndarM * 0.5, gd = 0.3;
-            if (face === "FRENTE") { wx = bx - tower.larguraM/2 + tower.larguraM/(cols+1)*(idx+1); wz = bz - tower.profundidadeM/2 - 0.05; gw = tower.larguraM/(cols+1)*0.6; }
-            else if (face === "FUNDO") { wx = bx - tower.larguraM/2 + tower.larguraM/(cols+1)*(idx+1); wz = bz + tower.profundidadeM/2 + 0.05; gw = tower.larguraM/(cols+1)*0.6; }
-            else if (face === "ESQUERDA") { wx = bx - tower.larguraM/2 - 0.05; wz = bz - tower.profundidadeM/2 + tower.profundidadeM/(cols+1)*(idx+1); gw = 0.3; gd = tower.profundidadeM/(cols+1)*0.6; }
-            else if (face === "DIREITA") { wx = bx + tower.larguraM/2 + 0.05; wz = bz - tower.profundidadeM/2 + tower.profundidadeM/(cols+1)*(idx+1); gw = 0.3; gd = tower.profundidadeM/(cols+1)*0.6; }
+            let gw = 1, gh = tower.alturaAndarM * 0.6, gd = 0.3;
+            if (face === "FRENTE") { wx = bx - tw/2 + tw/(cols+1)*(idx+1); wz = bz - td/2 - 0.05; gw = tw/(cols+1)*0.65; }
+            else if (face === "FUNDO") { wx = bx - tw/2 + tw/(cols+1)*(idx+1); wz = bz + td/2 + 0.05; gw = tw/(cols+1)*0.65; }
+            else if (face === "ESQUERDA") { wx = bx - tw/2 - 0.05; wz = bz - td/2 + td/(cols+1)*(idx+1); gw = 0.3; gd = td/(cols+1)*0.65; }
+            else if (face === "DIREITA") { wx = bx + tw/2 + 0.05; wz = bz - td/2 + td/(cols+1)*(idx+1); gw = 0.3; gd = td/(cols+1)*0.65; }
             const win = new THREE.Mesh(
               new THREE.BoxGeometry(gw, gh, gd),
-              new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), emissive: new THREE.Color(STATUS_COLOR[unit.status]), emissiveIntensity: 0.4 }),
+              new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), emissive: new THREE.Color(STATUS_COLOR[unit.status]), emissiveIntensity: 0.55 }),
             );
             win.position.set(wx, y, wz);
             win.userData = { unitId: unit.id };
@@ -460,25 +926,25 @@ function buildThreeScene(THREE: any, dev: Development) {
 
     } else if (isLoteamento) {
       const cols = Math.ceil(Math.sqrt(tower.units.length)) || 1;
-      const lotW = tower.larguraM / cols, lotD = tower.profundidadeM / cols;
+      const lotW = tw / cols, lotD = td / cols;
       tower.units.forEach((unit, idx) => {
         const col = idx % cols, row = Math.floor(idx / cols);
         const lot = new THREE.Mesh(
           new THREE.PlaneGeometry(lotW * 0.9, lotD * 0.9),
-          new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), opacity: 0.8, transparent: true }),
+          new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), opacity: 0.85, transparent: true }),
         );
         lot.rotation.x = -Math.PI / 2;
-        lot.position.set(bx - tower.larguraM/2 + lotW*(col+0.5), 0.1, bz - tower.profundidadeM/2 + lotD*(row+0.5));
+        lot.position.set(bx - tw/2 + lotW*(col+0.5), 0.1, bz - td/2 + lotD*(row+0.5));
         lot.userData = { unitId: unit.id };
         scene.add(lot); interactiveObjects.push(lot); unitMap.set(lot.uuid, unit);
       });
 
     } else {
       const cols = Math.ceil(Math.sqrt(tower.units.length)) || 1;
-      const lotW = tower.larguraM / cols, lotD = tower.profundidadeM / cols;
+      const lotW = tw / cols, lotD = td / cols;
       tower.units.forEach((unit, idx) => {
         const col = idx % cols, row = Math.floor(idx / cols);
-        const lx = bx - tower.larguraM/2 + lotW*(col+0.5), lz = bz - tower.profundidadeM/2 + lotD*(row+0.5);
+        const lx = bx - tw/2 + lotW*(col+0.5), lz = bz - td/2 + lotD*(row+0.5);
         const houseH = tower.alturaAndarM;
         const house = new THREE.Mesh(
           new THREE.BoxGeometry(lotW*0.7, houseH, lotD*0.7),
@@ -498,24 +964,71 @@ function buildThreeScene(THREE: any, dev: Development) {
     }
   });
 
-  return { scene, interactiveObjects, unitMap };
+  return { scene, interactiveObjects, unitMap, gate };
 }
 
 // ─── Visão 3D ────────────────────────────────────────────────────────────────
 
+type View3DMode = "street" | "internal" | "aerial";
+
 function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void }) {
   const aerialRef = useRef<HTMLDivElement>(null);
   const walkRef   = useRef<HTMLDivElement>(null);
+  const streetRef = useRef<HTMLDivElement>(null);
   const walkSceneRef = useRef<any>(null);
-  const [mode, setMode] = useState<"aerial" | "walk">("aerial");
+  const hasGps = !!(dev.lat && dev.lng);
+  const [mode, setMode] = useState<View3DMode>(hasGps ? "street" : "internal");
   const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
   const [loadingAerial, setLoadingAerial] = useState(true);
   const [walkActive, setWalkActive] = useState(false);
-  const hasGps = !!(dev.lat && dev.lng);
+  const [hoverUnit, setHoverUnit] = useState<{ unit: DevelopmentUnit; x: number; y: number } | null>(null);
+
+  // ── Modo Street View externo ────────────────────────────────────────────────
+  const [streetStatus, setStreetStatus] = useState<"loading" | "ok" | "no-coverage">("loading");
+  useEffect(() => {
+    if (mode !== "street" || !streetRef.current || !hasGps) return;
+    let cancelled = false;
+    async function init() {
+      await waitForMaps();
+      if (cancelled || !streetRef.current) return;
+      setStreetStatus("loading");
+      const svc = new window.google.maps.StreetViewService();
+      // Prioriza entranceLat/Lng (entrada principal); fallback para centro
+      const targetLat = dev.entranceLat ?? dev.lat!;
+      const targetLng = dev.entranceLng ?? dev.lng!;
+      svc.getPanorama(
+        { location: { lat: targetLat, lng: targetLng }, radius: 200, source: "outdoor" } as any,
+        (data: any, status: any) => {
+          if (cancelled || !streetRef.current) return;
+          if (status === "OK" && data?.location?.latLng) {
+            // Calcula heading olhando do panorama para a entrada (ou centro)
+            const pano = data.location.latLng;
+            const heading = window.google.maps.geometry?.spherical
+              ? window.google.maps.geometry.spherical.computeHeading(pano, new window.google.maps.LatLng(targetLat, targetLng))
+              : 0;
+            new window.google.maps.StreetViewPanorama(streetRef.current!, {
+              pano: data.location.pano,
+              pov: { heading, pitch: 0 },
+              zoom: 1,
+              addressControl: true,
+              fullscreenControl: true,
+              motionTracking: false,
+              motionTrackingControl: false,
+            });
+            setStreetStatus("ok");
+          } else {
+            setStreetStatus("no-coverage");
+          }
+        },
+      );
+    }
+    init();
+    return () => { cancelled = true; };
+  }, [mode, hasGps, dev.lat, dev.lng]);
 
   // ── Modo Aéreo: Google Maps + OverlayView Canvas ────────────────────────────
   useEffect(() => {
-    if (!aerialRef.current || !hasGps) { setLoadingAerial(false); return; }
+    if (mode !== "aerial" || !aerialRef.current || !hasGps) { setLoadingAerial(false); return; }
     let cancelled = false;
     let overlayRef: any = null;
 
@@ -663,11 +1176,12 @@ function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towe
     };
   }, [dev, hasGps]);
 
-  // ── Modo Walk: Three.js standalone ──────────────────────────────────────────
+  // ── Modo Internal: passeio FPS Three.js ────────────────────────────────────
   useEffect(() => {
-    if (mode !== "walk" || !walkRef.current) return;
+    if (mode !== "internal" || !walkRef.current) return;
     let cancelled = false;
     let animId = 0;
+    let lastHoverId: string | null = null;
 
     async function initWalk() {
       if (!walkRef.current) return;
@@ -675,39 +1189,52 @@ function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towe
       const { PointerLockControls } = await import("three/examples/jsm/controls/PointerLockControls.js" as any);
       if (cancelled) return;
 
-      const { scene, interactiveObjects, unitMap } = buildThreeScene(THREE, dev);
+      const { scene, interactiveObjects, unitMap, gate } = buildThreeScene(THREE, dev);
       scene.background = new THREE.Color(0x87ceeb);
 
-      if (dev.implantacaoUrl) {
-        const tex = await new THREE.TextureLoader().loadAsync(dev.implantacaoUrl);
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ map: tex }));
+      // Ground: imagem de implantação (modo IMAGEM) ou gramado
+      const useImpImg = dev.implantacaoMode === "IMAGEM" && dev.implantacaoUrl;
+      if (useImpImg) {
+        const tex = await new THREE.TextureLoader().loadAsync(dev.implantacaoUrl!);
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE), new THREE.MeshLambertMaterial({ map: tex }));
         ground.rotation.x = -Math.PI / 2; scene.add(ground);
       } else {
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: 0x4a7c59 }));
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE * 3, GROUND_SIZE * 3), new THREE.MeshLambertMaterial({ color: 0x4a7c59 }));
         ground.rotation.x = -Math.PI / 2; scene.add(ground);
       }
 
       const W = walkRef.current.clientWidth, H = walkRef.current.clientHeight;
       const camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 2000);
-      camera.position.set(0, 1.7, 60);
+      // Câmera começa fora do portão olhando para dentro do condomínio
+      const gateNormal = { x: Math.sin(gate.angle), z: -Math.cos(gate.angle) }; // perpendicular ao muro do portão (pra fora)
+      camera.position.set(gate.x + gateNormal.x * 8, 1.7, gate.z + gateNormal.z * 8);
+      camera.lookAt(gate.x - gateNormal.x * 5, 1.7, gate.z - gateNormal.z * 5);
+
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       walkRef.current.appendChild(renderer.domElement);
 
       const controls = new PointerLockControls(camera, renderer.domElement);
+      let isLocked = false;
       const keys: Record<string, boolean> = {};
-      const onKD = (e: KeyboardEvent) => { keys[e.code] = true; if (e.code === "Escape") controls.unlock(); };
+      const onKD = (e: KeyboardEvent) => {
+        if (!isLocked) return;
+        if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) {
+          e.preventDefault();
+        }
+        keys[e.code] = true;
+        if (e.code === "Escape") controls.unlock();
+      };
       const onKU = (e: KeyboardEvent) => { keys[e.code] = false; };
-      document.addEventListener("keydown", onKD);
-      document.addEventListener("keyup", onKU);
-      controls.addEventListener("lock", () => setWalkActive(true));
-      controls.addEventListener("unlock", () => setWalkActive(false));
+      window.addEventListener("keydown", onKD);
+      window.addEventListener("keyup", onKU);
+      controls.addEventListener("lock", () => { isLocked = true; setWalkActive(true); });
+      controls.addEventListener("unlock", () => { isLocked = false; for (const k in keys) keys[k] = false; setWalkActive(false); setHoverUnit(null); });
 
-      // Click para selecionar unidade
       const raycaster = new THREE.Raycaster();
-      renderer.domElement.addEventListener("click", (e: MouseEvent) => {
-        if (!controls.isLocked) { controls.lock(); return; }
+      renderer.domElement.addEventListener("click", () => {
+        if (!isLocked) { controls.lock(); return; }
         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
         const hits = raycaster.intersectObjects(interactiveObjects);
         if (hits.length > 0) {
@@ -723,14 +1250,33 @@ function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towe
       });
       ro.observe(walkRef.current);
 
+      const clock = new THREE.Clock();
       function animate() {
         animId = requestAnimationFrame(animate);
-        if (controls.isLocked) {
-          const spd = 0.3;
-          if (keys["KeyW"] || keys["ArrowUp"])    controls.moveForward(spd);
-          if (keys["KeyS"] || keys["ArrowDown"])  controls.moveForward(-spd);
-          if (keys["KeyA"] || keys["ArrowLeft"])  controls.moveRight(-spd);
-          if (keys["KeyD"] || keys["ArrowRight"]) controls.moveRight(spd);
+        const dt = Math.min(0.05, clock.getDelta());
+        if (isLocked) {
+          const speed = 25; // metros por segundo
+          const dist = speed * dt;
+          if (keys["KeyW"] || keys["ArrowUp"])    controls.moveForward(dist);
+          if (keys["KeyS"] || keys["ArrowDown"])  controls.moveForward(-dist);
+          if (keys["KeyA"] || keys["ArrowLeft"])  controls.moveRight(-dist);
+          if (keys["KeyD"] || keys["ArrowRight"]) controls.moveRight(dist);
+
+          // Hover via raycaster do centro da tela
+          raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+          const hits = raycaster.intersectObjects(interactiveObjects);
+          if (hits.length > 0) {
+            const unit = unitMap.get(hits[0].object.uuid);
+            if (unit && unit.id !== lastHoverId) {
+              lastHoverId = unit.id;
+              const w = walkRef.current?.clientWidth ?? 0;
+              const h = walkRef.current?.clientHeight ?? 0;
+              setHoverUnit({ unit, x: w / 2, y: h / 2 + 30 });
+            }
+          } else if (lastHoverId !== null) {
+            lastHoverId = null;
+            setHoverUnit(null);
+          }
         }
         renderer.render(scene, camera);
       }
@@ -744,42 +1290,83 @@ function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towe
       cancelAnimationFrame(animId);
       const s = walkSceneRef.current;
       if (s) {
-        document.removeEventListener("keydown", s.onKD);
-        document.removeEventListener("keyup", s.onKU);
+        window.removeEventListener("keydown", s.onKD);
+        window.removeEventListener("keyup", s.onKU);
         s.ro?.disconnect();
         s.renderer?.dispose();
         if (walkRef.current?.contains(s.renderer?.domElement)) walkRef.current.removeChild(s.renderer.domElement);
       }
       walkSceneRef.current = null;
       setWalkActive(false);
+      setHoverUnit(null);
     };
   }, [mode, dev]);
+
+  const modeOptions: { k: View3DMode; l: string; disabled?: boolean }[] = [
+    { k: "street",   l: "🌳 Street View (entrada)", disabled: !hasGps },
+    { k: "internal", l: "🚶 Passeio Virtual" },
+    { k: "aerial",   l: "🛰️ Satélite",              disabled: !hasGps },
+  ];
 
   return (
     <div className="space-y-4">
       {!hasGps && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-          Defina as coordenadas GPS do empreendimento na aba Cadastro para usar a visão no Maps.
+          Defina as coordenadas GPS do empreendimento (aba Cadastro) para usar Street View e Satélite.
         </div>
       )}
 
       {/* Toggle de modo */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex rounded-xl border border-[var(--shell-card-border)] overflow-hidden">
-          {[{ k: "aerial", l: "🛰️ Satélite (Maps)" }, { k: "walk", l: "🚶 Passeio Virtual" }].map(({ k, l }) => (
-            <button key={k} type="button"
-              onClick={() => { setMode(k as any); setSelectedUnit(null); }}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors ${mode === k ? "bg-[var(--brand-accent)] text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+          {modeOptions.map(({ k, l, disabled }) => (
+            <button key={k} type="button" disabled={disabled}
+              onClick={() => { setMode(k); setSelectedUnit(null); setHoverUnit(null); }}
+              className={`px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${mode === k ? "bg-[var(--brand-accent)] text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
               {l}
             </button>
           ))}
         </div>
-        {mode === "walk" && !walkActive && <p className="text-xs text-[var(--shell-subtext)]">Clique na cena para ativar · WASD para mover · ESC para sair</p>}
+        {mode === "internal" && !walkActive && <p className="text-xs text-[var(--shell-subtext)]">Clique na cena para ativar · WASD para mover · ESC para sair</p>}
         {walkActive && <span className="rounded-full bg-green-500 px-3 py-1 text-xs font-semibold text-white animate-pulse">Passeio ativo — ESC para sair</span>}
       </div>
 
       {/* Containers */}
       <div className="relative rounded-2xl overflow-hidden border border-[var(--shell-card-border)] shadow-md" style={{ height: 540 }}>
+        {/* Street View externo */}
+        {mode === "street" && (
+          <>
+            <div ref={streetRef} className="absolute inset-0 bg-slate-900" />
+            {streetStatus === "loading" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
+                <div className="text-center space-y-2">
+                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs text-white/70">Procurando Street View...</p>
+                </div>
+              </div>
+            )}
+            {streetStatus === "no-coverage" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10 p-6">
+                <div className="max-w-md text-center space-y-3">
+                  <div className="text-4xl">🛰️</div>
+                  <p className="text-sm font-semibold text-white">Street View indisponível neste local</p>
+                  <p className="text-xs text-white/70">O Google não tem cobertura do Street View num raio de 200m do empreendimento (típico em condomínios fechados ou regiões novas). Você pode usar o Passeio Virtual ou o Satélite.</p>
+                  <button type="button" onClick={() => { setMode("internal"); setSelectedUnit(null); }}
+                    className="rounded-full bg-[var(--brand-accent)] px-5 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+                    Ir para o Passeio Virtual →
+                  </button>
+                </div>
+              </div>
+            )}
+            {streetStatus === "ok" && (
+              <button type="button" onClick={() => { setMode("internal"); setSelectedUnit(null); }}
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 rounded-full bg-[var(--brand-accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:opacity-90 transition-opacity flex items-center gap-2">
+                Entrar no condomínio →
+              </button>
+            )}
+          </>
+        )}
+
         {/* Aéreo: Google Maps + OverlayView */}
         <div ref={aerialRef} className="absolute inset-0" style={{ display: mode === "aerial" ? "block" : "none" }} />
         {mode === "aerial" && loadingAerial && (
@@ -790,32 +1377,54 @@ function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towe
             </div>
           </div>
         )}
-        {/* Walk: Three.js */}
-        {mode === "walk" && <div ref={walkRef} className="absolute inset-0" />}
+
+        {/* Internal: Three.js */}
+        {mode === "internal" && (
+          <>
+            <div ref={walkRef} className="absolute inset-0" />
+            {/* Mira (crosshair) ao centro durante o passeio */}
+            {walkActive && (
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+                <div className="w-2 h-2 rounded-full border-2 border-white shadow-md" />
+              </div>
+            )}
+            {/* Tooltip da unidade sob a mira */}
+            {hoverUnit && (
+              <div
+                className="absolute z-20 pointer-events-none rounded-lg bg-slate-900/95 text-white px-3 py-2 shadow-xl text-xs"
+                style={{ left: hoverUnit.x, top: hoverUnit.y, transform: "translate(-50%, 0)" }}>
+                <div className="font-bold">{hoverUnit.unit.nome}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLOR[hoverUnit.unit.status] }} />
+                  {STATUS_LABEL[hoverUnit.unit.status]}
+                </div>
+                {hoverUnit.unit.areaM2 && <div className="text-[11px] opacity-80">{hoverUnit.unit.areaM2} m²</div>}
+                {hoverUnit.unit.valorVenda && <div className="text-[11px] font-semibold text-amber-300 mt-0.5">{fmt(hoverUnit.unit.valorVenda)}</div>}
+                <div className="text-[10px] opacity-70 mt-1">Clique para detalhes</div>
+              </div>
+            )}
+            {hasGps && (
+              <button type="button" onClick={() => { setMode("street"); setSelectedUnit(null); setHoverUnit(null); }}
+                className="absolute top-3 left-3 z-10 rounded-lg bg-slate-900/80 backdrop-blur px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-900 transition-colors">
+                ← Sair (Street View)
+              </button>
+            )}
+          </>
+        )}
       </div>
 
-      {/* Painel de unidade selecionada */}
+      {/* Modal de unidade — click abre detalhes/reserva (UnitModal completo) */}
       {selectedUnit && (
-        <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="font-bold text-[var(--shell-text)] text-base">{selectedUnit.nome}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
-                  style={{ backgroundColor: STATUS_COLOR[selectedUnit.status] }}>
-                  {STATUS_LABEL[selectedUnit.status]}
-                </span>
-                {selectedUnit.valorVenda && <span className="text-sm font-semibold text-[var(--brand-accent)]">{fmt(selectedUnit.valorVenda)}</span>}
-              </div>
-            </div>
-            <button onClick={() => setSelectedUnit(null)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl">×</button>
-          </div>
-          <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
-            {selectedUnit.andar && <div><p className="text-xs text-[var(--shell-subtext)]">Andar</p><p className="font-medium">{selectedUnit.andar}º</p></div>}
-            {selectedUnit.areaM2 && <div><p className="text-xs text-[var(--shell-subtext)]">Área</p><p className="font-medium">{selectedUnit.areaM2}m²</p></div>}
-            {selectedUnit.quartos && <div><p className="text-xs text-[var(--shell-subtext)]">Quartos</p><p className="font-medium">{selectedUnit.quartos}</p></div>}
-          </div>
-        </div>
+        <UnitModal
+          unit={selectedUnit}
+          devId={dev.id}
+          onClose={() => setSelectedUnit(null)}
+          onUpdated={(u) => {
+            const tower = dev.towers.find((t) => t.units.some((x) => x.id === u.id));
+            if (tower) onUnitUpdated(tower.id, u);
+            setSelectedUnit(u);
+          }}
+        />
       )}
     </div>
   );
@@ -850,7 +1459,7 @@ function AbaEspelho({ dev, onUnitUpdated }: {
           ))}
         </div>
         {view === "3d" && (
-          <span className="text-xs text-[var(--shell-subtext)]">Arraste para orbitar · Scroll para zoom · Clique para selecionar</span>
+          <span className="text-xs text-[var(--shell-subtext)]">Street View na entrada · Passeio virtual interno · WASD para mover · clique numa unidade para reservar</span>
         )}
       </div>
 
@@ -1113,47 +1722,1076 @@ function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Developm
   );
 }
 
-// ─── Aba Cadastro ─────────────────────────────────────────────────────────────
+// ─── Editor de Implantação (Fase 2) ──────────────────────────────────────────
 
-function AbaCadastro({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [showTowerModal, setShowTowerModal] = useState(false);
+async function waitForMaps(): Promise<void> {
+  return new Promise((resolve) => {
+    if (window.google?.maps) { resolve(); return; }
+    const t = setInterval(() => { if (window.google?.maps) { clearInterval(t); resolve(); } }, 100);
+  });
+}
+
+function ImplantacaoSatelite({ dev, towers, onReload }: { dev: Development; towers: Tower[]; onReload?: () => void }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const rectsRef = useRef<Map<string, any>>(new Map());
+  const hasGps = !!(dev.lat && dev.lng);
+
+  useEffect(() => {
+    if (!hasGps || !mapRef.current) return;
+    let cancelled = false;
+    let map: any = null;
+
+    async function init() {
+      await waitForMaps();
+      if (cancelled || !mapRef.current) return;
+
+      map = new window.google.maps.Map(mapRef.current, {
+        center: { lat: dev.lat!, lng: dev.lng! },
+        zoom: 19, tilt: 0,
+        mapTypeId: "satellite",
+        mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
+      });
+
+      // Renderiza shapes do terreno como fundo (não editáveis aqui)
+      const terrainShapes: TerrainShape[] = (dev as any).terrainDesign?.shapes ?? [];
+      terrainShapes.forEach((s) => {
+        const c = SHAPE_COLORS[s.type];
+        const path = s.points as { lat: number; lng: number }[];
+        if (s.type === "RUA") {
+          new window.google.maps.Polyline({
+            path, strokeColor: c.stroke, strokeOpacity: 0.7, strokeWeight: 5,
+            clickable: false, map,
+          });
+        } else if (path.length >= 3) {
+          new window.google.maps.Polygon({
+            paths: path,
+            strokeColor: c.stroke, strokeOpacity: 0.8, strokeWeight: 2,
+            fillColor: c.fill, fillOpacity: Math.max(c.opacity, 0.15),
+            clickable: false, map,
+          });
+        }
+      });
+
+      const cosLat = Math.cos(dev.lat! * Math.PI / 180);
+      const latPerM = 1 / 111320;
+      const lngPerM = 1 / (111320 * cosLat);
+
+      towers.forEach((t) => {
+        const tLat = t.implantacaoLat ?? (dev.lat! + (t.offsetY ?? 0) * latPerM);
+        const tLng = t.implantacaoLng ?? (dev.lng! + (t.offsetX ?? 0) * lngPerM);
+        const halfLat = (t.profundidadeM / 2) * latPerM;
+        const halfLng = (t.larguraM / 2) * lngPerM;
+
+        const rect = new window.google.maps.Rectangle({
+          bounds: {
+            north: tLat + halfLat, south: tLat - halfLat,
+            east: tLng + halfLng, west: tLng - halfLng,
+          },
+          editable: true, draggable: true,
+          fillColor: "#2563eb", fillOpacity: 0.55,
+          strokeColor: "#ffffff", strokeWeight: 2,
+          map,
+        });
+
+        const label = new window.google.maps.InfoWindow({
+          content: `<div style="font-family:sans-serif;color:#111;padding:2px 4px"><strong>${t.nome}</strong><br><small>${t.units.length} unid · ${dev.tipo === 'VERTICAL' ? `${t.floors} andares` : 'horizontal'}</small></div>`,
+        });
+        rect.addListener("click", () => {
+          const b = rect.getBounds(); if (!b) return;
+          label.setPosition(b.getCenter());
+          label.open(map);
+        });
+
+        let saveTimer: any = null;
+        rect.addListener("bounds_changed", () => {
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(async () => {
+            const b = rect.getBounds(); if (!b) return;
+            const c = b.getCenter();
+            const ne = b.getNorthEast();
+            const sw = b.getSouthWest();
+            const newProfM = Math.max(1, Math.round((ne.lat() - sw.lat()) / latPerM));
+            const newLargM = Math.max(1, Math.round((ne.lng() - sw.lng()) / lngPerM));
+            try {
+              await updateTower(dev.id, t.id, {
+                implantacaoLat: c.lat(), implantacaoLng: c.lng(),
+                larguraM: newLargM, profundidadeM: newProfM,
+              });
+            } catch (e) { console.error("Erro ao salvar torre:", e); }
+          }, 600);
+        });
+
+        rectsRef.current.set(t.id, rect);
+      });
+    }
+
+    init();
+    return () => {
+      cancelled = true;
+      rectsRef.current.forEach((r) => r.setMap(null));
+      rectsRef.current.clear();
+    };
+  }, [hasGps, dev.id, dev.lat, dev.lng, towers.map((t) => t.id).join(",")]);
+
+  if (!hasGps) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300 flex items-center justify-between gap-3">
+        <span>Salve as coordenadas GPS na aba/passo <strong>Localização</strong> e depois recarregue.</span>
+        {onReload && (
+          <button type="button" onClick={() => onReload()}
+            className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors">
+            Recarregar
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (towers.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--shell-card-border)] p-6 text-center text-sm text-[var(--shell-subtext)]">
+        Adicione pelo menos uma torre/quadra para posicionar no mapa.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-[var(--shell-subtext)]">
+        Arraste cada retângulo azul para reposicionar; use os handles brancos para redimensionar. Mudanças são salvas automaticamente.
+      </p>
+      <div ref={mapRef} className="w-full h-96 rounded-xl overflow-hidden border border-[var(--shell-card-border)]" />
+    </div>
+  );
+}
+
+function ImplantacaoImagem({ dev, towers }: { dev: Development; towers: Tower[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ towerId: string; type: "move" | "resize"; startX: number; startY: number; init: { x: number; y: number; w: number; h: number } } | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, { x: number; y: number; w: number; h: number }>>({});
+
+  function getRect(t: Tower) {
+    if (overrides[t.id]) return overrides[t.id];
+    return {
+      x: t.implantacaoX ?? 0.4,
+      y: t.implantacaoY ?? 0.4,
+      w: t.implantacaoW ?? 0.2,
+      h: t.implantacaoH ?? 0.15,
+    };
+  }
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+  useEffect(() => {
+    if (!drag) return;
+    function onMove(e: MouseEvent) {
+      if (!drag || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const dx = (e.clientX - drag.startX) / rect.width;
+      const dy = (e.clientY - drag.startY) / rect.height;
+      if (drag.type === "move") {
+        setOverrides((p) => ({ ...p, [drag.towerId]: {
+          x: clamp01(drag.init.x + dx), y: clamp01(drag.init.y + dy),
+          w: drag.init.w, h: drag.init.h,
+        }}));
+      } else {
+        setOverrides((p) => ({ ...p, [drag.towerId]: {
+          x: drag.init.x, y: drag.init.y,
+          w: clamp01(Math.max(0.02, drag.init.w + dx)),
+          h: clamp01(Math.max(0.02, drag.init.h + dy)),
+        }}));
+      }
+    }
+    async function onUp() {
+      const id = drag!.towerId;
+      const r = overrides[id];
+      setDrag(null);
+      if (r) {
+        try {
+          await updateTower(dev.id, id, {
+            implantacaoX: r.x, implantacaoY: r.y,
+            implantacaoW: r.w, implantacaoH: r.h,
+          });
+        } catch (e) { console.error("Erro ao salvar torre:", e); }
+      }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [drag, overrides, dev.id]);
+
+  if (!dev.implantacaoUrl) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+        Faça upload da planta de implantação (no card de upload abaixo) para usar este modo.
+      </div>
+    );
+  }
+  if (towers.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--shell-card-border)] p-6 text-center text-sm text-[var(--shell-subtext)]">
+        Adicione pelo menos uma torre/quadra para posicionar sobre a planta.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-[var(--shell-subtext)]">
+        Arraste o corpo da torre para mover · use o canto ◢ inferior direito para redimensionar.
+      </p>
+      <div ref={containerRef}
+        className="relative inline-block w-full overflow-hidden rounded-xl border border-[var(--shell-card-border)] bg-slate-900 select-none">
+        <img src={dev.implantacaoUrl} alt="Implantação" className="w-full h-auto block pointer-events-none" draggable={false} />
+        {towers.map((t) => {
+          const r = getRect(t);
+          return (
+            <div key={t.id}
+              className="absolute border-2 border-white/90 shadow-lg cursor-move"
+              style={{
+                left: `${r.x * 100}%`, top: `${r.y * 100}%`,
+                width: `${r.w * 100}%`, height: `${r.h * 100}%`,
+                backgroundColor: "rgba(37,99,235,0.55)",
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setDrag({ towerId: t.id, type: "move", startX: e.clientX, startY: e.clientY, init: r });
+              }}>
+              <div className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-white drop-shadow pointer-events-none truncate px-1">
+                {t.nome}
+              </div>
+              <div
+                className="absolute right-0 bottom-0 w-3.5 h-3.5 bg-white border border-[var(--brand-accent)] cursor-nwse-resize"
+                onMouseDown={(e) => {
+                  e.preventDefault(); e.stopPropagation();
+                  setDrag({ towerId: t.id, type: "resize", startX: e.clientX, startY: e.clientY, init: r });
+                }} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Editor de Terreno (Fase 4) ──────────────────────────────────────────────
+
+const SHAPE_COLORS: Record<TerrainShapeType, { fill: string; stroke: string; label: string; emoji: string; opacity: number }> = {
+  CONTORNO: { fill: "#f59e0b", stroke: "#f59e0b", label: "Contorno",  emoji: "🔲", opacity: 0    },
+  RUA:      { fill: "#374151", stroke: "#374151", label: "Rua",       emoji: "🛣️", opacity: 0.7  },
+  JARDIM:   { fill: "#22c55e", stroke: "#16a34a", label: "Jardim",    emoji: "🌳", opacity: 0.45 },
+  PISCINA:  { fill: "#0ea5e9", stroke: "#0284c7", label: "Piscina",   emoji: "🏊", opacity: 0.55 },
+  SALAO:    { fill: "#fef3c7", stroke: "#a16207", label: "Salão",     emoji: "🏢", opacity: 0.65 },
+  GARAGEM:  { fill: "#78716c", stroke: "#57534e", label: "Garagem",   emoji: "🚗", opacity: 0.4  },
+  QUADRA:   { fill: "#fb923c", stroke: "#ea580c", label: "Quadra",    emoji: "⚽", opacity: 0.45 },
+};
+
+function newShapeId() { return Math.random().toString(36).slice(2, 10); }
+
+function TerrenoSateliteCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, onMoveDrawingPoint, onDeleteDrawingPoint }: {
+  dev: Development; shapes: TerrainShape[]; drawing: TerrainShape | null;
+  onAddPoint: (p: { lat: number; lng: number }) => void;
+  onUpdateShape: (id: string, points: { lat: number; lng: number }[]) => void;
+  onMoveDrawingPoint?: (idx: number, p: { lat: number; lng: number }) => void;
+  onDeleteDrawingPoint?: (idx: number) => void;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstance = useRef<any>(null);
+  const drawingRef = useRef(drawing);
+  const onAddPointRef = useRef(onAddPoint);
+  const onUpdateRef = useRef(onUpdateShape);
+  const onMoveDrawingPointRef = useRef(onMoveDrawingPoint);
+  const onDeleteDrawingPointRef = useRef(onDeleteDrawingPoint);
+  drawingRef.current = drawing;
+  onAddPointRef.current = onAddPoint;
+  onUpdateRef.current = onUpdateShape;
+  onMoveDrawingPointRef.current = onMoveDrawingPoint;
+  onDeleteDrawingPointRef.current = onDeleteDrawingPoint;
+
+  const overlaysRef = useRef<any[]>([]);
+  const drawingOverlaysRef = useRef<any[]>([]);
+  const hasGps = !!(dev.lat && dev.lng);
+
+  useEffect(() => {
+    if (!hasGps || !mapRef.current) return;
+    let cancelled = false;
+    async function init() {
+      await waitForMaps();
+      if (cancelled || !mapRef.current) return;
+      const map = new window.google.maps.Map(mapRef.current, {
+        center: { lat: dev.lat!, lng: dev.lng! },
+        zoom: 19, tilt: 0, mapTypeId: "satellite",
+        mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
+        clickableIcons: false,
+      });
+      mapInstance.current = map;
+      map.addListener("click", (e: any) => {
+        if (drawingRef.current) {
+          onAddPointRef.current({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+        }
+      });
+    }
+    init();
+    return () => { cancelled = true; };
+  }, [hasGps, dev.id]);
+
+  // Render shapes confirmadas
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+    overlaysRef.current.forEach((o) => o.setMap(null));
+    overlaysRef.current = [];
+
+    shapes.forEach((s) => {
+      const c = SHAPE_COLORS[s.type];
+      const path = s.points as { lat: number; lng: number }[];
+      const isLine = s.type === "RUA";
+      const minPoints = isLine ? 2 : 3;
+      let overlay: any;
+      if (isLine) {
+        overlay = new window.google.maps.Polyline({
+          path, strokeColor: c.stroke, strokeOpacity: 0.95, strokeWeight: 7,
+          editable: true, draggable: true,
+          map,
+        });
+      } else {
+        overlay = new window.google.maps.Polygon({
+          paths: path,
+          strokeColor: c.stroke, strokeOpacity: 1, strokeWeight: 2,
+          fillColor: c.fill, fillOpacity: c.opacity,
+          editable: true, draggable: true,
+          map,
+        });
+      }
+
+      const pathArr = isLine ? overlay.getPath() : overlay.getPaths().getAt(0);
+      let saveTimer: any = null;
+      const persistPath = () => {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          const len = pathArr.getLength();
+          const pts: { lat: number; lng: number }[] = [];
+          for (let i = 0; i < len; i++) {
+            const ll = pathArr.getAt(i);
+            pts.push({ lat: ll.lat(), lng: ll.lng() });
+          }
+          onUpdateRef.current(s.id, pts);
+        }, 800);
+      };
+      pathArr.addListener("set_at", persistPath);
+      pathArr.addListener("insert_at", persistPath);
+      pathArr.addListener("remove_at", persistPath);
+      overlay.addListener("dragend", persistPath);
+
+      // Right-click no vértice → remover
+      overlay.addListener("rightclick", (e: any) => {
+        if (e.vertex !== undefined) {
+          if (pathArr.getLength() <= minPoints) {
+            alert(`Mínimo ${minPoints} pontos.`);
+            return;
+          }
+          pathArr.removeAt(e.vertex);
+        }
+      });
+
+      overlaysRef.current.push(overlay);
+    });
+  }, [shapes]);
+
+  // Render drawing em andamento
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return;
+    drawingOverlaysRef.current.forEach((o) => o.setMap(null));
+    drawingOverlaysRef.current = [];
+
+    if (!drawing || drawing.points.length === 0) return;
+    const c = SHAPE_COLORS[drawing.type];
+    const path = drawing.points as { lat: number; lng: number }[];
+    const line = new window.google.maps.Polyline({
+      path, strokeColor: c.stroke, strokeOpacity: 0.9, strokeWeight: 3, map,
+      icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 }, offset: "0", repeat: "10px" }],
+    });
+    drawingOverlaysRef.current.push(line);
+    path.forEach((p, i) => {
+      const m = new window.google.maps.Marker({
+        position: p, map,
+        label: { text: String(i + 1), color: "#fff", fontSize: "10px", fontWeight: "700" },
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: c.stroke, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+        draggable: true,
+        title: "Arraste para mover · botão direito para excluir",
+      });
+      m.addListener("dragend", (e: any) => {
+        onMoveDrawingPointRef.current?.(i, { lat: e.latLng.lat(), lng: e.latLng.lng() });
+      });
+      m.addListener("rightclick", () => {
+        onDeleteDrawingPointRef.current?.(i);
+      });
+      // Clique no marcador NÃO adiciona ponto novo (stopPropagation via marker)
+      drawingOverlaysRef.current.push(m);
+    });
+  }, [drawing]);
+
+  if (!hasGps) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+        Defina o GPS do empreendimento (na seção Localização) para desenhar sobre o satélite.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div ref={mapRef}
+        className={`w-full h-96 rounded-xl overflow-hidden border border-[var(--shell-card-border)] ${drawing ? "cursor-crosshair" : ""}`} />
+      {drawing && (
+        <p className="text-[11px] text-[var(--shell-subtext)]">
+          Clique no mapa para adicionar pontos · <strong>arraste</strong> um ponto numerado para mover · <strong>botão direito</strong> num ponto para excluir
+        </p>
+      )}
+      {!drawing && shapes.length > 0 && (
+        <p className="text-[11px] text-[var(--shell-subtext)]">
+          💡 Arraste os <strong>vértices brancos</strong> para mover · clique nos <strong>pontos translúcidos do meio</strong> de uma aresta para inserir vértice · <strong>botão direito</strong> num vértice para remover · <strong>⧉</strong> na lista abaixo para duplicar
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, onMoveDrawingPoint, onDeleteDrawingPoint }: {
+  dev: Development; shapes: TerrainShape[]; drawing: TerrainShape | null;
+  onAddPoint: (p: { x: number; y: number }) => void;
+  onUpdateShape: (id: string, points: { x: number; y: number }[]) => void;
+  onMoveDrawingPoint?: (idx: number, p: { x: number; y: number }) => void;
+  onDeleteDrawingPoint?: (idx: number) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dragVertex, setDragVertex] = useState<{ shapeId: string; vIdx: number } | null>(null);
+  const [dragDrawingPt, setDragDrawingPt] = useState<number | null>(null); // idx do ponto do drawing sendo arrastado
+  const [localShapes, setLocalShapes] = useState<TerrainShape[] | null>(null);
+  const [localDrawing, setLocalDrawing] = useState<TerrainShape | null>(null); // cópia local durante drag de ponto do drawing
+
+  // Sincroniza localShapes com props quando shapes muda externamente
+  useEffect(() => { setLocalShapes(null); }, [shapes]);
+  // Limpa localDrawing quando drawing muda (terminou ou cancelou)
+  useEffect(() => { setLocalDrawing(null); }, [drawing]);
+
+  const renderedShapes = localShapes ?? shapes;
+
+  function getXY(e: { clientX: number; clientY: number }): { x: number; y: number } | null {
+    if (!containerRef.current) return null;
+    const rect = containerRef.current.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
+    };
+  }
+
+  function handleContainerClick(e: React.MouseEvent) {
+    if (!drawing) return;
+    if (dragDrawingPt !== null) return; // arrastou um ponto — não adiciona
+    const p = getXY(e);
+    if (p) onAddPoint(p);
+  }
+
+  // Inserir vértice no meio de uma aresta
+  function insertVertex(shapeId: string, afterIdx: number, p: { x: number; y: number }) {
+    const next = renderedShapes.map((s) => {
+      if (s.id !== shapeId) return s;
+      const pts = (s.points as { x: number; y: number }[]).slice();
+      pts.splice(afterIdx + 1, 0, p);
+      return { ...s, points: pts };
+    });
+    setLocalShapes(next);
+    const target = next.find((s) => s.id === shapeId)!;
+    onUpdateShape(shapeId, target.points as any);
+  }
+
+  function deleteVertex(shapeId: string, vIdx: number) {
+    const target = renderedShapes.find((s) => s.id === shapeId);
+    if (!target) return;
+    const min = target.type === "RUA" ? 2 : 3;
+    if (target.points.length <= min) { alert(`Mínimo ${min} pontos.`); return; }
+    const next = renderedShapes.map((s) =>
+      s.id !== shapeId ? s : { ...s, points: (s.points as any[]).filter((_, i) => i !== vIdx) }
+    );
+    setLocalShapes(next);
+    const t = next.find((s) => s.id === shapeId)!;
+    onUpdateShape(shapeId, t.points as any);
+  }
+
+  // Drag de vértice de shape finalizada
+  useEffect(() => {
+    if (!dragVertex) return;
+    function onMove(e: MouseEvent) {
+      const p = getXY(e);
+      if (!p || !dragVertex) return;
+      setLocalShapes((prev) => {
+        const base = prev ?? shapes;
+        return base.map((s) => {
+          if (s.id !== dragVertex.shapeId) return s;
+          const pts = (s.points as { x: number; y: number }[]).slice();
+          pts[dragVertex.vIdx] = p;
+          return { ...s, points: pts };
+        });
+      });
+    }
+    function onUp() {
+      setDragVertex((cur) => {
+        if (cur) {
+          const target = (localShapes ?? shapes).find((s) => s.id === cur.shapeId);
+          if (target) onUpdateShape(cur.shapeId, target.points as any);
+        }
+        return null;
+      });
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragVertex, localShapes, shapes, onUpdateShape]);
+
+  // Drag de ponto durante o desenho
+  useEffect(() => {
+    if (dragDrawingPt === null || !drawing) return;
+    const capturedIdx = dragDrawingPt;
+    function onMove(e: MouseEvent) {
+      const p = getXY(e);
+      if (!p) return;
+      setLocalDrawing((prev) => {
+        const base = prev ?? drawing!;
+        const pts = [...base.points] as any[];
+        pts[capturedIdx] = p;
+        return { ...base, points: pts };
+      });
+    }
+    function onUp() {
+      setDragDrawingPt((cur) => {
+        if (cur !== null) {
+          setLocalDrawing((ld) => {
+            if (ld) onMoveDrawingPoint?.(cur, (ld.points as any[])[cur]);
+            return null;
+          });
+        }
+        return null;
+      });
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragDrawingPt, drawing, onMoveDrawingPoint]);
+
+  if (!dev.implantacaoUrl) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+        Faça upload da planta de implantação para desenhar sobre ela.
+      </div>
+    );
+  }
+
+  // Helper: midpoint entre 2 pontos
+  function midpoint(a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } {
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+
+  return (
+    <div ref={containerRef} onClick={handleContainerClick}
+      className={`relative inline-block w-full overflow-hidden rounded-xl border border-[var(--shell-card-border)] bg-slate-900 select-none ${drawing ? "cursor-crosshair" : ""}`}>
+      <img src={dev.implantacaoUrl} alt="Implantação" className="w-full h-auto block pointer-events-none" draggable={false} />
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ pointerEvents: drawing ? "none" : "auto" }}>
+        {/* Shapes confirmadas */}
+        {renderedShapes.map((s) => {
+          const c = SHAPE_COLORS[s.type];
+          const pts = s.points as { x: number; y: number }[];
+          const ptsStr = pts.map((p) => `${p.x},${p.y}`).join(" ");
+          const isLine = s.type === "RUA";
+          return (
+            <g key={s.id} style={{ pointerEvents: drawing ? "none" : "auto" }}>
+              {isLine ? (
+                <polyline points={ptsStr} stroke={c.stroke} strokeWidth="0.008" strokeOpacity="0.95" strokeLinecap="round" fill="none" />
+              ) : (
+                <polygon points={ptsStr} stroke={c.stroke} strokeWidth="0.003" fill={c.fill} fillOpacity={c.opacity} />
+              )}
+              {/* Pontos intermediários (clicar para inserir vértice) */}
+              {pts.map((p, i) => {
+                const next = isLine ? (i < pts.length - 1 ? pts[i + 1] : null) : pts[(i + 1) % pts.length];
+                if (!next) return null;
+                const mp = midpoint(p, next);
+                return (
+                  <circle key={`m-${i}`} cx={mp.x} cy={mp.y} r="0.005"
+                    fill="rgba(255,255,255,0.5)" stroke={c.stroke} strokeWidth="0.0015"
+                    style={{ cursor: "copy" }}
+                    onClick={(e) => { e.stopPropagation(); insertVertex(s.id, i, mp); }} />
+                );
+              })}
+              {/* Vértices */}
+              {pts.map((p, i) => (
+                <circle key={`v-${i}`} cx={p.x} cy={p.y} r="0.009"
+                  fill={c.stroke} stroke="#fff" strokeWidth="0.002"
+                  style={{ cursor: "move" }}
+                  onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setDragVertex({ shapeId: s.id, vIdx: i }); }}
+                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); deleteVertex(s.id, i); }} />
+              ))}
+            </g>
+          );
+        })}
+
+        {/* Drawing em andamento */}
+        {(drawing || localDrawing) && (() => {
+          const d = localDrawing ?? drawing!;
+          const c = SHAPE_COLORS[d.type];
+          const dpts = d.points as { x: number; y: number }[];
+          return dpts.length > 0 ? (
+            <g style={{ pointerEvents: "auto" }}>
+              <polyline
+                points={dpts.map((p) => `${p.x},${p.y}`).join(" ")}
+                stroke={c.stroke} strokeWidth="0.005"
+                strokeDasharray="0.012,0.008" fill="none" style={{ pointerEvents: "none" }} />
+              {dpts.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r="0.012" fill="transparent"
+                    style={{ cursor: "move", pointerEvents: "all" }}
+                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setDragDrawingPt(i); }}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteDrawingPoint?.(i); }} />
+                  <circle cx={p.x} cy={p.y} r="0.008" fill={c.stroke} stroke="#fff" strokeWidth="0.002" style={{ pointerEvents: "none" }} />
+                  <text x={p.x} y={p.y + 0.003} textAnchor="middle" fontSize="0.012" fill="#fff" fontWeight="700" style={{ pointerEvents: "none" }}>{i + 1}</text>
+                </g>
+              ))}
+            </g>
+          ) : null;
+        })()}
+      </svg>
+      {drawing && (
+        <div className="absolute bottom-2 left-2 right-2 rounded-md bg-slate-900/85 px-3 py-1.5 text-[10px] text-white pointer-events-none">
+          Clique na imagem para adicionar pontos · <strong>arraste</strong> um ponto numerado para mover · <strong>botão direito</strong> para excluir
+        </div>
+      )}
+      {!drawing && renderedShapes.length > 0 && (
+        <div className="absolute bottom-2 left-2 right-2 rounded-md bg-slate-900/85 px-3 py-1.5 text-[10px] text-white pointer-events-none">
+          Arraste os pontos coloridos para mover · clique nos pontos brancos pequenos para inserir vértice · botão direito num vértice para remover · <strong>⧉</strong> na lista para duplicar
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditorTerreno({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  const mode = (dev.implantacaoMode ?? null) as "SATELITE" | "IMAGEM" | null;
+  const [shapes, setShapes] = useState<TerrainShape[]>(dev.terrainDesign?.shapes ?? []);
+  const [drawing, setDrawing] = useState<TerrainShape | null>(null);
+
+  useEffect(() => { setShapes(dev.terrainDesign?.shapes ?? []); }, [dev.id, dev.terrainDesign]);
+
+  async function persist(next: TerrainShape[]) {
+    setShapes(next);
+    try {
+      await updateDevelopment(dev.id, {
+        terrainDesign: { version: 1, mode: mode ?? "SATELITE", shapes: next },
+      } as any);
+      onSaved();
+    } catch (e: any) { alert("Erro ao salvar terreno: " + (e?.message ?? e)); }
+  }
+
+  // Contorno existente (para regra de contenção)
+  const contorno = shapes.find((s) => s.type === "CONTORNO");
+
+  function pointInContorno(p: { lat?: number; lng?: number; x?: number; y?: number }): boolean {
+    if (!contorno || contorno.points.length < 3) return true; // sem contorno = sem restrição
+    const pts = contorno.points as any[];
+    // Ray casting 2D (normalizado para x/y ou lat/lng)
+    const px = "x" in p ? (p as any).x : (p as any).lng;
+    const py = "x" in p ? (p as any).y : (p as any).lat;
+    const getX = (pt: any) => "x" in pt ? pt.x : pt.lng;
+    const getY = (pt: any) => "x" in pt ? pt.y : pt.lat;
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = getX(pts[i]), yi = getY(pts[i]);
+      const xj = getX(pts[j]), yj = getY(pts[j]);
+      if (((yi > py) !== (yj > py)) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function startDrawing(t: TerrainShapeType) {
+    if (drawing) return;
+    setDrawing({ id: newShapeId(), type: t, points: [], width: t === "RUA" ? 6 : undefined });
+  }
+  function cancelDrawing() { setDrawing(null); }
+  async function finishDrawing() {
+    if (!drawing) return;
+    const min = drawing.type === "RUA" ? 2 : 3;
+    if (drawing.points.length < min) {
+      alert(`${drawing.type === "RUA" ? "Linha" : "Polígono"} precisa de pelo menos ${min} pontos.`);
+      return;
+    }
+    const next = [...shapes, drawing];
+    setDrawing(null);
+    await persist(next);
+  }
+  function addPoint(p: { lat: number; lng: number } | { x: number; y: number }) {
+    if (!drawing) return;
+    // Regra de contenção: pontos fora do CONTORNO são bloqueados (exceto o próprio CONTORNO)
+    if (drawing.type !== "CONTORNO" && contorno && !pointInContorno(p as any)) {
+      alert("Ponto fora do contorno do terreno. Desenhe apenas dentro do contorno.");
+      return;
+    }
+    setDrawing({ ...drawing, points: [...drawing.points, p as any] });
+  }
+  function moveDrawingPoint(idx: number, p: { lat: number; lng: number } | { x: number; y: number }) {
+    if (!drawing) return;
+    const pts = [...drawing.points] as any[];
+    pts[idx] = p;
+    setDrawing({ ...drawing, points: pts });
+  }
+  function deleteDrawingPoint(idx: number) {
+    if (!drawing) return;
+    const pts = drawing.points.filter((_, i) => i !== idx);
+    if (pts.length === 0) { cancelDrawing(); return; }
+    setDrawing({ ...drawing, points: pts });
+  }
+  async function deleteShape(id: string) {
+    await persist(shapes.filter((s) => s.id !== id));
+  }
+  async function duplicateShape(id: string) {
+    const src = shapes.find((s) => s.id === id);
+    if (!src) return;
+    const OFFSET_LAT = 0.0002, OFFSET_X = 0.03;
+    const newPts = (src.points as any[]).map((p: any) =>
+      "lat" in p ? { lat: p.lat + OFFSET_LAT, lng: p.lng + OFFSET_LAT } : { x: p.x + OFFSET_X, y: p.y + OFFSET_X }
+    );
+    await persist([...shapes, { ...src, id: newShapeId(), points: newPts }]);
+  }
+  async function updateShape(id: string, newPoints: any[]) {
+    await persist(shapes.map((s) => s.id === id ? { ...s, points: newPoints } : s));
+  }
+  async function clearAll() {
+    if (!confirm("Apagar todo o desenho do terreno?")) return;
+    await persist([]);
+  }
+
+  return (
+    <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
+      <div>
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Desenho do Terreno (opcional)</p>
+        <p className="text-xs text-[var(--shell-subtext)] mt-1">
+          Tem a planta de implantação fornecida pelo arquiteto? Faça upload acima e use o modo Imagem.
+          Se não tem, desenhe aqui o contorno do terreno, ruas internas e áreas comuns — o passeio 3D usa esse desenho.
+        </p>
+      </div>
+
+      {mode === null ? (
+        <div className="rounded-xl border border-dashed border-[var(--shell-card-border)] p-6 text-center text-sm text-[var(--shell-subtext)]">
+          Escolha o modo de implantação acima (Satélite ou Imagem) para começar a desenhar o terreno.
+        </div>
+      ) : (
+        <>
+          {/* Toolbar */}
+          <div className="flex gap-2 flex-wrap">
+            {(Object.keys(SHAPE_COLORS) as TerrainShapeType[]).map((t) => {
+              const c = SHAPE_COLORS[t];
+              const active = drawing?.type === t;
+              return (
+                <button key={t} type="button" onClick={() => startDrawing(t)} disabled={!!drawing}
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    active
+                      ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]"
+                      : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                  }`}>
+                  <span>{c.emoji}</span> {c.label}
+                </button>
+              );
+            })}
+            {shapes.length > 0 && !drawing && (
+              <button onClick={clearAll}
+                className="ml-auto rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                🗑️ Apagar tudo
+              </button>
+            )}
+          </div>
+
+          {/* Banner de drawing em andamento */}
+          {drawing && (
+            <div className="flex items-center justify-between rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-accent)]/5 px-4 py-2 text-xs flex-wrap gap-2">
+              <span className="text-[var(--shell-text)]">
+                Desenhando <strong>{SHAPE_COLORS[drawing.type].label}</strong> — clique no {mode === "SATELITE" ? "mapa" : "imagem"} para adicionar pontos · <strong>{drawing.points.length} pts</strong>
+              </span>
+              <div className="flex gap-2">
+                <button onClick={cancelDrawing} className="text-[var(--shell-subtext)] hover:underline">Cancelar</button>
+                <button onClick={finishDrawing}
+                  className="rounded-md bg-[var(--brand-accent)] px-3 py-1 font-semibold text-white hover:opacity-90">
+                  ✓ Finalizar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Canvas */}
+          {mode === "SATELITE" && (
+            <TerrenoSateliteCanvas dev={dev} shapes={shapes} drawing={drawing}
+              onAddPoint={addPoint as any} onUpdateShape={updateShape}
+              onMoveDrawingPoint={moveDrawingPoint as any} onDeleteDrawingPoint={deleteDrawingPoint} />
+          )}
+          {mode === "IMAGEM" && (
+            <TerrenoImagemCanvas dev={dev} shapes={shapes} drawing={drawing}
+              onAddPoint={addPoint as any} onUpdateShape={updateShape}
+              onMoveDrawingPoint={moveDrawingPoint as any} onDeleteDrawingPoint={deleteDrawingPoint} />
+          )}
+
+          {/* Lista das shapes */}
+          {shapes.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Elementos desenhados ({shapes.length})</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {shapes.map((s) => {
+                  const c = SHAPE_COLORS[s.type];
+                  return (
+                    <div key={s.id} className="flex items-center gap-2 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs">
+                      <span>{c.emoji}</span>
+                      <span className="text-[var(--shell-text)] flex-1 truncate">{c.label} · {s.points.length} pts</span>
+                      <button title="Duplicar" onClick={() => duplicateShape(s.id)} className="text-[var(--shell-subtext)] hover:text-[var(--brand-accent)]">⧉</button>
+                      <button title="Excluir" onClick={() => deleteShape(s.id)} className="text-red-400 hover:text-red-600">✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function EditorImplantacao({ dev, towers, onSaved }: {
+  dev: Development; towers: Tower[]; onSaved: () => void;
+}) {
   const [uploadingImg, setUploadingImg] = useState(false);
+  const mode = (dev.implantacaoMode ?? null) as "SATELITE" | "IMAGEM" | null;
 
-  // Campos do desenvolvimento
-  const [nome, setNome] = useState(dev.nome);
+  async function setMode(m: "SATELITE" | "IMAGEM") {
+    try {
+      await updateDevelopment(dev.id, { implantacaoMode: m } as any);
+      onSaved();
+    } catch (e: any) { alert("Erro ao salvar modo: " + (e?.message ?? e)); }
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImg(true);
+    try {
+      await uploadImplantacao(dev.id, file);
+      onSaved();
+    } catch { alert("Erro ao fazer upload da implantação"); }
+    finally { setUploadingImg(false); }
+  }
+
+  return (
+    <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Implantação das Torres</p>
+          <p className="text-xs text-[var(--shell-subtext)] mt-1">Posicione cada torre no terreno — usado pelo espelho 3D.</p>
+        </div>
+        <div className="flex rounded-lg border border-[var(--shell-card-border)] overflow-hidden text-xs">
+          {[
+            { k: "SATELITE" as const, l: "🛰️ Satélite (Maps)" },
+            { k: "IMAGEM"   as const, l: "🖼️ Sobre planta" },
+          ].map(({ k, l }) => (
+            <button key={k} type="button" onClick={() => setMode(k)}
+              className={`px-3 py-1.5 font-medium transition-colors ${mode === k ? "bg-[var(--brand-accent)] text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === null && (
+        <div className="rounded-xl border border-dashed border-[var(--shell-card-border)] p-8 text-center text-sm text-[var(--shell-subtext)]">
+          Escolha um modo acima para começar a posicionar as torres.
+        </div>
+      )}
+      {mode === "SATELITE" && <ImplantacaoSatelite dev={dev} towers={towers} onReload={onSaved} />}
+      {mode === "IMAGEM" && <ImplantacaoImagem dev={dev} towers={towers} />}
+
+      {/* Upload da planta — disponível independente do modo */}
+      <div className="border-t border-[var(--shell-card-border)] pt-4 flex items-center gap-4 flex-wrap">
+        {dev.implantacaoUrl && (
+          <img src={dev.implantacaoUrl} alt="Implantação" className="max-h-20 rounded border border-[var(--shell-card-border)] object-contain" />
+        )}
+        <label className={`inline-flex items-center gap-2 cursor-pointer rounded-xl border border-dashed border-[var(--shell-card-border)] px-4 py-2 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors ${uploadingImg ? "opacity-50 pointer-events-none" : ""}`}>
+          {uploadingImg ? "Fazendo upload..." : dev.implantacaoUrl ? "Trocar planta" : "📎 Upload da planta (PNG / JPG)"}
+          <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploadingImg} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stepper (visual do wizard) ──────────────────────────────────────────────
+
+function Stepper({ completeness, current, onJump }: {
+  completeness: Completeness; current: number; onJump: (step: number) => void | Promise<void>;
+}) {
+  return (
+    <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto py-1">
+      {STEP_LABELS.map((label, i) => {
+        const done = completeness.steps[i];
+        const isCurrent = i === current;
+        return (
+          <div key={i} className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <button type="button" onClick={() => onJump(i)}
+              className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                isCurrent ? "bg-[var(--brand-accent)] text-white shadow"
+                  : done ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/60"
+                  : "bg-[var(--shell-bg)] text-[var(--shell-subtext)] border border-[var(--shell-card-border)] hover:bg-[var(--shell-hover)]"
+              }`}>
+              <span className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] ${
+                isCurrent ? "bg-white text-[var(--brand-accent)]"
+                  : done ? "bg-green-500 text-white"
+                  : "bg-[var(--shell-card-border)] text-[var(--shell-subtext)]"
+              }`}>{done ? "✓" : i + 1}</span>
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+            {i < STEP_LABELS.length - 1 && (
+              <div className={`h-px w-4 sm:w-8 ${done ? "bg-green-400" : "bg-[var(--shell-card-border)]"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── StepHandle ──────────────────────────────────────────────────────────────
+
+type StepHandle = { save: () => Promise<boolean> };
+
+// ─── Step 1 — Identificação ──────────────────────────────────────────────────
+
+const Step1Identificacao = forwardRef(function Step1Identificacao(
+  { dev, onSaved, embeddedSubmit }: { dev: Development; onSaved: () => void; embeddedSubmit?: boolean },
+  ref: ForwardedRef<StepHandle>,
+) {
+  const [nome, setNome] = useState(dev.nome ?? "");
   const [tipo, setTipo] = useState(dev.tipo);
   const [subtipo, setSubtipo] = useState(dev.subtipo);
   const [status, setStatus] = useState(dev.status);
   const [prazoEntrega, setPrazoEntrega] = useState(dev.prazoEntrega ? dev.prazoEntrega.split("T")[0] : "");
+  const [descricao, setDescricao] = useState(dev.descricao ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save(): Promise<boolean> {
+    setSaving(true);
+    try {
+      await updateDevelopment(dev.id, {
+        nome: nome || undefined, tipo, subtipo, status,
+        prazoEntrega: prazoEntrega || undefined,
+        descricao: descricao || undefined,
+      } as any);
+      setSaved(true);
+      await onSaved();
+      return true;
+    } catch (e: any) { alert("Erro ao salvar: " + (e?.message ?? e)); return false; }
+    finally { setSaving(false); }
+  }
+
+  useImperativeHandle(ref, () => ({ save }), [nome, tipo, subtipo, status, prazoEntrega, descricao, dev.id]);
+
+  return (
+    <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm max-w-2xl">
+      <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Identificação</p>
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nome *</label>
+        <input value={nome} onChange={(e) => { setNome(e.target.value); setSaved(false); }} className={inp} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Tipo</label>
+          <select value={tipo} onChange={(e) => { setTipo(e.target.value as any); setSaved(false); }} className={inp}>
+            <option value="VERTICAL">Vertical (Prédio)</option>
+            <option value="HORIZONTAL">Horizontal</option>
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Subtipo</label>
+          <select value={subtipo} onChange={(e) => { setSubtipo(e.target.value as any); setSaved(false); }} className={inp}>
+            {tipo === "VERTICAL" ? (
+              <option value="APARTAMENTO">Apartamentos</option>
+            ) : (
+              <>
+                <option value="CASA">Casas</option>
+                <option value="LOTEAMENTO">Loteamento / Terrenos</option>
+              </>
+            )}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Status</label>
+          <select value={status} onChange={(e) => { setStatus(e.target.value); setSaved(false); }} className={inp}>
+            <option value="LANCAMENTO">Lançamento</option>
+            <option value="EM_OBRA">Em Obra</option>
+            <option value="CONCLUIDO">Concluído</option>
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Previsão de entrega *</label>
+          <input type="date" value={prazoEntrega} onChange={(e) => { setPrazoEntrega(e.target.value); setSaved(false); }} className={inp} />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Descrição (opcional)</label>
+        <textarea value={descricao} onChange={(e) => { setDescricao(e.target.value); setSaved(false); }} rows={3}
+          className={`${inp} resize-none`} placeholder="Breve descrição do empreendimento..." />
+      </div>
+      {embeddedSubmit && (
+        <div className="flex justify-end">
+          <button onClick={save} disabled={saving}
+            className="rounded-xl bg-[var(--brand-accent)] px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+            {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
+
+// ─── Step 2 — Localização (com 2 marcadores) ─────────────────────────────────
+
+type MarkerMode = "CENTRO" | "ENTRADA";
+
+const Step2Localizacao = forwardRef(function Step2Localizacao(
+  { dev, onSaved, embeddedSubmit }: { dev: Development; onSaved: () => void; embeddedSubmit?: boolean },
+  ref: ForwardedRef<StepHandle>,
+) {
   const [endereco, setEndereco] = useState(dev.endereco ?? "");
   const [cidade, setCidade] = useState(dev.cidade ?? "");
   const [estado, setEstado] = useState(dev.estado ?? "");
-  const [descricao, setDescricao] = useState(dev.descricao ?? "");
   const [lat, setLat] = useState<number | null>(dev.lat ?? null);
   const [lng, setLng] = useState<number | null>(dev.lng ?? null);
-  const [implantacaoUrl, setImplantacaoUrl] = useState<string | null>(dev.implantacaoUrl ?? null);
-
-  // Towers editáveis
-  const [towers, setTowers] = useState<Tower[]>(dev.towers);
-
-  // Modal nova torre
-  const [towerNome, setTowerNome] = useState("");
-  const [towerFloors, setTowerFloors] = useState("10");
-  const [towerUPF, setTowerUPF] = useState("4");
-  const [towerPrefix, setTowerPrefix] = useState(dev.tipo === "VERTICAL" ? "Apto" : dev.subtipo === "LOTEAMENTO" ? "Lote" : "Casa");
-  const [towerLargura, setTowerLargura] = useState("20");
-  const [towerProfundidade, setTowerProfundidade] = useState("15");
-  const [towerAlturaAndar, setTowerAlturaAndar] = useState("3");
-  const [savingTower, setSavingTower] = useState(false);
+  const [entLat, setEntLat] = useState<number | null>(dev.entranceLat ?? null);
+  const [entLng, setEntLng] = useState<number | null>(dev.entranceLng ?? null);
+  const [markerMode, setMarkerMode] = useState<MarkerMode>("CENTRO");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const centerMarkerRef = useRef<any>(null);
+  const entranceMarkerRef = useRef<any>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setTowers(dev.towers); }, [dev]);
+  const markerModeRef = useRef<MarkerMode>(markerMode);
+  markerModeRef.current = markerMode;
 
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
@@ -1163,25 +2801,43 @@ function AbaCadastro({ dev, onSaved }: { dev: Development; onSaved: () => void }
       const center = lat && lng ? { lat, lng } : { lat: -15.7942, lng: -47.8822 };
       const map = new window.google.maps.Map(mapRef.current!, {
         center, zoom: 16, mapTypeId: "satellite", tilt: 0,
-        disableDefaultUI: false, zoomControl: true, mapTypeControl: false, streetViewControl: false,
+        zoomControl: true, mapTypeControl: false, streetViewControl: false,
       });
       mapInstanceRef.current = map;
-      const marker = new window.google.maps.Marker({
+
+      const cMarker = new window.google.maps.Marker({
         map, position: lat && lng ? { lat, lng } : undefined,
         draggable: true, visible: !!(lat && lng),
-        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 10, fillColor: "#2563eb", fillOpacity: 0.9, strokeColor: "#fff", strokeWeight: 2 },
+        title: "Centro do empreendimento",
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: "#2563eb", fillOpacity: 0.95, strokeColor: "#fff", strokeWeight: 3 },
       });
-      markerRef.current = marker;
+      centerMarkerRef.current = cMarker;
+      cMarker.addListener("dragend", (e: any) => { setLat(e.latLng.lat()); setLng(e.latLng.lng()); setSaved(false); });
+
+      const eMarker = new window.google.maps.Marker({
+        map, position: entLat && entLng ? { lat: entLat, lng: entLng } : undefined,
+        draggable: true, visible: !!(entLat && entLng),
+        title: "Entrada principal",
+        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: "#f97316", fillOpacity: 0.95, strokeColor: "#fff", strokeWeight: 3 },
+      });
+      entranceMarkerRef.current = eMarker;
+      eMarker.addListener("dragend", (e: any) => { setEntLat(e.latLng.lat()); setEntLng(e.latLng.lng()); setSaved(false); });
+
       map.addListener("click", (e: any) => {
         const la = e.latLng.lat(); const ln = e.latLng.lng();
-        setLat(la); setLng(ln); marker.setPosition({ lat: la, lng: ln }); marker.setVisible(true);
+        if (markerModeRef.current === "CENTRO") {
+          setLat(la); setLng(ln);
+          cMarker.setPosition({ lat: la, lng: ln }); cMarker.setVisible(true);
+        } else {
+          setEntLat(la); setEntLng(ln);
+          eMarker.setPosition({ lat: la, lng: ln }); eMarker.setVisible(true);
+        }
+        setSaved(false);
       });
-      marker.addListener("dragend", (e: any) => { setLat(e.latLng.lat()); setLng(e.latLng.lng()); });
 
       if (window.google.maps.places && addressInputRef.current) {
         const ac = new window.google.maps.places.Autocomplete(addressInputRef.current, {
-          types: ["geocode"],
-          componentRestrictions: { country: "br" },
+          types: ["geocode"], componentRestrictions: { country: "br" },
         });
         ac.addListener("place_changed", () => {
           const place = ac.getPlace();
@@ -1190,13 +2846,14 @@ function AbaCadastro({ dev, onSaved }: { dev: Development; onSaved: () => void }
           const ln = place.geometry.location.lng();
           setLat(la); setLng(ln);
           map.setCenter({ lat: la, lng: ln }); map.setZoom(17);
-          marker.setPosition({ lat: la, lng: ln }); marker.setVisible(true);
+          cMarker.setPosition({ lat: la, lng: ln }); cMarker.setVisible(true);
           const comps = place.address_components ?? [];
           const get = (type: string) => comps.find((c: any) => c.types.includes(type))?.long_name ?? "";
           const getShort = (type: string) => comps.find((c: any) => c.types.includes(type))?.short_name ?? "";
-          setEndereco(place.formatted_address ?? ""); setSaved(false);
-          setCidade(get("administrative_area_level_2") || get("locality")); setSaved(false);
-          setEstado(getShort("administrative_area_level_1")); setSaved(false);
+          setEndereco(place.formatted_address ?? "");
+          setCidade(get("administrative_area_level_2") || get("locality"));
+          setEstado(getShort("administrative_area_level_1"));
+          setSaved(false);
         });
       }
     }
@@ -1206,346 +2863,926 @@ function AbaCadastro({ dev, onSaved }: { dev: Development; onSaved: () => void }
       return;
     }
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=places,geometry`;
     script.async = true; script.onload = doInit;
     document.head.appendChild(script);
   }, []);
 
-  async function handleSave() {
-    setSaving(true); setSaved(false);
+  // Salva apenas as coordenadas silenciosamente (onBlur dos inputs de lat/lng)
+  const latRef = useRef(lat); latRef.current = lat;
+  const lngRef = useRef(lng); lngRef.current = lng;
+  const entLatRef = useRef(entLat); entLatRef.current = entLat;
+  const entLngRef = useRef(entLng); entLngRef.current = entLng;
+
+  async function saveLatLng() {
     try {
       await updateDevelopment(dev.id, {
-        nome, tipo, subtipo, status, descricao: descricao || undefined,
-        endereco: endereco || undefined, cidade: cidade || undefined, estado: estado || undefined,
-        prazoEntrega: prazoEntrega || undefined,
-        lat: lat ?? undefined, lng: lng ?? undefined,
+        lat: latRef.current ?? null, lng: lngRef.current ?? null,
+        entranceLat: entLatRef.current ?? null, entranceLng: entLngRef.current ?? null,
+      } as any);
+      setSaved(false); // marca que há dados salvos mas outros campos ainda podem ter alterações
+    } catch { /* silencioso — o save completo vai capturar o erro */ }
+  }
+
+  async function save(): Promise<boolean> {
+    setSaving(true);
+    try {
+      await updateDevelopment(dev.id, {
+        endereco: endereco || undefined,
+        cidade: cidade || undefined,
+        estado: estado || undefined,
+        lat: latRef.current ?? null, lng: lngRef.current ?? null,
+        entranceLat: entLatRef.current ?? null, entranceLng: entLngRef.current ?? null,
       } as any);
       setSaved(true);
-      onSaved();
-    } finally { setSaving(false); }
+      await onSaved();
+      return true;
+    } catch (e: any) { alert("Erro ao salvar: " + (e?.message ?? e)); return false; }
+    finally { setSaving(false); }
   }
 
-  async function handleImplantacaoUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingImg(true);
+  useImperativeHandle(ref, () => ({ save }), [endereco, cidade, estado, lat, lng, entLat, entLng, dev.id]);
+
+  return (
+    <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm max-w-3xl">
+      <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Localização</p>
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Endereço *</label>
+        <input ref={addressInputRef} value={endereco} onChange={(e) => { setEndereco(e.target.value); setSaved(false); }} placeholder="Digite para buscar no mapa..." className={inp} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Cidade *</label>
+          <input value={cidade} onChange={(e) => { setCidade(e.target.value); setSaved(false); }} placeholder="São Paulo" className={inp} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Estado *</label>
+          <input value={estado} onChange={(e) => { setEstado(e.target.value); setSaved(false); }} maxLength={2} placeholder="SP" className={inp} />
+        </div>
+      </div>
+      {process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Localização no mapa</label>
+            <div className="flex rounded-lg border border-[var(--shell-card-border)] overflow-hidden text-xs">
+              {[
+                { k: "CENTRO" as MarkerMode, l: "🟦 Centro do terreno" },
+                { k: "ENTRADA" as MarkerMode, l: "🟧 Entrada principal" },
+              ].map(({ k, l }) => (
+                <button key={k} type="button" onClick={() => setMarkerMode(k)}
+                  className={`px-3 py-1.5 font-medium transition-colors ${markerMode === k ? "bg-[var(--brand-accent)] text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Inputs numéricos de lat/lng — ficam ACIMA do mapa para fácil preenchimento */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-[var(--shell-card-border)] p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--shell-subtext)]">🟦 Centro do terreno</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-[var(--shell-subtext)]">Latitude</label>
+                  <input type="number" step="any" value={lat ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? null : parseFloat(e.target.value);
+                      const newLat = isNaN(v as number) ? null : v;
+                      setLat(newLat); setSaved(false);
+                      if (newLat != null && lng != null && mapInstanceRef.current) {
+                        centerMarkerRef.current?.setPosition({ lat: newLat, lng });
+                        centerMarkerRef.current?.setVisible(true);
+                        mapInstanceRef.current.panTo({ lat: newLat, lng });
+                        if ((mapInstanceRef.current.getZoom() ?? 0) < 15) mapInstanceRef.current.setZoom(17);
+                      }
+                    }}
+                    onBlur={saveLatLng}
+                    placeholder="-23.550520" className={`${inp} text-xs py-1.5`} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-[var(--shell-subtext)]">Longitude</label>
+                  <input type="number" step="any" value={lng ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? null : parseFloat(e.target.value);
+                      const newLng = isNaN(v as number) ? null : v;
+                      setLng(newLng); setSaved(false);
+                      if (lat != null && newLng != null && mapInstanceRef.current) {
+                        centerMarkerRef.current?.setPosition({ lat, lng: newLng });
+                        centerMarkerRef.current?.setVisible(true);
+                        mapInstanceRef.current.panTo({ lat, lng: newLng });
+                        if ((mapInstanceRef.current.getZoom() ?? 0) < 15) mapInstanceRef.current.setZoom(17);
+                      }
+                    }}
+                    onBlur={saveLatLng}
+                    placeholder="-46.633608" className={`${inp} text-xs py-1.5`} />
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-[var(--shell-card-border)] p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--shell-subtext)]">🟧 Entrada principal</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-[var(--shell-subtext)]">Latitude</label>
+                  <input type="number" step="any" value={entLat ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? null : parseFloat(e.target.value);
+                      const newLat = isNaN(v as number) ? null : v;
+                      setEntLat(newLat); setSaved(false);
+                      if (newLat != null && entLng != null && mapInstanceRef.current) {
+                        entranceMarkerRef.current?.setPosition({ lat: newLat, lng: entLng });
+                        entranceMarkerRef.current?.setVisible(true);
+                        mapInstanceRef.current.panTo({ lat: newLat, lng: entLng });
+                        if ((mapInstanceRef.current.getZoom() ?? 0) < 15) mapInstanceRef.current.setZoom(17);
+                      }
+                    }}
+                    onBlur={saveLatLng}
+                    placeholder="-23.550520" className={`${inp} text-xs py-1.5`} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-[var(--shell-subtext)]">Longitude</label>
+                  <input type="number" step="any" value={entLng ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? null : parseFloat(e.target.value);
+                      const newLng = isNaN(v as number) ? null : v;
+                      setEntLng(newLng); setSaved(false);
+                      if (entLat != null && newLng != null && mapInstanceRef.current) {
+                        entranceMarkerRef.current?.setPosition({ lat: entLat, lng: newLng });
+                        entranceMarkerRef.current?.setVisible(true);
+                        mapInstanceRef.current.panTo({ lat: entLat, lng: newLng });
+                        if ((mapInstanceRef.current.getZoom() ?? 0) < 15) mapInstanceRef.current.setZoom(17);
+                      }
+                    }}
+                    onBlur={saveLatLng}
+                    placeholder="-46.633608" className={`${inp} text-xs py-1.5`} />
+                </div>
+              </div>
+            </div>
+          </div>
+          <p className="text-[11px] text-[var(--shell-subtext)]">
+            Preencha as coordenadas acima ou clique no mapa. Você também pode <strong>arrastar</strong> os marcadores para ajustar.
+            A entrada principal define onde o passeio Street View começa.
+          </p>
+          <div ref={mapRef} className="w-full h-72 rounded-xl overflow-hidden border border-[var(--shell-card-border)]" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-xs text-[var(--shell-subtext)]">Latitude</label>
+            <input type="number" step="any" value={lat ?? ""} onChange={(e) => { setLat(parseFloat(e.target.value) || null); setSaved(false); }} onBlur={saveLatLng} className={inp} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-[var(--shell-subtext)]">Longitude</label>
+            <input type="number" step="any" value={lng ?? ""} onChange={(e) => { setLng(parseFloat(e.target.value) || null); setSaved(false); }} onBlur={saveLatLng} className={inp} />
+          </div>
+        </div>
+      )}
+      {embeddedSubmit && (
+        <div className="flex justify-end">
+          <button onClick={save} disabled={saving}
+            className="rounded-xl bg-[var(--brand-accent)] px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+            {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
+
+// ─── Step 3 — Layout ─────────────────────────────────────────────────────────
+
+function Step3Layout({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <Step3TowersManager dev={dev} onSaved={onSaved} />
+      <EditorTerreno dev={dev} onSaved={onSaved} />
+      <EditorImplantacao dev={dev} towers={dev.towers} onSaved={onSaved} />
+    </div>
+  );
+}
+
+// ─── TowerConfigModal ─────────────────────────────────────────────────────────
+
+const FACADE_COLORS = [
+  "#f5f5f0", "#e5e7eb", "#d4d4d4", "#fef3c7", "#fde68a",
+  "#dbeafe", "#bfdbfe", "#bbf7d0", "#fecaca", "#e9d5ff",
+  "#fed7aa", "#a7f3d0", "#99f6e4", "#c7d2fe", "#fda4af",
+];
+
+const BALCONY_OPTS: { value: string; label: string; icon: string }[] = [
+  { value: "NONE",      label: "Nenhuma",    icon: "⬛" },
+  { value: "LAJE",      label: "Laje",       icon: "🏗️" },
+  { value: "VIDRO",     label: "Vidro",      icon: "🪟" },
+  { value: "FRANCESA",  label: "Francesa",   icon: "🌿" },
+];
+
+const ROOF_OPTS: { value: string; label: string; icon: string }[] = [
+  { value: "PLANO",     label: "Plano",      icon: "▬" },
+  { value: "INCLINADO", label: "Inclinado",  icon: "⛺" },
+  { value: "PIRAMIDE",  label: "Pirâmide",   icon: "🔺" },
+];
+
+type CellType = "APT" | "HALL" | "EMPTY";
+
+function FloorPlanEditor({
+  cols, rows, cells, onChangeCols, onChangeRows, onToggleCell,
+}: {
+  cols: number; rows: number; cells: CellType[];
+  onChangeCols: (v: number) => void;
+  onChangeRows: (v: number) => void;
+  onToggleCell: (idx: number) => void;
+}) {
+  const CYCLE: Record<CellType, CellType> = { APT: "HALL", HALL: "EMPTY", EMPTY: "APT" };
+  const CELL_COLOR: Record<CellType, string> = {
+    APT: "bg-blue-400 text-white",
+    HALL: "bg-amber-300 text-amber-900",
+    EMPTY: "bg-[var(--shell-bg)] text-[var(--shell-subtext)] border border-dashed border-[var(--shell-card-border)]",
+  };
+  const CELL_LABEL: Record<CellType, string> = { APT: "A", HALL: "H", EMPTY: "" };
+
+  const aptCount = cells.filter((c) => c === "APT").length;
+  const hallCount = cells.filter((c) => c === "HALL").length;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)]">Colunas</label>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => onChangeCols(Math.max(1, cols - 1))}
+              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">−</button>
+            <span className="w-6 text-center text-sm font-bold text-[var(--shell-text)]">{cols}</span>
+            <button type="button" onClick={() => onChangeCols(Math.min(8, cols + 1))}
+              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">+</button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-[var(--shell-subtext)]">Linhas</label>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => onChangeRows(Math.max(1, rows - 1))}
+              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">−</button>
+            <span className="w-6 text-center text-sm font-bold text-[var(--shell-text)]">{rows}</span>
+            <button type="button" onClick={() => onChangeRows(Math.min(4, rows + 1))}
+              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">+</button>
+          </div>
+        </div>
+        <div className="ml-auto text-xs text-[var(--shell-subtext)]">
+          <span className="font-bold text-blue-500">{aptCount}</span> apto{aptCount !== 1 ? "s" : ""}
+          {hallCount > 0 && <> · <span className="font-bold text-amber-600">{hallCount}</span> hall</>}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div className="inline-grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}>
+          {cells.map((cell, idx) => (
+            <button key={idx} type="button"
+              title={`Clique para alternar: APT → HALL → EMPTY`}
+              onClick={() => onToggleCell(idx)}
+              className={`w-10 h-10 rounded text-xs font-bold transition-colors ${CELL_COLOR[cell]}`}>
+              {CELL_LABEL[cell]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-4 text-[10px] text-[var(--shell-subtext)]">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-400 inline-block" /> Apartamento</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-300 inline-block" /> Hall/Circulação</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-dashed border-[var(--shell-card-border)] bg-[var(--shell-bg)] inline-block" /> Vazio</span>
+      </div>
+    </div>
+  );
+}
+
+function Tower3DPreview({ cols, rows, floors, facadeColor, balconyType, roofType, hasLobby }: {
+  cols: number; rows: number; floors: number; facadeColor: string;
+  balconyType: string; roofType: string; hasLobby: boolean;
+}) {
+  const totalFloors = floors + (hasLobby ? 1 : 0);
+  const W = Math.max(80, cols * 22);
+  const H = Math.max(60, totalFloors * 14 + 30);
+  const lobbyH = 20;
+  const floorH = 14;
+  const wallW = W;
+  const svgH = H + 40;
+
+  const balconyLines: React.ReactElement[] = [];
+  if (balconyType !== "NONE") {
+    for (let f = hasLobby ? 1 : 0; f < totalFloors; f++) {
+      const y = svgH - 10 - lobbyH - f * floorH - floorH;
+      balconyLines.push(
+        <rect key={f} x={2} y={y + floorH - 4} width={wallW - 4} height={4}
+          fill={balconyType === "VIDRO" ? "#93c5fd88" : balconyType === "FRANCESA" ? "#6ee7b7" : "#9ca3af"}
+          rx={1} />
+      );
+    }
+  }
+
+  const roofPath = roofType === "INCLINADO"
+    ? `M0,0 L${wallW / 2},-16 L${wallW},0 Z`
+    : roofType === "PIRAMIDE"
+    ? `M0,0 L${wallW / 2},-20 L${wallW},0 Z`
+    : null;
+
+  return (
+    <svg width={wallW + 4} height={svgH} className="mx-auto" style={{ display: "block" }}>
+      {/* lobby */}
+      {hasLobby && (
+        <rect x={2} y={svgH - 10 - lobbyH} width={wallW} height={lobbyH}
+          fill="#d1d5db" stroke="#9ca3af" strokeWidth={1} rx={2} />
+      )}
+      {/* floors */}
+      {Array.from({ length: floors }).map((_, fi) => {
+        const y = svgH - 10 - lobbyH - (fi + 1) * floorH;
+        return (
+          <g key={fi}>
+            <rect x={2} y={y} width={wallW} height={floorH}
+              fill={facadeColor} stroke="#9ca3af" strokeWidth={0.5} />
+            {Array.from({ length: cols }).map((_, ci) => (
+              <rect key={ci} x={2 + ci * (wallW / cols) + 2} y={y + 2}
+                width={wallW / cols - 4} height={floorH - 6}
+                fill="#bfdbfe88" stroke="#93c5fd" strokeWidth={0.5} rx={1} />
+            ))}
+          </g>
+        );
+      })}
+      {balconyLines}
+      {/* roof */}
+      {roofPath && (
+        <g transform={`translate(2, ${svgH - 10 - lobbyH - floors * floorH})`}>
+          <path d={roofPath} fill="#6b7280" />
+        </g>
+      )}
+      {/* ground */}
+      <rect x={0} y={svgH - 10} width={wallW + 4} height={4} fill="#9ca3af" rx={1} />
+    </svg>
+  );
+}
+
+function TowerConfigModal({ dev, tower, onClose, onSaved }: {
+  dev: Development;
+  tower?: Tower;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isVertical = dev.tipo === "VERTICAL";
+  const towerLabel = isVertical ? "Torre" : "Quadra";
+  const isEdit = !!tower;
+
+  const initCells = (c: number, r: number, existing?: CellType[]): CellType[] => {
+    const total = c * r;
+    if (existing && existing.length === total) return existing;
+    return Array.from({ length: total }, (_, i) => {
+      if (c > 2 && r > 1 && Math.floor(i / c) === Math.floor(r / 2) && i % c === Math.floor(c / 2)) return "HALL";
+      return "APT";
+    });
+  };
+
+  const existingFP = tower?.floorPlan;
+  const [nome, setNome]               = useState(tower?.nome ?? "");
+  const [floors, setFloors]           = useState(String(tower?.floors ?? 10));
+  const [alturaAndar, setAlturaAndar] = useState(String(tower?.alturaAndarM ?? 3));
+  const [hasLobby, setHasLobby]       = useState(tower?.hasLobbyFloor ?? false);
+  const [roofType, setRoofType]       = useState(tower?.roofType ?? "PLANO");
+  const [facadeColor, setFacadeColor] = useState(tower?.facadeColor ?? "#e5e7eb");
+  const [balconyType, setBalconyType] = useState(tower?.balconyType ?? "NONE");
+  const [cellWidthM, setCellWidthM]   = useState(String(existingFP?.cellWidthM ?? 4));
+  const [cellDepthM, setCellDepthM]   = useState(String(existingFP?.cellDepthM ?? 5));
+
+  const [fpCols, setFpCols] = useState(existingFP?.cols ?? (isVertical ? 4 : 5));
+  const [fpRows, setFpRows] = useState(existingFP?.rows ?? (isVertical ? 1 : 2));
+  const [fpCells, setFpCells] = useState<CellType[]>(() =>
+    initCells(existingFP?.cols ?? (isVertical ? 4 : 5), existingFP?.rows ?? (isVertical ? 1 : 2), existingFP?.cells as CellType[])
+  );
+
+  const [busy, setBusy] = useState(false);
+
+  function changeCols(newCols: number) {
+    setFpCols(newCols);
+    setFpCells(initCells(newCols, fpRows, undefined));
+  }
+  function changeRows(newRows: number) {
+    setFpRows(newRows);
+    setFpCells(initCells(fpCols, newRows, undefined));
+  }
+  function toggleCell(idx: number) {
+    setFpCells((prev) => {
+      const next = [...prev];
+      const CYCLE: Record<CellType, CellType> = { APT: "HALL", HALL: "EMPTY", EMPTY: "APT" };
+      next[idx] = CYCLE[next[idx]];
+      return next;
+    });
+  }
+
+  const aptCount = fpCells.filter((c) => c === "APT").length;
+  const larguraM = fpCols * (parseFloat(cellWidthM) || 4);
+  const profM    = fpRows * (parseFloat(cellDepthM) || 5);
+
+  async function handleSave() {
+    if (!nome.trim()) { alert("Informe o nome da torre."); return; }
+    if (aptCount === 0) { alert("Defina ao menos um apartamento na planta."); return; }
+    setBusy(true);
     try {
-      const result = await uploadImplantacao(dev.id, file);
-      setImplantacaoUrl((result as any).implantacaoUrl ?? null);
+      const payload: any = {
+        nome: nome.trim(),
+        floors: parseInt(floors) || 1,
+        unitsPerFloor: aptCount,
+        alturaAndarM: parseFloat(alturaAndar) || 3,
+        larguraM,
+        profundidadeM: profM,
+        hasLobbyFloor: hasLobby,
+        roofType,
+        facadeColor,
+        balconyType,
+        floorPlan: { cols: fpCols, rows: fpRows, cells: fpCells, cellWidthM: parseFloat(cellWidthM) || 4, cellDepthM: parseFloat(cellDepthM) || 5 },
+      };
+      if (isEdit) {
+        await updateTower(dev.id, tower!.id, payload);
+      } else {
+        await createTower(dev.id, payload);
+      }
       onSaved();
-    } catch { alert("Erro ao fazer upload da implantação"); }
-    finally { setUploadingImg(false); }
+      onClose();
+    } catch (e: any) { alert(e?.message ?? "Erro ao salvar"); }
+    finally { setBusy(false); }
   }
 
-  async function handleCreateTower() {
-    if (!towerNome.trim()) return;
-    setSavingTower(true);
-    try {
-      const tower = await createTower(dev.id, {
-        nome: towerNome.trim(), floors: parseInt(towerFloors) || 1,
-        unitsPerFloor: parseInt(towerUPF) || 1,
-        larguraM: parseFloat(towerLargura) || 20,
-        profundidadeM: parseFloat(towerProfundidade) || 15,
-        alturaAndarM: parseFloat(towerAlturaAndar) || 3,
-      });
-      await bulkCreateUnits(dev.id, tower.id, {
-        floors: parseInt(towerFloors) || 1,
-        unitsPerFloor: parseInt(towerUPF) || 1,
-        prefix: towerPrefix,
-      });
-      setShowTowerModal(false);
-      setTowerNome(""); setTowerFloors("10"); setTowerUPF("4");
-      onSaved();
-    } catch (e: any) { alert(e?.message ?? "Erro ao criar torre"); }
-    finally { setSavingTower(false); }
-  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-6 px-2"
+      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      onClick={onClose}>
+      <div className="w-full max-w-2xl rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--shell-card-border)]">
+          <h3 className="text-base font-bold text-[var(--shell-text)]">
+            {isEdit ? `Editar ${towerLabel}` : `Nova ${towerLabel}`}
+          </h3>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-2xl leading-none">×</button>
+        </div>
 
-  async function handleUpdateTower(towerId: string, field: string, val: any) {
-    await updateTower(dev.id, towerId, { [field]: val });
-    setTowers((p) => p.map((t) => t.id === towerId ? { ...t, [field]: val } : t));
-  }
+        <div className="p-6 space-y-6">
+          {/* Seção 1 — Identificação */}
+          <section>
+            <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Identificação</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1">
+                <label className="text-xs font-semibold text-[var(--shell-subtext)]">Nome *</label>
+                <input value={nome} onChange={(e) => setNome(e.target.value)}
+                  placeholder={isVertical ? "Ex.: Torre A" : "Ex.: Quadra 1"} className={inp} autoFocus />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[var(--shell-subtext)]">{isVertical ? "Andares" : "Linhas/Fileiras"}</label>
+                <input type="number" min={1} max={80} value={floors}
+                  onChange={(e) => setFloors(e.target.value)} className={inp} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[var(--shell-subtext)]">Altura por andar (m)</label>
+                <input type="number" min={2} max={10} step={0.5} value={alturaAndar}
+                  onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <div onClick={() => setHasLobby(!hasLobby)}
+                  className={`w-10 h-5 rounded-full transition-colors flex items-center ${hasLobby ? "bg-[var(--brand-accent)]" : "bg-gray-300 dark:bg-gray-600"}`}>
+                  <span className={`w-4 h-4 rounded-full bg-white shadow transition-transform mx-0.5 ${hasLobby ? "translate-x-5" : ""}`} />
+                </div>
+                <span className="text-xs text-[var(--shell-text)]">Hall/Lobby térreo (sem apartamentos no 1º andar)</span>
+              </label>
+            </div>
+          </section>
 
-  async function handleDeleteTower(towerId: string) {
-    if (!confirm("Excluir esta torre? Todas as unidades serão removidas.")) return;
+          {/* Seção 2 — Planta do Andar */}
+          {isVertical && (
+            <section>
+              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Planta do Andar</p>
+              <p className="text-[11px] text-[var(--shell-subtext)] mb-3">
+                Clique nas células para definir o layout: <strong>A</strong>=Apartamento · <strong>H</strong>=Hall · <strong>vazio</strong>=sem uso.
+                Determina a forma do prédio e a quantidade de aptos por andar.
+              </p>
+              <FloorPlanEditor
+                cols={fpCols} rows={fpRows} cells={fpCells}
+                onChangeCols={changeCols} onChangeRows={changeRows} onToggleCell={toggleCell}
+              />
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Largura de cada célula (m)</label>
+                  <input type="number" step={0.5} min={2} max={12} value={cellWidthM}
+                    onChange={(e) => setCellWidthM(e.target.value)} className={inp} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Profundidade de cada célula (m)</label>
+                  <input type="number" step={0.5} min={2} max={15} value={cellDepthM}
+                    onChange={(e) => setCellDepthM(e.target.value)} className={inp} />
+                </div>
+              </div>
+              <p className="text-[11px] text-[var(--shell-subtext)] mt-2">
+                Dimensões derivadas: <strong>{larguraM.toFixed(1)} m</strong> × <strong>{profM.toFixed(1)} m</strong> · {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar
+              </p>
+            </section>
+          )}
+
+          {/* Seção 3 — Tipo de Teto */}
+          <section>
+            <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Tipo de Teto</p>
+            <div className="flex gap-2 flex-wrap">
+              {ROOF_OPTS.map((r) => (
+                <button key={r.value} type="button"
+                  onClick={() => setRoofType(r.value)}
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
+                    roofType === r.value
+                      ? "border-[var(--brand-accent)] bg-[var(--brand-accent)] text-white"
+                      : "border-[var(--shell-card-border)] text-[var(--shell-text)] hover:border-[var(--brand-accent)]"
+                  }`}>
+                  <span>{r.icon}</span> {r.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* Seção 4 — Fachada */}
+          <section>
+            <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Cor da Fachada</p>
+            <div className="flex gap-2 flex-wrap">
+              {FACADE_COLORS.map((c) => (
+                <button key={c} type="button"
+                  onClick={() => setFacadeColor(c)}
+                  title={c}
+                  className={`w-8 h-8 rounded-full border-2 transition-all ${facadeColor === c ? "border-[var(--brand-accent)] scale-110" : "border-transparent hover:scale-105"}`}
+                  style={{ backgroundColor: c }} />
+              ))}
+              <label className="flex items-center gap-1 text-xs text-[var(--shell-subtext)] cursor-pointer">
+                <input type="color" value={facadeColor} onChange={(e) => setFacadeColor(e.target.value)}
+                  className="w-8 h-8 rounded-full border-2 border-[var(--shell-card-border)] cursor-pointer p-0" />
+                Personalizada
+              </label>
+            </div>
+
+            {isVertical && (
+              <>
+                <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mt-4 mb-3">Tipo de Varanda</p>
+                <div className="flex gap-2 flex-wrap">
+                  {BALCONY_OPTS.map((b) => (
+                    <button key={b.value} type="button"
+                      onClick={() => setBalconyType(b.value)}
+                      className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
+                        balconyType === b.value
+                          ? "border-[var(--brand-accent)] bg-[var(--brand-accent)] text-white"
+                          : "border-[var(--shell-card-border)] text-[var(--shell-text)] hover:border-[var(--brand-accent)]"
+                      }`}>
+                      <span>{b.icon}</span> {b.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+
+          {/* Preview 3D (SVG) */}
+          {isVertical && (
+            <section>
+              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Pré-visualização</p>
+              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-4 flex items-end justify-center min-h-[140px]">
+                <Tower3DPreview
+                  cols={fpCols} rows={fpRows}
+                  floors={parseInt(floors) || 1}
+                  facadeColor={facadeColor}
+                  balconyType={balconyType}
+                  roofType={roofType}
+                  hasLobby={hasLobby}
+                />
+              </div>
+              <p className="text-[11px] text-center text-[var(--shell-subtext)] mt-1">
+                {parseInt(floors) || 1} andares · {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar · {(parseInt(floors) || 1) * aptCount} unidades totais
+              </p>
+            </section>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 justify-end px-6 py-4 border-t border-[var(--shell-card-border)]">
+          <button onClick={onClose}
+            className="rounded-xl border border-[var(--shell-card-border)] px-5 py-2.5 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]">
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={busy || !nome.trim() || (isVertical && aptCount === 0)}
+            className="rounded-xl bg-[var(--brand-accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
+            {busy ? "Salvando..." : isEdit ? "Salvar alterações" : `Criar ${towerLabel}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  const [showModal, setShowModal] = useState(false);
+  const [editTower, setEditTower] = useState<Tower | undefined>(undefined);
+  const isVertical = dev.tipo === "VERTICAL";
+  const towerLabel = isVertical ? "Torre" : "Quadra";
+
+  async function handleDelete(towerId: string) {
+    if (!confirm(`Excluir esta ${towerLabel.toLowerCase()}? Todas as unidades serão removidas.`)) return;
     await deleteTower(dev.id, towerId);
-    setTowers((p) => p.filter((t) => t.id !== towerId));
     onSaved();
   }
 
-  const isVertical = tipo === "VERTICAL";
+  return (
+    <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-3 shadow-sm">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">{towerLabel}s ({dev.towers.length})</p>
+          <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Configure cada {towerLabel.toLowerCase()}: planta, fachada e detalhes. Posicione no editor de implantação abaixo.</p>
+        </div>
+        <button type="button" onClick={() => { setEditTower(undefined); setShowModal(true); }}
+          className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
+          + Nova {towerLabel}
+        </button>
+      </div>
+      {dev.towers.length > 0 && (
+        <div className="space-y-2">
+          {dev.towers.map((t) => {
+            const aptPerFloor = t.floorPlan ? t.floorPlan.cells.filter((c: string) => c === "APT").length : t.unitsPerFloor;
+            return (
+              <div key={t.id} className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] px-4 py-3 bg-[var(--shell-bg)]">
+                <div className="w-8 h-8 rounded-lg flex-shrink-0 border border-[var(--shell-card-border)]"
+                  style={{ backgroundColor: t.facadeColor ?? "#e5e7eb" }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[var(--shell-text)] truncate">{t.nome}</p>
+                  <p className="text-[11px] text-[var(--shell-subtext)]">
+                    {t.larguraM.toFixed(0)}×{t.profundidadeM.toFixed(0)}m · {aptPerFloor} apto/andar · {t.roofType ?? "PLANO"}
+                  </p>
+                </div>
+                <button type="button" onClick={() => { setEditTower(t); setShowModal(true); }}
+                  className="text-xs font-semibold text-[var(--brand-accent)] hover:underline px-2">
+                  Editar
+                </button>
+                <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600 text-xs font-semibold px-2">
+                  Excluir
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showModal && (
+        <TowerConfigModal
+          dev={dev}
+          tower={editTower}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); onSaved(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Step 4 — Estruturação ───────────────────────────────────────────────────
+
+function Step4Estruturacao({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  const isVertical = dev.tipo === "VERTICAL";
   const towerLabel = isVertical ? "Torre" : "Quadra";
 
   return (
     <div className="space-y-5 max-w-3xl">
-      {/* Identificação */}
-      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
-        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Identificação</p>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nome</label>
-          <input value={nome} onChange={(e) => { setNome(e.target.value); setSaved(false); }} className={inp} />
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 shadow-sm">
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-1">Estruturação das {towerLabel}s</p>
+        <p className="text-xs text-[var(--shell-subtext)]">
+          Defina quantos {isVertical ? "andares e unidades por andar" : "lotes ou casas"} cada {towerLabel.toLowerCase()} terá. As unidades serão criadas automaticamente.
+        </p>
+      </div>
+      {dev.towers.length === 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 p-4 text-sm text-amber-700 dark:text-amber-300">
+          Volte para o passo Layout e adicione pelo menos uma {towerLabel.toLowerCase()}.
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Tipo</label>
-            <select value={tipo} onChange={(e) => { setTipo(e.target.value as any); setSaved(false); }} className={inp}>
-              <option value="VERTICAL">Vertical (Prédio)</option>
-              <option value="HORIZONTAL">Horizontal</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Subtipo</label>
-            <select value={subtipo} onChange={(e) => { setSubtipo(e.target.value as any); setSaved(false); }} className={inp}>
-              {tipo === "VERTICAL" ? (
-                <option value="APARTAMENTO">Apartamentos</option>
-              ) : (
-                <>
-                  <option value="CASA">Casas</option>
-                  <option value="LOTEAMENTO">Loteamento / Terrenos</option>
-                </>
-              )}
-            </select>
-          </div>
+      ) : (
+        <div className="space-y-3">
+          {dev.towers.map((t) => (
+            <TowerStructureCard key={t.id} dev={dev} tower={t} onSaved={onSaved} />
+          ))}
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Status</label>
-            <select value={status} onChange={(e) => { setStatus(e.target.value); setSaved(false); }} className={inp}>
-              <option value="LANCAMENTO">Lançamento</option>
-              <option value="EM_OBRA">Em Obra</option>
-              <option value="CONCLUIDO">Concluído</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Previsão de entrega</label>
-            <input type="date" value={prazoEntrega} onChange={(e) => { setPrazoEntrega(e.target.value); setSaved(false); }} className={inp} />
-          </div>
+      )}
+    </div>
+  );
+}
+
+function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: Tower; onSaved: () => void }) {
+  const isVertical = dev.tipo === "VERTICAL";
+  const isLoteamento = dev.subtipo === "LOTEAMENTO";
+  const [floors, setFloors] = useState(String(tower.floors));
+  const [unitsPerFloor, setUnitsPerFloor] = useState(String(tower.unitsPerFloor));
+  const [alturaAndar, setAlturaAndar] = useState(String(tower.alturaAndarM));
+  const [prefix, setPrefix] = useState(isVertical ? "Apto" : isLoteamento ? "Lote" : "Casa");
+  const [busy, setBusy] = useState(false);
+
+  const expectedUnits = (parseInt(floors) || 0) * (parseInt(unitsPerFloor) || 0);
+  const currentUnits = tower.units.length;
+  const fullyCreated = currentUnits === expectedUnits && expectedUnits > 0;
+
+  async function handleSave() {
+    if (expectedUnits === 0) { alert("Defina andares e unidades por andar."); return; }
+    setBusy(true);
+    try {
+      await updateTower(dev.id, tower.id, {
+        floors: parseInt(floors) || 1,
+        unitsPerFloor: parseInt(unitsPerFloor) || 1,
+        alturaAndarM: parseFloat(alturaAndar) || 3,
+      } as any);
+      if (currentUnits === 0) {
+        await bulkCreateUnits(dev.id, tower.id, {
+          floors: parseInt(floors) || 1,
+          unitsPerFloor: parseInt(unitsPerFloor) || 1,
+          prefix,
+        });
+      } else if (currentUnits !== expectedUnits) {
+        alert(`A torre ${tower.nome} tem ${currentUnits} unidades cadastradas, mas você configurou ${expectedUnits}. Para reconfigurar, exclua a torre no Layout e recrie.`);
+      }
+      onSaved();
+    } catch (e: any) { alert("Erro: " + (e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-4 space-y-3 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-bold text-[var(--shell-text)]">{tower.nome}</p>
+          <p className="text-[11px] text-[var(--shell-subtext)]">
+            {fullyCreated ? `✅ ${currentUnits} unidades` : currentUnits === 0 ? "⚠️ Sem unidades" : `⚠️ ${currentUnits}/${expectedUnits} unidades`}
+          </p>
         </div>
       </div>
-
-      {/* Localização */}
-      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
-        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Localização</p>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Endereço</label>
-          <input ref={addressInputRef} value={endereco} onChange={(e) => { setEndereco(e.target.value); setSaved(false); }} placeholder="Digite para buscar no mapa..." className={inp} />
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Andares" : "Linhas"}</label>
+          <input type="number" min={1} value={floors} onChange={(e) => setFloors(e.target.value)} className={inp} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Cidade</label>
-            <input value={cidade} onChange={(e) => { setCidade(e.target.value); setSaved(false); }} placeholder="São Paulo" className={inp} />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Estado</label>
-            <input value={estado} onChange={(e) => { setEstado(e.target.value); setSaved(false); }} maxLength={2} placeholder="SP" className={inp} />
-          </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Unid/andar" : isLoteamento ? "Lotes/linha" : "Casas/linha"}</label>
+          <input type="number" min={1} value={unitsPerFloor} onChange={(e) => setUnitsPerFloor(e.target.value)} className={inp} />
         </div>
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Localização no mapa</label>
-          {process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ? (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Latitude</label>
-                  <input
-                    type="number" step="any"
-                    value={lat ?? ""}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      const newLat = isNaN(v) ? null : v;
-                      setLat(newLat); setSaved(false);
-                      if (newLat && lng) {
-                        mapInstanceRef.current?.setCenter({ lat: newLat, lng });
-                        mapInstanceRef.current?.setZoom(17);
-                        markerRef.current?.setPosition({ lat: newLat, lng });
-                        markerRef.current?.setVisible(true);
-                      }
-                    }}
-                    placeholder="-23.550520"
-                    className={inp}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Longitude</label>
-                  <input
-                    type="number" step="any"
-                    value={lng ?? ""}
-                    onChange={(e) => {
-                      const v = parseFloat(e.target.value);
-                      const newLng = isNaN(v) ? null : v;
-                      setLng(newLng); setSaved(false);
-                      if (lat && newLng) {
-                        mapInstanceRef.current?.setCenter({ lat, lng: newLng });
-                        mapInstanceRef.current?.setZoom(17);
-                        markerRef.current?.setPosition({ lat, lng: newLng });
-                        markerRef.current?.setVisible(true);
-                      }
-                    }}
-                    placeholder="-46.633608"
-                    className={inp}
-                  />
-                </div>
-              </div>
-              <p className="text-[11px] text-[var(--shell-subtext)]">Ou clique diretamente no mapa para marcar o terreno</p>
-              <div ref={mapRef} className="w-full h-56 rounded-xl overflow-hidden border border-[var(--shell-card-border)]" />
-            </>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs text-[var(--shell-subtext)]">Latitude</label>
-                <input type="number" step="any" value={lat ?? ""} onChange={(e) => { setLat(parseFloat(e.target.value) || null); setSaved(false); }} placeholder="-23.5505" className={inp} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-[var(--shell-subtext)]">Longitude</label>
-                <input type="number" step="any" value={lng ?? ""} onChange={(e) => { setLng(parseFloat(e.target.value) || null); setSaved(false); }} placeholder="-46.6333" className={inp} />
-              </div>
-            </div>
-          )}
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Alt/andar (m)" : "Altura (m)"}</label>
+          <input type="number" step="0.5" value={alturaAndar} onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
         </div>
       </div>
-
-      {/* Implantação */}
-      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
-        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Planta de Implantação</p>
-        <p className="text-xs text-[var(--shell-subtext)]">Faça upload da planta fornecida pelo arquiteto. Ela será usada como textura do chão na visão 3D.</p>
-        {implantacaoUrl && (
-          <div className="relative inline-block">
-            <img src={implantacaoUrl} alt="Implantação" className="max-h-48 rounded-xl border border-[var(--shell-card-border)] object-contain" />
-          </div>
-        )}
-        <label className={`inline-flex items-center gap-2 cursor-pointer rounded-xl border border-dashed border-[var(--shell-card-border)] px-5 py-3 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors ${uploadingImg ? "opacity-50 pointer-events-none" : ""}`}>
-          {uploadingImg ? "Fazendo upload..." : implantacaoUrl ? "Trocar imagem" : "📎 Upload da planta (PNG / JPG)"}
-          <input type="file" accept="image/*" className="hidden" onChange={handleImplantacaoUpload} disabled={uploadingImg} />
-        </label>
-      </div>
-
-      {/* Torres / Quadras */}
-      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">{towerLabel}s</p>
-          <button type="button" onClick={() => setShowTowerModal(true)}
-            className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
-            + Nova {towerLabel}
-          </button>
+      {currentUnits === 0 && (
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Prefixo das unidades</label>
+          <input value={prefix} onChange={(e) => setPrefix(e.target.value)} className={inp} />
         </div>
-        {towers.length === 0 ? (
-          <p className="text-sm text-[var(--shell-subtext)] text-center py-4">Nenhuma {towerLabel.toLowerCase()} cadastrada</p>
-        ) : (
-          <div className="space-y-3">
-            {towers.map((t) => (
-              <div key={t.id} className="rounded-xl border border-[var(--shell-card-border)] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-[var(--shell-text)] text-sm">{t.nome}</p>
-                  <div className="flex items-center gap-2 text-xs text-[var(--shell-subtext)]">
-                    <span>{t.floors} {isVertical ? "andares" : "linhas"}</span>
-                    <span>·</span>
-                    <span>{t.units.length} unidades</span>
-                    <button onClick={() => handleDeleteTower(t.id)} className="text-red-400 hover:text-red-600 ml-2">Excluir</button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-xs">
-                  {[
-                    { l: "Largura (m)", k: "larguraM", v: t.larguraM },
-                    { l: "Prof. (m)", k: "profundidadeM", v: t.profundidadeM },
-                    { l: isVertical ? "Alt./andar (m)" : "Alt. casa (m)", k: "alturaAndarM", v: t.alturaAndarM },
-                  ].map(({ l, k, v }) => (
-                    <div key={k} className="space-y-1">
-                      <label className="text-[var(--shell-subtext)] font-medium">{l}</label>
-                      <input type="number" step="0.5" defaultValue={v}
-                        onBlur={(e) => handleUpdateTower(t.id, k, parseFloat(e.target.value) || v)}
-                        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1.5 text-xs text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)]" />
-                    </div>
-                  ))}
-                </div>
-                {isVertical && (
-                  <div className="space-y-1.5 pt-1">
-                    <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Faces com unidades</label>
-                    <div className="flex gap-3 flex-wrap">
-                      {(["FRENTE","FUNDO","ESQUERDA","DIREITA"] as const).map((lado) => {
-                        const ativos = (t.lados ?? "FRENTE,FUNDO,ESQUERDA,DIREITA").split(",");
-                        const ativo = ativos.includes(lado);
-                        return (
-                          <label key={lado} className="flex items-center gap-1.5 cursor-pointer text-xs text-[var(--shell-text)]">
-                            <input
-                              type="checkbox"
-                              checked={ativo}
-                              onChange={() => {
-                                const novo = ativo
-                                  ? ativos.filter(l => l !== lado)
-                                  : [...ativos, lado];
-                                if (novo.length === 0) return;
-                                handleUpdateTower(t.id, "lados", novo.join(","));
-                              }}
-                              className="h-3.5 w-3.5 rounded accent-[var(--brand-accent)]"
-                            />
-                            {lado.charAt(0) + lado.slice(1).toLowerCase()}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Botão salvar */}
-      <div className="flex justify-end gap-3">
-        <button onClick={handleSave} disabled={saving}
-          className="rounded-xl bg-[var(--brand-accent)] px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shadow-sm">
-          {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar alterações"}
+      )}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-xs text-[var(--shell-subtext)]">Total: <strong>{expectedUnits}</strong> unidades</span>
+        <button onClick={handleSave} disabled={busy}
+          className="rounded-lg bg-[var(--brand-accent)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+          {busy ? "Processando..." : currentUnits === 0 ? "Criar unidades" : fullyCreated ? "Atualizar dimensões" : "Atualizar"}
         </button>
       </div>
+    </div>
+  );
+}
 
-      {/* Modal nova torre */}
-      <Modal open={showTowerModal} onClose={() => setShowTowerModal(false)} title={`Nova ${towerLabel}`}>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nome *</label>
-            <input value={towerNome} onChange={(e) => setTowerNome(e.target.value)} placeholder={isVertical ? "Ex.: Torre A" : "Ex.: Quadra 1"} className={inp} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Andares" : "Linhas de lotes"}</label>
-              <input type="number" value={towerFloors} onChange={(e) => setTowerFloors(e.target.value)} min={1} className={inp} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Unid./andar" : "Lotes por linha"}</label>
-              <input type="number" value={towerUPF} onChange={(e) => setTowerUPF(e.target.value)} min={1} className={inp} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Prefixo das unidades</label>
-            <input value={towerPrefix} onChange={(e) => setTowerPrefix(e.target.value)} placeholder={isVertical ? "Apto" : "Lote"} className={inp} />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { l: "Largura (m)", s: towerLargura, fn: setTowerLargura },
-              { l: "Prof. (m)",   s: towerProfundidade, fn: setTowerProfundidade },
-              { l: isVertical ? "Alt/andar (m)" : "Alt. casa (m)", s: towerAlturaAndar, fn: setTowerAlturaAndar },
-            ].map(({ l, s, fn }) => (
-              <div key={l} className="space-y-1.5">
-                <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{l}</label>
-                <input type="number" step="0.5" value={s} onChange={(e) => fn(e.target.value)} className={inp} />
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-[var(--shell-subtext)]">
-            Serão criadas {parseInt(towerFloors || "0") * parseInt(towerUPF || "0")} unidades automaticamente.
-          </p>
-          <div className="flex gap-3 justify-end pt-2">
-            <button onClick={() => setShowTowerModal(false)}
-              className="rounded-lg border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
-              Cancelar
-            </button>
-            <button onClick={handleCreateTower} disabled={savingTower || !towerNome.trim()}
-              className="rounded-lg bg-[var(--brand-accent)] px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-              {savingTower ? "Criando..." : `Criar ${towerLabel}`}
-            </button>
-          </div>
+// ─── Step 5 — Preços ──────────────────────────────────────────────────────────
+
+function Step5Precos({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Tabela de Preços</h2>
+        <p className="text-xs text-[var(--shell-subtext)] mb-5">Preencha o valor de venda de cada unidade. Todas precisam ter valor para concluir o cadastro.</p>
+        <PriceTable dev={dev} onSaved={onSaved} />
+      </div>
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Condições de Pagamento</h2>
+        <p className="text-xs text-[var(--shell-subtext)] mb-5">Definições comerciais aplicáveis a todas as unidades.</p>
+        <PaymentConditionForm devId={dev.id} initial={dev.paymentCondition} onSaved={onSaved} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Wizard ──────────────────────────────────────────────────────────────────
+
+function Wizard({ dev, completeness, onSaved, initialStep }: {
+  dev: Development; completeness: Completeness; onSaved: () => void; initialStep?: number;
+}) {
+  const [currentStep, setCurrentStep] = useState(() =>
+    typeof initialStep === "number" && initialStep >= 0 && initialStep < 5
+      ? initialStep
+      : Math.max(0, completeness.firstIncomplete)
+  );
+  const [advancing, setAdvancing] = useState(false);
+  const stepRef = useRef<StepHandle>(null);
+
+  async function handleNext() {
+    setAdvancing(true);
+    try {
+      // Steps 1-2 têm save() via ref que persiste o que o usuário digitou (não bloqueia se incompleto)
+      if (stepRef.current?.save) {
+        await stepRef.current.save();
+      }
+      // Avança sempre — campos vazios ficam como rascunho
+      if (currentStep < 4) setCurrentStep((s) => s + 1);
+    } finally { setAdvancing(false); }
+  }
+
+  function handleBack() { if (currentStep > 0) setCurrentStep((s) => s - 1); }
+  const isLastStep = currentStep === 4;
+  const stepHasFooterSave = currentStep <= 1; // Step1 e Step2 salvam via footer
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-3 shadow-sm">
+        <Stepper completeness={completeness} current={currentStep} onJump={async (target) => {
+          // Auto-salva o passo atual (steps 1-2 têm save via ref) antes de navegar
+          if (stepRef.current?.save) await stepRef.current.save();
+          setCurrentStep(target);
+        }} />
+      </div>
+
+      <div>
+        {currentStep === 0 && <Step1Identificacao ref={stepRef} dev={dev} onSaved={onSaved} />}
+        {currentStep === 1 && <Step2Localizacao   ref={stepRef} dev={dev} onSaved={onSaved} />}
+        {currentStep === 2 && <Step3Layout       dev={dev} onSaved={onSaved} />}
+        {currentStep === 3 && <Step4Estruturacao dev={dev} onSaved={onSaved} />}
+        {currentStep === 4 && <Step5Precos       dev={dev} onSaved={onSaved} />}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--shell-card-border)] pt-4">
+        <button onClick={handleBack} disabled={currentStep === 0}
+          className="rounded-xl border border-[var(--shell-card-border)] px-5 py-2.5 text-sm font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          ← Voltar
+        </button>
+        <div className="flex-1 text-center text-xs text-[var(--shell-subtext)]">
+          Passo {currentStep + 1} de 5: <strong className="text-[var(--shell-text)]">{STEP_LABELS[currentStep]}</strong>
+          <span className="text-[var(--shell-subtext)]"> · {completeness.percent}% completo</span>
         </div>
-      </Modal>
+        {isLastStep ? (
+          stepHasFooterSave ? null : (
+            <button onClick={onSaved}
+              className="rounded-xl border border-[var(--shell-card-border)] px-5 py-2.5 text-sm font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors">
+              Recarregar
+            </button>
+          )
+        ) : (
+          <button onClick={handleNext} disabled={advancing}
+            className="rounded-xl bg-[var(--brand-accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shadow-sm">
+            {advancing ? "Salvando..." : stepHasFooterSave ? "Salvar e continuar →" : "Continuar →"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── TabbedView (modo abas após cadastro 100% completo) ──────────────────────
+
+type TabbedKey = "identificacao" | "localizacao" | "layout" | "estruturacao" | "precos" | "espelho" | "dashboard";
+
+const TABBED_TABS: { key: TabbedKey; label: string }[] = [
+  { key: "identificacao", label: "📋 Identificação" },
+  { key: "localizacao",   label: "📍 Localização"  },
+  { key: "layout",        label: "🗺️ Layout"        },
+  { key: "estruturacao",  label: "🏗️ Estruturação"  },
+  { key: "precos",        label: "💰 Preços"        },
+  { key: "espelho",       label: "🏢 Espelho"       },
+  { key: "dashboard",     label: "📊 Dashboard"     },
+];
+
+function TabbedView({ dev, dashboard, onSaved, onUnitUpdated }: {
+  dev: Development; dashboard: Dashboard | null; onSaved: () => void;
+  onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
+}) {
+  const [tab, setTab] = useState<TabbedKey>("espelho");
+  return (
+    <div className="space-y-5">
+      <div className="border-b border-[var(--shell-card-border)] overflow-x-auto">
+        <div className="flex gap-1 min-w-max">
+          {TABBED_TABS.map(({ key, label }) => (
+            <button key={key} type="button" onClick={() => setTab(key)}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                tab === key
+                  ? "border-[var(--brand-accent)] text-[var(--brand-accent)]"
+                  : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        {tab === "identificacao" && <Step1Identificacao dev={dev} onSaved={onSaved} embeddedSubmit />}
+        {tab === "localizacao"   && <Step2Localizacao   dev={dev} onSaved={onSaved} embeddedSubmit />}
+        {tab === "layout"        && <Step3Layout        dev={dev} onSaved={onSaved} />}
+        {tab === "estruturacao"  && <Step4Estruturacao  dev={dev} onSaved={onSaved} />}
+        {tab === "precos"        && <Step5Precos        dev={dev} onSaved={onSaved} />}
+        {tab === "espelho"       && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} />}
+        {tab === "dashboard"     && (
+          dashboard ? <DashboardView dashboard={dashboard} dev={dev} /> :
+          <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1559,20 +3796,16 @@ const STATUS_COLOR_DEV: Record<string, string> = {
   CONCLUIDO:  "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
 };
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "cadastro",  label: "📋 Cadastro" },
-  { key: "espelho",   label: "🏢 Espelho de Vendas" },
-  { key: "precos",    label: "💰 Preços" },
-  { key: "dashboard", label: "📊 Dashboard" },
-];
-
 export default function EmpreendimentoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const stepParam = searchParams.get("step");
+  const initialStep = stepParam !== null ? parseInt(stepParam) : undefined;
+
   const [dev, setDev] = useState<Development | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("espelho");
 
   async function load() {
     try {
@@ -1597,6 +3830,30 @@ export default function EmpreendimentoDetailPage() {
     });
   }
 
+  const completeness = useMemo(() => dev ? computeCompleteness(dev) : null, [dev]);
+  const [publishing, setPublishing] = useState(false);
+
+  async function handlePublish() {
+    if (!dev) return;
+    if (!completeness?.allComplete) return;
+    setPublishing(true);
+    try {
+      await publishDevelopment(dev.id);
+      await load();
+    } catch (e: any) { alert("Erro ao publicar: " + (e?.message ?? e)); }
+    finally { setPublishing(false); }
+  }
+  async function handleUnpublish() {
+    if (!dev) return;
+    if (!confirm("Despublicar este empreendimento? Ele voltará a ser rascunho e não será visível para a equipe.")) return;
+    setPublishing(true);
+    try {
+      await unpublishDevelopment(dev.id);
+      await load();
+    } catch (e: any) { alert("Erro ao despublicar: " + (e?.message ?? e)); }
+    finally { setPublishing(false); }
+  }
+
   if (loading) {
     return (
       <AppShell title="Empreendimento">
@@ -1607,7 +3864,7 @@ export default function EmpreendimentoDetailPage() {
     );
   }
 
-  if (!dev) {
+  if (!dev || !completeness) {
     return (
       <AppShell title="Empreendimento">
         <div className="flex flex-col items-center justify-center h-64 gap-3">
@@ -1634,61 +3891,43 @@ export default function EmpreendimentoDetailPage() {
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLOR_DEV[dev.status] ?? "bg-slate-100 text-slate-600"}`}>
                 {STATUS_LABEL_DEV[dev.status] ?? dev.status}
               </span>
+              {dev.publishedAt ? (
+                <span className="rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-3 py-1 text-xs font-semibold">
+                  ✅ Publicado
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-3 py-1 text-xs font-semibold">
+                  📝 Rascunho · {completeness.percent}%
+                </span>
+              )}
             </div>
             <p className="text-sm text-[var(--shell-subtext)] mt-1">
               {dev.cidade && dev.estado ? `${dev.cidade}, ${dev.estado}` : dev.cidade || dev.estado || ""}
               {dev.prazoEntrega && ` · Entrega: ${new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
             </p>
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-[var(--shell-card-border)]">
-          <div className="flex gap-1">
-            {TABS.map(({ key, label }) => (
-              <button key={key} type="button" onClick={() => setTab(key)}
-                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  tab === key
-                    ? "border-[var(--brand-accent)] text-[var(--brand-accent)]"
-                    : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
-                }`}>
-                {label}
+          <div className="flex items-center gap-2">
+            {dev.publishedAt ? (
+              <button onClick={handleUnpublish} disabled={publishing}
+                className="rounded-xl border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors">
+                {publishing ? "..." : "Despublicar"}
               </button>
-            ))}
+            ) : (
+              <button onClick={handlePublish}
+                disabled={!completeness.allComplete || publishing}
+                title={completeness.allComplete ? "Publicar para a equipe" : "Complete os 5 passos para habilitar"}
+                className="rounded-xl bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shadow-sm">
+                {publishing ? "Publicando..." : completeness.allComplete ? "🚀 Publicar" : `Publicar (${completeness.percent}%)`}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Conteúdo das abas */}
-        <div>
-          {tab === "cadastro" && (
-            <AbaCadastro dev={dev} onSaved={load} />
-          )}
-
-          {tab === "espelho" && (
-            <AbaEspelho dev={dev} onUnitUpdated={handleUnitUpdated} />
-          )}
-
-          {tab === "precos" && (
-            <div className="space-y-8">
-              <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
-                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-5">Tabela de Preços</h2>
-                <PriceTable dev={dev} onSaved={load} />
-              </div>
-              <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
-                <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Condições de Pagamento</h2>
-                <p className="text-xs text-[var(--shell-subtext)] mb-5">Definições comerciais aplicáveis a todas as unidades.</p>
-                <PaymentConditionForm devId={dev.id} initial={dev.paymentCondition} onSaved={load} />
-              </div>
-            </div>
-          )}
-
-          {tab === "dashboard" && dashboard && (
-            <DashboardView dashboard={dashboard} dev={dev} />
-          )}
-          {tab === "dashboard" && !dashboard && (
-            <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
-          )}
-        </div>
+        {!completeness.allComplete ? (
+          <Wizard dev={dev} completeness={completeness} onSaved={load} initialStep={initialStep} />
+        ) : (
+          <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} />
+        )}
       </div>
     </AppShell>
   );

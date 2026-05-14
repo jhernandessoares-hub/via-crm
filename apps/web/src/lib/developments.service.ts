@@ -20,11 +20,21 @@ export type DevelopmentUnit = {
   valorAvaliado?: number | null;
   finalPrice?: number | null;
   comprador?: string | null;
+  balconyType?: string | null;
+  windowLayout?: any | null;
   loteNum?: string | null;
   loteAreaM2?: number | null;
   loteFrente?: number | null;
   loteFundo?: number | null;
   soldAt?: string | null;
+};
+
+export type FloorPlan = {
+  cols: number;
+  rows: number;
+  cells: ("APT" | "HALL" | "EMPTY")[];
+  cellWidthM: number;
+  cellDepthM: number;
 };
 
 export type Tower = {
@@ -43,6 +53,19 @@ export type Tower = {
   alturaAndarM: number;
   rotacao: number;
   lados: string;
+  facadeImageUrl?: string | null;
+  roofType?: string | null;
+  roofColor?: string | null;
+  facadeColor?: string | null;
+  balconyType?: string | null;
+  floorPlan?: FloorPlan | null;
+  hasLobbyFloor?: boolean | null;
+  implantacaoX?: number | null;
+  implantacaoY?: number | null;
+  implantacaoW?: number | null;
+  implantacaoH?: number | null;
+  implantacaoLat?: number | null;
+  implantacaoLng?: number | null;
   units: DevelopmentUnit[];
 };
 
@@ -79,10 +102,33 @@ export type Development = {
   descricao?: string | null;
   lat?: number | null;
   lng?: number | null;
+  entranceLat?: number | null;
+  entranceLng?: number | null;
   implantacaoUrl?: string | null;
   implantacaoPublicId?: string | null;
+  implantacaoMode?: "SATELITE" | "IMAGEM" | null;
+  terrainDesign?: TerrainDesign | null;
+  publishedAt?: string | null;
   towers: Tower[];
   paymentCondition?: PaymentCondition | null;
+};
+
+export type TerrainShapeType = "CONTORNO" | "RUA" | "JARDIM" | "PISCINA" | "SALAO" | "GARAGEM" | "QUADRA";
+
+export type TerrainPoint = { lat: number; lng: number } | { x: number; y: number };
+
+export type TerrainShape = {
+  id: string;
+  type: TerrainShapeType;
+  points: TerrainPoint[];
+  width?: number; // para RUA, em metros
+  label?: string;
+};
+
+export type TerrainDesign = {
+  version: 1;
+  mode: "SATELITE" | "IMAGEM";
+  shapes: TerrainShape[];
 };
 
 export type Dashboard = {
@@ -161,4 +207,12 @@ export async function uploadImplantacao(devId: string, file: File): Promise<Deve
   const form = new FormData();
   form.append("file", file);
   return apiFetch(`/developments/${devId}/implantation/image`, { method: "POST", body: form });
+}
+
+export async function publishDevelopment(devId: string): Promise<Development> {
+  return apiFetch(`/developments/${devId}/publish`, { method: "POST" });
+}
+
+export async function unpublishDevelopment(devId: string): Promise<Development> {
+  return apiFetch(`/developments/${devId}/unpublish`, { method: "POST" });
 }
