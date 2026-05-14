@@ -371,7 +371,7 @@ NEXT_PUBLIC_API_URL=
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
 - `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
 - `/admin/ia/provedores` → Provedores de IA — configuração de modelo por função do sistema (DEFAULT, FOLLOW_UP, PDF_EXTRACTION, TRANSCRIPTION, DOC_CLASSIFICATION) sem deploy. DOC_CLASSIFICATION e PDF_EXTRACTION restritos a modelos Anthropic (visão).
-- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — 4 abas (Cadastro, Espelho 2D/3D, Preços, Dashboard). Backend: `DevelopmentsModule`. 3D usa Google Maps OverlayView (satélite) + Three.js standalone (passeio virtual FPS). Detalhes completos em futuro `squad-empreendimentos.md`. Env: `NEXT_PUBLIC_GOOGLE_MAPS_KEY`. Deps: `three`, `@googlemaps/js-api-loader`.
+- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — 4 abas (Cadastro, Espelho 2D/3D, Preços, Dashboard). Backend: `DevelopmentsModule`. 3D usa Google Maps OverlayView (satélite) + Three.js standalone (passeio virtual FPS). Detalhes completos em futuro `squad-empreendimentos.md`. Env: `NEXT_PUBLIC_GOOGLE_MAPS_KEY` — deve estar no serviço **web** (Next.js) no Railway, não na API. Deps: `three`, `@googlemaps/js-api-loader`.
 - `/my-site` → Gerenciador de Sites do tenant (OWNER only) — 1 site por tenant, fluxo adaptado com/sem site ativo; Publicar/Tirar do ar ficam em Configurações.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
