@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { Logger } from '../logger';
+import { getNextLeadNumber } from '../leads/lead-numbering.helper';
 
 const logger = new Logger('IngestService');
 
@@ -135,21 +136,28 @@ export class IngestService {
 
             // branch: só define se ainda estiver vazio
             branchId: existingLead.branchId ?? branchId,
+
+            // Reentrada: incrementa contador (não gera novo número)
+            reentradaCount: { increment: 1 },
           },
         })
       : await (async () => {
           const assignedUserId = await this.roundRobinAssign(tenantId, branchId);
-          return this.prisma.lead.create({
-            data: {
-              tenantId,
-              branchId,
-              nome,
-              telefone: telefoneRaw,
-              telefoneKey,
-              email,
-              origem: channel,
-              ...(assignedUserId ? { assignedUserId } : {}),
-            },
+          return this.prisma.$transaction(async (tx) => {
+            const numero = await getNextLeadNumber(tx, tenantId);
+            return tx.lead.create({
+              data: {
+                tenantId,
+                numero,
+                branchId,
+                nome,
+                telefone: telefoneRaw,
+                telefoneKey,
+                email,
+                origem: channel,
+                ...(assignedUserId ? { assignedUserId } : {}),
+              },
+            });
           });
         })();
 

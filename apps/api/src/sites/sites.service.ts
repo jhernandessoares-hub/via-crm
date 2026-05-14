@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Logger } from '../logger';
 import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
+import { getNextLeadNumber } from '../leads/lead-numbering.helper';
 
 @Injectable()
 export class SitesService {
@@ -315,17 +316,21 @@ export class SitesService {
         })
       : null;
 
-    const lead = await this.prisma.lead.create({
-      data: {
-        tenantId: site.tenantId,
-        branchId: branch?.id ?? null,
-        pipelineId: pipeline?.id ?? null,
-        stageId: firstStage?.id ?? null,
-        nome: data.nome,
-        telefone: data.telefone,
-        origem: 'SITE',
-        observacao: data.mensagem ?? null,
-      },
+    const lead = await this.prisma.$transaction(async (tx) => {
+      const numero = await getNextLeadNumber(tx, site.tenantId);
+      return tx.lead.create({
+        data: {
+          tenantId: site.tenantId,
+          numero,
+          branchId: branch?.id ?? null,
+          pipelineId: pipeline?.id ?? null,
+          stageId: firstStage?.id ?? null,
+          nome: data.nome,
+          telefone: data.telefone,
+          origem: 'SITE',
+          observacao: data.mensagem ?? null,
+        },
+      });
     });
 
     return { ok: true, leadId: lead.id };

@@ -119,6 +119,8 @@ Lead              → campos de cadastro pessoal: cpf, rg, profissao, empresa, n
                     nomeCorreto String? — nome real confirmado (IA ou humano); nomeCorretoOrigem String? ("IA"|"MANUAL")
                     Prioridade de exibição: nomeCorreto ?? nome em toda a UI e notificações
                     com soft delete (deletedAt/deletedBy/deletionReason)
+                    numero Int? — sequencial por tenant (formatado 6 dígitos na UI via `formatLeadNumber`); reentradaCount Int @default(1) incrementa em reentradas. Ver "Numeração sequencial de leads"
+TenantLeadCounter → contador atômico por tenant (tenantId PK, lastNumber Int). Atualizado via upsert+increment em `getNextLeadNumber()` — seguro contra race condition em webhooks concorrentes
 LeadEvent         → histórico de interações
 LeadSla           → controle de janela 23h WhatsApp
 Pipeline          → funil customizável
@@ -430,6 +432,19 @@ NEXT_PUBLIC_API_URL=
 ## Distribuição de Leads (Round-Robin)
 
 > **Detalhes:** `.claude/agents/squad-atendimento.md`. Resumo: `IngestService.roundRobinAssign()` na criação ordena candidatos (`ativo=true, recebeLeads=true`) por último lead recebido ASC. Config em `Tenant.roundRobinConfig` (incluirGerentes/incluirOwner). Reatribuição manual: `POST /leads/:id/assign` (OWNER/MANAGER).
+
+---
+
+## Numeração sequencial de leads (por tenant)
+
+- **Escopo:** cada tenant tem seu contador independente em `TenantLeadCounter` (1, 2, 3...). Não há numeração global.
+- **Helper:** `getNextLeadNumber(prismaOrTx, tenantId)` em `apps/api/src/leads/lead-numbering.helper.ts`. Faz `upsert` + `increment` atômico no Postgres — seguro para webhooks concorrentes. Chamar **dentro** da transação que cria o `Lead`, passando o `tx`.
+- **Onde gerar `numero`:** **somente em criação real** de lead — `IngestService.ingestLead()`, `LeadsService.create()`, `ChannelsWebhookController.receive()` (caminho novo/reentrada-pós-fechamento), `SitesService.submitContactLead()`, `SecretaryService` tool `criar_lead`, `upsertLeadFromWhatsapp()` (caminho novo).
+- **Reentrada:** quando o lead já existe (mesmo `telefoneKey`, não está em etapa fechada) **NÃO gera novo número** — incrementar `reentradaCount: { increment: 1 }` no `update`. Mensagens de sistema do WhatsApp (`type === 'system'`) não contam como reentrada.
+- **Apagou → pula.** Soft-delete preserva o número (lead sumiu da UI mas o número está ocupado). Contador só sobe, nunca recicla.
+- **Formato na UI:** sempre via `formatLeadNumber(numero, reentradaCount)` em `apps/web/src/lib/format-lead-number.ts` — retorna `"000010"` (1ª vez) ou `"000010 - 2x"` (reentradas). String vazia se `numero` é null/0 (lead pré-backfill).
+- **Backfill:** `apps/api/scripts/backfill-lead-numbers.ts` — idempotente, numera leads existentes por tenant ordenados por `criadoEm ASC`. Rodar com `npx ts-node scripts/backfill-lead-numbers.ts` após `prisma db push`.
+- **Schema:** `Lead.numero Int?` (nullable para conviver com leads pré-backfill — `@@unique([tenantId, numero])` permite múltiplos NULLs no Postgres). Após backfill todos os leads ficam com número.
 
 ---
 

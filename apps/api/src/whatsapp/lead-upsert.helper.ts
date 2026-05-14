@@ -1,6 +1,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { Logger } from '../logger';
+import { getNextLeadNumber } from '../leads/lead-numbering.helper';
 
 const logger = new Logger('LeadUpsertHelper');
 
@@ -126,6 +127,9 @@ export async function upsertLeadFromWhatsapp(
         ...(sessionId && !isSystemMessage ? { conversaSessionId: sessionId } : {}),
         ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
         ...(avatarUrl ? { avatarUrl } : {}),
+        // Reentrada: incrementa contador (não gera novo número)
+        // Mensagens de sistema não contam como reentrada real
+        ...(!isSystemMessage ? { reentradaCount: { increment: 1 } } : {}),
       },
     });
   } else {
@@ -137,9 +141,11 @@ export async function upsertLeadFromWhatsapp(
     ]);
 
     const created = await prisma.$transaction(async (tx) => {
+      const numero = await getNextLeadNumber(tx, tenantId);
       const c = await tx.lead.create({
         data: {
           tenantId,
+          numero,
           nome: contactName || digitsOnly(from) || 'Lead WhatsApp',
           telefone: digitsOnly(from) || null,
           telefoneKey: telefoneKey || null,

@@ -10,6 +10,7 @@ import {
   CREDIT_STATUS_LABEL, CREDIT_STATUS_COLOR,
   type Correspondent, type CreditRequest,
 } from "@/lib/correspondente.service";
+import { formatLeadNumber } from "@/lib/format-lead-number";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -33,6 +34,8 @@ function safeJsonParse<T>(s: string | null): T | null {
 
 type Lead = {
   id: string;
+  numero?: number | null;
+  reentradaCount?: number | null;
   nome?: string;
   telefone?: string;
   whatsapp?: string;
@@ -534,7 +537,7 @@ function pickText(ev: LeadEvent): string {
   if (p.type === "location") return "";
   if (p.type === "unsupported" && p?.rawMsg?.unsupported?.type === "video_note") return "";
   if (p.type === "unsupported") return "";
-  // �S& NOVO: outbound texto pode estar �Sescondido⬝ no request/payload
+  // —S& NOVO: outbound texto pode estar —Sescondido⬝ no request/payload
   const outText = pickOutboundTextFromPayload(p);
   if (outText) return outText;
   return "";
@@ -803,7 +806,7 @@ function MediaBlock({
 
   const openModal = async () => {
     try {
-      // �S& Para PDF/documentos: SEMPRE abrir via blob do /download com Bearer
+      // —S& Para PDF/documentos: SEMPRE abrir via blob do /download com Bearer
       const mt = String(m?.mimeType || "").toLowerCase();
       const looksPdf =
         mt.indexOf("pdf") >= 0 ||
@@ -813,7 +816,7 @@ function MediaBlock({
       if (looksPdf) {
         const blob0 = await authFetchBlob(downloadUrl);
 
-        // �S& Se o backend não manda Content-Type correto, o iframe fica branco.
+        // —S& Se o backend não manda Content-Type correto, o iframe fica branco.
         const isPdfBlob = String((blob0 as any)?.type || "").toLowerCase().indexOf("pdf") >= 0;
         const blob = isPdfBlob ? blob0 : new Blob([blob0], { type: "application/pdf" });
 
@@ -822,7 +825,7 @@ function MediaBlock({
         return;
       }
 
-      // �S& Para imagem/vídeo/áudio: usa o src já resolvido (publicUrl ou blobUrl)
+      // —S& Para imagem/vídeo/áudio: usa o src já resolvido (publicUrl ou blobUrl)
       if (!effectiveSrc && needsAuthBlob) await ensureBlob();
       onOpenModal(kind, filename, publicUrl || blobUrl || effectiveSrc, m?.mimeType || undefined);
     } catch (e: any) {
@@ -868,7 +871,7 @@ function MediaBlock({
             disabled={loading}
             title="Carrega o preview via /download com token"
           >
-            {loading ? "⏳ Carregando..." : "�x Carregar preview"}
+            {loading ? "⏳ Carregando..." : "—x Carregar preview"}
           </button>
         ) : null}
       </div>
@@ -1158,7 +1161,7 @@ export default function LeadDetailChatPage() {
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
 
-  // (preparação pro futuro) etapa �Sfinal⬝ pode sugerir minimizar chat
+  // (preparação pro futuro) etapa —Sfinal⬝ pode sugerir minimizar chat
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -1953,11 +1956,6 @@ function discardAiSuggestion() {
     return first?.criadoEm || null;
   }, [orderedEvents]);
 
-  const leadNumberLabel = useMemo(() => {
-    if (!lead?.id) return "�";
-    return lead.id.replaceAll("-", "").slice(0, 6).toUpperCase();
-  }, [lead?.id]);
-
   const lastInboundAt = useMemo(() => {
     const lastIn = [...orderedEvents]
       .reverse()
@@ -1968,7 +1966,7 @@ function discardAiSuggestion() {
   const lastInboundMs = useMemo(() => parseIsoToMs(lastInboundAt), [lastInboundAt]);
 
   const lastInboundAgoLabel = useMemo(() => {
-    if (!lastInboundMs) return "�";
+    if (!lastInboundMs) return "—";
     return formatAgo(nowTick - lastInboundMs);
   }, [nowTick, lastInboundMs]);
 
@@ -2220,7 +2218,7 @@ function discardAiSuggestion() {
         method: "POST",
         headers: {
           Authorization: "Bearer " + token,
-          // �R NÒO colocar Content-Type aqui (FormData precisa do boundary automático)
+          // —R NÒO colocar Content-Type aqui (FormData precisa do boundary automático)
         },
         body: fd,
       });
@@ -2418,7 +2416,14 @@ function discardAiSuggestion() {
             {/* Lead */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
               <div className="text-sm font-semibold text-[var(--shell-text)] flex items-center justify-between gap-2">
-                <span>Lead</span>
+                <span className="flex items-center gap-2">
+                  <span>Lead</span>
+                  {formatLeadNumber(lead?.numero, lead?.reentradaCount ?? 1) && (
+                    <span className="text-[var(--shell-subtext)] font-mono text-sm font-normal">
+                      - {formatLeadNumber(lead?.numero, lead?.reentradaCount ?? 1)}
+                    </span>
+                  )}
+                </span>
                 <label className="text-xs text-[var(--shell-subtext)] flex items-center gap-2 select-none">
                   <input type="checkbox" checked={debugOn} onChange={(e) => setDebugOn(e.target.checked)} />
                   Debug
@@ -2429,43 +2434,49 @@ function discardAiSuggestion() {
                 <div className="mt-3 text-sm text-[var(--shell-subtext)]">Carregando...</div>
               ) : lead ? (
                 <div className="mt-3 space-y-2 text-sm">
-                  <div>
-                    <div className="text-xs text-[var(--shell-subtext)]">Nome da fonte</div>
-                    <div className="font-medium text-[var(--shell-text)]">{lead.nome || "—"}</div>
-                  </div>
+                  {/* Par 1: Nome da fonte + Nome confirmado */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs text-[var(--shell-subtext)]">Nome da fonte</div>
+                      <div className="font-medium text-[var(--shell-text)] truncate" title={lead.nome ?? undefined}>{lead.nome || "—"}</div>
+                    </div>
 
-                  <div>
-                    <div className="text-xs text-[var(--shell-subtext)] mb-1">Nome confirmado</div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-[var(--shell-text)]">
-                        {lead.nomeCorreto || <span className="text-[var(--shell-subtext)] italic text-xs">não confirmado</span>}
-                      </span>
-                      {lead.nomeCorretoOrigem === "IA" && (
-                        <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700">IA</span>
-                      )}
-                      {lead.nomeCorretoOrigem === "MANUAL" && (
-                        <span className="inline-flex items-center rounded-full bg-[var(--shell-hover)] border border-[var(--shell-card-border)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)]">Manual</span>
-                      )}
-                      <button
-                        className="ml-auto text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]"
-                        title="Editar nome confirmado"
-                        onClick={() => { setNomeConfirmadoEdit(lead.nomeCorreto ?? ""); setNomeModalOpen(true); }}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                        </svg>
-                      </button>
+                    <div className="min-w-0">
+                      <div className="text-xs text-[var(--shell-subtext)] mb-1">Nome confirmado</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-[var(--shell-text)] truncate" title={lead.nomeCorreto ?? undefined}>
+                          {lead.nomeCorreto || <span className="text-[var(--shell-subtext)] italic text-xs">não confirmado</span>}
+                        </span>
+                        {lead.nomeCorretoOrigem === "IA" && (
+                          <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700">IA</span>
+                        )}
+                        {lead.nomeCorretoOrigem === "MANUAL" && (
+                          <span className="inline-flex items-center rounded-full bg-[var(--shell-hover)] border border-[var(--shell-card-border)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)]">Manual</span>
+                        )}
+                        <button
+                          className="ml-auto text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] shrink-0"
+                          title="Editar nome confirmado"
+                          onClick={() => { setNomeConfirmadoEdit(lead.nomeCorreto ?? ""); setNomeModalOpen(true); }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <div>
-                    <div className="text-xs text-[var(--shell-subtext)]">Telefone</div>
-                    <div className="text-[var(--shell-text)]">{lead.telefone || "�"}</div>
-                  </div>
+                  {/* Par 2: Telefone + Status */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs text-[var(--shell-subtext)]">Telefone</div>
+                      <div className="text-[var(--shell-text)] truncate">{lead.telefone || "—"}</div>
+                    </div>
 
-                  <div>
-                    <div className="text-xs text-[var(--shell-subtext)]">Status</div>
-                    <div className="text-[var(--shell-text)]">{lead.status || "NOVO"}</div>
+                    <div className="min-w-0">
+                      <div className="text-xs text-[var(--shell-subtext)]">Status</div>
+                      <div className="text-[var(--shell-text)] truncate">{lead.status || "NOVO"}</div>
+                    </div>
                   </div>
 
                   {lead.origem && (
@@ -2568,12 +2579,12 @@ function discardAiSuggestion() {
 
                     <div>
                       <div className="text-[11px] text-[var(--shell-subtext)]">lastFetchAt</div>
-                      <div className="font-mono break-all">{lastFetchAt || "�"}</div>
+                      <div className="font-mono break-all">{lastFetchAt || "—"}</div>
                     </div>
 
                     <div className="col-span-2">
                       <div className="text-[11px] text-[var(--shell-subtext)]">events shape</div>
-                      <div className="font-mono break-all">{lastEventsShape || "�"}</div>
+                      <div className="font-mono break-all">{lastEventsShape || "—"}</div>
                     </div>
 
                     {lastPollError ? (
@@ -3091,7 +3102,7 @@ function discardAiSuggestion() {
 
                 <div className="mt-2">
                   {!selectedProduct ? (
-                    <div className="text-xs text-[var(--shell-subtext)]">�</div>
+                    <div className="text-xs text-[var(--shell-subtext)]">—</div>
                   ) : productTab === null ? (
                     <div className="text-xs text-[var(--shell-subtext)]">
                       Clique em <b>Imagens</b>, <b>Documentos</b> ou <b>Vídeos</b> para mostrar o conteúdo.
@@ -3367,11 +3378,10 @@ function discardAiSuggestion() {
                   </div>
 
                   <div className="text-[11px] text-[var(--shell-subtext)] flex flex-wrap gap-x-3 gap-y-1">
-                    <span className="font-mono">{"Nº " + leadNumberLabel}</span>
-                    <span>{"Inicio: " + (startedAt ? formatDateOnly(startedAt) : "�")}</span>
+                    <span>{"Início: " + (startedAt ? formatDateOnly(startedAt) : "—")}</span>
                     <span>
-                      {"Ultimo inbound: " +
-                        (lastInboundAt ? formatTime(lastInboundAt) : "�") +
+                      {"Último inbound: " +
+                        (lastInboundAt ? formatTime(lastInboundAt) : "—") +
                         " - há " +
                         lastInboundAgoLabel}
                     </span>
@@ -3780,7 +3790,7 @@ function discardAiSuggestion() {
                     </button>
                   )}
 
-                  {/* �S& ANEXO AO LADO DO MICROFONE */}
+                  {/* —S& ANEXO AO LADO DO MICROFONE */}
                   <div>
                     <input
                       ref={filePickerRef}
@@ -3876,7 +3886,7 @@ function discardAiSuggestion() {
               </div>
 
               {!audioSupported ? (
-                <div className="text-[11px] text-[var(--shell-subtext)]">�a�️ Seu navegador não suporta gravação (MediaRecorder). Teste no Chrome/Edge.</div>
+                <div className="text-[11px] text-[var(--shell-subtext)]">—a—️ Seu navegador não suporta gravação (MediaRecorder). Teste no Chrome/Edge.</div>
               ) : null}
             </div>
 

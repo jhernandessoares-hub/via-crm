@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { Logger } from '../logger';
+import { getNextLeadNumber } from '../leads/lead-numbering.helper';
 
 const logger = new Logger('ChannelsWebhook');
 
@@ -278,6 +279,12 @@ export class ChannelsWebhookController {
         // ── Lead ativo: registra retorno, não duplica ──
         leadId = existing.id;
 
+        // Reentrada: incrementa contador (não gera novo número)
+        await this.prisma.lead.update({
+          where: { id: leadId },
+          data: { reentradaCount: { increment: 1 } },
+        });
+
         const retornoMsg =
           `🔄 Lead retornou via *${normalized.origem}*` +
           (normalized.campanha ? ` — Campanha: ${normalized.campanha}` : '') +
@@ -307,18 +314,22 @@ export class ChannelsWebhookController {
       } else {
         // ── Lead novo ou re-entrada pós-fechamento ──
         isNew = true;
-        const lead = await this.prisma.lead.create({
-          data: {
-            tenantId: tenant.id,
-            nome: normalized.nome.trim(),
-            telefone,
-            telefoneKey,
-            email: normalized.email?.trim() || null,
-            origem: normalized.origem,
-            status: 'NOVO',
-            stageId: firstStage?.id ?? null,
-          },
-          select: { id: true },
+        const lead = await this.prisma.$transaction(async (tx) => {
+          const numero = await getNextLeadNumber(tx, tenant.id);
+          return tx.lead.create({
+            data: {
+              tenantId: tenant.id,
+              numero,
+              nome: normalized.nome.trim(),
+              telefone,
+              telefoneKey,
+              email: normalized.email?.trim() || null,
+              origem: normalized.origem,
+              status: 'NOVO',
+              stageId: firstStage?.id ?? null,
+            },
+            select: { id: true },
+          });
         });
         leadId = lead.id;
 
