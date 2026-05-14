@@ -74,7 +74,12 @@
       "Bash(npx --max-old-space-size=1024 tsc --noEmit --skipLibCheck)",
       "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/correspondente/login)",
       "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/correspondente/demandas/\\\\[id\\\\])",
-      "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/admin/correspondentes)"
+      "Bash(mkdir -p /c/Users/User/documents/via-crm/apps/web/src/app/admin/correspondentes)",
+      "Bash(git stash *)",
+      "Bash(git log *)",
+      "Bash(gh pr *)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:claude.ai)"
     ]
   }
 }

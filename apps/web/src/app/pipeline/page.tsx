@@ -6,6 +6,8 @@ import AppShell from "@/components/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { apiFetch } from "@/lib/api";
+import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
+import { formatLeadNumber } from "@/lib/format-lead-number";
 
 type PipelineStage = {
   id: string;
@@ -17,13 +19,23 @@ type PipelineStage = {
 
 type Lead = {
   id: string;
+  numero?: number | null;
+  reentradaCount?: number | null;
   nome?: string;
+  nomeCorreto?: string | null;
   telefone?: string;
   whatsapp?: string;
+  origem?: string | null;
+  status?: string | null;
+  perfilImovel?: string | null;
   stageId?: string | null;
   stageName?: string | null;
   criadoEm?: string;
 };
+
+function displayName(l: Lead): string {
+  return l.nomeCorreto || l.nome || "Sem nome";
+}
 
 const GROUPS: { key: string; label: string; color: string }[] = [
   { key: "PRE_ATENDIMENTO", label: "Pré-Atendimento",  color: "bg-slate-100 text-slate-700 border-slate-200" },
@@ -42,7 +54,7 @@ const BADGE_COLOR: Record<string, string> = {
 };
 
 export default function PipelinePage() {
-  const [view, setView] = useState<"KANBAN" | "LISTA">("KANBAN");
+  const [view, setView] = useLeadsViewMode();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -75,7 +87,7 @@ export default function PipelinePage() {
     const qq = q.trim().toLowerCase();
     if (!qq) return leads;
     return leads.filter((l) =>
-      [l.nome, l.telefone, l.whatsapp].join(" ").toLowerCase().includes(qq)
+      [l.nome, l.nomeCorreto, l.telefone, l.whatsapp].join(" ").toLowerCase().includes(qq)
     );
   }, [leads, q]);
 
@@ -157,6 +169,7 @@ export default function PipelinePage() {
                     ) : (
                       items.map((l) => {
                         const stageName = l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null) ?? "—";
+                        const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
                         return (
                           <Link
                             key={l.id}
@@ -169,16 +182,37 @@ export default function PipelinePage() {
                             onMouseEnter={(e) => (e.currentTarget.style.background = "var(--shell-hover)")}
                             onMouseLeave={(e) => (e.currentTarget.style.background = "var(--shell-bg)")}
                           >
+                            {numero && (
+                              <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">
+                                {numero}
+                              </div>
+                            )}
                             <div className="text-sm font-medium text-[var(--shell-text)] truncate">
-                              {l.nome || "Sem nome"}
+                              {displayName(l)}
                             </div>
-                            <div className="mt-0.5 text-xs text-[var(--shell-subtext)] truncate">
-                              {l.telefone || l.whatsapp || "Sem telefone"}
-                            </div>
-                            <div className="mt-2">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE_COLOR[g.key]}`}>
+                            <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
+                              <span className="truncate">{l.telefone || l.whatsapp || "—"}</span>
+                              <span className="opacity-50">·</span>
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${BADGE_COLOR[g.key]}`}>
                                 {stageName}
                               </span>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              {l.origem && (
+                                <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>
+                                  {l.origem}
+                                </span>
+                              )}
+                              {l.status && (
+                                <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                  {l.status}
+                                </span>
+                              )}
+                              {l.perfilImovel && (
+                                <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>
+                                  {l.perfilImovel}
+                                </span>
+                              )}
                             </div>
                           </Link>
                         );
@@ -199,13 +233,16 @@ export default function PipelinePage() {
           style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
         >
           <div
-            className="grid grid-cols-12 gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
-            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)" }}
+            className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
           >
-            <div className="col-span-4">Lead</div>
-            <div className="col-span-3">Telefone</div>
-            <div className="col-span-2">Etapa</div>
-            <div className="col-span-3">Status</div>
+            <div>Número</div>
+            <div>Nome</div>
+            <div>Telefone</div>
+            <div>Origem</div>
+            <div>Etapa</div>
+            <div>Status</div>
+            <div>Interesse</div>
           </div>
 
           {filtered.length === 0 ? (
@@ -215,29 +252,38 @@ export default function PipelinePage() {
               const stageInfo = l.stageId ? stageMap[l.stageId] : null;
               const stageName = l.stageName ?? stageInfo?.name ?? "—";
               const groupKey = stageInfo?.group ?? "PRE_ATENDIMENTO";
-              const groupLabel = GROUPS.find((g) => g.key === groupKey)?.label ?? groupKey;
+              const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
 
               return (
                 <div
                   key={l.id}
-                  className="grid grid-cols-12 items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
-                  style={{ borderColor: "var(--shell-card-border)" }}
+                  className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
+                  style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
                 >
-                  <div className="col-span-4">
-                    <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline">
-                      {l.nome || "Sem nome"}
+                  <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">
+                    {numero || "—"}
+                  </div>
+                  <div className="min-w-0">
+                    <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">
+                      {displayName(l)}
                     </Link>
                   </div>
-                  <div className="col-span-3 text-sm text-[var(--shell-subtext)]">
+                  <div className="text-sm text-[var(--shell-subtext)] truncate">
                     {l.telefone || l.whatsapp || "—"}
                   </div>
-                  <div className="col-span-2">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE_COLOR[groupKey]}`}>
-                      {groupLabel}
+                  <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>
+                    {l.origem || "—"}
+                  </div>
+                  <div className="min-w-0">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE_COLOR[groupKey]} truncate max-w-full`} title={stageName}>
+                      {stageName}
                     </span>
                   </div>
-                  <div className="col-span-3 text-sm text-[var(--shell-subtext)]">
-                    {stageName}
+                  <div className="text-sm text-[var(--shell-subtext)] truncate">
+                    {l.status || "—"}
+                  </div>
+                  <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>
+                    {l.perfilImovel || "—"}
                   </div>
                 </div>
               );

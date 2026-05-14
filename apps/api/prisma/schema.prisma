@@ -117,8 +117,18 @@ model Tenant {
   whatsappUnofficialSessions    WhatsappUnofficialSession[]
   campanhaModelos               CampanhaModelo[]
   campanhaDisparos              CampanhaDisparo[]
+  leadCounter                   TenantLeadCounter?
 
   @@map("tenants")
+}
+
+model TenantLeadCounter {
+  tenantId   String   @id
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_lead_counters")
 }
 
 model Channel {
@@ -209,6 +219,8 @@ model RefreshToken {
 model Lead {
   id                      String               @id @default(uuid())
   tenantId                String
+  numero                  Int?
+  reentradaCount          Int                  @default(1)
   nome                    String
   telefone                String?
   email                   String?
@@ -279,6 +291,7 @@ model Lead {
   @@index([tenantId, stageId])
   aiAttendedMonths        String[]               @default([])
 
+  @@unique([tenantId, numero])
   @@index([tenantId, conversaCanal])
   @@map("leads")
 }

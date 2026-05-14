@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { listDevelopments, deleteDevelopment, type Development } from "@/lib/developments.service";
+import { computeCompleteness } from "@/lib/empreendimento-completeness";
 
 const STATUS_LABEL: Record<string, string> = { LANCAMENTO: "Lançamento", EM_OBRA: "Em Obra", CONCLUIDO: "Concluído" };
 const STATUS_COLOR: Record<string, string> = {
@@ -92,13 +93,17 @@ export default function EmpreendimentosPage() {
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => {
               const totalUnits = item._count?.units ?? item.towers?.reduce((s: number, t: any) => s + (t.units?.length ?? 0), 0) ?? 0;
-              const vendido = item.towers?.flatMap((t: any) => t.units ?? []).filter((u: any) => u.status === "VENDIDO").length ?? 0;
+              const vendido = (item.towers || []).flatMap((t: any) => t.units || []).filter((u: any) => u.status === "VENDIDO").length;
               const vso = totalUnits > 0 ? Math.round((vendido / totalUnits) * 100) : 0;
+              const completeness = computeCompleteness(item);
+              const targetUrl = completeness.allComplete
+                ? `/gestao-empreendimentos/${item.id}`
+                : `/gestao-empreendimentos/${item.id}?step=${Math.max(0, completeness.firstIncomplete)}`;
 
               return (
                 <div key={item.id}
                   className="group rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
-                  onClick={() => router.push(`/gestao-empreendimentos/${item.id}`)}>
+                  onClick={() => router.push(targetUrl)}>
 
                   {/* Thumbnail da implantação ou placeholder */}
                   <div className="relative h-40 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 overflow-hidden">
@@ -115,6 +120,18 @@ export default function EmpreendimentosPage() {
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ${STATUS_COLOR[item.status] ?? "bg-slate-100 text-slate-600"}`}>
                         {STATUS_LABEL[item.status] ?? item.status}
                       </span>
+                    </div>
+                    {/* Badge de publicação/cadastro */}
+                    <div className="absolute top-3 left-3">
+                      {item.publishedAt ? (
+                        <span className="rounded-full bg-green-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                          ✓ Publicado
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                          📝 Rascunho · {completeness.percent}%
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -156,9 +173,9 @@ export default function EmpreendimentosPage() {
                     {/* Ações */}
                     <div className="flex items-center justify-between">
                       <button type="button"
-                        onClick={(e) => { e.stopPropagation(); router.push(`/gestao-empreendimentos/${item.id}`); }}
+                        onClick={(e) => { e.stopPropagation(); router.push(targetUrl); }}
                         className="text-xs font-semibold text-[var(--brand-accent)] hover:underline">
-                        Ver espelho →
+                        {item.publishedAt ? "Ver espelho →" : completeness.allComplete ? "Publicar →" : "Continuar cadastro →"}
                       </button>
                       <button type="button"
                         onClick={(e) => handleDelete(e, item.id)}

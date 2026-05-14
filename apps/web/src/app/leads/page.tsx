@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
+import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
+import { formatLeadNumber } from "@/lib/format-lead-number";
 
 type PipelineStage = {
   id: string;
@@ -29,22 +31,34 @@ const GROUP_LABEL: Record<string, string> = {
 
 type Lead = {
   id: string;
+  numero?: number | null;
+  reentradaCount?: number | null;
   nome?: string;
+  nomeCorreto?: string | null;
   telefone?: string;
   whatsapp?: string;
   observacao?: string;
+  origem?: string | null;
+  status?: string | null;
+  perfilImovel?: string | null;
   stageId?: string | null;
   stageKey?: string | null;
   stageName?: string | null;
   criadoEm?: string;
 };
 
+function displayName(l: Lead): string {
+  return l.nomeCorreto || l.nome || "Sem nome";
+}
+
+const STAGE_BADGE = "bg-slate-100 text-slate-700";
+
 export default function LeadsPage() {
   const searchParams = useSearchParams();
   const activeGroup = searchParams.get("group");
   const pageTitle = activeGroup ? (GROUP_LABEL[activeGroup] ?? activeGroup) : "Leads";
 
-  const [view, setView] = useState<"LISTA" | "KANBAN">("LISTA");
+  const [view, setView] = useLeadsViewMode();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -150,7 +164,7 @@ export default function LeadsPage() {
     return leads.filter((l) => {
       if (activeGroup && !visibleStageIds.has(l.stageId ?? "")) return false;
       if (!qq) return true;
-      return [l.nome, l.telefone, l.whatsapp, l.observacao, l.id]
+      return [l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.id]
         .join(" ").toLowerCase().includes(qq);
     });
   }, [leads, q, activeGroup, visibleStageIds]);
@@ -181,7 +195,7 @@ export default function LeadsPage() {
             className="inline-flex rounded-lg border p-1 gap-0.5"
             style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
           >
-            {(["LISTA", "KANBAN"] as const).map((v) => (
+            {(["KANBAN", "LISTA"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -192,7 +206,7 @@ export default function LeadsPage() {
                   fontWeight: view === v ? 600 : 400,
                 }}
               >
-                {v === "LISTA" ? "Lista" : "Kanban"}
+                {v === "KANBAN" ? "Kanban" : "Lista"}
               </button>
             ))}
           </div>
@@ -286,42 +300,61 @@ export default function LeadsPage() {
           style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
         >
           <div
-            className="grid grid-cols-12 gap-2 border-b px-4 py-3 text-xs font-medium"
-            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)" }}
+            className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
           >
-            <div className="col-span-4">Lead</div>
-            <div className="col-span-3">Contato</div>
-            <div className="col-span-2">Etapa</div>
-            <div className="col-span-3 text-right">Info</div>
+            <div>Número</div>
+            <div>Nome</div>
+            <div>Telefone</div>
+            <div>Origem</div>
+            <div>Etapa</div>
+            <div>Status</div>
+            <div>Interesse</div>
           </div>
 
           {filtered.length === 0 ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead.</div>
           ) : (
-            filtered.map((l) => (
-              <div
-                key={l.id}
-                className="grid grid-cols-12 items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
-                style={{ borderColor: "var(--shell-card-border)" }}
-              >
-                <div className="col-span-4">
-                  <Link
-                    className="font-medium text-[var(--shell-text)] hover:underline"
-                    href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}
-                  >
-                    {l.nome || "Sem nome"}
-                  </Link>
-                  <div className="text-xs text-[var(--shell-subtext)]">{l.id}</div>
+            filtered.map((l) => {
+              const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+              const stageName = l.stageName || pipelineStages.find((s) => s.id === l.stageId)?.name || "—";
+              return (
+                <div
+                  key={l.id}
+                  className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
+                  style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
+                >
+                  <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">
+                    {numero || "—"}
+                  </div>
+                  <div className="min-w-0">
+                    <Link
+                      className="font-medium text-[var(--shell-text)] hover:underline truncate block"
+                      href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}
+                    >
+                      {displayName(l)}
+                    </Link>
+                  </div>
+                  <div className="text-sm text-[var(--shell-subtext)] truncate">
+                    {l.telefone || l.whatsapp || "—"}
+                  </div>
+                  <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>
+                    {l.origem || "—"}
+                  </div>
+                  <div className="min-w-0">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE} truncate max-w-full`} title={stageName}>
+                      {stageName}
+                    </span>
+                  </div>
+                  <div className="text-sm text-[var(--shell-subtext)] truncate">
+                    {l.status || "—"}
+                  </div>
+                  <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>
+                    {l.perfilImovel || "—"}
+                  </div>
                 </div>
-                <div className="col-span-3 text-sm text-[var(--shell-subtext)]">
-                  {l.telefone || l.whatsapp || "-"}
-                </div>
-                <div className="col-span-2 text-sm text-[var(--shell-subtext)]">
-                  {l.stageName || pipelineStages.find((s) => s.id === l.stageId)?.name || "-"}
-                </div>
-                <div className="col-span-3 text-right text-xs text-[var(--shell-subtext)]">-</div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -351,28 +384,54 @@ export default function LeadsPage() {
                     {items.length === 0 ? (
                       <div className="p-2 text-xs text-[var(--shell-subtext)]">Vazio</div>
                     ) : (
-                      items.map((l) => (
-                        <div
-                          key={l.id}
-                          className="rounded-lg border p-2"
-                          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
-                        >
-                          <div className="text-sm font-medium text-[var(--shell-text)]">
-                            <Link
-                              className="hover:underline"
-                              href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}
-                            >
-                              {l.nome || "Sem nome"}
-                            </Link>
+                      items.map((l) => {
+                        const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                        return (
+                          <div
+                            key={l.id}
+                            className="rounded-lg border p-2"
+                            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
+                          >
+                            {numero && (
+                              <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">
+                                {numero}
+                              </div>
+                            )}
+                            <div className="text-sm font-medium text-[var(--shell-text)] truncate">
+                              <Link
+                                className="hover:underline"
+                                href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}
+                              >
+                                {displayName(l)}
+                              </Link>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
+                              <span className="truncate">{l.telefone || l.whatsapp || "—"}</span>
+                              <span className="opacity-50">·</span>
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${STAGE_BADGE} truncate max-w-[100px]`} title={l.stageName || stage.name}>
+                                {l.stageName || stage.name}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              {l.origem && (
+                                <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>
+                                  {l.origem}
+                                </span>
+                              )}
+                              {l.status && (
+                                <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                  {l.status}
+                                </span>
+                              )}
+                              {l.perfilImovel && (
+                                <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>
+                                  {l.perfilImovel}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="mt-1 text-xs text-[var(--shell-subtext)]">
-                            {l.telefone || l.whatsapp || "-"}
-                          </div>
-                          <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
-                            {l.stageName || stage.name}
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>

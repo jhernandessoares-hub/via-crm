@@ -54,6 +54,7 @@ import { QueueService } from '../queue/queue.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { LeadDocumentsService } from '../lead-documents/lead-documents.service';
+import { getNextLeadNumber } from './lead-numbering.helper';
 
 @Injectable()
 export class LeadsService {
@@ -936,9 +937,11 @@ export class LeadsService {
     let lead: Awaited<ReturnType<typeof this.prisma.lead.create>>;
     try {
       lead = await this.prisma.$transaction(async (tx) => {
+        const numero = await getNextLeadNumber(tx, tenantId);
         const created = await tx.lead.create({
           data: {
             tenantId,
+            numero,
             nome: body.nome,
             telefone: telefoneDigits || null,
             telefoneKey,

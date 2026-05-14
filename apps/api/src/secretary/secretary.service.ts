@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { Logger } from '../logger';
+import { getNextLeadNumber } from '../leads/lead-numbering.helper';
 
 const logger = new Logger('SecretaryService');
 
@@ -607,15 +608,18 @@ export class SecretaryService {
           ? await this.prisma.pipelineStage.findFirst({ where: { tenantId, pipelineId: pipeline.id, key: 'NOVO_LEAD' }, select: { id: true } })
           : null;
 
-        const lead = await this.prisma.lead.create({
-          data: {
-            tenantId, nome: args.nome.trim(), telefone, telefoneKey,
-            email: args.email?.trim() || null,
-            observacao: args.observacao?.trim() || null,
-            origem: 'Formulário Interno', status: 'NOVO',
-            stageId: firstStage?.id ?? null,
-          },
-          select: { id: true, nome: true },
+        const lead = await this.prisma.$transaction(async (tx) => {
+          const numero = await getNextLeadNumber(tx, tenantId);
+          return tx.lead.create({
+            data: {
+              tenantId, numero, nome: args.nome.trim(), telefone, telefoneKey,
+              email: args.email?.trim() || null,
+              observacao: args.observacao?.trim() || null,
+              origem: 'Formulário Interno', status: 'NOVO',
+              stageId: firstStage?.id ?? null,
+            },
+            select: { id: true, nome: true },
+          });
         });
         return `Lead criado com sucesso. Nome: ${lead.nome} | ID: ${lead.id}`;
       }
