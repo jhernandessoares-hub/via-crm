@@ -21,7 +21,7 @@ const emptyForm = {
   ownerNome: "", ownerEmail: "", ownerSenha: "",
   // Step 3
   whatsappPhoneNumberId: "", whatsappToken: "", whatsappVerifyToken: "",
-  plan: "PREMIUM",
+  plan: "BUSINESS",
 };
 
 export default function NovoClientePage() {

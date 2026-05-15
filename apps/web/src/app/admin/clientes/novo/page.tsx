@@ -6,7 +6,7 @@ import Link from "next/link";
 
 export default function AdminNovoClientePage() {
   const router = useRouter();
-  const [form, setForm] = useState({ nome: "", slug: "", ownerNome: "", ownerEmail: "", ownerSenha: "", plan: "PREMIUM" });
+  const [form, setForm] = useState({ nome: "", slug: "", ownerNome: "", ownerEmail: "", ownerSenha: "", plan: "BUSINESS" });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 

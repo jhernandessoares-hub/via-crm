@@ -75,11 +75,13 @@ export class AdminService {
     proprietarioNome?: string; proprietarioTelefone?: string;
     whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string;
   }) {
+    const VALID_PLANS = ['STARTER', 'PRO', 'BUSINESS'];
+    const plan = VALID_PLANS.includes(data.plan ?? '') ? (data.plan as any) : 'BUSINESS';
     const senhaHash = await bcrypt.hash(data.ownerSenha, 10);
     const tenant = await this.prisma.$transaction(async (tx) => {
       const t = await tx.tenant.create({
         data: {
-          nome: data.nome, slug: data.slug, plan: (data.plan as any) || 'STARTER',
+          nome: data.nome, slug: data.slug, plan,
           logradouro: data.logradouro || null, numero: data.numero || null,
           bairro: data.bairro || null, cep: data.cep || null,
           cidade: data.cidade || null, estado: data.estado || null,
