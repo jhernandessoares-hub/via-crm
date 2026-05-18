@@ -2783,9 +2783,10 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
   const [prefix, setPrefix] = useState(isVertical ? "Apto" : isLoteamento ? "Lote" : "Casa");
   const [busy, setBusy] = useState(false);
 
-  const subsoloUnits = (tower.fasesConfig as FaseConfig[] | null)
-    ?.reduce((sum, f) => sum + (f.subsolos ?? 0) * (f.unidades ?? 0), 0) ?? 0;
-  const expectedUnits = (parseInt(floors) || 0) * (parseInt(unitsPerFloor) || 0) + subsoloUnits;
+  const fasesConfig = tower.fasesConfig as FaseConfig[] | null;
+  const subsoloUnits = fasesConfig?.reduce((sum, f) => sum + (f.subsolos ?? 0) * (f.unidades ?? 0), 0) ?? 0;
+  const excludedSlotsCount = fasesConfig?.reduce((sum, f) => sum + (f.excludedSlots?.length ?? 0), 0) ?? 0;
+  const expectedUnits = (parseInt(floors) || 0) * (parseInt(unitsPerFloor) || 0) + subsoloUnits - excludedSlotsCount;
   const currentUnits = tower.units.length;
   const fullyCreated = currentUnits === expectedUnits && expectedUnits > 0;
 
