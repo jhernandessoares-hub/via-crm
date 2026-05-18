@@ -212,6 +212,10 @@ export class DevelopmentsService {
         implantacaoH: data.implantacaoH != null && data.implantacaoH !== '' ? Number(data.implantacaoH) : null,
         implantacaoLat: data.implantacaoLat != null && data.implantacaoLat !== '' ? Number(data.implantacaoLat) : null,
         implantacaoLng: data.implantacaoLng != null && data.implantacaoLng !== '' ? Number(data.implantacaoLng) : null,
+        fasesConfig: data.fasesConfig ?? null,
+        subsolos: data.subsolos != null ? Number(data.subsolos) : 0,
+        ladoConfig: data.ladoConfig ?? null,
+        floorUnitsConfig: data.floorUnitsConfig ?? null,
       },
     });
   }

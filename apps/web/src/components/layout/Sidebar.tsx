@@ -292,13 +292,7 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
         )}
 
         <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
-        {role === "OWNER" && hasDevelopments && <NavItem href="/gestao-empreendimentos" label="Gestão de Empreendimentos" icon={Landmark} mode="prefix" />}
-        {role === "OWNER" && !hasDevelopments && isBusiness && (
-          <div className="flex items-center gap-2 px-3 py-2 text-gray-400 dark:text-gray-500 text-sm rounded-lg cursor-default">
-            <Landmark className="w-4 h-4 shrink-0" />
-            {!collapsed && <span className="truncate">Empreendimentos <span className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded-full ml-1">Add-on</span></span>}
-          </div>
-        )}
+        {role === "OWNER" && <NavItem href="/gestao-empreendimentos" label="Gestão de Empreendimentos" icon={Landmark} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
         <NavItem href="/secretary" label="Secretaria" icon={Headphones} />

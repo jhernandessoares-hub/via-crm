@@ -756,12 +756,9 @@ function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onCl
 function EspelhoVendas({ dev, onUnitUpdated }: {
   dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
 }) {
-  const [selectedTowerId, setSelectedTowerId] = useState<string | null>(dev.towers[0]?.id ?? null);
   const [filters, setFilters] = useState<EspelhoFilters>(emptyFilters());
   const [exporting, setExporting] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
-
-  const selectedTower = dev.towers.find((t) => t.id === selectedTowerId) ?? dev.towers[0] ?? null;
   const isVertical = dev.tipo === "VERTICAL";
   const isLoteamento = dev.subtipo === "LOTEAMENTO";
 
@@ -771,8 +768,8 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
   const reservado = allUnits.filter((u) => u.status === "RESERVADO").length;
   const disponivel = allUnits.filter((u) => u.status === "DISPONIVEL").length;
 
-  const allFloors = isVertical && selectedTower
-    ? Array.from(new Set(selectedTower.units.map((u) => u.andar ?? 0))).filter((n) => n > 0).sort((a, b) => a - b)
+  const allFloors = isVertical
+    ? Array.from(new Set(allUnits.map((u) => u.andar ?? 0))).filter((n) => n > 0).sort((a, b) => a - b)
     : [];
 
   async function captureCanvas() {
@@ -787,7 +784,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
     try {
       const canvas = await captureCanvas();
       const link = document.createElement("a");
-      link.download = `${dev.nome}-${selectedTower?.nome ?? "espelho"}-${new Date().toISOString().slice(0, 10)}.png`;
+      link.download = `${dev.nome}-espelho-${new Date().toISOString().slice(0, 10)}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
     } catch (e: any) { alert("Erro ao exportar PNG: " + (e?.message ?? e)); }
@@ -802,7 +799,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
       const orient = canvas.width > canvas.height ? "landscape" : "portrait";
       const pdf = new jsPDF({ orientation: orient as any, unit: "px", format: [canvas.width, canvas.height] });
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, canvas.width, canvas.height);
-      pdf.save(`${dev.nome}-${selectedTower?.nome ?? "espelho"}-${new Date().toISOString().slice(0, 10)}.pdf`);
+      pdf.save(`${dev.nome}-espelho-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (e: any) { alert("Erro ao exportar PDF: " + (e?.message ?? e)); }
     finally { setExporting(false); }
   }
@@ -855,45 +852,29 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
         </div>
       </div>
 
-      {/* Seletor de torre */}
-      {dev.towers.length > 1 && (
-        <div className="flex gap-2 flex-wrap border-b border-[var(--shell-card-border)] pb-3">
-          {dev.towers.map((t) => (
-            <button key={t.id} type="button"
-              onClick={() => setSelectedTowerId(t.id)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                selectedTower?.id === t.id
-                  ? "bg-[var(--brand-accent)] text-white shadow-sm"
-                  : "border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
-              }`}>
-              {t.nome}
-              <span className="ml-2 text-[10px] opacity-70">{t.units.length} unid.</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Grade — região exportada (PNG/PDF) */}
-      {selectedTower && (
-        <div ref={exportRef} className="bg-[var(--shell-bg)] p-4 rounded-2xl">
-          {isVertical ? (
-            <EspelhoVertical
-              tower={selectedTower}
-              devId={dev.id}
-              filters={filters}
-              onUnitUpdated={(u) => onUnitUpdated(selectedTower.id, u)}
-            />
-          ) : (
-            <EspelhoHorizontal
-              tower={selectedTower}
-              devId={dev.id}
-              filters={filters}
-              onUnitUpdated={(u) => onUnitUpdated(selectedTower.id, u)}
-              isLoteamento={isLoteamento}
-            />
-          )}
-        </div>
-      )}
+      {/* Grade — todas as torres empilhadas */}
+      <div ref={exportRef} className="bg-[var(--shell-bg)] p-4 rounded-2xl space-y-8">
+        {dev.towers.map((tower) => (
+          <div key={tower.id}>
+            {isVertical ? (
+              <EspelhoVertical
+                tower={tower}
+                devId={dev.id}
+                filters={filters}
+                onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
+              />
+            ) : (
+              <EspelhoHorizontal
+                tower={tower}
+                devId={dev.id}
+                filters={filters}
+                onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
+                isLoteamento={isLoteamento}
+              />
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2450,9 +2431,10 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
     if (fases.some((f) => !f.nome.trim())) { alert("Todas as fases precisam de um nome."); return; }
     setBusy(true);
     try {
+      const floorsNum = parseInt(floors) || 1;
       const payload: any = {
         nome: nome.trim(),
-        floors: parseInt(floors) || 1,
+        floors: floorsNum,
         unitsPerFloor: totalUnitsPerFloor,
         alturaAndarM: parseFloat(alturaAndar) || 3,
         hasLobbyFloor: hasLobby,
@@ -2462,7 +2444,13 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
       } else {
-        await createTower(dev.id, payload);
+        const created = await createTower(dev.id, payload);
+        // Auto-cria unidades logo após criar a torre
+        await bulkCreateUnits(dev.id, created.id, {
+          floors: floorsNum,
+          unitsPerFloor: totalUnitsPerFloor,
+          prefix: isVertical ? "Apto" : dev.subtipo === "LOTEAMENTO" ? "Lote" : "Casa",
+        });
       }
       onSaved();
       onClose();
@@ -2733,7 +2721,9 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
   const [prefix, setPrefix] = useState(isVertical ? "Apto" : isLoteamento ? "Lote" : "Casa");
   const [busy, setBusy] = useState(false);
 
-  const expectedUnits = (parseInt(floors) || 0) * (parseInt(unitsPerFloor) || 0);
+  const subsoloUnits = (tower.fasesConfig as FaseConfig[] | null)
+    ?.reduce((sum, f) => sum + (f.subsolos ?? 0) * (f.unidades ?? 0), 0) ?? 0;
+  const expectedUnits = (parseInt(floors) || 0) * (parseInt(unitsPerFloor) || 0) + subsoloUnits;
   const currentUnits = tower.units.length;
   const fullyCreated = currentUnits === expectedUnits && expectedUnits > 0;
 
@@ -2760,43 +2750,66 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
     finally { setBusy(false); }
   }
 
+  const hasFases = Array.isArray(tower.fasesConfig) && (tower.fasesConfig as FaseConfig[]).length > 0;
+
   return (
     <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-4 space-y-3 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-bold text-[var(--shell-text)]">{tower.nome}</p>
           <p className="text-[11px] text-[var(--shell-subtext)]">
-            {fullyCreated ? `✅ ${currentUnits} unidades` : currentUnits === 0 ? "⚠️ Sem unidades" : `⚠️ ${currentUnits}/${expectedUnits} unidades`}
+            {fullyCreated ? `✅ ${currentUnits} unidades criadas` : currentUnits === 0 ? "⚠️ Nenhuma unidade criada ainda" : `⚠️ ${currentUnits}/${expectedUnits} unidades`}
           </p>
         </div>
+        {fullyCreated && <span className="text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded-full">OK</span>}
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Andares" : "Linhas"}</label>
-          <input type="number" min={1} value={floors} onChange={(e) => setFloors(e.target.value)} className={inp} />
+
+      {hasFases ? (
+        /* Torre configurada via fases — mostra resumo read-only */
+        <div className="space-y-1.5">
+          {(tower.fasesConfig as FaseConfig[]).map((f, fi) => (
+            <div key={fi} className="flex items-center gap-2 text-xs text-[var(--shell-subtext)] bg-[var(--shell-bg)] rounded-lg px-3 py-1.5">
+              <span className="font-semibold text-[var(--shell-text)] w-24 truncate">{f.nome}</span>
+              <span>{f.unidades} aptos/andar</span>
+              {f.subsolos > 0 && <span className="text-amber-600 dark:text-amber-400">· {f.subsolos} subsolo{f.subsolos > 1 ? "s" : ""}</span>}
+            </div>
+          ))}
+          <p className="text-[11px] text-[var(--shell-subtext)]">{parseInt(floors)} andares · {expectedUnits} unidades no total</p>
         </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Unid/andar" : isLoteamento ? "Lotes/linha" : "Casas/linha"}</label>
-          <input type="number" min={1} value={unitsPerFloor} onChange={(e) => setUnitsPerFloor(e.target.value)} className={inp} />
+      ) : (
+        /* Torre legada sem fasesConfig — mantém inputs editáveis */
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Andares" : "Linhas"}</label>
+            <input type="number" min={1} value={floors} onChange={(e) => setFloors(e.target.value)} className={inp} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Unid/andar" : isLoteamento ? "Lotes/linha" : "Casas/linha"}</label>
+            <input type="number" min={1} value={unitsPerFloor} onChange={(e) => setUnitsPerFloor(e.target.value)} className={inp} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Alt/andar (m)" : "Altura (m)"}</label>
+            <input type="number" step="0.5" value={alturaAndar} onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
+          </div>
         </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{isVertical ? "Alt/andar (m)" : "Altura (m)"}</label>
-          <input type="number" step="0.5" value={alturaAndar} onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
-        </div>
-      </div>
+      )}
+
       {currentUnits === 0 && (
         <div className="space-y-1">
           <label className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Prefixo das unidades</label>
           <input value={prefix} onChange={(e) => setPrefix(e.target.value)} className={inp} />
         </div>
       )}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-xs text-[var(--shell-subtext)]">Total: <strong>{expectedUnits}</strong> unidades</span>
-        <button onClick={handleSave} disabled={busy}
-          className="rounded-lg bg-[var(--brand-accent)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-          {busy ? "Processando..." : currentUnits === 0 ? "Criar unidades" : fullyCreated ? "Atualizar dimensões" : "Atualizar"}
-        </button>
-      </div>
+
+      {!fullyCreated && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs text-[var(--shell-subtext)]">Total esperado: <strong>{expectedUnits}</strong></span>
+          <button onClick={handleSave} disabled={busy}
+            className="rounded-lg bg-[var(--brand-accent)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+            {busy ? "Processando..." : currentUnits === 0 ? "Criar unidades" : "Recriar unidades"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

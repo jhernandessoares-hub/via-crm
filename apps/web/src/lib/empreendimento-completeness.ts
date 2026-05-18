@@ -24,13 +24,22 @@ export function computeCompleteness(dev: Development): Completeness {
 
   const s4 = dev.towers.length > 0 && dev.towers.every((t) => {
     if (t.floors <= 0 || t.unitsPerFloor <= 0) return false;
-    const subsolos = t.subsolos ?? 0;
-    const cfg = t.floorUnitsConfig ?? {};
-    let subsoloUnits = 0;
-    for (let s = 1; s <= subsolos; s++) {
-      subsoloUnits += (cfg as Record<string, number>)[String(-s)] ?? t.unitsPerFloor;
+    let expected: number;
+    const fases = t.fasesConfig as import("./developments.service").FaseConfig[] | null;
+    if (fases && fases.length > 0) {
+      // Torres com fasesConfig: subsolos são por fase
+      const subsoloUnits = fases.reduce((sum, f) => sum + (f.subsolos ?? 0) * (f.unidades ?? 0), 0);
+      expected = t.floors * t.unitsPerFloor + subsoloUnits;
+    } else {
+      // Fallback legado
+      const subsolos = t.subsolos ?? 0;
+      const cfg = (t.floorUnitsConfig ?? {}) as Record<string, number>;
+      let subsoloUnits = 0;
+      for (let s = 1; s <= subsolos; s++) {
+        subsoloUnits += cfg[String(-s)] ?? t.unitsPerFloor;
+      }
+      expected = t.floors * t.unitsPerFloor + subsoloUnits;
     }
-    const expected = t.floors * t.unitsPerFloor + subsoloUnits;
     return t.units.length === expected;
   });
 
