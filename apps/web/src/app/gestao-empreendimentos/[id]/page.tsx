@@ -2522,26 +2522,6 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             </div>
           </section>
 
-          {/* Seção 3 — Fachada */}
-          <section>
-            <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Cor da Fachada</p>
-            <div className="flex gap-2 flex-wrap">
-              {FACADE_COLORS.map((c) => (
-                <button key={c} type="button"
-                  onClick={() => setFacadeColor(c)}
-                  title={c}
-                  className={`w-8 h-8 rounded-full border-2 transition-all ${facadeColor === c ? "border-[var(--brand-accent)] scale-110" : "border-transparent hover:scale-105"}`}
-                  style={{ backgroundColor: c }} />
-              ))}
-              <label className="flex items-center gap-1 text-xs text-[var(--shell-subtext)] cursor-pointer">
-                <input type="color" value={facadeColor} onChange={(e) => setFacadeColor(e.target.value)}
-                  className="w-8 h-8 rounded-full border-2 border-[var(--shell-card-border)] cursor-pointer p-0" />
-                Personalizada
-              </label>
-            </div>
-
-          </section>
-
           {/* Seção: Configurar Lados */}
           {isVertical && aptCount > 0 && (
             <section>
