@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useEffect, useState, useCallback, useRef, useMemo, forwardRef, useImperativeHandle, startTransition, type ForwardedRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
@@ -18,11 +18,11 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 
-// â”€â”€â”€ Tipos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tipos ───────────────────────────────────────────────────────────────────
 
 type Tab = "cadastro" | "espelho" | "precos" | "dashboard";
 
-// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Constantes ──────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<UnitStatus, string> = {
   DISPONIVEL: "#22c55e",
@@ -32,7 +32,7 @@ const STATUS_COLOR: Record<UnitStatus, string> = {
 };
 
 const STATUS_LABEL: Record<UnitStatus, string> = {
-  DISPONIVEL: "DisponÃ­vel",
+  DISPONIVEL: "Disponível",
   RESERVADO:  "Reservado",
   VENDIDO:    "Vendido",
   BLOQUEADO:  "Bloqueado",
@@ -48,11 +48,11 @@ const STATUS_BG: Record<UnitStatus, string> = {
 const inp = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] transition-colors";
 
 function fmt(v: number | null | undefined) {
-  if (!v) return "â€”";
+  if (!v) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
 
-// â”€â”€â”€ Modal genÃ©rico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Modal genérico ──────────────────────────────────────────────────────────
 
 function Modal({ open, onClose, title, children, wide }: {
   open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean;
@@ -65,7 +65,7 @@ function Modal({ open, onClose, title, children, wide }: {
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-bold text-[var(--shell-text)]">{title}</h3>
-          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">Ã—</button>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">×</button>
         </div>
         {children}
       </div>
@@ -73,7 +73,7 @@ function Modal({ open, onClose, title, children, wide }: {
   );
 }
 
-// â”€â”€â”€ Modal de Unidade â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Modal de Unidade ─────────────────────────────────────────────────────────
 
 function UnitModal({ unit, devId, onClose, onUpdated }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void; onUpdated: (u: DevelopmentUnit) => void;
@@ -101,7 +101,7 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
   }
 
   const allActions: { label: string; status: UnitStatus; color: string }[] = [
-    { label: "DisponÃ­vel", status: "DISPONIVEL" as UnitStatus, color: "bg-green-500 hover:bg-green-600" },
+    { label: "Disponível", status: "DISPONIVEL" as UnitStatus, color: "bg-green-500 hover:bg-green-600" },
     { label: "Reservar",   status: "RESERVADO"  as UnitStatus, color: "bg-amber-400 hover:bg-amber-500" },
     { label: "Vender",     status: "VENDIDO"    as UnitStatus, color: "bg-red-500 hover:bg-red-600" },
     { label: "Bloquear",   status: "BLOQUEADO"  as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" },
@@ -109,7 +109,7 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
   const actions = allActions.filter((a) => a.status !== status);
 
   return (
-    <Modal open title={`Unidade â€” ${unit.nome}`} onClose={onClose}>
+    <Modal open title={`Unidade — ${unit.nome}`} onClose={onClose}>
       <div className="space-y-4">
         {/* Status atual */}
         <div className="flex items-center gap-2">
@@ -124,13 +124,13 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
           {unit.andar && (
             <div>
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Andar</p>
-              <p className="font-semibold text-[var(--shell-text)]">{unit.andar}Âº</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.andar}º</p>
             </div>
           )}
           {unit.areaM2 && (
             <div>
-              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Ãrea</p>
-              <p className="font-semibold text-[var(--shell-text)]">{unit.areaM2} mÂ²</p>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.areaM2} m²</p>
             </div>
           )}
           {unit.quartos && (
@@ -159,13 +159,13 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
           )}
           {unit.loteAreaM2 && (
             <div>
-              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Ãrea do lote</p>
-              <p className="font-semibold text-[var(--shell-text)]">{unit.loteAreaM2} mÂ²</p>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área do lote</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.loteAreaM2} m²</p>
             </div>
           )}
         </div>
 
-        {/* Comprador / PreÃ§o final (para reserva/venda) */}
+        {/* Comprador / Preço final (para reserva/venda) */}
         {(status === "RESERVADO" || status === "VENDIDO" || actions.find(a => a.status === "RESERVADO" || a.status === "VENDIDO")) && (
           <div className="space-y-3 pt-2 border-t border-[var(--shell-card-border)]">
             <div className="space-y-1">
@@ -179,13 +179,13 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
             {(status === "BLOQUEADO" || actions.find(a => a.status === "BLOQUEADO")) && (
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Motivo do bloqueio</label>
-                <input value={bloqueioMotivo} onChange={(e) => setBloqueioMotivo(e.target.value)} placeholder="Ex: PendÃªncia documental" className={inp} />
+                <input value={bloqueioMotivo} onChange={(e) => setBloqueioMotivo(e.target.value)} placeholder="Ex: Pendência documental" className={inp} />
               </div>
             )}
           </div>
         )}
 
-        {/* BotÃµes de aÃ§Ã£o */}
+        {/* Botões de ação */}
         <div className="flex flex-wrap gap-2 pt-2">
           {actions.map((a) => (
             <button key={a.status} type="button" disabled={saving} onClick={() => changeStatus(a.status)}
@@ -199,7 +199,7 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
   );
 }
 
-// â”€â”€â”€ Popup de detalhes da unidade (view-only + lead search) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Popup de detalhes da unidade (view-only + lead search) ──────────────────
 
 function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void;
@@ -252,9 +252,9 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit }: {
 
         {/* Dados */}
         <div className="grid grid-cols-2 gap-3 text-sm">
-          {current.areaM2 != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Ãrea</p><p className="font-semibold text-[var(--shell-text)]">{current.areaM2} mÂ²</p></div>}
+          {current.areaM2 != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área</p><p className="font-semibold text-[var(--shell-text)]">{current.areaM2} m²</p></div>}
           {current.quartos != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Quartos</p><p className="font-semibold text-[var(--shell-text)]">{current.quartos}</p></div>}
-          {current.suites != null && current.suites > 0 && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">SuÃ­tes</p><p className="font-semibold text-[var(--shell-text)]">{current.suites}</p></div>}
+          {current.suites != null && current.suites > 0 && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Suítes</p><p className="font-semibold text-[var(--shell-text)]">{current.suites}</p></div>}
           {current.vagas != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Vagas</p><p className="font-semibold text-[var(--shell-text)]">{current.vagas}</p></div>}
           {(current.finalPrice ?? current.valorVenda) != null && (
             <div className="col-span-2">
@@ -333,7 +333,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit }: {
           </div>
         )}
 
-        {/* AÃ§Ãµes */}
+        {/* Ações */}
         <div className="flex gap-2 pt-3 border-t border-[var(--shell-card-border)]">
           <button type="button" onClick={onEditUnit}
             className="flex-1 rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
@@ -343,7 +343,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit }: {
             <button type="button"
               onClick={() => { onClose(); startTransition(() => router.push(`/leads/${current.leadId}`)); }}
               className="flex-1 rounded-lg bg-[var(--brand-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
-              Ver Lead â†’
+              Ver Lead →
             </button>
           )}
         </div>
@@ -352,7 +352,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit }: {
   );
 }
 
-// â”€â”€â”€ Espelho 2D â€” filtros e helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Espelho 2D — filtros e helpers ──────────────────────────────────────────
 
 type EspelhoFilters = {
   statuses: Set<UnitStatus>;
@@ -391,7 +391,7 @@ function unitMatches(u: DevelopmentUnit, f: EspelhoFilters, isVertical: boolean)
   return true;
 }
 
-// â”€â”€â”€ Popover de filtros â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Popover de filtros ──────────────────────────────────────────────────────
 
 function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
   filters: EspelhoFilters;
@@ -416,7 +416,7 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
             ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]"
             : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
         }`}>
-        ðŸŽšï¸ Filtros{active ? " â—" : ""}
+        🎚️ Filtros{active ? " ●" : ""}
       </button>
       {open && (
         <>
@@ -437,16 +437,16 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
               </div>
             </div>
             <div>
-              <div className="text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Faixa de preÃ§o (R$)</div>
+              <div className="text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Faixa de preço (R$)</div>
               <div className="grid grid-cols-2 gap-2">
                 <input type="number" placeholder="Min" value={filters.priceMin ?? ""}
                   onChange={(e) => setFilters({ ...filters, priceMin: e.target.value ? Number(e.target.value) : null })}
                   className={`${inp} text-xs py-1.5`} />
-                <input type="number" placeholder="MÃ¡x" value={filters.priceMax ?? ""}
+                <input type="number" placeholder="Máx" value={filters.priceMax ?? ""}
                   onChange={(e) => setFilters({ ...filters, priceMax: e.target.value ? Number(e.target.value) : null })}
                   className={`${inp} text-xs py-1.5`} />
               </div>
-              <p className="text-[10px] text-[var(--shell-subtext)] mt-1">Unidades sem preÃ§o cadastrado ficam ocultas quando hÃ¡ faixa.</p>
+              <p className="text-[10px] text-[var(--shell-subtext)] mt-1">Unidades sem preço cadastrado ficam ocultas quando há faixa.</p>
             </div>
             {isVertical && allFloors.length > 0 && (
               <div>
@@ -456,7 +456,7 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
                     value={filters.floorMin ?? ""}
                     onChange={(e) => setFilters({ ...filters, floorMin: e.target.value ? Number(e.target.value) : null })}
                     className={`${inp} text-xs py-1.5`} />
-                  <input type="number" placeholder={`MÃ¡x (${Math.max(...allFloors)})`}
+                  <input type="number" placeholder={`Máx (${Math.max(...allFloors)})`}
                     value={filters.floorMax ?? ""}
                     onChange={(e) => setFilters({ ...filters, floorMax: e.target.value ? Number(e.target.value) : null })}
                     className={`${inp} text-xs py-1.5`} />
@@ -476,7 +476,7 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
   );
 }
 
-// â”€â”€â”€ Espelho 2D â€” VERTICAL (com seletor de lados) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Espelho 2D — VERTICAL (com seletor de lados) ───────────────────────────
 
 const LADO_OPTIONS = ["Vista Interna", "Vista Externa", "Norte", "Sul", "Leste", "Oeste"];
 
@@ -484,7 +484,7 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
   onUnitUpdated: (u: DevelopmentUnit) => void;
 }) {
-  // Deriva lados Ãºnicos do ladoConfig da torre
+  // Deriva lados únicos do ladoConfig da torre
   const lados = useMemo(() => {
     const cfg = tower.ladoConfig;
     if (!cfg || typeof cfg !== "object") return [] as string[];
@@ -495,7 +495,7 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
   const [detailsUnit, setDetailsUnit] = useState<DevelopmentUnit | null>(null);
   const [editUnit, setEditUnit] = useState<DevelopmentUnit | null>(null);
 
-  // PosiÃ§Ãµes que pertencem ao lado selecionado
+  // Posições que pertencem ao lado selecionado
   const ladoPosicoes = useMemo(() => {
     if (!selectedLado || !tower.ladoConfig) return null;
     return Object.entries(tower.ladoConfig as Record<string, string>)
@@ -552,11 +552,11 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
       ) : (
         <div className="overflow-auto">
           <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
-            {/* CabeÃ§alho TOPO */}
+            {/* Cabeçalho TOPO */}
             <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
-              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">â–² Topo</div>
+              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▲ Topo</div>
               <div className="text-sm font-bold tracking-wider mt-0.5">
-                {tower.nome}{selectedLado ? ` â€” ${selectedLado}` : ""}
+                {tower.nome}{selectedLado ? ` — ${selectedLado}` : ""}
               </div>
             </div>
 
@@ -567,7 +567,7 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
               return (
                 <div key={floor} className={`flex border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${zebra}`}>
                   <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-700 py-1">
-                    {floor}Âº
+                    {floor}º
                   </div>
                   <div className="flex">
                     {units.map((unit) => {
@@ -575,7 +575,7 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
                       return (
                         <button key={unit.id} type="button"
                           onClick={() => setDetailsUnit(unit)}
-                          title={`${unit.nome} â€” ${STATUS_LABEL[unit.status]}${unit.valorVenda ? ` â€” ${fmt(unit.valorVenda)}` : ""}`}
+                          title={`${unit.nome} — ${STATUS_LABEL[unit.status]}${unit.valorVenda ? ` — ${fmt(unit.valorVenda)}` : ""}`}
                           className={`w-16 h-14 flex flex-col items-center justify-center border-r border-white/30 last:border-r-0 transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
                           style={{ backgroundColor: STATUS_COLOR[unit.status] }}
                         >
@@ -583,22 +583,22 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
                             {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
                           </div>
                           {unit.areaM2 != null && (
-                            <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}mÂ²</div>
+                            <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
                           )}
                         </button>
                       );
                     })}
                   </div>
                   <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-l border-slate-200 dark:border-slate-700 py-1">
-                    {floor}Âº
+                    {floor}º
                   </div>
                 </div>
               );
             })}
 
-            {/* RodapÃ© TÃ‰RREO */}
+            {/* Rodapé TÉRREO */}
             <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900">
-              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">â–¼ TÃ©rreo</div>
+              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▼ Térreo</div>
             </div>
           </div>
         </div>
@@ -637,7 +637,7 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
   return (
     <div className="overflow-auto">
       <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
-        {/* CabeÃ§alho */}
+        {/* Cabeçalho */}
         <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
           <div className="text-sm font-bold tracking-wider">{tower.nome}</div>
           <div className="text-[10px] uppercase tracking-[0.2em] opacity-70 mt-0.5">{units.length} {isLoteamento ? "lotes" : "casas"}</div>
@@ -662,7 +662,7 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
                   <div className="text-[9px] text-[var(--shell-subtext)] mt-0.5">Casa</div>
                 )}
                 {unit.loteAreaM2 && (
-                  <div className="text-[10px] font-medium text-[var(--shell-subtext)]">{unit.loteAreaM2} mÂ²</div>
+                  <div className="text-[10px] font-medium text-[var(--shell-subtext)]">{unit.loteAreaM2} m²</div>
                 )}
                 {unit.valorVenda && (
                   <div className="text-[10px] font-semibold mt-1" style={{ color: STATUS_COLOR[unit.status] }}>
@@ -696,7 +696,7 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
   );
 }
 
-// â”€â”€â”€ Modal Street View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Modal Street View ───────────────────────────────────────────────────────
 
 function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onClose: () => void }) {
   const svRef = useRef<HTMLDivElement>(null);
@@ -725,11 +725,11 @@ function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onCl
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--shell-card-border)]">
           <h3 className="text-base font-bold text-[var(--shell-text)]">Ver Entorno (Street View)</h3>
-          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">Ã—</button>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">×</button>
         </div>
         <div ref={svRef} style={{ height: 480 }} />
         <p className="px-5 py-2 text-xs text-[var(--shell-subtext)]">
-          Navegue com o mouse Â· Street View pode nÃ£o estar disponÃ­vel para este endereÃ§o
+          Navegue com o mouse · Street View pode não estar disponível para este endereço
         </p>
       </div>
     </div>
@@ -793,9 +793,9 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
   if (dev.towers.length === 0) {
     return (
       <div className="py-16 text-center">
-        <div className="text-5xl mb-4">ðŸ—ï¸</div>
+        <div className="text-5xl mb-4">🏗️</div>
         <p className="text-sm font-semibold text-[var(--shell-text)]">Nenhuma torre/quadra cadastrada</p>
-        <p className="text-xs text-[var(--shell-subtext)] mt-1">VÃ¡ para a aba Cadastro e adicione torres para ver o espelho</p>
+        <p className="text-xs text-[var(--shell-subtext)] mt-1">Vá para a aba Cadastro e adicione torres para ver o espelho</p>
       </div>
     );
   }
@@ -806,7 +806,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
       <div className="grid grid-cols-4 gap-3">
         {[
           { label: "Total",      value: total,      color: "text-[var(--shell-text)]",  bg: "bg-[var(--shell-bg)]" },
-          { label: "DisponÃ­vel", value: disponivel, color: "text-green-600",             bg: "bg-green-50 dark:bg-green-900/20" },
+          { label: "Disponível", value: disponivel, color: "text-green-600",             bg: "bg-green-50 dark:bg-green-900/20" },
           { label: "Reservado",  value: reservado,  color: "text-amber-600",             bg: "bg-amber-50 dark:bg-amber-900/20" },
           { label: "Vendido",    value: vendido,    color: "text-red-600",               bg: "bg-red-50 dark:bg-red-900/20" },
         ].map((c) => (
@@ -817,7 +817,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
         ))}
       </div>
 
-      {/* Legenda + Filtros + ExportaÃ§Ã£o */}
+      {/* Legenda + Filtros + Exportação */}
       <div className="flex items-center gap-3 flex-wrap">
         {Object.entries(STATUS_LABEL).map(([k, l]) => (
           <div key={k} className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)]">
@@ -829,11 +829,11 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
           <FiltersPopover filters={filters} setFilters={setFilters} isVertical={isVertical} allFloors={allFloors} />
           <button onClick={exportPNG} disabled={exporting}
             className="flex items-center gap-1.5 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors disabled:opacity-50">
-            ðŸ–¼ï¸ {exporting ? "..." : "PNG"}
+            🖼️ {exporting ? "..." : "PNG"}
           </button>
           <button onClick={exportPDF} disabled={exporting}
             className="flex items-center gap-1.5 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors disabled:opacity-50">
-            ðŸ“„ {exporting ? "..." : "PDF"}
+            📄 {exporting ? "..." : "PDF"}
           </button>
         </div>
       </div>
@@ -856,7 +856,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
         </div>
       )}
 
-      {/* Grade â€” regiÃ£o exportada (PNG/PDF) */}
+      {/* Grade — região exportada (PNG/PDF) */}
       {selectedTower && (
         <div ref={exportRef} className="bg-[var(--shell-bg)] p-4 rounded-2xl">
           {isVertical ? (
@@ -889,7 +889,7 @@ function AbaEspelho({ dev, onUnitUpdated }: {
   return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} />;
 }
 
-// â”€â”€â”€ Tabela de PreÃ§os â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tabela de Preços ─────────────────────────────────────────────────────────
 
 function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   const [edits, setEdits] = useState<Record<string, Partial<DevelopmentUnit>>>({});
@@ -920,10 +920,10 @@ function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void })
     <div className="space-y-4">
       {Object.keys(edits).length > 0 && (
         <div className="flex items-center justify-between rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent)]/5 px-4 py-3">
-          <p className="text-sm text-[var(--shell-text)]">{Object.keys(edits).length} unidade(s) com alteraÃ§Ãµes</p>
+          <p className="text-sm text-[var(--shell-text)]">{Object.keys(edits).length} unidade(s) com alterações</p>
           <button onClick={saveAll} disabled={saving}
             className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-            {saving ? "Salvando..." : "Salvar alteraÃ§Ãµes"}
+            {saving ? "Salvando..." : "Salvar alterações"}
           </button>
         </div>
       )}
@@ -931,7 +931,7 @@ function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void })
         <table className="w-full text-sm">
           <thead className="bg-[var(--shell-bg)]">
             <tr>
-              {["Torre", "Unidade", "Andar", "Status", "Ãrea mÂ²", "Quartos", "SuÃ­tes", "Banheiros", "Vagas", "Vl. Venda (R$)", "Vl. Avaliado (R$)"].map((h) => (
+              {["Torre", "Unidade", "Andar", "Status", "Área m²", "Quartos", "Suítes", "Banheiros", "Vagas", "Vl. Venda (R$)", "Vl. Avaliado (R$)"].map((h) => (
                 <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -945,7 +945,7 @@ function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void })
                 <tr key={unit.id} className={i % 2 === 0 ? "bg-[var(--shell-card-bg)]" : "bg-[var(--shell-bg)]"}>
                   <td className={cellCls}><span className="text-xs text-[var(--shell-subtext)]">{unit.towerNome}</span></td>
                   <td className={`${cellCls} font-medium text-[var(--shell-text)]`}>{unit.nome}</td>
-                  <td className={cellCls}>{unit.andar ?? "â€”"}</td>
+                  <td className={cellCls}>{unit.andar ?? "—"}</td>
                   <td className={cellCls}>
                     <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold text-white"
                       style={{ backgroundColor: STATUS_COLOR[(edit.status ?? unit.status) as UnitStatus] }}>
@@ -969,7 +969,7 @@ function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void })
   );
 }
 
-// â”€â”€â”€ CondiÃ§Ãµes de Pagamento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Condições de Pagamento ───────────────────────────────────────────────────
 
 function PaymentConditionForm({ devId, initial, onSaved }: {
   devId: string; initial?: PaymentCondition | null; onSaved: () => void;
@@ -1019,7 +1019,7 @@ function PaymentConditionForm({ devId, initial, onSaved }: {
         <label className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] p-3 cursor-pointer hover:bg-[var(--shell-hover)] transition-colors">
           <input type="checkbox" checked={form.aceitaFinanciamento} onChange={(e) => set("aceitaFinanciamento", e.target.checked)}
             className="h-4 w-4 rounded accent-[var(--brand-accent)]" />
-          <span className="text-sm font-medium text-[var(--shell-text)]">Aceita financiamento bancÃ¡rio</span>
+          <span className="text-sm font-medium text-[var(--shell-text)]">Aceita financiamento bancário</span>
         </label>
         <label className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] p-3 cursor-pointer hover:bg-[var(--shell-hover)] transition-colors">
           <input type="checkbox" checked={form.proSoluto} onChange={(e) => set("proSoluto", e.target.checked)}
@@ -1030,8 +1030,8 @@ function PaymentConditionForm({ devId, initial, onSaved }: {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { k: "valorAto", l: "Valor de Ato (R$)", p: "Ex.: 5000" },
-          { k: "descontoAVista", l: "Desconto Ã  Vista (%)", p: "Ex.: 5" },
-          { k: "obs", l: "ObservaÃ§Ãµes", p: "Obs. adicionais" },
+          { k: "descontoAVista", l: "Desconto à Vista (%)", p: "Ex.: 5" },
+          { k: "obs", l: "Observações", p: "Obs. adicionais" },
         ].map(({ k, l, p }) => (
           <div key={k} className="space-y-1.5">
             <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">{l}</label>
@@ -1047,17 +1047,17 @@ function PaymentConditionForm({ devId, initial, onSaved }: {
             <input value={form.entradaPercentual} onChange={(e) => set("entradaPercentual", e.target.value)} placeholder="Ex.: 20" className={inp} />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs text-[var(--shell-subtext)]">NÂº de parcelas atÃ© entrega das chaves</label>
+            <label className="text-xs text-[var(--shell-subtext)]">Nº de parcelas até entrega das chaves</label>
             <input value={form.entradaParcelas} onChange={(e) => set("entradaParcelas", e.target.value)} placeholder="Ex.: 24" className={inp} />
           </div>
         </div>
       </div>
       {form.aceitaFinanciamento && (
         <div className="rounded-xl border border-[var(--shell-card-border)] p-4 space-y-3">
-          <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Financiamento BancÃ¡rio</p>
+          <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Financiamento Bancário</p>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs text-[var(--shell-subtext)]">Base de cÃ¡lculo</label>
+              <label className="text-xs text-[var(--shell-subtext)]">Base de cálculo</label>
               <select value={form.financiamentoBase} onChange={(e) => set("financiamentoBase", e.target.value)} className={inp}>
                 <option value="AVALIADO">Valor Avaliado</option>
                 <option value="VENDA">Valor de Venda</option>
@@ -1073,14 +1073,14 @@ function PaymentConditionForm({ devId, initial, onSaved }: {
       <div className="flex justify-end">
         <button onClick={handleSave} disabled={saving}
           className="rounded-xl bg-[var(--brand-accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shadow-sm">
-          {saving ? "Salvando..." : saved ? "âœ“ Salvo!" : "Salvar CondiÃ§Ãµes"}
+          {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar Condições"}
         </button>
       </div>
     </div>
   );
 }
 
-// â”€â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Development }) {
   const fmtCur = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -1091,7 +1091,7 @@ function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Developm
         {[
           { v: `${dashboard.percentualVendido}%`, l: "Vendido", accent: true },
           { v: `${dashboard.vso}%`, l: "VSO (vendido + reservado)" },
-          dev.prazoEntrega && { v: new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "short", year: "numeric" }), l: "PrevisÃ£o entrega" },
+          dev.prazoEntrega && { v: new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "short", year: "numeric" }), l: "Previsão entrega" },
         ].filter(Boolean).map((c: any, i) => (
           <div key={i} className={`rounded-xl border px-5 py-3 text-center ${c.accent ? "border-[var(--brand-accent)]/40 bg-[var(--brand-accent)]/5" : "border-[var(--shell-card-border)]"}`}>
             <p className={`text-3xl font-bold ${c.accent ? "text-[var(--brand-accent)]" : "text-[var(--shell-text)]"}`}>{c.v}</p>
@@ -1102,7 +1102,7 @@ function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Developm
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { l: "Total",      v: dashboard.total,      c: "#6b7280" },
-          { l: "DisponÃ­vel", v: dashboard.disponivel, c: STATUS_COLOR.DISPONIVEL },
+          { l: "Disponível", v: dashboard.disponivel, c: STATUS_COLOR.DISPONIVEL },
           { l: "Reservado",  v: dashboard.reservado,  c: STATUS_COLOR.RESERVADO },
           { l: "Vendido",    v: dashboard.vendido,    c: STATUS_COLOR.VENDIDO },
           { l: "Bloqueado",  v: dashboard.bloqueado,  c: STATUS_COLOR.BLOQUEADO },
@@ -1127,7 +1127,7 @@ function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Developm
         ))}
       </div>
       <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5">
-        <p className="text-sm font-semibold text-[var(--shell-text)] mb-4">Vendas mensais â€” Ãºltimos 12 meses</p>
+        <p className="text-sm font-semibold text-[var(--shell-text)] mb-4">Vendas mensais — últimos 12 meses</p>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--shell-card-border)" />
@@ -1142,7 +1142,7 @@ function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Developm
   );
 }
 
-// â”€â”€â”€ Editor de ImplantaÃ§Ã£o (Fase 2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Editor de Implantação (Fase 2) ──────────────────────────────────────────
 
 async function waitForMaps(): Promise<void> {
   return new Promise((resolve) => {
@@ -1172,7 +1172,7 @@ function ImplantacaoSatelite({ dev, towers, onReload }: { dev: Development; towe
         mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
       });
 
-      // Renderiza shapes do terreno como fundo (nÃ£o editÃ¡veis aqui)
+      // Renderiza shapes do terreno como fundo (não editáveis aqui)
       const terrainShapes: TerrainShape[] = (dev as any).terrainDesign?.shapes ?? [];
       terrainShapes.forEach((s) => {
         const c = SHAPE_COLORS[s.type];
@@ -1214,7 +1214,7 @@ function ImplantacaoSatelite({ dev, towers, onReload }: { dev: Development; towe
         });
 
         const label = new window.google.maps.InfoWindow({
-          content: `<div style="font-family:sans-serif;color:#111;padding:2px 4px"><strong>${t.nome}</strong><br><small>${t.units.length} unid Â· ${dev.tipo === 'VERTICAL' ? `${t.floors} andares` : 'horizontal'}</small></div>`,
+          content: `<div style="font-family:sans-serif;color:#111;padding:2px 4px"><strong>${t.nome}</strong><br><small>${t.units.length} unid · ${dev.tipo === 'VERTICAL' ? `${t.floors} andares` : 'horizontal'}</small></div>`,
         });
         rect.addListener("click", () => {
           const b = rect.getBounds(); if (!b) return;
@@ -1256,7 +1256,7 @@ function ImplantacaoSatelite({ dev, towers, onReload }: { dev: Development; towe
   if (!hasGps) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300 flex items-center justify-between gap-3">
-        <span>Salve as coordenadas GPS na aba/passo <strong>LocalizaÃ§Ã£o</strong> e depois recarregue.</span>
+        <span>Salve as coordenadas GPS na aba/passo <strong>Localização</strong> e depois recarregue.</span>
         {onReload && (
           <button type="button" onClick={() => onReload()}
             className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors">
@@ -1277,7 +1277,7 @@ function ImplantacaoSatelite({ dev, towers, onReload }: { dev: Development; towe
   return (
     <div className="space-y-2">
       <p className="text-xs text-[var(--shell-subtext)]">
-        Arraste cada retÃ¢ngulo azul para reposicionar; use os handles brancos para redimensionar. MudanÃ§as sÃ£o salvas automaticamente.
+        Arraste cada retângulo azul para reposicionar; use os handles brancos para redimensionar. Mudanças são salvas automaticamente.
       </p>
       <div ref={mapRef} className="w-full h-96 rounded-xl overflow-hidden border border-[var(--shell-card-border)]" />
     </div>
@@ -1344,7 +1344,7 @@ function ImplantacaoImagem({ dev, towers }: { dev: Development; towers: Tower[] 
   if (!dev.implantacaoUrl) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-        FaÃ§a upload da planta de implantaÃ§Ã£o (no card de upload abaixo) para usar este modo.
+        Faça upload da planta de implantação (no card de upload abaixo) para usar este modo.
       </div>
     );
   }
@@ -1359,11 +1359,11 @@ function ImplantacaoImagem({ dev, towers }: { dev: Development; towers: Tower[] 
   return (
     <div className="space-y-2">
       <p className="text-xs text-[var(--shell-subtext)]">
-        Arraste o corpo da torre para mover Â· use o canto â—¢ inferior direito para redimensionar.
+        Arraste o corpo da torre para mover · use o canto ◢ inferior direito para redimensionar.
       </p>
       <div ref={containerRef}
         className="relative inline-block w-full overflow-hidden rounded-xl border border-[var(--shell-card-border)] bg-slate-900 select-none">
-        <img src={dev.implantacaoUrl} alt="ImplantaÃ§Ã£o" className="w-full h-auto block pointer-events-none" draggable={false} />
+        <img src={dev.implantacaoUrl} alt="Implantação" className="w-full h-auto block pointer-events-none" draggable={false} />
         {towers.map((t) => {
           const r = getRect(t);
           return (
@@ -1395,16 +1395,16 @@ function ImplantacaoImagem({ dev, towers }: { dev: Development; towers: Tower[] 
   );
 }
 
-// â”€â”€â”€ Editor de Terreno (Fase 4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Editor de Terreno (Fase 4) ──────────────────────────────────────────────
 
 const SHAPE_COLORS: Record<TerrainShapeType, { fill: string; stroke: string; label: string; emoji: string; opacity: number }> = {
-  CONTORNO: { fill: "#f59e0b", stroke: "#f59e0b", label: "Contorno",  emoji: "ðŸ”²", opacity: 0    },
-  RUA:      { fill: "#374151", stroke: "#374151", label: "Rua",       emoji: "ðŸ›£ï¸", opacity: 0.7  },
-  JARDIM:   { fill: "#22c55e", stroke: "#16a34a", label: "Jardim",    emoji: "ðŸŒ³", opacity: 0.45 },
-  PISCINA:  { fill: "#0ea5e9", stroke: "#0284c7", label: "Piscina",   emoji: "ðŸŠ", opacity: 0.55 },
-  SALAO:    { fill: "#fef3c7", stroke: "#a16207", label: "SalÃ£o",     emoji: "ðŸ¢", opacity: 0.65 },
-  GARAGEM:  { fill: "#78716c", stroke: "#57534e", label: "Garagem",   emoji: "ðŸš—", opacity: 0.4  },
-  QUADRA:   { fill: "#fb923c", stroke: "#ea580c", label: "Quadra",    emoji: "âš½", opacity: 0.45 },
+  CONTORNO: { fill: "#f59e0b", stroke: "#f59e0b", label: "Contorno",  emoji: "🔲", opacity: 0    },
+  RUA:      { fill: "#374151", stroke: "#374151", label: "Rua",       emoji: "🛣️", opacity: 0.7  },
+  JARDIM:   { fill: "#22c55e", stroke: "#16a34a", label: "Jardim",    emoji: "🌳", opacity: 0.45 },
+  PISCINA:  { fill: "#0ea5e9", stroke: "#0284c7", label: "Piscina",   emoji: "🏊", opacity: 0.55 },
+  SALAO:    { fill: "#fef3c7", stroke: "#a16207", label: "Salão",     emoji: "🏢", opacity: 0.65 },
+  GARAGEM:  { fill: "#78716c", stroke: "#57534e", label: "Garagem",   emoji: "🚗", opacity: 0.4  },
+  QUADRA:   { fill: "#fb923c", stroke: "#ea580c", label: "Quadra",    emoji: "⚽", opacity: 0.45 },
 };
 
 function newShapeId() { return Math.random().toString(36).slice(2, 10); }
@@ -1504,11 +1504,11 @@ function TerrenoSateliteCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape
       pathArr.addListener("remove_at", persistPath);
       overlay.addListener("dragend", persistPath);
 
-      // Right-click no vÃ©rtice â†’ remover
+      // Right-click no vértice → remover
       overlay.addListener("rightclick", (e: any) => {
         if (e.vertex !== undefined) {
           if (pathArr.getLength() <= minPoints) {
-            alert(`MÃ­nimo ${minPoints} pontos.`);
+            alert(`Mínimo ${minPoints} pontos.`);
             return;
           }
           pathArr.removeAt(e.vertex);
@@ -1540,7 +1540,7 @@ function TerrenoSateliteCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape
         label: { text: String(i + 1), color: "#fff", fontSize: "10px", fontWeight: "700" },
         icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: c.stroke, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
         draggable: true,
-        title: "Arraste para mover Â· botÃ£o direito para excluir",
+        title: "Arraste para mover · botão direito para excluir",
       });
       m.addListener("dragend", (e: any) => {
         onMoveDrawingPointRef.current?.(i, { lat: e.latLng.lat(), lng: e.latLng.lng() });
@@ -1548,7 +1548,7 @@ function TerrenoSateliteCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape
       m.addListener("rightclick", () => {
         onDeleteDrawingPointRef.current?.(i);
       });
-      // Clique no marcador NÃƒO adiciona ponto novo (stopPropagation via marker)
+      // Clique no marcador NÃO adiciona ponto novo (stopPropagation via marker)
       drawingOverlaysRef.current.push(m);
     });
   }, [drawing]);
@@ -1556,7 +1556,7 @@ function TerrenoSateliteCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape
   if (!hasGps) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-        Defina o GPS do empreendimento (na seÃ§Ã£o LocalizaÃ§Ã£o) para desenhar sobre o satÃ©lite.
+        Defina o GPS do empreendimento (na seção Localização) para desenhar sobre o satélite.
       </div>
     );
   }
@@ -1566,12 +1566,12 @@ function TerrenoSateliteCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape
         className={`w-full h-96 rounded-xl overflow-hidden border border-[var(--shell-card-border)] ${drawing ? "cursor-crosshair" : ""}`} />
       {drawing && (
         <p className="text-[11px] text-[var(--shell-subtext)]">
-          Clique no mapa para adicionar pontos Â· <strong>arraste</strong> um ponto numerado para mover Â· <strong>botÃ£o direito</strong> num ponto para excluir
+          Clique no mapa para adicionar pontos · <strong>arraste</strong> um ponto numerado para mover · <strong>botão direito</strong> num ponto para excluir
         </p>
       )}
       {!drawing && shapes.length > 0 && (
         <p className="text-[11px] text-[var(--shell-subtext)]">
-          ðŸ’¡ Arraste os <strong>vÃ©rtices brancos</strong> para mover Â· clique nos <strong>pontos translÃºcidos do meio</strong> de uma aresta para inserir vÃ©rtice Â· <strong>botÃ£o direito</strong> num vÃ©rtice para remover Â· <strong>â§‰</strong> na lista abaixo para duplicar
+          💡 Arraste os <strong>vértices brancos</strong> para mover · clique nos <strong>pontos translúcidos do meio</strong> de uma aresta para inserir vértice · <strong>botão direito</strong> num vértice para remover · <strong>⧉</strong> na lista abaixo para duplicar
         </p>
       )}
     </div>
@@ -1589,7 +1589,7 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
   const [dragVertex, setDragVertex] = useState<{ shapeId: string; vIdx: number } | null>(null);
   const [dragDrawingPt, setDragDrawingPt] = useState<number | null>(null); // idx do ponto do drawing sendo arrastado
   const [localShapes, setLocalShapes] = useState<TerrainShape[] | null>(null);
-  const [localDrawing, setLocalDrawing] = useState<TerrainShape | null>(null); // cÃ³pia local durante drag de ponto do drawing
+  const [localDrawing, setLocalDrawing] = useState<TerrainShape | null>(null); // cópia local durante drag de ponto do drawing
 
   // Sincroniza localShapes com props quando shapes muda externamente
   useEffect(() => { setLocalShapes(null); }, [shapes]);
@@ -1609,12 +1609,12 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
 
   function handleContainerClick(e: React.MouseEvent) {
     if (!drawing) return;
-    if (dragDrawingPt !== null) return; // arrastou um ponto â€” nÃ£o adiciona
+    if (dragDrawingPt !== null) return; // arrastou um ponto — não adiciona
     const p = getXY(e);
     if (p) onAddPoint(p);
   }
 
-  // Inserir vÃ©rtice no meio de uma aresta
+  // Inserir vértice no meio de uma aresta
   function insertVertex(shapeId: string, afterIdx: number, p: { x: number; y: number }) {
     const next = renderedShapes.map((s) => {
       if (s.id !== shapeId) return s;
@@ -1631,7 +1631,7 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
     const target = renderedShapes.find((s) => s.id === shapeId);
     if (!target) return;
     const min = target.type === "RUA" ? 2 : 3;
-    if (target.points.length <= min) { alert(`MÃ­nimo ${min} pontos.`); return; }
+    if (target.points.length <= min) { alert(`Mínimo ${min} pontos.`); return; }
     const next = renderedShapes.map((s) =>
       s.id !== shapeId ? s : { ...s, points: (s.points as any[]).filter((_, i) => i !== vIdx) }
     );
@@ -1640,7 +1640,7 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
     onUpdateShape(shapeId, t.points as any);
   }
 
-  // Drag de vÃ©rtice de shape finalizada
+  // Drag de vértice de shape finalizada
   useEffect(() => {
     if (!dragVertex) return;
     function onMove(e: MouseEvent) {
@@ -1709,7 +1709,7 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
   if (!dev.implantacaoUrl) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-        FaÃ§a upload da planta de implantaÃ§Ã£o para desenhar sobre ela.
+        Faça upload da planta de implantação para desenhar sobre ela.
       </div>
     );
   }
@@ -1722,7 +1722,7 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
   return (
     <div ref={containerRef} onClick={handleContainerClick}
       className={`relative inline-block w-full overflow-hidden rounded-xl border border-[var(--shell-card-border)] bg-slate-900 select-none ${drawing ? "cursor-crosshair" : ""}`}>
-      <img src={dev.implantacaoUrl} alt="ImplantaÃ§Ã£o" className="w-full h-auto block pointer-events-none" draggable={false} />
+      <img src={dev.implantacaoUrl} alt="Implantação" className="w-full h-auto block pointer-events-none" draggable={false} />
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ pointerEvents: drawing ? "none" : "auto" }}>
         {/* Shapes confirmadas */}
         {renderedShapes.map((s) => {
@@ -1737,7 +1737,7 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
               ) : (
                 <polygon points={ptsStr} stroke={c.stroke} strokeWidth="0.003" fill={c.fill} fillOpacity={c.opacity} />
               )}
-              {/* Pontos intermediÃ¡rios (clicar para inserir vÃ©rtice) */}
+              {/* Pontos intermediários (clicar para inserir vértice) */}
               {pts.map((p, i) => {
                 const next = isLine ? (i < pts.length - 1 ? pts[i + 1] : null) : pts[(i + 1) % pts.length];
                 if (!next) return null;
@@ -1749,7 +1749,7 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
                     onClick={(e) => { e.stopPropagation(); insertVertex(s.id, i, mp); }} />
                 );
               })}
-              {/* VÃ©rtices */}
+              {/* Vértices */}
               {pts.map((p, i) => (
                 <circle key={`v-${i}`} cx={p.x} cy={p.y} r="0.009"
                   fill={c.stroke} stroke="#fff" strokeWidth="0.002"
@@ -1788,12 +1788,12 @@ function TerrenoImagemCanvas({ dev, shapes, drawing, onAddPoint, onUpdateShape, 
       </svg>
       {drawing && (
         <div className="absolute bottom-2 left-2 right-2 rounded-md bg-slate-900/85 px-3 py-1.5 text-[10px] text-white pointer-events-none">
-          Clique na imagem para adicionar pontos Â· <strong>arraste</strong> um ponto numerado para mover Â· <strong>botÃ£o direito</strong> para excluir
+          Clique na imagem para adicionar pontos · <strong>arraste</strong> um ponto numerado para mover · <strong>botão direito</strong> para excluir
         </div>
       )}
       {!drawing && renderedShapes.length > 0 && (
         <div className="absolute bottom-2 left-2 right-2 rounded-md bg-slate-900/85 px-3 py-1.5 text-[10px] text-white pointer-events-none">
-          Arraste os pontos coloridos para mover Â· clique nos pontos brancos pequenos para inserir vÃ©rtice Â· botÃ£o direito num vÃ©rtice para remover Â· <strong>â§‰</strong> na lista para duplicar
+          Arraste os pontos coloridos para mover · clique nos pontos brancos pequenos para inserir vértice · botão direito num vértice para remover · <strong>⧉</strong> na lista para duplicar
         </div>
       )}
     </div>
@@ -1821,7 +1821,7 @@ function Stepper({ completeness, current, onJump }: {
                 isCurrent ? "bg-white text-[var(--brand-accent)]"
                   : done ? "bg-green-500 text-white"
                   : "bg-[var(--shell-card-border)] text-[var(--shell-subtext)]"
-              }`}>{done ? "âœ“" : i + 1}</span>
+              }`}>{done ? "✓" : i + 1}</span>
               <span className="hidden sm:inline">{label}</span>
             </button>
             {i < STEP_LABELS.length - 1 && (
@@ -1834,11 +1834,11 @@ function Stepper({ completeness, current, onJump }: {
   );
 }
 
-// â”€â”€â”€ StepHandle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── StepHandle ──────────────────────────────────────────────────────────────
 
 type StepHandle = { save: () => Promise<boolean> };
 
-// â”€â”€â”€ Step 1 â€” IdentificaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Step 1 — Identificação ──────────────────────────────────────────────────
 
 const Step1Identificacao = forwardRef(function Step1Identificacao(
   { dev, onSaved, embeddedSubmit }: { dev: Development; onSaved: () => void; embeddedSubmit?: boolean },
@@ -1872,7 +1872,7 @@ const Step1Identificacao = forwardRef(function Step1Identificacao(
 
   return (
     <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm max-w-2xl">
-      <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">IdentificaÃ§Ã£o</p>
+      <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Identificação</p>
       <div className="space-y-1.5">
         <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nome *</label>
         <input value={nome} onChange={(e) => { setNome(e.target.value); setSaved(false); }} className={inp} />
@@ -1881,7 +1881,7 @@ const Step1Identificacao = forwardRef(function Step1Identificacao(
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Tipo</label>
           <select value={tipo} onChange={(e) => { setTipo(e.target.value as any); setSaved(false); }} className={inp}>
-            <option value="VERTICAL">Vertical (PrÃ©dio)</option>
+            <option value="VERTICAL">Vertical (Prédio)</option>
             <option value="HORIZONTAL">Horizontal</option>
           </select>
         </div>
@@ -1903,26 +1903,26 @@ const Step1Identificacao = forwardRef(function Step1Identificacao(
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Status</label>
           <select value={status} onChange={(e) => { setStatus(e.target.value); setSaved(false); }} className={inp}>
-            <option value="LANCAMENTO">LanÃ§amento</option>
+            <option value="LANCAMENTO">Lançamento</option>
             <option value="EM_OBRA">Em Obra</option>
-            <option value="CONCLUIDO">ConcluÃ­do</option>
+            <option value="CONCLUIDO">Concluído</option>
           </select>
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">PrevisÃ£o de entrega *</label>
+          <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Previsão de entrega *</label>
           <input type="date" value={prazoEntrega} onChange={(e) => { setPrazoEntrega(e.target.value); setSaved(false); }} className={inp} />
         </div>
       </div>
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">DescriÃ§Ã£o (opcional)</label>
+        <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Descrição (opcional)</label>
         <textarea value={descricao} onChange={(e) => { setDescricao(e.target.value); setSaved(false); }} rows={3}
-          className={`${inp} resize-none`} placeholder="Breve descriÃ§Ã£o do empreendimento..." />
+          className={`${inp} resize-none`} placeholder="Breve descrição do empreendimento..." />
       </div>
       {embeddedSubmit && (
         <div className="flex justify-end">
           <button onClick={save} disabled={saving}
             className="rounded-xl bg-[var(--brand-accent)] px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-            {saving ? "Salvando..." : saved ? "âœ“ Salvo!" : "Salvar"}
+            {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar"}
           </button>
         </div>
       )}
@@ -1930,7 +1930,7 @@ const Step1Identificacao = forwardRef(function Step1Identificacao(
   );
 });
 
-// â”€â”€â”€ Step 2 â€” LocalizaÃ§Ã£o (com 2 marcadores) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Step 2 — Localização (com 2 marcadores) ─────────────────────────────────
 
 type MarkerMode = "CENTRO" | "ENTRADA";
 
@@ -2044,8 +2044,8 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
         lat: latRef.current ?? null, lng: lngRef.current ?? null,
         entranceLat: entLatRef.current ?? null, entranceLng: entLngRef.current ?? null,
       } as any);
-      setSaved(false); // marca que hÃ¡ dados salvos mas outros campos ainda podem ter alteraÃ§Ãµes
-    } catch { /* silencioso â€” o save completo vai capturar o erro */ }
+      setSaved(false); // marca que há dados salvos mas outros campos ainda podem ter alterações
+    } catch { /* silencioso — o save completo vai capturar o erro */ }
   }
 
   async function save(): Promise<boolean> {
@@ -2069,15 +2069,15 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
 
   return (
     <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm max-w-3xl">
-      <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">LocalizaÃ§Ã£o</p>
+      <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Localização</p>
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">EndereÃ§o *</label>
+        <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Endereço *</label>
         <input ref={addressInputRef} value={endereco} onChange={(e) => { setEndereco(e.target.value); setSaved(false); }} placeholder="Digite para buscar no mapa..." className={inp} />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Cidade *</label>
-          <input value={cidade} onChange={(e) => { setCidade(e.target.value); setSaved(false); }} placeholder="SÃ£o Paulo" className={inp} />
+          <input value={cidade} onChange={(e) => { setCidade(e.target.value); setSaved(false); }} placeholder="São Paulo" className={inp} />
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Estado *</label>
@@ -2087,11 +2087,11 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
       {process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">LocalizaÃ§Ã£o no mapa</label>
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Localização no mapa</label>
             <div className="flex rounded-lg border border-[var(--shell-card-border)] overflow-hidden text-xs">
               {[
-                { k: "CENTRO" as MarkerMode, l: "ðŸŸ¦ Centro do terreno" },
-                { k: "ENTRADA" as MarkerMode, l: "ðŸŸ§ Entrada principal" },
+                { k: "CENTRO" as MarkerMode, l: "🟦 Centro do terreno" },
+                { k: "ENTRADA" as MarkerMode, l: "🟧 Entrada principal" },
               ].map(({ k, l }) => (
                 <button key={k} type="button" onClick={() => setMarkerMode(k)}
                   className={`px-3 py-1.5 font-medium transition-colors ${markerMode === k ? "bg-[var(--brand-accent)] text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
@@ -2100,10 +2100,10 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
               ))}
             </div>
           </div>
-          {/* Inputs numÃ©ricos de lat/lng â€” ficam ACIMA do mapa para fÃ¡cil preenchimento */}
+          {/* Inputs numéricos de lat/lng — ficam ACIMA do mapa para fácil preenchimento */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-xl border border-[var(--shell-card-border)] p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--shell-subtext)]">ðŸŸ¦ Centro do terreno</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--shell-subtext)]">🟦 Centro do terreno</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <label className="text-[10px] text-[var(--shell-subtext)]">Latitude</label>
@@ -2142,7 +2142,7 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
               </div>
             </div>
             <div className="rounded-xl border border-[var(--shell-card-border)] p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--shell-subtext)]">ðŸŸ§ Entrada principal</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--shell-subtext)]">🟧 Entrada principal</p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <label className="text-[10px] text-[var(--shell-subtext)]">Latitude</label>
@@ -2182,8 +2182,8 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
             </div>
           </div>
           <p className="text-[11px] text-[var(--shell-subtext)]">
-            Preencha as coordenadas acima ou clique no mapa. VocÃª tambÃ©m pode <strong>arrastar</strong> os marcadores para ajustar.
-            A entrada principal define onde o passeio Street View comeÃ§a.
+            Preencha as coordenadas acima ou clique no mapa. Você também pode <strong>arrastar</strong> os marcadores para ajustar.
+            A entrada principal define onde o passeio Street View começa.
           </p>
           <div ref={mapRef} className="w-full h-72 rounded-xl overflow-hidden border border-[var(--shell-card-border)]" />
         </div>
@@ -2203,7 +2203,7 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
         <div className="flex justify-end">
           <button onClick={save} disabled={saving}
             className="rounded-xl bg-[var(--brand-accent)] px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-            {saving ? "Salvando..." : saved ? "âœ“ Salvo!" : "Salvar"}
+            {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar"}
           </button>
         </div>
       )}
@@ -2211,8 +2211,7 @@ const Step2Localizacao = forwardRef(function Step2Localizacao(
   );
 });
 
-
-// â”€â”€â”€ Step 3 â€” Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Step 3 — Layout ─────────────────────────────────────────────────────────
 
 function Step3Layout({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   return (
@@ -2222,7 +2221,7 @@ function Step3Layout({ dev, onSaved }: { dev: Development; onSaved: () => void }
   );
 }
 
-// â”€â”€â”€ TowerConfigModal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── TowerConfigModal ─────────────────────────────────────────────────────────
 
 const FACADE_COLORS = [
   "#f5f5f0", "#e5e7eb", "#d4d4d4", "#fef3c7", "#fde68a",
@@ -2231,16 +2230,16 @@ const FACADE_COLORS = [
 ];
 
 const BALCONY_OPTS: { value: string; label: string; icon: string }[] = [
-  { value: "NONE",      label: "Nenhuma",    icon: "â¬›" },
-  { value: "LAJE",      label: "Laje",       icon: "ðŸ—ï¸" },
-  { value: "VIDRO",     label: "Vidro",      icon: "ðŸªŸ" },
-  { value: "FRANCESA",  label: "Francesa",   icon: "ðŸŒ¿" },
+  { value: "NONE",      label: "Nenhuma",    icon: "⬛" },
+  { value: "LAJE",      label: "Laje",       icon: "🏗️" },
+  { value: "VIDRO",     label: "Vidro",      icon: "🪟" },
+  { value: "FRANCESA",  label: "Francesa",   icon: "🌿" },
 ];
 
 const ROOF_OPTS: { value: string; label: string; icon: string }[] = [
-  { value: "PLANO",     label: "Plano",      icon: "â–¬" },
-  { value: "INCLINADO", label: "Inclinado",  icon: "â›º" },
-  { value: "PIRAMIDE",  label: "PirÃ¢mide",   icon: "ðŸ”º" },
+  { value: "PLANO",     label: "Plano",      icon: "▬" },
+  { value: "INCLINADO", label: "Inclinado",  icon: "⛺" },
+  { value: "PIRAMIDE",  label: "Pirâmide",   icon: "🔺" },
 ];
 
 type CellType = "APT" | "HALL" | "EMPTY";
@@ -2271,7 +2270,7 @@ function FloorPlanEditor({
           <label className="text-xs font-semibold text-[var(--shell-subtext)]">Colunas</label>
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => onChangeCols(Math.max(1, cols - 1))}
-              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">âˆ’</button>
+              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">−</button>
             <span className="w-6 text-center text-sm font-bold text-[var(--shell-text)]">{cols}</span>
             <button type="button" onClick={() => onChangeCols(Math.min(8, cols + 1))}
               className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">+</button>
@@ -2281,7 +2280,7 @@ function FloorPlanEditor({
           <label className="text-xs font-semibold text-[var(--shell-subtext)]">Linhas</label>
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => onChangeRows(Math.max(1, rows - 1))}
-              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">âˆ’</button>
+              className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">−</button>
             <span className="w-6 text-center text-sm font-bold text-[var(--shell-text)]">{rows}</span>
             <button type="button" onClick={() => onChangeRows(Math.min(4, rows + 1))}
               className="w-7 h-7 rounded border border-[var(--shell-card-border)] text-sm font-bold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] flex items-center justify-center">+</button>
@@ -2289,7 +2288,7 @@ function FloorPlanEditor({
         </div>
         <div className="ml-auto text-xs text-[var(--shell-subtext)]">
           <span className="font-bold text-blue-500">{aptCount}</span> apto{aptCount !== 1 ? "s" : ""}
-          {hallCount > 0 && <> Â· <span className="font-bold text-amber-600">{hallCount}</span> hall</>}
+          {hallCount > 0 && <> · <span className="font-bold text-amber-600">{hallCount}</span> hall</>}
         </div>
       </div>
 
@@ -2297,7 +2296,7 @@ function FloorPlanEditor({
         <div className="inline-grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}>
           {cells.map((cell, idx) => (
             <button key={idx} type="button"
-              title={`Clique para alternar: APT â†’ HALL â†’ EMPTY`}
+              title={`Clique para alternar: APT → HALL → EMPTY`}
               onClick={() => onToggleCell(idx)}
               className={`w-10 h-10 rounded text-xs font-bold transition-colors ${CELL_COLOR[cell]}`}>
               {CELL_LABEL[cell]}
@@ -2308,7 +2307,7 @@ function FloorPlanEditor({
 
       <div className="flex gap-4 text-[10px] text-[var(--shell-subtext)]">
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-400 inline-block" /> Apartamento</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-300 inline-block" /> Hall/CirculaÃ§Ã£o</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-300 inline-block" /> Hall/Circulação</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-dashed border-[var(--shell-card-border)] bg-[var(--shell-bg)] inline-block" /> Vazio</span>
       </div>
     </div>
@@ -2418,7 +2417,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
   const [busy, setBusy] = useState(false);
 
-  // ConfiguraÃ§Ã£o de lados: { "1": "Norte", "2": "Sul", ... }
+  // Configuração de lados: { "1": "Norte", "2": "Sul", ... }
   const initLadoConfig = (): Record<string, string> => {
     const cfg = tower?.ladoConfig;
     if (cfg && typeof cfg === "object") return { ...(cfg as Record<string, string>) };
@@ -2488,13 +2487,13 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
           <h3 className="text-base font-bold text-[var(--shell-text)]">
             {isEdit ? `Editar ${towerLabel}` : `Nova ${towerLabel}`}
           </h3>
-          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-2xl leading-none">Ã—</button>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-2xl leading-none">×</button>
         </div>
 
         <div className="p-6 space-y-6">
-          {/* SeÃ§Ã£o 1 â€” IdentificaÃ§Ã£o */}
+          {/* Seção 1 — Identificação */}
           <section>
-            <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">IdentificaÃ§Ã£o</p>
+            <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Identificação</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 space-y-1">
                 <label className="text-xs font-semibold text-[var(--shell-subtext)]">Nome *</label>
@@ -2518,18 +2517,18 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                   className={`w-10 h-5 rounded-full transition-colors flex items-center ${hasLobby ? "bg-[var(--brand-accent)]" : "bg-gray-300 dark:bg-gray-600"}`}>
                   <span className={`w-4 h-4 rounded-full bg-white shadow transition-transform mx-0.5 ${hasLobby ? "translate-x-5" : ""}`} />
                 </div>
-                <span className="text-xs text-[var(--shell-text)]">Hall/Lobby tÃ©rreo (sem apartamentos no 1Âº andar)</span>
+                <span className="text-xs text-[var(--shell-text)]">Hall/Lobby térreo (sem apartamentos no 1º andar)</span>
               </label>
             </div>
           </section>
 
-          {/* SeÃ§Ã£o 2 â€” Planta do Andar */}
+          {/* Seção 2 — Planta do Andar */}
           {isVertical && (
             <section>
               <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Planta do Andar</p>
               <p className="text-[11px] text-[var(--shell-subtext)] mb-3">
-                Clique nas cÃ©lulas para definir o layout: <strong>A</strong>=Apartamento Â· <strong>H</strong>=Hall Â· <strong>vazio</strong>=sem uso.
-                Determina a forma do prÃ©dio e a quantidade de aptos por andar.
+                Clique nas células para definir o layout: <strong>A</strong>=Apartamento · <strong>H</strong>=Hall · <strong>vazio</strong>=sem uso.
+                Determina a forma do prédio e a quantidade de aptos por andar.
               </p>
               <FloorPlanEditor
                 cols={fpCols} rows={fpRows} cells={fpCells}
@@ -2537,23 +2536,23 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
               />
               <div className="grid grid-cols-2 gap-3 mt-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Largura de cada cÃ©lula (m)</label>
+                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Largura de cada célula (m)</label>
                   <input type="number" step={0.5} min={2} max={12} value={cellWidthM}
                     onChange={(e) => setCellWidthM(e.target.value)} className={inp} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Profundidade de cada cÃ©lula (m)</label>
+                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Profundidade de cada célula (m)</label>
                   <input type="number" step={0.5} min={2} max={15} value={cellDepthM}
                     onChange={(e) => setCellDepthM(e.target.value)} className={inp} />
                 </div>
               </div>
               <p className="text-[11px] text-[var(--shell-subtext)] mt-2">
-                DimensÃµes derivadas: <strong>{larguraM.toFixed(1)} m</strong> Ã— <strong>{profM.toFixed(1)} m</strong> Â· {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar
+                Dimensões derivadas: <strong>{larguraM.toFixed(1)} m</strong> × <strong>{profM.toFixed(1)} m</strong> · {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar
               </p>
             </section>
           )}
 
-          {/* SeÃ§Ã£o 3 â€” Tipo de Teto */}
+          {/* Seção 3 — Tipo de Teto */}
           <section>
             <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Tipo de Teto</p>
             <div className="flex gap-2 flex-wrap">
@@ -2571,7 +2570,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             </div>
           </section>
 
-          {/* SeÃ§Ã£o 4 â€” Fachada */}
+          {/* Seção 4 — Fachada */}
           <section>
             <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Cor da Fachada</p>
             <div className="flex gap-2 flex-wrap">
@@ -2609,19 +2608,19 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             )}
           </section>
 
-          {/* SeÃ§Ã£o: Configurar Lados */}
+          {/* Seção: Configurar Lados */}
           {isVertical && aptCount > 0 && (
             <section>
               <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Configurar Lados</p>
               <p className="text-[11px] text-[var(--shell-subtext)] mb-3">
-                Atribua um lado (vista) para cada posiÃ§Ã£o de apartamento por andar. Usado para filtrar o Espelho de Vendas.
+                Atribua um lado (vista) para cada posição de apartamento por andar. Usado para filtrar o Espelho de Vendas.
               </p>
               <div className="space-y-2">
                 {Array.from({ length: aptCount }, (_, i) => {
                   const pos = String(i + 1);
                   return (
                     <div key={pos} className="flex items-center gap-3">
-                      <span className="w-20 text-xs font-semibold text-[var(--shell-text)] shrink-0">PosiÃ§Ã£o {pos}</span>
+                      <span className="w-20 text-xs font-semibold text-[var(--shell-text)] shrink-0">Posição {pos}</span>
                       <select
                         value={ladoConfig[pos] ?? ""}
                         onChange={(e) => setLadoConfig((prev) => {
@@ -2632,7 +2631,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                         })}
                         className={`${inp} flex-1`}
                       >
-                        <option value="">â€” sem lado â€”</option>
+                        <option value="">— sem lado —</option>
                         {LADO_OPTIONS.map((l) => (
                           <option key={l} value={l}>{l}</option>
                         ))}
@@ -2647,7 +2646,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
           {/* Preview 3D (SVG) */}
           {isVertical && (
             <section>
-              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">PrÃ©-visualizaÃ§Ã£o</p>
+              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Pré-visualização</p>
               <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-4 flex items-end justify-center min-h-[140px]">
                 <Tower3DPreview
                   cols={fpCols} rows={fpRows}
@@ -2659,7 +2658,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                 />
               </div>
               <p className="text-[11px] text-center text-[var(--shell-subtext)] mt-1">
-                {parseInt(floors) || 1} andares Â· {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar Â· {(parseInt(floors) || 1) * aptCount} unidades totais
+                {parseInt(floors) || 1} andares · {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar · {(parseInt(floors) || 1) * aptCount} unidades totais
               </p>
             </section>
           )}
@@ -2673,7 +2672,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
           </button>
           <button onClick={handleSave} disabled={busy || !nome.trim() || (isVertical && aptCount === 0)}
             className="rounded-xl bg-[var(--brand-accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
-            {busy ? "Salvando..." : isEdit ? "Salvar alteraÃ§Ãµes" : `Criar ${towerLabel}`}
+            {busy ? "Salvando..." : isEdit ? "Salvar alterações" : `Criar ${towerLabel}`}
           </button>
         </div>
       </div>
@@ -2688,7 +2687,7 @@ function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () =>
   const towerLabel = isVertical ? "Torre" : "Quadra";
 
   async function handleDelete(towerId: string) {
-    if (!confirm(`Excluir esta ${towerLabel.toLowerCase()}? Todas as unidades serÃ£o removidas.`)) return;
+    if (!confirm(`Excluir esta ${towerLabel.toLowerCase()}? Todas as unidades serão removidas.`)) return;
     await deleteTower(dev.id, towerId);
     onSaved();
   }
@@ -2698,7 +2697,7 @@ function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () =>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">{towerLabel}s ({dev.towers.length})</p>
-          <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Configure cada {towerLabel.toLowerCase()}: planta, fachada e detalhes. Posicione no editor de implantaÃ§Ã£o abaixo.</p>
+          <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Configure cada {towerLabel.toLowerCase()}: planta, fachada e detalhes. Posicione no editor de implantação abaixo.</p>
         </div>
         <button type="button" onClick={() => { setEditTower(undefined); setShowModal(true); }}
           className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
@@ -2716,7 +2715,7 @@ function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () =>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-[var(--shell-text)] truncate">{t.nome}</p>
                   <p className="text-[11px] text-[var(--shell-subtext)]">
-                    {t.larguraM.toFixed(0)}Ã—{t.profundidadeM.toFixed(0)}m Â· {aptPerFloor} apto/andar Â· {t.roofType ?? "PLANO"}
+                    {t.larguraM.toFixed(0)}×{t.profundidadeM.toFixed(0)}m · {aptPerFloor} apto/andar · {t.roofType ?? "PLANO"}
                   </p>
                 </div>
                 <button type="button" onClick={() => { setEditTower(t); setShowModal(true); }}
@@ -2744,7 +2743,7 @@ function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () =>
   );
 }
 
-// â”€â”€â”€ Step 4 â€” EstruturaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Step 4 — Estruturação ───────────────────────────────────────────────────
 
 function Step4Estruturacao({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   const isVertical = dev.tipo === "VERTICAL";
@@ -2753,9 +2752,9 @@ function Step4Estruturacao({ dev, onSaved }: { dev: Development; onSaved: () => 
   return (
     <div className="space-y-5 max-w-3xl">
       <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 shadow-sm">
-        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-1">EstruturaÃ§Ã£o das {towerLabel}s</p>
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-1">Estruturação das {towerLabel}s</p>
         <p className="text-xs text-[var(--shell-subtext)]">
-          Defina quantos {isVertical ? "andares e unidades por andar" : "lotes ou casas"} cada {towerLabel.toLowerCase()} terÃ¡. As unidades serÃ£o criadas automaticamente.
+          Defina quantos {isVertical ? "andares e unidades por andar" : "lotes ou casas"} cada {towerLabel.toLowerCase()} terá. As unidades serão criadas automaticamente.
         </p>
       </div>
       {dev.towers.length === 0 ? (
@@ -2802,7 +2801,7 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
           prefix,
         });
       } else if (currentUnits !== expectedUnits) {
-        alert(`A torre ${tower.nome} tem ${currentUnits} unidades cadastradas, mas vocÃª configurou ${expectedUnits}. Para reconfigurar, exclua a torre no Layout e recrie.`);
+        alert(`A torre ${tower.nome} tem ${currentUnits} unidades cadastradas, mas você configurou ${expectedUnits}. Para reconfigurar, exclua a torre no Layout e recrie.`);
       }
       onSaved();
     } catch (e: any) { alert("Erro: " + (e?.message ?? e)); }
@@ -2815,7 +2814,7 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
         <div>
           <p className="text-sm font-bold text-[var(--shell-text)]">{tower.nome}</p>
           <p className="text-[11px] text-[var(--shell-subtext)]">
-            {fullyCreated ? `âœ… ${currentUnits} unidades` : currentUnits === 0 ? "âš ï¸ Sem unidades" : `âš ï¸ ${currentUnits}/${expectedUnits} unidades`}
+            {fullyCreated ? `✅ ${currentUnits} unidades` : currentUnits === 0 ? "⚠️ Sem unidades" : `⚠️ ${currentUnits}/${expectedUnits} unidades`}
           </p>
         </div>
       </div>
@@ -2843,33 +2842,33 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
         <span className="text-xs text-[var(--shell-subtext)]">Total: <strong>{expectedUnits}</strong> unidades</span>
         <button onClick={handleSave} disabled={busy}
           className="rounded-lg bg-[var(--brand-accent)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
-          {busy ? "Processando..." : currentUnits === 0 ? "Criar unidades" : fullyCreated ? "Atualizar dimensÃµes" : "Atualizar"}
+          {busy ? "Processando..." : currentUnits === 0 ? "Criar unidades" : fullyCreated ? "Atualizar dimensões" : "Atualizar"}
         </button>
       </div>
     </div>
   );
 }
 
-// â”€â”€â”€ Step 5 â€” PreÃ§os â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Step 5 — Preços ──────────────────────────────────────────────────────────
 
 function Step5Precos({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Tabela de PreÃ§os</h2>
+        <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Tabela de Preços</h2>
         <p className="text-xs text-[var(--shell-subtext)] mb-5">Preencha o valor de venda de cada unidade. Todas precisam ter valor para concluir o cadastro.</p>
         <PriceTable dev={dev} onSaved={onSaved} />
       </div>
       <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">CondiÃ§Ãµes de Pagamento</h2>
-        <p className="text-xs text-[var(--shell-subtext)] mb-5">DefiniÃ§Ãµes comerciais aplicÃ¡veis a todas as unidades.</p>
+        <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Condições de Pagamento</h2>
+        <p className="text-xs text-[var(--shell-subtext)] mb-5">Definições comerciais aplicáveis a todas as unidades.</p>
         <PaymentConditionForm devId={dev.id} initial={dev.paymentCondition} onSaved={onSaved} />
       </div>
     </div>
   );
 }
 
-// â”€â”€â”€ Wizard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Wizard ──────────────────────────────────────────────────────────────────
 
 function Wizard({ dev, completeness, onSaved, initialStep }: {
   dev: Development; completeness: Completeness; onSaved: () => void; initialStep?: number;
@@ -2885,11 +2884,11 @@ function Wizard({ dev, completeness, onSaved, initialStep }: {
   async function handleNext() {
     setAdvancing(true);
     try {
-      // Steps 1-2 tÃªm save() via ref que persiste o que o usuÃ¡rio digitou (nÃ£o bloqueia se incompleto)
+      // Steps 1-2 têm save() via ref que persiste o que o usuário digitou (não bloqueia se incompleto)
       if (stepRef.current?.save) {
         await stepRef.current.save();
       }
-      // AvanÃ§a sempre â€” campos vazios ficam como rascunho
+      // Avança sempre — campos vazios ficam como rascunho
       if (currentStep < 4) setCurrentStep((s) => s + 1);
     } finally { setAdvancing(false); }
   }
@@ -2902,7 +2901,7 @@ function Wizard({ dev, completeness, onSaved, initialStep }: {
     <div className="space-y-5">
       <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-3 shadow-sm">
         <Stepper completeness={completeness} current={currentStep} onJump={async (target) => {
-          // Auto-salva o passo atual (steps 1-2 tÃªm save via ref) antes de navegar
+          // Auto-salva o passo atual (steps 1-2 têm save via ref) antes de navegar
           if (stepRef.current?.save) await stepRef.current.save();
           setCurrentStep(target);
         }} />
@@ -2919,11 +2918,11 @@ function Wizard({ dev, completeness, onSaved, initialStep }: {
       <div className="flex items-center justify-between gap-3 border-t border-[var(--shell-card-border)] pt-4">
         <button onClick={handleBack} disabled={currentStep === 0}
           className="rounded-xl border border-[var(--shell-card-border)] px-5 py-2.5 text-sm font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-          â† Voltar
+          ← Voltar
         </button>
         <div className="flex-1 text-center text-xs text-[var(--shell-subtext)]">
           Passo {currentStep + 1} de 5: <strong className="text-[var(--shell-text)]">{STEP_LABELS[currentStep]}</strong>
-          <span className="text-[var(--shell-subtext)]"> Â· {completeness.percent}% completo</span>
+          <span className="text-[var(--shell-subtext)]"> · {completeness.percent}% completo</span>
         </div>
         {isLastStep ? (
           stepHasFooterSave ? null : (
@@ -2935,7 +2934,7 @@ function Wizard({ dev, completeness, onSaved, initialStep }: {
         ) : (
           <button onClick={handleNext} disabled={advancing}
             className="rounded-xl bg-[var(--brand-accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shadow-sm">
-            {advancing ? "Salvando..." : stepHasFooterSave ? "Salvar e continuar â†’" : "Continuar â†’"}
+            {advancing ? "Salvando..." : stepHasFooterSave ? "Salvar e continuar →" : "Continuar →"}
           </button>
         )}
       </div>
@@ -2943,18 +2942,18 @@ function Wizard({ dev, completeness, onSaved, initialStep }: {
   );
 }
 
-// â”€â”€â”€ TabbedView (modo abas apÃ³s cadastro 100% completo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── TabbedView (modo abas após cadastro 100% completo) ──────────────────────
 
 type TabbedKey = "identificacao" | "localizacao" | "layout" | "estruturacao" | "precos" | "espelho" | "dashboard";
 
 const TABBED_TABS: { key: TabbedKey; label: string }[] = [
-  { key: "identificacao", label: "ðŸ“‹ IdentificaÃ§Ã£o" },
-  { key: "localizacao",   label: "ðŸ“ LocalizaÃ§Ã£o"  },
-  { key: "layout",        label: "ðŸ—ºï¸ Layout"        },
-  { key: "estruturacao",  label: "ðŸ—ï¸ EstruturaÃ§Ã£o"  },
-  { key: "precos",        label: "ðŸ’° PreÃ§os"        },
-  { key: "espelho",       label: "ðŸ¢ Espelho"       },
-  { key: "dashboard",     label: "ðŸ“Š Dashboard"     },
+  { key: "identificacao", label: "📋 Identificação" },
+  { key: "localizacao",   label: "📍 Localização"  },
+  { key: "layout",        label: "🗺️ Layout"        },
+  { key: "estruturacao",  label: "🏗️ Estruturação"  },
+  { key: "precos",        label: "💰 Preços"        },
+  { key: "espelho",       label: "🏢 Espelho"       },
+  { key: "dashboard",     label: "📊 Dashboard"     },
 ];
 
 function TabbedView({ dev, dashboard, onSaved, onUnitUpdated }: {
@@ -2987,16 +2986,16 @@ function TabbedView({ dev, dashboard, onSaved, onUnitUpdated }: {
         {tab === "espelho"       && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} />}
         {tab === "dashboard"     && (
           dashboard ? <DashboardView dashboard={dashboard} dev={dev} /> :
-          <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponÃ­vel ainda</div>
+          <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
         )}
       </div>
     </div>
   );
 }
 
-// â”€â”€â”€ PÃ¡gina Principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Página Principal ─────────────────────────────────────────────────────────
 
-const STATUS_LABEL_DEV: Record<string, string> = { LANCAMENTO: "LanÃ§amento", EM_OBRA: "Em Obra", CONCLUIDO: "ConcluÃ­do" };
+const STATUS_LABEL_DEV: Record<string, string> = { LANCAMENTO: "Lançamento", EM_OBRA: "Em Obra", CONCLUIDO: "Concluído" };
 const STATUS_COLOR_DEV: Record<string, string> = {
   LANCAMENTO: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   EM_OBRA:    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
@@ -3052,7 +3051,7 @@ export default function EmpreendimentoDetailPage() {
   }
   async function handleUnpublish() {
     if (!dev) return;
-    if (!confirm("Despublicar este empreendimento? Ele voltarÃ¡ a ser rascunho e nÃ£o serÃ¡ visÃ­vel para a equipe.")) return;
+    if (!confirm("Despublicar este empreendimento? Ele voltará a ser rascunho e não será visível para a equipe.")) return;
     setPublishing(true);
     try {
       await unpublishDevelopment(dev.id);
@@ -3075,9 +3074,9 @@ export default function EmpreendimentoDetailPage() {
     return (
       <AppShell title="Empreendimento">
         <div className="flex flex-col items-center justify-center h-64 gap-3">
-          <p className="text-[var(--shell-text)]">Empreendimento nÃ£o encontrado</p>
+          <p className="text-[var(--shell-text)]">Empreendimento não encontrado</p>
           <button onClick={() => router.push("/gestao-empreendimentos")}
-            className="text-sm text-[var(--brand-accent)] hover:underline">â† Voltar</button>
+            className="text-sm text-[var(--brand-accent)] hover:underline">← Voltar</button>
         </div>
       </AppShell>
     );
@@ -3091,7 +3090,7 @@ export default function EmpreendimentoDetailPage() {
           <div>
             <button onClick={() => router.push("/gestao-empreendimentos")}
               className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)] mb-2 flex items-center gap-1 transition-colors">
-              â† GestÃ£o de Empreendimentos
+              ← Gestão de Empreendimentos
             </button>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-[var(--shell-text)]">{dev.nome}</h1>
@@ -3100,17 +3099,17 @@ export default function EmpreendimentoDetailPage() {
               </span>
               {dev.publishedAt ? (
                 <span className="rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-3 py-1 text-xs font-semibold">
-                  âœ… Publicado
+                  ✅ Publicado
                 </span>
               ) : (
                 <span className="rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-3 py-1 text-xs font-semibold">
-                  ðŸ“ Rascunho Â· {completeness.percent}%
+                  📝 Rascunho · {completeness.percent}%
                 </span>
               )}
             </div>
             <p className="text-sm text-[var(--shell-subtext)] mt-1">
               {dev.cidade && dev.estado ? `${dev.cidade}, ${dev.estado}` : dev.cidade || dev.estado || ""}
-              {dev.prazoEntrega && ` Â· Entrega: ${new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
+              {dev.prazoEntrega && ` · Entrega: ${new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -3124,7 +3123,7 @@ export default function EmpreendimentoDetailPage() {
                 disabled={!completeness.allComplete || publishing}
                 title={completeness.allComplete ? "Publicar para a equipe" : "Complete os 5 passos para habilitar"}
                 className="rounded-xl bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shadow-sm">
-                {publishing ? "Publicando..." : completeness.allComplete ? "ðŸš€ Publicar" : `Publicar (${completeness.percent}%)`}
+                {publishing ? "Publicando..." : completeness.allComplete ? "🚀 Publicar" : `Publicar (${completeness.percent}%)`}
               </button>
             )}
           </div>
