@@ -280,6 +280,7 @@ export class DevelopmentsService {
 
     type FaseConfig = { nome: string; unidades: number; subsolos: number; excludedSlots?: { andar: number; localPos: number }[] };
     const fases = (tower as any).fasesConfig as FaseConfig[] | null;
+    const hasLobby = !!(tower as any).hasLobbyFloor;
 
     if (fases && fases.length > 0) {
       // Monta ranges de posição por fase
@@ -304,8 +305,9 @@ export class DevelopmentsService {
         }
       }
 
-      // Andares normais
+      // Andares normais (andar 1 = lobby quando hasLobby — sem unidades)
       for (let andar = 1; andar <= floorsNum; andar++) {
+        if (hasLobby && andar === 1) continue;
         for (const fase of faseRanges) {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
@@ -327,6 +329,7 @@ export class DevelopmentsService {
         }
       }
       for (let andar = 1; andar <= floorsNum; andar++) {
+        if (hasLobby && andar === 1) continue;
         for (let pos = 1; pos <= unitsForFloor(andar); pos++) {
           units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${pos.toString().padStart(2, '0')}`, andar, posicao: pos, status: 'DISPONIVEL' });
         }

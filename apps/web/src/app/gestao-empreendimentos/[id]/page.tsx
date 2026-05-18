@@ -2563,24 +2563,30 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       const rows: React.ReactElement[] = [];
                       // andares normais (desc)
                       for (let andar = floorsNum; andar >= 1; andar--) {
+                        const isLobby = hasLobby && andar === 1;
                         rows.push(
-                          <tr key={andar} className="border-t border-[var(--shell-card-border)]">
-                            <td className="pr-2 py-0.5 text-[var(--shell-subtext)] font-semibold whitespace-nowrap">{andar}º</td>
-                            {fases.map((f, fi) =>
-                              Array.from({ length: f.unidades }, (_, ui) => {
-                                const lp = ui + 1;
-                                const excl = (f.excludedSlots ?? []).some((s) => s.andar === andar && s.localPos === lp);
-                                return (
-                                  <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
-                                    <button type="button" onClick={() => toggleSlot(fi, andar, lp)}
-                                      title={excl ? "Incluir unidade" : "Excluir unidade"}
-                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : "bg-green-500 opacity-80 hover:opacity-100"}`}>
-                                      {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
-                                    </button>
-                                  </td>
-                                );
-                              })
-                            )}
+                          <tr key={andar} className={`border-t border-[var(--shell-card-border)] ${isLobby ? "bg-gray-100 dark:bg-gray-800/40" : ""}`}>
+                            <td className={`pr-2 py-0.5 font-semibold whitespace-nowrap ${isLobby ? "text-gray-400 dark:text-gray-500" : "text-[var(--shell-subtext)]"}`}>
+                              {andar}º{isLobby && " 🏛"}
+                            </td>
+                            {isLobby
+                              ? <td colSpan={totalUnitsPerFloor} className="px-2 py-0.5 text-[9px] text-gray-400 italic">Hall / Lobby (sem aptos)</td>
+                              : fases.map((f, fi) =>
+                                  Array.from({ length: f.unidades }, (_, ui) => {
+                                    const lp = ui + 1;
+                                    const excl = (f.excludedSlots ?? []).some((s) => s.andar === andar && s.localPos === lp);
+                                    return (
+                                      <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
+                                        <button type="button" onClick={() => toggleSlot(fi, andar, lp)}
+                                          title={excl ? "Incluir unidade" : "Excluir unidade"}
+                                          className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : "bg-green-500 opacity-80 hover:opacity-100"}`}>
+                                          {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
+                                        </button>
+                                      </td>
+                                    );
+                                  })
+                                )
+                            }
                           </tr>
                         );
                       }
@@ -2621,7 +2627,8 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
               <p className="text-[11px] text-center text-[var(--shell-subtext)] mt-1">
                 {(() => {
                   const fl = parseInt(floors) || 1;
-                  const normalTotal = fl * totalUnitsPerFloor;
+                  const lobbyFloors = hasLobby ? 1 : 0;
+                  const normalTotal = (fl - lobbyFloors) * totalUnitsPerFloor;
                   const subsoloTotal = fases.reduce((s, f) => s + f.unidades * f.subsolos, 0);
                   const excluded = fases.reduce((s, f) => s + (f.excludedSlots?.length ?? 0), 0);
                   const grand = normalTotal + subsoloTotal - excluded;
