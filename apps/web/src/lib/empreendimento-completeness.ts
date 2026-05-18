@@ -29,7 +29,8 @@ export function computeCompleteness(dev: Development): Completeness {
     if (fases && fases.length > 0) {
       // Torres com fasesConfig: subsolos são por fase
       const subsoloUnits = fases.reduce((sum, f) => sum + (f.subsolos ?? 0) * (f.unidades ?? 0), 0);
-      expected = t.floors * t.unitsPerFloor + subsoloUnits;
+      const excludedSlots = fases.reduce((sum, f) => sum + (f.excludedSlots?.length ?? 0), 0);
+      expected = t.floors * t.unitsPerFloor + subsoloUnits - excludedSlots;
     } else {
       // Fallback legado
       const subsolos = t.subsolos ?? 0;

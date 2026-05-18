@@ -278,8 +278,9 @@ export class DevelopmentsService {
     const floorsNum = Number(data.floors) || 1;
     const unitsPerFloorNum = Number(data.unitsPerFloor) || 1;
 
-    type FaseConfig = { nome: string; unidades: number; subsolos: number };
+    type FaseConfig = { nome: string; unidades: number; subsolos: number; excludedSlots?: { andar: number; localPos: number }[] };
     const fases = (tower as any).fasesConfig as FaseConfig[] | null;
+    const hasLobby = !!(tower as any).hasLobbyFloor;
 
     if (fases && fases.length > 0) {
       // Monta ranges de posição por fase
@@ -298,15 +299,18 @@ export class DevelopmentsService {
           if (fase.subsolos < s) continue;
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
+            if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
             units.push({ tenantId, developmentId, towerId, nome: `${prefix} S${s}${localPos.toString().padStart(2, '0')}`, andar, posicao: pos, status: 'DISPONIVEL' });
           }
         }
       }
 
-      // Andares normais
+      // Andares normais (térreo é piso extra visual, não reduz andares numerados)
       for (let andar = 1; andar <= floorsNum; andar++) {
         for (const fase of faseRanges) {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
+            const localPos = pos - fase.posStart + 1;
+            if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
             units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${pos.toString().padStart(2, '0')}`, andar, posicao: pos, status: 'DISPONIVEL' });
           }
         }

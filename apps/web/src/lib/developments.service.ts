@@ -35,6 +35,7 @@ export type FaseConfig = {
   nome: string;
   unidades: number;
   subsolos: number;
+  excludedSlots?: Array<{ andar: number; localPos: number }>; // células removidas manualmente
 };
 
 export type FloorPlan = {
