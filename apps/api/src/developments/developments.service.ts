@@ -338,18 +338,38 @@ export class DevelopmentsService {
     return { message: `${units.length} unidades criadas` };
   }
 
-  async bulkUpdateUnits(tenantId: string, developmentId: string, towerId: string, data: { andar?: number; updates: any }) {
+  async bulkUpdateUnits(tenantId: string, developmentId: string, towerId: string, data: { andar?: number; posicaoMin?: number; posicaoMax?: number; updates: any }) {
     const tower = await this.prisma.tower.findFirst({ where: { id: towerId, developmentId, tenantId } });
     if (!tower) throw new NotFoundException('Torre não encontrada');
-    const where: any = { towerId, tenantId, ...(data.andar !== undefined ? { andar: Number(data.andar) } : {}) };
-    
+    const where: any = { towerId, tenantId };
+    if (data.andar !== undefined) where.andar = Number(data.andar);
+    if (data.posicaoMin !== undefined || data.posicaoMax !== undefined) {
+      where.posicao = {};
+      if (data.posicaoMin !== undefined) where.posicao.gte = Number(data.posicaoMin);
+      if (data.posicaoMax !== undefined) where.posicao.lte = Number(data.posicaoMax);
+    }
+
     const updates = { ...data.updates };
-    if (updates.valorVenda !== undefined) updates.valorVenda = updates.valorVenda != null && updates.valorVenda !== '' ? Number(updates.valorVenda) : null;
-    if (updates.finalPrice !== undefined) updates.finalPrice = updates.finalPrice != null && updates.finalPrice !== '' ? Number(updates.finalPrice) : null;
-    if (updates.areaM2 !== undefined) updates.areaM2 = updates.areaM2 != null && updates.areaM2 !== '' ? Number(updates.areaM2) : null;
+    for (const f of ['areaM2', 'quartos', 'suites', 'banheiros', 'vagas', 'valorVenda', 'valorAvaliado', 'finalPrice']) {
+      if (updates[f] !== undefined) updates[f] = updates[f] != null && updates[f] !== '' ? Number(updates[f]) : null;
+    }
 
     await this.prisma.developmentUnit.updateMany({ where, data: updates });
     return { message: 'Unidades atualizadas' };
+  }
+
+  async bulkUpdateUnitsIndividual(tenantId: string, developmentId: string, units: Array<{ id: string; [key: string]: any }>) {
+    const numericFields = ['areaM2', 'quartos', 'suites', 'banheiros', 'vagas', 'valorVenda', 'valorAvaliado'];
+    await this.prisma.$transaction(
+      units.map(({ id, ...raw }) => {
+        const data: any = {};
+        for (const f of numericFields) {
+          if (raw[f] !== undefined) data[f] = raw[f] != null && raw[f] !== '' ? Number(raw[f]) : null;
+        }
+        return this.prisma.developmentUnit.updateMany({ where: { id, developmentId, tenantId }, data });
+      }),
+    );
+    return { updated: units.length };
   }
 
   async updateUnit(tenantId: string, developmentId: string, unitId: string, data: any) {

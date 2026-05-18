@@ -7,7 +7,8 @@ import { computeCompleteness, STEP_LABELS, type Completeness } from "@/lib/empre
 import AppShell from "@/components/AppShell";
 import {
   getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
-  bulkCreateUnits, updateUnit, getDashboard, getPaymentCondition, upsertPaymentCondition,
+  bulkCreateUnits, updateUnit, bulkUpdateUnits, bulkUpdateUnitsIndividual,
+  getDashboard, getPaymentCondition, upsertPaymentCondition,
   uploadImplantacao, uploadDevelopmentModel, publishDevelopment, unpublishDevelopment,
   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
   type PaymentCondition, type Dashboard,
@@ -895,11 +896,169 @@ function AbaEspelho({ dev, onUnitUpdated, role }: {
   return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} role={role} />;
 }
 
+// ─── Preencher em Lote por Fase ───────────────────────────────────────────────
+
+type FaseValues = { areaM2: string; quartos: string; suites: string; banheiros: string; vagas: string; valorVenda: string; valorAvaliado: string };
+const emptyFaseValues = (): FaseValues => ({ areaM2: "", quartos: "", suites: "", banheiros: "", vagas: "", valorVenda: "", valorAvaliado: "" });
+
+function BulkFillByFase({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState<Record<string, FaseValues>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  function setVal(key: string, field: keyof FaseValues, v: string) {
+    setValues((p) => ({ ...p, [key]: { ...(p[key] ?? emptyFaseValues()), [field]: v } }));
+  }
+
+  async function apply(tower: Tower, posStart: number, posEnd: number, key: string, label: string, count: number) {
+    const v = values[key] ?? emptyFaseValues();
+    const updates: Partial<DevelopmentUnit> = {};
+    if (v.areaM2 !== "") updates.areaM2 = Number(v.areaM2) as any;
+    if (v.quartos !== "") updates.quartos = Number(v.quartos) as any;
+    if (v.suites !== "") updates.suites = Number(v.suites) as any;
+    if (v.banheiros !== "") updates.banheiros = Number(v.banheiros) as any;
+    if (v.vagas !== "") updates.vagas = Number(v.vagas) as any;
+    if (v.valorVenda !== "") updates.valorVenda = Number(v.valorVenda) as any;
+    if (v.valorAvaliado !== "") updates.valorAvaliado = Number(v.valorAvaliado) as any;
+    if (Object.keys(updates).length === 0) { alert("Preencha ao menos um campo antes de aplicar."); return; }
+    setBusy(key);
+    try {
+      await bulkUpdateUnits(dev.id, tower.id, { posicaoMin: posStart, posicaoMax: posEnd, updates });
+      onSaved();
+    } catch (e: any) { alert("Erro: " + (e?.message ?? e)); }
+    finally { setBusy(null); }
+  }
+
+  const labelCls = "text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-1 block";
+  const inp = "w-20 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1 text-xs outline-none focus:border-[var(--brand-accent)]";
+  const inpWide = "w-28 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1 text-xs outline-none focus:border-[var(--brand-accent)]";
+
+  const rows: { tower: Tower; posStart: number; posEnd: number; key: string; label: string; count: number }[] = [];
+  for (const tower of dev.towers) {
+    const fases = (tower.fasesConfig as FaseConfig[] | null) ?? [];
+    if (fases.length > 0) {
+      let posOffset = 0;
+      for (const fase of fases) {
+        const posStart = posOffset + 1;
+        posOffset += fase.unidades;
+        const posEnd = posOffset;
+        const excluded = (fase.excludedSlots?.length ?? 0);
+        const count = tower.floors * fase.unidades - excluded;
+        rows.push({ tower, posStart, posEnd, key: `${tower.id}-${posStart}`, label: `${tower.nome} — ${fase.nome}`, count });
+      }
+    } else {
+      rows.push({ tower, posStart: 1, posEnd: tower.unitsPerFloor, key: tower.id, label: tower.nome, count: tower.units.length });
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] shadow-sm overflow-hidden">
+      <div role="button" tabIndex={0} onClick={() => setOpen((o) => !o)} onKeyDown={(e) => e.key === "Enter" && setOpen((o) => !o)}
+        className="flex items-center justify-between px-6 py-4 cursor-pointer select-none hover:bg-[var(--shell-bg)] transition-colors">
+        <div>
+          <p className="text-sm font-semibold text-[var(--shell-text)]">Preencher em lote por fase</p>
+          <p className="text-xs text-[var(--shell-subtext)]">Aplique valores padrão a todas as unidades de um bloco/fase de uma vez</p>
+        </div>
+        <span className="text-[var(--shell-subtext)] text-lg">{open ? "▲" : "▼"}</span>
+      </div>
+      {open && (
+        <div className="px-6 pb-6 space-y-4 border-t border-[var(--shell-card-border)]">
+          <p className="text-xs text-[var(--shell-subtext)] pt-4">Deixe em branco os campos que não quer alterar. Só os campos preenchidos serão atualizados.</p>
+          {rows.map(({ tower, posStart, posEnd, key, label, count }) => {
+            const v = values[key] ?? emptyFaseValues();
+            return (
+              <div key={key} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-4 space-y-3">
+                <p className="text-xs font-semibold text-[var(--shell-text)]">{label} <span className="font-normal text-[var(--shell-subtext)]">({count} unidades)</span></p>
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div><label className={labelCls}>Área m²</label><input className={inp} placeholder="—" value={v.areaM2} onChange={(e) => setVal(key, "areaM2", e.target.value)} /></div>
+                  <div><label className={labelCls}>Quartos</label><input className={inp} placeholder="—" value={v.quartos} onChange={(e) => setVal(key, "quartos", e.target.value)} /></div>
+                  <div><label className={labelCls}>Suítes</label><input className={inp} placeholder="—" value={v.suites} onChange={(e) => setVal(key, "suites", e.target.value)} /></div>
+                  <div><label className={labelCls}>Banheiros</label><input className={inp} placeholder="—" value={v.banheiros} onChange={(e) => setVal(key, "banheiros", e.target.value)} /></div>
+                  <div><label className={labelCls}>Vagas</label><input className={inp} placeholder="—" value={v.vagas} onChange={(e) => setVal(key, "vagas", e.target.value)} /></div>
+                  <div><label className={labelCls}>Vl. Venda (R$)</label><input className={inpWide} placeholder="—" value={v.valorVenda} onChange={(e) => setVal(key, "valorVenda", e.target.value)} /></div>
+                  <div><label className={labelCls}>Vl. Avaliado (R$)</label><input className={inpWide} placeholder="—" value={v.valorAvaliado} onChange={(e) => setVal(key, "valorAvaliado", e.target.value)} /></div>
+                  <button onClick={() => apply(tower, posStart, posEnd, key, label, count)} disabled={busy === key}
+                    className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
+                    {busy === key ? "Aplicando..." : `Aplicar às ${count} unidades`}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Tabela de Preços ─────────────────────────────────────────────────────────
+
+function exportUnitsCsv(dev: Development) {
+  const sep = ";";
+  const header = ["torre", "unidade", "andar", "area_m2", "quartos", "suites", "banheiros", "vagas", "valor_venda", "valor_avaliado"].join(sep);
+  const rows = dev.towers.flatMap((t) =>
+    t.units.map((u) =>
+      [t.nome, u.nome, u.andar ?? "", u.areaM2 ?? "", u.quartos ?? "", u.suites ?? "", u.banheiros ?? "", u.vagas ?? "", u.valorVenda ?? "", u.valorAvaliado ?? ""].join(sep),
+    ),
+  );
+  const csv = "﻿" + [header, ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${dev.nome.replace(/\s+/g, "_")}-precos.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importUnitsCsv(file: File, dev: Development, onSaved: () => void, setImporting: (v: boolean) => void) {
+  setImporting(true);
+  try {
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    const rawHeader = lines[0].replace(/^﻿/, "");
+    const headers = rawHeader.split(/[;,]/).map((h) => h.trim().toLowerCase());
+
+    const unitMap = new Map<string, string>();
+    for (const t of dev.towers) {
+      for (const u of t.units) unitMap.set(u.nome, u.id);
+    }
+
+    const units: Array<{ id: string } & Partial<DevelopmentUnit>> = [];
+    for (const line of lines.slice(1)) {
+      const cols = line.split(/[;,]/);
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => { row[h] = cols[i]?.trim() ?? ""; });
+      const id = unitMap.get(row["unidade"]);
+      if (!id) continue;
+      units.push({
+        id,
+        ...(row["area_m2"] !== "" && { areaM2: Number(row["area_m2"]) as any }),
+        ...(row["quartos"] !== "" && { quartos: Number(row["quartos"]) as any }),
+        ...(row["suites"] !== "" && { suites: Number(row["suites"]) as any }),
+        ...(row["banheiros"] !== "" && { banheiros: Number(row["banheiros"]) as any }),
+        ...(row["vagas"] !== "" && { vagas: Number(row["vagas"]) as any }),
+        ...(row["valor_venda"] !== "" && { valorVenda: Number(row["valor_venda"]) as any }),
+        ...(row["valor_avaliado"] !== "" && { valorAvaliado: Number(row["valor_avaliado"]) as any }),
+      });
+    }
+
+    if (units.length === 0) { alert("Nenhuma unidade encontrada no arquivo. Verifique se os nomes na coluna 'unidade' correspondem às unidades cadastradas."); return; }
+    await bulkUpdateUnitsIndividual(dev.id, units);
+    onSaved();
+    alert(`${units.length} unidade(s) atualizadas com sucesso.`);
+  } catch (e: any) {
+    alert("Erro ao importar: " + (e?.message ?? e));
+  } finally {
+    setImporting(false);
+  }
+}
 
 function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   const [edits, setEdits] = useState<Record<string, Partial<DevelopmentUnit>>>({});
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function setEdit(unitId: string, field: string, val: any) {
     setEdits((p) => ({ ...p, [unitId]: { ...(p[unitId] ?? {}), [field]: val === "" ? null : (isNaN(Number(val)) ? val : Number(val)) } }));
@@ -924,6 +1083,21 @@ function PriceTable({ dev, onSaved }: { dev: Development; onSaved: () => void })
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-[var(--shell-subtext)]">Edite diretamente na tabela ou use as opções acima para preenchimento em lote.</p>
+        <div className="flex gap-2">
+          <button onClick={() => exportUnitsCsv(dev)}
+            className="rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)] transition-colors">
+            Exportar CSV
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+            className="rounded-lg border border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--brand-accent)] hover:bg-[var(--brand-accent)]/20 disabled:opacity-50 transition-colors">
+            {importing ? "Importando..." : "Importar CSV"}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv,.txt" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) { e.target.value = ""; importUnitsCsv(f, dev, onSaved, setImporting); } }} />
+        </div>
+      </div>
       {Object.keys(edits).length > 0 && (
         <div className="flex items-center justify-between rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent)]/5 px-4 py-3">
           <p className="text-sm text-[var(--shell-text)]">{Object.keys(edits).length} unidade(s) com alterações</p>
@@ -2882,6 +3056,7 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
 function Step5Precos({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   return (
     <div className="space-y-6 max-w-5xl">
+      <BulkFillByFase dev={dev} onSaved={onSaved} />
       <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
         <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Tabela de Preços</h2>
         <p className="text-xs text-[var(--shell-subtext)] mb-5">Preencha o valor de venda de cada unidade. Todas precisam ter valor para concluir o cadastro.</p>

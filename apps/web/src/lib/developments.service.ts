@@ -205,8 +205,12 @@ export async function bulkCreateUnits(devId: string, towerId: string, body: { fl
   return apiFetch(`/developments/${devId}/towers/${towerId}/units/bulk`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export async function bulkUpdateUnits(devId: string, towerId: string, body: { andar?: number; updates: Partial<DevelopmentUnit> }) {
+export async function bulkUpdateUnits(devId: string, towerId: string, body: { andar?: number; posicaoMin?: number; posicaoMax?: number; updates: Partial<DevelopmentUnit> }) {
   return apiFetch(`/developments/${devId}/towers/${towerId}/units/bulk`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function bulkUpdateUnitsIndividual(devId: string, units: Array<{ id: string } & Partial<DevelopmentUnit>>) {
+  return apiFetch(`/developments/${devId}/units/bulk-individual`, { method: "PATCH", body: JSON.stringify({ units }) });
 }
 
 export async function updateUnit(devId: string, unitId: string, body: Partial<DevelopmentUnit>): Promise<DevelopmentUnit> {
