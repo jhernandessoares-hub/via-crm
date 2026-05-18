@@ -24,7 +24,14 @@ export class DevelopmentsService {
     const dev = await this.prisma.development.findFirst({
       where: { id, tenantId },
       include: {
-        towers: { include: { units: true }, orderBy: { nome: 'asc' } },
+        towers: {
+          include: {
+            units: {
+              include: { lead: { select: { id: true, nome: true, nomeCorreto: true } } },
+            },
+          },
+          orderBy: { nome: 'asc' },
+        },
         paymentCondition: true,
       },
     });
@@ -117,6 +124,7 @@ export class DevelopmentsService {
         updateData.implantacaoMode = (m === 'SATELITE' || m === 'IMAGEM') ? m : null;
       }
       if (data.terrainDesign !== undefined) updateData.terrainDesign = data.terrainDesign;
+      if (data.areasComuns !== undefined) updateData.areasComuns = data.areasComuns;
     }
 
     try {
@@ -124,7 +132,7 @@ export class DevelopmentsService {
     } catch (e: any) {
       // Se o Prisma client ainda não conhece os campos novos, tenta sem eles
       if (e?.message?.includes('Unknown field') || e?.code === 'P2009') {
-        const { entranceLat, entranceLng, implantacaoMode, terrainDesign, publishedAt, ...safeData } = updateData;
+        const { entranceLat, entranceLng, implantacaoMode, terrainDesign, publishedAt, areasComuns, ...safeData } = updateData;
         return await this.prisma.development.update({ where: { id }, data: safeData });
       }
       throw e;
@@ -211,25 +219,38 @@ export class DevelopmentsService {
   async updateTower(tenantId: string, developmentId: string, towerId: string, data: any) {
     const tower = await this.prisma.tower.findFirst({ where: { id: towerId, developmentId, tenantId } });
     if (!tower) throw new NotFoundException('Torre não encontrada');
-    const { units, ...updateData } = data; // Evita que o Prisma reclame de campos de relação
-    
-    if (updateData.floors !== undefined) updateData.floors = Number(updateData.floors);
-    if (updateData.unitsPerFloor !== undefined) updateData.unitsPerFloor = Number(updateData.unitsPerFloor);
-    if (updateData.larguraM !== undefined) updateData.larguraM = Number(updateData.larguraM);
-    if (updateData.profundidadeM !== undefined) updateData.profundidadeM = Number(updateData.profundidadeM);
-    if (updateData.alturaAndarM !== undefined) updateData.alturaAndarM = Number(updateData.alturaAndarM);
-    if (updateData.rotacao !== undefined) updateData.rotacao = Number(updateData.rotacao);
-    if (updateData.offsetX !== undefined) updateData.offsetX = Number(updateData.offsetX);
-    if (updateData.offsetY !== undefined) updateData.offsetY = Number(updateData.offsetY);
-    if (updateData.gridX !== undefined) updateData.gridX = updateData.gridX != null ? Number(updateData.gridX) : null;
-    if (updateData.gridY !== undefined) updateData.gridY = updateData.gridY != null ? Number(updateData.gridY) : null;
-    if (updateData.gridWidth !== undefined) updateData.gridWidth = updateData.gridWidth != null ? Number(updateData.gridWidth) : null;
-    if (updateData.gridHeight !== undefined) updateData.gridHeight = updateData.gridHeight != null ? Number(updateData.gridHeight) : null;
+
+    const n  = (v: any) => (v != null && v !== '') ? Number(v) : undefined;
+    const nn = (v: any) => (v != null && v !== '') ? Number(v) : null;
+
+    // Monta explicitamente apenas campos conhecidos pelo schema Prisma
+    // (evita PrismaClientValidationError quando o client está desatualizado)
+    const updateData: any = {};
+    if (data.nome          !== undefined) updateData.nome          = String(data.nome);
+    if (data.floors        !== undefined) updateData.floors        = n(data.floors) ?? 1;
+    if (data.unitsPerFloor !== undefined) updateData.unitsPerFloor = n(data.unitsPerFloor) ?? 1;
+    if (data.larguraM      !== undefined) updateData.larguraM      = n(data.larguraM) ?? 20;
+    if (data.profundidadeM !== undefined) updateData.profundidadeM = n(data.profundidadeM) ?? 15;
+    if (data.alturaAndarM  !== undefined) updateData.alturaAndarM  = n(data.alturaAndarM) ?? 3;
+    if (data.rotacao       !== undefined) updateData.rotacao       = n(data.rotacao) ?? 0;
+    if (data.offsetX       !== undefined) updateData.offsetX       = n(data.offsetX) ?? 0;
+    if (data.offsetY       !== undefined) updateData.offsetY       = n(data.offsetY) ?? 0;
+    if (data.gridX         !== undefined) updateData.gridX         = nn(data.gridX);
+    if (data.gridY         !== undefined) updateData.gridY         = nn(data.gridY);
+    if (data.gridWidth     !== undefined) updateData.gridWidth     = nn(data.gridWidth);
+    if (data.gridHeight    !== undefined) updateData.gridHeight    = nn(data.gridHeight);
+    if (data.lados         !== undefined) updateData.lados         = String(data.lados);
+    if (data.facadeColor   !== undefined) updateData.facadeColor   = data.facadeColor ?? null;
+    if (data.facadeImageUrl !== undefined) updateData.facadeImageUrl = data.facadeImageUrl ?? null;
+    if (data.roofType      !== undefined) updateData.roofType      = data.roofType ?? null;
+    if (data.roofColor     !== undefined) updateData.roofColor     = data.roofColor ?? null;
+    if (data.balconyType   !== undefined) updateData.balconyType   = data.balconyType ?? null;
+    if (data.hasLobbyFloor !== undefined) updateData.hasLobbyFloor = Boolean(data.hasLobbyFloor);
+    if (data.floorPlan     !== undefined) updateData.floorPlan     = data.floorPlan ?? null;
     for (const k of ['implantacaoX','implantacaoY','implantacaoW','implantacaoH','implantacaoLat','implantacaoLng'] as const) {
-      if (updateData[k] !== undefined) {
-        updateData[k] = updateData[k] != null && updateData[k] !== '' ? Number(updateData[k]) : null;
-      }
+      if (data[k] !== undefined) updateData[k] = nn(data[k]);
     }
+    if (data.ladoConfig !== undefined) updateData.ladoConfig = data.ladoConfig ?? null;
 
     return this.prisma.tower.update({ where: { id: towerId }, data: updateData });
   }
@@ -290,6 +311,10 @@ export class DevelopmentsService {
     if (updateData.loteAreaM2 !== undefined) updateData.loteAreaM2 = updateData.loteAreaM2 != null && updateData.loteAreaM2 !== '' ? Number(updateData.loteAreaM2) : null;
     if (updateData.loteFrente !== undefined) updateData.loteFrente = updateData.loteFrente != null && updateData.loteFrente !== '' ? Number(updateData.loteFrente) : null;
     if (updateData.loteFundo !== undefined) updateData.loteFundo = updateData.loteFundo != null && updateData.loteFundo !== '' ? Number(updateData.loteFundo) : null;
+    // leadId é passado como string UUID ou null — sem conversão necessária
+    if (updateData.leadId !== undefined) updateData.leadId = updateData.leadId || null;
+    // nunca persistir o objeto lead embutido (apenas o leadId FK)
+    delete updateData.lead;
 
     return this.prisma.developmentUnit.update({ where: { id: unitId }, data: updateData });
   }
@@ -333,6 +358,28 @@ export class DevelopmentsService {
       gridCols: Number(data.gridCols), 
       gridLayout: data.gridLayout 
     } as any });
+  }
+
+  async uploadModel(tenantId: string, id: string, file: any) {
+    if (!file?.buffer) throw new BadRequestException('Arquivo inválido');
+    const dev = await this.prisma.development.findFirst({ where: { id, tenantId } });
+    if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+
+    if ((dev as any).modelPublicId) {
+      await cloudinary.uploader.destroy((dev as any).modelPublicId, { resource_type: 'raw' }).catch(() => {});
+    }
+
+    const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder: `via-crm/developments/${tenantId}/models`, resource_type: 'raw' },
+        (err, res) => { if (err) return reject(err); resolve(res as any); },
+      ).end(file.buffer);
+    });
+
+    return this.prisma.development.update({
+      where: { id },
+      data: { modelUrl: result.secure_url, modelPublicId: result.public_id } as any,
+    });
   }
 
   async uploadImplantationImage(tenantId: string, id: string, file: any) {

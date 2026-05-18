@@ -32,8 +32,7 @@ export function computeCompleteness(dev: Development): Completeness {
     t.floors > 0 && t.unitsPerFloor > 0 && t.units.length === t.floors * t.unitsPerFloor
   );
 
-  const allUnits = dev.towers.flatMap((t) => t.units);
-  const s5 = !!dev.paymentCondition && allUnits.length > 0 && allUnits.every((u) => (u.valorVenda ?? 0) > 0);
+  const s5 = !!dev.paymentCondition;
 
   const steps = [s1, s2, s3, s4, s5];
   const completedCount = steps.filter(Boolean).length;

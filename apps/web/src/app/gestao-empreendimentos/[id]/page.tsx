@@ -1,12 +1,13 @@
 "use client";
-import { useEffect, useState, useCallback, useRef, useMemo, forwardRef, useImperativeHandle, type ForwardedRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo, forwardRef, useImperativeHandle, startTransition, type ForwardedRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 import { computeCompleteness, STEP_LABELS, type Completeness } from "@/lib/empreendimento-completeness";
 import AppShell from "@/components/AppShell";
 import {
   getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
   bulkCreateUnits, updateUnit, getDashboard, getPaymentCondition, upsertPaymentCondition,
-  uploadImplantacao, publishDevelopment, unpublishDevelopment,
+  uploadImplantacao, uploadDevelopmentModel, publishDevelopment, unpublishDevelopment,
   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
   type PaymentCondition, type Dashboard,
   type TerrainShape, type TerrainShapeType,
@@ -198,6 +199,159 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
   );
 }
 
+// ─── Popup de detalhes da unidade (view-only + lead search) ──────────────────
+
+function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit }: {
+  unit: DevelopmentUnit; devId: string; onClose: () => void;
+  onUnitUpdated: (u: DevelopmentUnit) => void;
+  onEditUnit: () => void;
+}) {
+  const router = useRouter();
+  const [current, setCurrent] = useState(unit);
+  const [showSearch, setShowSearch] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!showSearch || !query.trim()) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await apiFetch(`/leads?search=${encodeURIComponent(query)}&limit=10`);
+        setResults(Array.isArray(res) ? res : (res?.data ?? []));
+      } catch { setResults([]); }
+      finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, showSearch]);
+
+  async function linkLead(lead: any) {
+    try {
+      await updateUnit(devId, current.id, { leadId: lead.id } as any);
+      const updated = { ...current, leadId: lead.id, lead: { id: lead.id, nome: lead.nome, nomeCorreto: lead.nomeCorreto ?? null } };
+      setCurrent(updated);
+      onUnitUpdated(updated);
+      setShowSearch(false);
+      setQuery("");
+      setResults([]);
+    } catch (e: any) { alert(e?.message ?? "Erro ao vincular lead"); }
+  }
+
+  const buyerName = current.lead?.nomeCorreto ?? current.lead?.nome ?? current.comprador;
+  const canLink = current.status === "VENDIDO" || current.status === "RESERVADO";
+
+  return (
+    <Modal open title={current.nome} onClose={onClose}>
+      <div className="space-y-4">
+        {/* Status badge */}
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-white ${STATUS_BG[current.status]}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+          {STATUS_LABEL[current.status]}
+        </span>
+
+        {/* Dados */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {current.areaM2 != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área</p><p className="font-semibold text-[var(--shell-text)]">{current.areaM2} m²</p></div>}
+          {current.quartos != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Quartos</p><p className="font-semibold text-[var(--shell-text)]">{current.quartos}</p></div>}
+          {current.suites != null && current.suites > 0 && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Suítes</p><p className="font-semibold text-[var(--shell-text)]">{current.suites}</p></div>}
+          {current.vagas != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Vagas</p><p className="font-semibold text-[var(--shell-text)]">{current.vagas}</p></div>}
+          {(current.finalPrice ?? current.valorVenda) != null && (
+            <div className="col-span-2">
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">{current.finalPrice ? "Valor negociado" : "Valor de venda"}</p>
+              <p className="font-semibold text-[var(--brand-accent)]">{fmt(current.finalPrice ?? current.valorVenda)}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Bloqueio */}
+        {current.status === "BLOQUEADO" && current.bloqueioMotivo && (
+          <div className="rounded-lg bg-gray-100 dark:bg-gray-800/50 px-3 py-2">
+            <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Motivo do bloqueio</p>
+            <p className="text-sm text-[var(--shell-text)]">{current.bloqueioMotivo}</p>
+          </div>
+        )}
+
+        {/* Comprador + Lead */}
+        {canLink && (
+          <div className="pt-3 border-t border-[var(--shell-card-border)] space-y-2">
+            {buyerName && (
+              <div>
+                <p className="text-xs text-[var(--shell-subtext)] mb-0.5">{current.status === "VENDIDO" ? "Comprador" : "Interessado"}</p>
+                <p className="text-sm font-semibold text-[var(--shell-text)]">{buyerName}</p>
+              </div>
+            )}
+            {current.soldAt && current.status === "VENDIDO" && (
+              <div>
+                <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Data da venda</p>
+                <p className="text-sm font-semibold text-[var(--shell-text)]">{new Date(current.soldAt).toLocaleDateString("pt-BR")}</p>
+              </div>
+            )}
+
+            {current.leadId ? (
+              <div className="flex items-center gap-2 rounded-lg bg-green-50 dark:bg-green-900/20 px-3 py-2">
+                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                <span className="text-xs text-[var(--shell-text)] flex-1 truncate font-medium">
+                  {current.lead?.nomeCorreto ?? current.lead?.nome ?? "Lead vinculado"}
+                </span>
+                <button type="button" onClick={() => setShowSearch(true)}
+                  className="text-xs text-[var(--brand-accent)] hover:underline shrink-0">Alterar</button>
+              </div>
+            ) : (
+              !showSearch && (
+                <button type="button" onClick={() => setShowSearch(true)}
+                  className="text-xs font-medium text-[var(--brand-accent)] hover:underline">
+                  + Vincular Lead
+                </button>
+              )
+            )}
+
+            {showSearch && (
+              <div className="space-y-2">
+                <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Buscar por nome ou telefone..."
+                  className={inp} />
+                {searching && <p className="text-xs text-[var(--shell-subtext)]">Buscando...</p>}
+                {results.length > 0 && (
+                  <div className="border border-[var(--shell-card-border)] rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                    {results.map((l: any) => (
+                      <button key={l.id} type="button" onClick={() => linkLead(l)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--shell-hover)] border-b border-[var(--shell-card-border)] last:border-b-0">
+                        <span className="font-semibold text-[var(--shell-text)]">{l.nomeCorreto ?? l.nome}</span>
+                        {l.telefone && <span className="text-[var(--shell-subtext)] ml-2">{l.telefone}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!searching && query.trim() && results.length === 0 && (
+                  <p className="text-xs text-[var(--shell-subtext)]">Nenhum lead encontrado</p>
+                )}
+                <button type="button" onClick={() => { setShowSearch(false); setQuery(""); setResults([]); }}
+                  className="text-xs text-[var(--shell-subtext)] hover:underline">Cancelar</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ações */}
+        <div className="flex gap-2 pt-3 border-t border-[var(--shell-card-border)]">
+          <button type="button" onClick={onEditUnit}
+            className="flex-1 rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
+            Detalhes da Unidade
+          </button>
+          {current.leadId && (
+            <button type="button"
+              onClick={() => { onClose(); startTransition(() => router.push(`/leads/${current.leadId}`)); }}
+              className="flex-1 rounded-lg bg-[var(--brand-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+              Ver Lead →
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Espelho 2D — filtros e helpers ──────────────────────────────────────────
 
 type EspelhoFilters = {
@@ -322,103 +476,149 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
   );
 }
 
-// ─── Espelho 2D — VERTICAL (estilo construtora) ──────────────────────────────
+// ─── Espelho 2D — VERTICAL (com seletor de lados) ───────────────────────────
+
+const LADO_OPTIONS = ["Vista Interna", "Vista Externa", "Norte", "Sul", "Leste", "Oeste"];
 
 function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
   onUnitUpdated: (u: DevelopmentUnit) => void;
 }) {
-  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
+  // Deriva lados únicos do ladoConfig da torre
+  const lados = useMemo(() => {
+    const cfg = tower.ladoConfig;
+    if (!cfg || typeof cfg !== "object") return [] as string[];
+    return [...new Set(Object.values(cfg as Record<string, string>))] as string[];
+  }, [tower.ladoConfig]);
+
+  const [selectedLado, setSelectedLado] = useState<string | null>(lados[0] ?? null);
+  const [detailsUnit, setDetailsUnit] = useState<DevelopmentUnit | null>(null);
+  const [editUnit, setEditUnit] = useState<DevelopmentUnit | null>(null);
+
+  // Posições que pertencem ao lado selecionado
+  const ladoPosicoes = useMemo(() => {
+    if (!selectedLado || !tower.ladoConfig) return null;
+    return Object.entries(tower.ladoConfig as Record<string, string>)
+      .filter(([, v]) => v === selectedLado)
+      .map(([k]) => Number(k));
+  }, [selectedLado, tower.ladoConfig]);
+
+  // Unidades filtradas pelo lado selecionado
+  const ladoUnits = useMemo(() => {
+    if (!ladoPosicoes) return tower.units;
+    return tower.units.filter((u) => ladoPosicoes.includes(u.posicao ?? 0));
+  }, [tower.units, ladoPosicoes]);
 
   const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
-  tower.units.forEach((u) => {
+  ladoUnits.forEach((u) => {
     const f = u.andar ?? 1;
     if (!unitsByFloor[f]) unitsByFloor[f] = [];
     unitsByFloor[f].push(u);
   });
   const floors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
-  const maxCols = Math.max(0, ...Object.values(unitsByFloor).map((arr) => arr.length));
 
-  if (floors.length === 0) {
+  if (tower.units.length === 0) {
     return <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade nesta torre</div>;
   }
 
-  const colHeaders = Array.from({ length: maxCols }, (_, i) => `Final ${String(i + 1).padStart(2, "0")}`);
-
   return (
-    <div className="overflow-auto">
-      <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
-        {/* Cabeçalho TOPO */}
-        <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
-          <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▲ Topo</div>
-          <div className="text-sm font-bold tracking-wider mt-0.5">{tower.nome}</div>
+    <div className="space-y-3">
+      {/* Tabs de lados */}
+      {lados.length > 0 && (
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-xs text-[var(--shell-subtext)] mr-1">Vista:</span>
+          {lados.map((lado) => (
+            <button key={lado} type="button"
+              onClick={() => setSelectedLado(lado)}
+              className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
+                selectedLado === lado
+                  ? "bg-[var(--brand-accent)] text-white shadow-sm"
+                  : "border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+              }`}>
+              {lado}
+            </button>
+          ))}
+          {selectedLado && (
+            <button type="button" onClick={() => setSelectedLado(null)}
+              className="rounded-lg px-3 py-1.5 text-xs border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]">
+              Todas
+            </button>
+          )}
         </div>
+      )}
 
-        {/* Header de colunas (Final 01, Final 02, ...) */}
-        <div className="flex bg-slate-100 dark:bg-slate-800/60 border-b border-slate-300 dark:border-slate-700">
-          <div className="w-14 shrink-0 border-r border-slate-300 dark:border-slate-700" />
-          <div className="flex-1 flex">
-            {colHeaders.map((h, i) => (
-              <div key={i} className="flex-1 min-w-[5rem] text-center text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 py-2 border-r border-slate-300 dark:border-slate-700 last:border-r-0">
-                {h}
-              </div>
-            ))}
-          </div>
-          <div className="w-14 shrink-0 border-l border-slate-300 dark:border-slate-700" />
-        </div>
-
-        {/* Linhas (andares) */}
-        {floors.map((floor, idx) => {
-          const units = (unitsByFloor[floor] ?? []).sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
-          const zebra = idx % 2 === 0 ? "bg-[var(--shell-card-bg)]" : "bg-[var(--shell-bg)]";
-          return (
-            <div key={floor} className={`flex border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${zebra}`}>
-              <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-700 py-1">
-                {floor}º
-              </div>
-              <div className="flex-1 flex">
-                {Array.from({ length: maxCols }).map((_, i) => {
-                  const unit = units[i];
-                  if (!unit) {
-                    return <div key={i} className="flex-1 min-w-[5rem] border-r border-slate-200 dark:border-slate-700 last:border-r-0" />;
-                  }
-                  const visible = unitMatches(unit, filters, true);
-                  return (
-                    <button key={unit.id} type="button"
-                      onClick={() => setSelectedUnit(unit)}
-                      title={`${unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
-                      className={`flex-1 min-w-[5rem] border-r border-white/30 last:border-r-0 px-2 py-2 text-left transition-all hover:brightness-110 hover:z-10 hover:shadow ${visible ? "" : "opacity-20 grayscale"}`}
-                      style={{ backgroundColor: STATUS_COLOR[unit.status] }}
-                    >
-                      <div className="text-[11px] font-bold text-white drop-shadow leading-tight">
-                        {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
-                      </div>
-                      {unit.areaM2 && (
-                        <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-l border-slate-200 dark:border-slate-700 py-1">
-                {floor}º
+      {floors.length === 0 ? (
+        <div className="py-8 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade neste lado</div>
+      ) : (
+        <div className="overflow-auto">
+          <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
+            {/* Cabeçalho TOPO */}
+            <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
+              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▲ Topo</div>
+              <div className="text-sm font-bold tracking-wider mt-0.5">
+                {tower.nome}{selectedLado ? ` — ${selectedLado}` : ""}
               </div>
             </div>
-          );
-        })}
 
-        {/* Rodapé TÉRREO */}
-        <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900">
-          <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▼ Térreo</div>
+            {/* Linhas (andares) */}
+            {floors.map((floor, idx) => {
+              const units = (unitsByFloor[floor] ?? []).sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
+              const zebra = idx % 2 === 0 ? "bg-[var(--shell-card-bg)]" : "bg-[var(--shell-bg)]";
+              return (
+                <div key={floor} className={`flex border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${zebra}`}>
+                  <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-700 py-1">
+                    {floor}º
+                  </div>
+                  <div className="flex">
+                    {units.map((unit) => {
+                      const visible = unitMatches(unit, filters, true);
+                      return (
+                        <button key={unit.id} type="button"
+                          onClick={() => setDetailsUnit(unit)}
+                          title={`${unit.nome} — ${STATUS_LABEL[unit.status]}${unit.valorVenda ? ` — ${fmt(unit.valorVenda)}` : ""}`}
+                          className={`w-16 h-14 flex flex-col items-center justify-center border-r border-white/30 last:border-r-0 transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
+                          style={{ backgroundColor: STATUS_COLOR[unit.status] }}
+                        >
+                          <div className="text-[11px] font-bold text-white drop-shadow leading-tight">
+                            {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
+                          </div>
+                          {unit.areaM2 != null && (
+                            <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-l border-slate-200 dark:border-slate-700 py-1">
+                    {floor}º
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Rodapé TÉRREO */}
+            <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900">
+              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▼ Térreo</div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {selectedUnit && (
-        <UnitModal
-          unit={selectedUnit}
+      {detailsUnit && (
+        <UnitDetailsPopup
+          unit={detailsUnit}
           devId={devId}
-          onClose={() => setSelectedUnit(null)}
-          onUpdated={(u) => { onUnitUpdated(u); setSelectedUnit(u); }}
+          onClose={() => setDetailsUnit(null)}
+          onUnitUpdated={(u) => { onUnitUpdated(u); setDetailsUnit(u); }}
+          onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
+        />
+      )}
+      {editUnit && (
+        <UnitModal
+          unit={editUnit}
+          devId={devId}
+          onClose={() => setEditUnit(null)}
+          onUpdated={(u) => { onUnitUpdated(u); setEditUnit(u); }}
         />
       )}
     </div>
@@ -429,7 +629,8 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
   tower: Tower; devId: string; filters: EspelhoFilters;
   onUnitUpdated: (u: DevelopmentUnit) => void; isLoteamento: boolean;
 }) {
-  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
+  const [detailsUnit, setDetailsUnit] = useState<DevelopmentUnit | null>(null);
+  const [editUnit, setEditUnit] = useState<DevelopmentUnit | null>(null);
   const units = [...tower.units].sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
   const cols = Math.ceil(Math.sqrt(units.length)) || 1;
 
@@ -449,7 +650,7 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
             const visible = unitMatches(unit, filters, false);
             return (
               <button key={unit.id} type="button"
-                onClick={() => setSelectedUnit(unit)}
+                onClick={() => setDetailsUnit(unit)}
                 title={`${unit.loteNum ?? unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
                 className={`relative flex flex-col items-stretch rounded-md border-2 px-2.5 py-2 text-left transition-all hover:scale-105 hover:shadow-lg hover:z-10 ${visible ? "" : "opacity-20 grayscale"}`}
                 style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
@@ -474,12 +675,21 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
         </div>
       </div>
 
-      {selectedUnit && (
-        <UnitModal
-          unit={selectedUnit}
+      {detailsUnit && (
+        <UnitDetailsPopup
+          unit={detailsUnit}
           devId={devId}
-          onClose={() => setSelectedUnit(null)}
-          onUpdated={(u) => { onUnitUpdated(u); setSelectedUnit(u); }}
+          onClose={() => setDetailsUnit(null)}
+          onUnitUpdated={(u) => { onUnitUpdated(u); setDetailsUnit(u); }}
+          onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
+        />
+      )}
+      {editUnit && (
+        <UnitModal
+          unit={editUnit}
+          devId={devId}
+          onClose={() => setEditUnit(null)}
+          onUpdated={(u) => { onUnitUpdated(u); setEditUnit(u); }}
         />
       )}
     </div>
@@ -671,802 +881,12 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
   );
 }
 
-// ─── Helpers 3D compartilhados ───────────────────────────────────────────────
-
-const GROUND_SIZE = 200;
-
-function getTowerWorldPosition(tower: Tower, dev: Development): { x: number; z: number; w: number; d: number } {
-  const mode = dev.implantacaoMode;
-  if (mode === "IMAGEM" && tower.implantacaoX != null && tower.implantacaoY != null) {
-    const cx = tower.implantacaoX + (tower.implantacaoW ?? 0.2) / 2;
-    const cy = tower.implantacaoY + (tower.implantacaoH ?? 0.15) / 2;
-    return {
-      x: (cx - 0.5) * GROUND_SIZE,
-      z: (cy - 0.5) * GROUND_SIZE,
-      w: Math.max(2, (tower.implantacaoW ?? 0.2) * GROUND_SIZE),
-      d: Math.max(2, (tower.implantacaoH ?? 0.15) * GROUND_SIZE),
-    };
-  }
-  if (mode === "SATELITE" && tower.implantacaoLat != null && tower.implantacaoLng != null && dev.lat != null && dev.lng != null) {
-    const cosLat = Math.cos(dev.lat * Math.PI / 180);
-    const x = (tower.implantacaoLng - dev.lng) * 111320 * cosLat;
-    const z = -(tower.implantacaoLat - dev.lat) * 111320;
-    return { x, z, w: tower.larguraM, d: tower.profundidadeM };
-  }
-  return { x: tower.offsetX, z: -tower.offsetY, w: tower.larguraM, d: tower.profundidadeM };
-}
-
-function pointToWorld(p: any, dev: Development): { x: number; z: number } {
-  if (dev.implantacaoMode === "SATELITE" && p?.lat != null && dev.lat != null && dev.lng != null) {
-    const cosLat = Math.cos(dev.lat * Math.PI / 180);
-    return { x: (p.lng - dev.lng) * 111320 * cosLat, z: -(p.lat - dev.lat) * 111320 };
-  }
-  if (dev.implantacaoMode === "IMAGEM" && p?.x != null) {
-    return { x: (p.x - 0.5) * GROUND_SIZE, z: (p.y - 0.5) * GROUND_SIZE };
-  }
-  return { x: 0, z: 0 };
-}
-
-function buildTerrainFromDesign(THREE: any, scene: any, dev: Development): { gate: { x: number; z: number; angle: number } | null } {
-  const td = dev.terrainDesign;
-  if (!td?.shapes?.length) return { gate: null };
-
-  // Ordem de render: áreas → ruas → contorno (muro)
-  // Áreas (jardim, piscina, salão, garagem, quadra)
-  for (const s of td.shapes) {
-    if (!["JARDIM","PISCINA","SALAO","GARAGEM","QUADRA"].includes(s.type)) continue;
-    const pts = s.points.map((p) => pointToWorld(p, dev));
-    if (pts.length < 3) continue;
-    const shape2d = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, p.z)));
-    const geo = new THREE.ShapeGeometry(shape2d);
-    const colors: Record<string, number> = { JARDIM: 0x22c55e, PISCINA: 0x0ea5e9, SALAO: 0xfde68a, GARAGEM: 0x9ca3af, QUADRA: 0xfb923c };
-    const mat = new THREE.MeshLambertMaterial({ color: colors[s.type] ?? 0x808080, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.y = 0.05;
-    scene.add(mesh);
-
-    if (s.type === "SALAO" || s.type === "GARAGEM") {
-      const box = new THREE.Box3().setFromPoints(pts.map((p) => new THREE.Vector3(p.x, 0, p.z)));
-      const size = new THREE.Vector3(); box.getSize(size);
-      const center = new THREE.Vector3(); box.getCenter(center);
-      const height = s.type === "SALAO" ? 4 : 2.5;
-      const cBuilding = s.type === "SALAO" ? 0xfde68a : 0x6b7280;
-      const building = new THREE.Mesh(
-        new THREE.BoxGeometry(Math.max(2, size.x * 0.85), height, Math.max(2, size.z * 0.85)),
-        new THREE.MeshLambertMaterial({ color: cBuilding }),
-      );
-      building.position.set(center.x, height / 2, center.z);
-      scene.add(building);
-    }
-  }
-
-  // Ruas
-  for (const s of td.shapes) {
-    if (s.type !== "RUA") continue;
-    const pts = s.points.map((p) => pointToWorld(p, dev));
-    const width = s.width ?? 6;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      const dx = b.x - a.x, dz = b.z - a.z;
-      const len = Math.sqrt(dx * dx + dz * dz);
-      const angle = Math.atan2(dz, dx);
-      const road = new THREE.Mesh(
-        new THREE.PlaneGeometry(len, width),
-        new THREE.MeshLambertMaterial({ color: 0x37404a }),
-      );
-      road.rotation.x = -Math.PI / 2;
-      road.rotation.z = -angle;
-      road.position.set((a.x + b.x) / 2, 0.08, (a.z + b.z) / 2);
-      scene.add(road);
-    }
-  }
-
-  // Contorno (muro com gap no segmento mais ao sul)
-  const contorno = td.shapes.find((s) => s.type === "CONTORNO");
-  let gate: { x: number; z: number; angle: number } | null = null;
-  if (contorno && contorno.points.length >= 3) {
-    const pts = contorno.points.map((p) => pointToWorld(p, dev));
-    let southestIdx = 0, southestZ = -Infinity;
-    for (let i = 0; i < pts.length; i++) {
-      const j = (i + 1) % pts.length;
-      const cz = (pts[i].z + pts[j].z) / 2;
-      if (cz > southestZ) { southestZ = cz; southestIdx = i; }
-    }
-    const wallH = 2.5, wallT = 0.3, gateW = 12;
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xb6b1a8 });
-    for (let i = 0; i < pts.length; i++) {
-      const j = (i + 1) % pts.length;
-      const a = pts[i], b = pts[j];
-      const dx = b.x - a.x, dz = b.z - a.z;
-      const len = Math.sqrt(dx * dx + dz * dz);
-      const angle = Math.atan2(dz, dx);
-      const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
-      if (i === southestIdx && len > gateW + 4) {
-        const segLen = (len - gateW) / 2;
-        [-1, 1].forEach((sign) => {
-          const offset = sign * (gateW / 2 + segLen / 2);
-          const w = new THREE.Mesh(new THREE.BoxGeometry(segLen, wallH, wallT), wallMat);
-          w.rotation.y = -angle;
-          w.position.set(cx + Math.cos(angle) * offset, wallH / 2, cz + Math.sin(angle) * offset);
-          scene.add(w);
-        });
-        gate = { x: cx, z: cz, angle };
-        const pillarMat = new THREE.MeshLambertMaterial({ color: 0x4b5563 });
-        [-1, 1].forEach((sign) => {
-          const offset = sign * (gateW / 2);
-          const p = new THREE.Mesh(new THREE.BoxGeometry(0.8, wallH + 1, 0.8), pillarMat);
-          p.rotation.y = -angle;
-          p.position.set(cx + Math.cos(angle) * offset, (wallH + 1) / 2, cz + Math.sin(angle) * offset);
-          scene.add(p);
-        });
-        const gateTop = new THREE.Mesh(new THREE.BoxGeometry(gateW + 1, 0.6, 0.4), new THREE.MeshLambertMaterial({ color: 0x374151 }));
-        gateTop.rotation.y = -angle;
-        gateTop.position.set(cx, wallH + 0.7, cz);
-        scene.add(gateTop);
-      } else {
-        const w = new THREE.Mesh(new THREE.BoxGeometry(len, wallH, wallT), wallMat);
-        w.rotation.y = -angle;
-        w.position.set(cx, wallH / 2, cz);
-        scene.add(w);
-      }
-    }
-  }
-
-  return { gate };
-}
-
-function buildDefaultTerrain(THREE: any, scene: any): { gate: { x: number; z: number; angle: number } } {
-  const wallH = 2.5, wallT = 0.3, half = GROUND_SIZE / 2, gateW = 12;
-  const wallMat = new THREE.MeshLambertMaterial({ color: 0xb6b1a8 });
-  const wallSideL = new THREE.Mesh(new THREE.BoxGeometry((GROUND_SIZE - gateW) / 2, wallH, wallT), wallMat);
-  wallSideL.position.set(-(half + gateW / 2) / 2 - gateW / 4, wallH / 2, half);
-  scene.add(wallSideL);
-  const wallSideR = new THREE.Mesh(new THREE.BoxGeometry((GROUND_SIZE - gateW) / 2, wallH, wallT), wallMat);
-  wallSideR.position.set((half + gateW / 2) / 2 + gateW / 4, wallH / 2, half);
-  scene.add(wallSideR);
-  const wallBack = new THREE.Mesh(new THREE.BoxGeometry(GROUND_SIZE, wallH, wallT), wallMat);
-  wallBack.position.set(0, wallH / 2, -half); scene.add(wallBack);
-  const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, GROUND_SIZE), wallMat);
-  wallLeft.position.set(-half, wallH / 2, 0); scene.add(wallLeft);
-  const wallRight = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, GROUND_SIZE), wallMat);
-  wallRight.position.set(half, wallH / 2, 0); scene.add(wallRight);
-  const pillarMat = new THREE.MeshLambertMaterial({ color: 0x4b5563 });
-  const pillarGeo = new THREE.BoxGeometry(0.8, wallH + 1, 0.8);
-  const pillarL = new THREE.Mesh(pillarGeo, pillarMat); pillarL.position.set(-gateW / 2, (wallH + 1) / 2, half); scene.add(pillarL);
-  const pillarR = new THREE.Mesh(pillarGeo, pillarMat); pillarR.position.set(gateW / 2, (wallH + 1) / 2, half); scene.add(pillarR);
-  const gateTop = new THREE.Mesh(new THREE.BoxGeometry(gateW + 1, 0.6, 0.4), new THREE.MeshLambertMaterial({ color: 0x374151 }));
-  gateTop.position.set(0, wallH + 0.7, half); scene.add(gateTop);
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(gateW, 1.2, 0.1), new THREE.MeshLambertMaterial({ color: 0x1f2937 }));
-  sign.position.set(0, wallH + 1.5, half + 0.05); scene.add(sign);
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(8, GROUND_SIZE * 0.6), new THREE.MeshLambertMaterial({ color: 0x37404a }));
-  road.rotation.x = -Math.PI / 2;
-  road.position.set(0, 0.02, half - GROUND_SIZE * 0.3);
-  scene.add(road);
-  return { gate: { x: 0, z: half, angle: 0 } };
-}
-
-function buildThreeScene(THREE: any, dev: Development) {
-  const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const sun = new THREE.DirectionalLight(0xffeedd, 1.2);
-  sun.position.set(100, 200, 100);
-  scene.add(sun);
-
-  const isVertical = dev.tipo === "VERTICAL";
-  const isLoteamento = dev.subtipo === "LOTEAMENTO";
-  const interactiveObjects: any[] = [];
-  const unitMap = new Map<string, DevelopmentUnit>();
-
-  // Constrói terreno (contorno + ruas + áreas) ou fallback
-  const terrainResult = buildTerrainFromDesign(THREE, scene, dev);
-  const gate = terrainResult.gate ?? buildDefaultTerrain(THREE, scene).gate;
-
-  // ── Torres ────────────────────────────────────────────────────────────────
-  dev.towers.forEach((tower) => {
-    const pos = getTowerWorldPosition(tower, dev);
-    const bx = pos.x, bz = pos.z;
-    const tw = pos.w, td = pos.d;
-    const activeFaces = (tower.lados ?? "FRENTE,FUNDO,ESQUERDA,DIREITA").split(",");
-
-    if (isVertical) {
-      const buildingH = tower.floors * tower.alturaAndarM;
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(tw, buildingH, td),
-        new THREE.MeshLambertMaterial({ color: 0xd0d8e8 }),
-      );
-      body.position.set(bx, buildingH / 2, bz);
-      scene.add(body);
-
-      // Etiqueta no topo (placa com nome) — Sprite com canvas
-      const cnv = document.createElement("canvas");
-      cnv.width = 256; cnv.height = 64;
-      const ctx = cnv.getContext("2d")!;
-      ctx.fillStyle = "rgba(15,23,42,0.9)"; ctx.fillRect(0, 0, 256, 64);
-      ctx.fillStyle = "#ffffff"; ctx.font = "bold 32px sans-serif";
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(tower.nome, 128, 32);
-      const tex = new THREE.CanvasTexture(cnv);
-      const labelMat = new THREE.SpriteMaterial({ map: tex, transparent: true });
-      const label = new THREE.Sprite(labelMat);
-      label.scale.set(12, 3, 1);
-      label.position.set(bx, buildingH + 4, bz);
-      scene.add(label);
-
-      const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
-      tower.units.forEach((u) => { const f = u.andar ?? 1; if (!unitsByFloor[f]) unitsByFloor[f] = []; unitsByFloor[f].push(u); });
-
-      Object.entries(unitsByFloor).forEach(([floorStr, floorUnits]) => {
-        const floor = parseInt(floorStr);
-        const y = (floor - 0.5) * tower.alturaAndarM;
-        const perFace = Math.ceil(floorUnits.length / activeFaces.length);
-        activeFaces.forEach((face, fi) => {
-          const faceUnits = floorUnits.slice(fi * perFace, (fi + 1) * perFace);
-          if (!faceUnits.length) return;
-          const cols = faceUnits.length;
-          faceUnits.forEach((unit, idx) => {
-            let wx = bx, wz = bz;
-            let gw = 1, gh = tower.alturaAndarM * 0.6, gd = 0.3;
-            if (face === "FRENTE") { wx = bx - tw/2 + tw/(cols+1)*(idx+1); wz = bz - td/2 - 0.05; gw = tw/(cols+1)*0.65; }
-            else if (face === "FUNDO") { wx = bx - tw/2 + tw/(cols+1)*(idx+1); wz = bz + td/2 + 0.05; gw = tw/(cols+1)*0.65; }
-            else if (face === "ESQUERDA") { wx = bx - tw/2 - 0.05; wz = bz - td/2 + td/(cols+1)*(idx+1); gw = 0.3; gd = td/(cols+1)*0.65; }
-            else if (face === "DIREITA") { wx = bx + tw/2 + 0.05; wz = bz - td/2 + td/(cols+1)*(idx+1); gw = 0.3; gd = td/(cols+1)*0.65; }
-            const win = new THREE.Mesh(
-              new THREE.BoxGeometry(gw, gh, gd),
-              new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), emissive: new THREE.Color(STATUS_COLOR[unit.status]), emissiveIntensity: 0.55 }),
-            );
-            win.position.set(wx, y, wz);
-            win.userData = { unitId: unit.id };
-            scene.add(win);
-            interactiveObjects.push(win);
-            unitMap.set(win.uuid, unit);
-          });
-        });
-      });
-
-    } else if (isLoteamento) {
-      const cols = Math.ceil(Math.sqrt(tower.units.length)) || 1;
-      const lotW = tw / cols, lotD = td / cols;
-      tower.units.forEach((unit, idx) => {
-        const col = idx % cols, row = Math.floor(idx / cols);
-        const lot = new THREE.Mesh(
-          new THREE.PlaneGeometry(lotW * 0.9, lotD * 0.9),
-          new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]), opacity: 0.85, transparent: true }),
-        );
-        lot.rotation.x = -Math.PI / 2;
-        lot.position.set(bx - tw/2 + lotW*(col+0.5), 0.1, bz - td/2 + lotD*(row+0.5));
-        lot.userData = { unitId: unit.id };
-        scene.add(lot); interactiveObjects.push(lot); unitMap.set(lot.uuid, unit);
-      });
-
-    } else {
-      const cols = Math.ceil(Math.sqrt(tower.units.length)) || 1;
-      const lotW = tw / cols, lotD = td / cols;
-      tower.units.forEach((unit, idx) => {
-        const col = idx % cols, row = Math.floor(idx / cols);
-        const lx = bx - tw/2 + lotW*(col+0.5), lz = bz - td/2 + lotD*(row+0.5);
-        const houseH = tower.alturaAndarM;
-        const house = new THREE.Mesh(
-          new THREE.BoxGeometry(lotW*0.7, houseH, lotD*0.7),
-          new THREE.MeshLambertMaterial({ color: new THREE.Color(STATUS_COLOR[unit.status]).lerp(new THREE.Color(0xffffff), 0.4) }),
-        );
-        house.position.set(lx, houseH/2, lz);
-        house.userData = { unitId: unit.id };
-        scene.add(house); interactiveObjects.push(house); unitMap.set(house.uuid, unit);
-        const roof = new THREE.Mesh(
-          new THREE.ConeGeometry(Math.max(lotW,lotD)*0.55, houseH*0.5, 4),
-          new THREE.MeshLambertMaterial({ color: 0x8b4513 }),
-        );
-        roof.position.set(lx, houseH + houseH*0.25, lz);
-        roof.rotation.y = Math.PI/4;
-        scene.add(roof);
-      });
-    }
-  });
-
-  return { scene, interactiveObjects, unitMap, gate };
-}
-
-// ─── Visão 3D ────────────────────────────────────────────────────────────────
-
-type View3DMode = "street" | "internal" | "aerial";
-
-function View3D({ dev, onUnitUpdated }: { dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void }) {
-  const aerialRef = useRef<HTMLDivElement>(null);
-  const walkRef   = useRef<HTMLDivElement>(null);
-  const streetRef = useRef<HTMLDivElement>(null);
-  const walkSceneRef = useRef<any>(null);
-  const hasGps = !!(dev.lat && dev.lng);
-  const [mode, setMode] = useState<View3DMode>(hasGps ? "street" : "internal");
-  const [selectedUnit, setSelectedUnit] = useState<DevelopmentUnit | null>(null);
-  const [loadingAerial, setLoadingAerial] = useState(true);
-  const [walkActive, setWalkActive] = useState(false);
-  const [hoverUnit, setHoverUnit] = useState<{ unit: DevelopmentUnit; x: number; y: number } | null>(null);
-
-  // ── Modo Street View externo ────────────────────────────────────────────────
-  const [streetStatus, setStreetStatus] = useState<"loading" | "ok" | "no-coverage">("loading");
-  useEffect(() => {
-    if (mode !== "street" || !streetRef.current || !hasGps) return;
-    let cancelled = false;
-    async function init() {
-      await waitForMaps();
-      if (cancelled || !streetRef.current) return;
-      setStreetStatus("loading");
-      const svc = new window.google.maps.StreetViewService();
-      // Prioriza entranceLat/Lng (entrada principal); fallback para centro
-      const targetLat = dev.entranceLat ?? dev.lat!;
-      const targetLng = dev.entranceLng ?? dev.lng!;
-      svc.getPanorama(
-        { location: { lat: targetLat, lng: targetLng }, radius: 200, source: "outdoor" } as any,
-        (data: any, status: any) => {
-          if (cancelled || !streetRef.current) return;
-          if (status === "OK" && data?.location?.latLng) {
-            // Calcula heading olhando do panorama para a entrada (ou centro)
-            const pano = data.location.latLng;
-            const heading = window.google.maps.geometry?.spherical
-              ? window.google.maps.geometry.spherical.computeHeading(pano, new window.google.maps.LatLng(targetLat, targetLng))
-              : 0;
-            new window.google.maps.StreetViewPanorama(streetRef.current!, {
-              pano: data.location.pano,
-              pov: { heading, pitch: 0 },
-              zoom: 1,
-              addressControl: true,
-              fullscreenControl: true,
-              motionTracking: false,
-              motionTrackingControl: false,
-            });
-            setStreetStatus("ok");
-          } else {
-            setStreetStatus("no-coverage");
-          }
-        },
-      );
-    }
-    init();
-    return () => { cancelled = true; };
-  }, [mode, hasGps, dev.lat, dev.lng]);
-
-  // ── Modo Aéreo: Google Maps + OverlayView Canvas ────────────────────────────
-  useEffect(() => {
-    if (mode !== "aerial" || !aerialRef.current || !hasGps) { setLoadingAerial(false); return; }
-    let cancelled = false;
-    let overlayRef: any = null;
-
-    async function initAerial() {
-      const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-      if (!key) { setLoadingAerial(false); return; }
-      await new Promise<void>((resolve) => {
-        if (window.google?.maps) { resolve(); return; }
-        const t = setInterval(() => { if (window.google?.maps) { clearInterval(t); resolve(); } }, 100);
-      });
-      if (cancelled || !aerialRef.current) return;
-
-      const map = new window.google.maps.Map(aerialRef.current, {
-        center: { lat: dev.lat!, lng: dev.lng! },
-        zoom: 19, tilt: 0,
-        mapTypeId: "satellite",
-        mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
-      });
-
-      const cosLat = Math.cos(dev.lat! * Math.PI / 180);
-      const latPerM = 1 / 111320;
-      const lngPerM = 1 / (111320 * cosLat);
-
-      const ov = new window.google.maps.OverlayView();
-      overlayRef = ov;
-      let canvas: HTMLCanvasElement | null = null;
-
-      ov.onAdd = function () {
-        canvas = document.createElement("canvas");
-        canvas.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;";
-        (this as any).getPanes()!.overlayLayer.appendChild(canvas);
-      };
-
-      ov.draw = function () {
-        if (!canvas || !aerialRef.current) return;
-        const proj = (this as any).getProjection();
-        if (!proj) return;
-        canvas.width  = aerialRef.current.clientWidth;
-        canvas.height = aerialRef.current.clientHeight;
-        const ctx = canvas.getContext("2d")!;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // pixels per meter at current zoom
-        const cPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng!))!;
-        const rPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng! + lngPerM))!;
-        const ppm = Math.abs(rPx.x - cPx.x);
-
-        dev.towers.forEach((tower) => {
-          const tLat = dev.lat! + tower.offsetY * latPerM;
-          const tLng = dev.lng! + tower.offsetX * lngPerM;
-          const tPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(tLat, tLng))!;
-          const tw = tower.larguraM * ppm;
-          const th = tower.profundidadeM * ppm;
-          const rx = tPx.x - tw / 2;
-          const ry = tPx.y - th / 2;
-
-          if (dev.tipo === "VERTICAL") {
-            ctx.fillStyle = "rgba(37,99,235,0.78)";
-            ctx.fillRect(rx, ry, tw, th);
-            ctx.strokeStyle = "#fff";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(rx, ry, tw, th);
-            ctx.fillStyle = "#fff";
-            const fz = Math.max(9, Math.min(13, tw / 6));
-            ctx.font = `bold ${fz}px sans-serif`;
-            ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText(tower.nome, tPx.x, tPx.y - (tw > 50 ? fz / 2 : 0));
-            if (tw > 50) {
-              ctx.font = `${fz - 1}px sans-serif`;
-              ctx.fillText(`${tower.floors} and · ${tower.units.length} un`, tPx.x, tPx.y + fz);
-            }
-          } else {
-            const cols = Math.max(1, Math.ceil(Math.sqrt(tower.units.length)));
-            const rows = Math.max(1, Math.ceil(tower.units.length / cols));
-            const cellW = tw / cols;
-            const cellH = th / rows;
-            tower.units.forEach((unit, idx) => {
-              const col = idx % cols;
-              const row = Math.floor(idx / cols);
-              const x = rx + col * cellW;
-              const y = ry + row * cellH;
-              ctx.fillStyle = STATUS_COLOR[unit.status] + "cc";
-              ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
-              ctx.strokeStyle = "rgba(255,255,255,0.6)";
-              ctx.lineWidth = 1;
-              ctx.strokeRect(x + 1, y + 1, cellW - 2, cellH - 2);
-              if (cellW > 18) {
-                ctx.fillStyle = "#fff";
-                ctx.font = `${Math.min(10, cellW / 3)}px sans-serif`;
-                ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                ctx.fillText(unit.loteNum || String(idx + 1), x + cellW / 2, y + cellH / 2);
-              }
-            });
-          }
-        });
-      };
-
-      ov.onRemove = function () {
-        if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
-        canvas = null;
-      };
-
-      ov.setMap(map);
-      setLoadingAerial(false);
-
-      map.addListener("click", (e: any) => {
-        const proj = (overlayRef as any)?.getProjection();
-        if (!proj) return;
-        const clickPx = proj.fromLatLngToDivPixel(e.latLng)!;
-        const cPx2 = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng!))!;
-        const rPx2 = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(dev.lat!, dev.lng! + lngPerM))!;
-        const ppm = Math.abs(rPx2.x - cPx2.x);
-
-        for (const tower of dev.towers) {
-          const tLat = dev.lat! + tower.offsetY * latPerM;
-          const tLng = dev.lng! + tower.offsetX * lngPerM;
-          const tPx = proj.fromLatLngToDivPixel(new window.google.maps.LatLng(tLat, tLng))!;
-          const tw = tower.larguraM * ppm;
-          const th = tower.profundidadeM * ppm;
-          const rx = tPx.x - tw / 2, ry = tPx.y - th / 2;
-
-          if (clickPx.x >= rx && clickPx.x <= rx + tw && clickPx.y >= ry && clickPx.y <= ry + th) {
-            if (dev.tipo === "VERTICAL") {
-              setSelectedUnit(tower.units[0] ?? null);
-            } else {
-              const cols = Math.max(1, Math.ceil(Math.sqrt(tower.units.length)));
-              const cellW = tw / cols;
-              const cellH = th / Math.max(1, Math.ceil(tower.units.length / cols));
-              const col = Math.floor((clickPx.x - rx) / cellW);
-              const row = Math.floor((clickPx.y - ry) / cellH);
-              const idx = row * cols + col;
-              if (tower.units[idx]) setSelectedUnit(tower.units[idx]);
-            }
-            return;
-          }
-        }
-        setSelectedUnit(null);
-      });
-    }
-
-    initAerial();
-    return () => {
-      cancelled = true;
-      if (overlayRef) { try { overlayRef.setMap(null); } catch {} overlayRef = null; }
-    };
-  }, [dev, hasGps]);
-
-  // ── Modo Internal: passeio FPS Three.js ────────────────────────────────────
-  useEffect(() => {
-    if (mode !== "internal" || !walkRef.current) return;
-    let cancelled = false;
-    let animId = 0;
-    let lastHoverId: string | null = null;
-
-    async function initWalk() {
-      if (!walkRef.current) return;
-      const THREE = await import("three");
-      const { PointerLockControls } = await import("three/examples/jsm/controls/PointerLockControls.js" as any);
-      if (cancelled) return;
-
-      const { scene, interactiveObjects, unitMap, gate } = buildThreeScene(THREE, dev);
-      scene.background = new THREE.Color(0x87ceeb);
-
-      // Ground: imagem de implantação (modo IMAGEM) ou gramado
-      const useImpImg = dev.implantacaoMode === "IMAGEM" && dev.implantacaoUrl;
-      if (useImpImg) {
-        const tex = await new THREE.TextureLoader().loadAsync(dev.implantacaoUrl!);
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE), new THREE.MeshLambertMaterial({ map: tex }));
-        ground.rotation.x = -Math.PI / 2; scene.add(ground);
-      } else {
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SIZE * 3, GROUND_SIZE * 3), new THREE.MeshLambertMaterial({ color: 0x4a7c59 }));
-        ground.rotation.x = -Math.PI / 2; scene.add(ground);
-      }
-
-      const W = walkRef.current.clientWidth, H = walkRef.current.clientHeight;
-      const camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 2000);
-      // Câmera começa fora do portão olhando para dentro do condomínio
-      const gateNormal = { x: Math.sin(gate.angle), z: -Math.cos(gate.angle) }; // perpendicular ao muro do portão (pra fora)
-      camera.position.set(gate.x + gateNormal.x * 8, 1.7, gate.z + gateNormal.z * 8);
-      camera.lookAt(gate.x - gateNormal.x * 5, 1.7, gate.z - gateNormal.z * 5);
-
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.setSize(W, H);
-      walkRef.current.appendChild(renderer.domElement);
-
-      const controls = new PointerLockControls(camera, renderer.domElement);
-      let isLocked = false;
-      const keys: Record<string, boolean> = {};
-      const onKD = (e: KeyboardEvent) => {
-        if (!isLocked) return;
-        if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) {
-          e.preventDefault();
-        }
-        keys[e.code] = true;
-        if (e.code === "Escape") controls.unlock();
-      };
-      const onKU = (e: KeyboardEvent) => { keys[e.code] = false; };
-      window.addEventListener("keydown", onKD);
-      window.addEventListener("keyup", onKU);
-      controls.addEventListener("lock", () => { isLocked = true; setWalkActive(true); });
-      controls.addEventListener("unlock", () => { isLocked = false; for (const k in keys) keys[k] = false; setWalkActive(false); setHoverUnit(null); });
-
-      const raycaster = new THREE.Raycaster();
-      renderer.domElement.addEventListener("click", () => {
-        if (!isLocked) { controls.lock(); return; }
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-        const hits = raycaster.intersectObjects(interactiveObjects);
-        if (hits.length > 0) {
-          const unit = unitMap.get(hits[0].object.uuid);
-          if (unit) setSelectedUnit(unit);
-        }
-      });
-
-      const ro = new ResizeObserver(() => {
-        if (!walkRef.current) return;
-        const w = walkRef.current.clientWidth, h = walkRef.current.clientHeight;
-        renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
-      });
-      ro.observe(walkRef.current);
-
-      const clock = new THREE.Clock();
-      function animate() {
-        animId = requestAnimationFrame(animate);
-        const dt = Math.min(0.05, clock.getDelta());
-        if (isLocked) {
-          const speed = 25; // metros por segundo
-          const dist = speed * dt;
-          if (keys["KeyW"] || keys["ArrowUp"])    controls.moveForward(dist);
-          if (keys["KeyS"] || keys["ArrowDown"])  controls.moveForward(-dist);
-          if (keys["KeyA"] || keys["ArrowLeft"])  controls.moveRight(-dist);
-          if (keys["KeyD"] || keys["ArrowRight"]) controls.moveRight(dist);
-
-          // Hover via raycaster do centro da tela
-          raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-          const hits = raycaster.intersectObjects(interactiveObjects);
-          if (hits.length > 0) {
-            const unit = unitMap.get(hits[0].object.uuid);
-            if (unit && unit.id !== lastHoverId) {
-              lastHoverId = unit.id;
-              const w = walkRef.current?.clientWidth ?? 0;
-              const h = walkRef.current?.clientHeight ?? 0;
-              setHoverUnit({ unit, x: w / 2, y: h / 2 + 30 });
-            }
-          } else if (lastHoverId !== null) {
-            lastHoverId = null;
-            setHoverUnit(null);
-          }
-        }
-        renderer.render(scene, camera);
-      }
-      animate();
-      walkSceneRef.current = { controls, renderer, ro, onKD, onKU };
-    }
-
-    initWalk();
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(animId);
-      const s = walkSceneRef.current;
-      if (s) {
-        window.removeEventListener("keydown", s.onKD);
-        window.removeEventListener("keyup", s.onKU);
-        s.ro?.disconnect();
-        s.renderer?.dispose();
-        if (walkRef.current?.contains(s.renderer?.domElement)) walkRef.current.removeChild(s.renderer.domElement);
-      }
-      walkSceneRef.current = null;
-      setWalkActive(false);
-      setHoverUnit(null);
-    };
-  }, [mode, dev]);
-
-  const modeOptions: { k: View3DMode; l: string; disabled?: boolean }[] = [
-    { k: "street",   l: "🌳 Street View (entrada)", disabled: !hasGps },
-    { k: "internal", l: "🚶 Passeio Virtual" },
-    { k: "aerial",   l: "🛰️ Satélite",              disabled: !hasGps },
-  ];
-
-  return (
-    <div className="space-y-4">
-      {!hasGps && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-          Defina as coordenadas GPS do empreendimento (aba Cadastro) para usar Street View e Satélite.
-        </div>
-      )}
-
-      {/* Toggle de modo */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex rounded-xl border border-[var(--shell-card-border)] overflow-hidden">
-          {modeOptions.map(({ k, l, disabled }) => (
-            <button key={k} type="button" disabled={disabled}
-              onClick={() => { setMode(k); setSelectedUnit(null); setHoverUnit(null); }}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${mode === k ? "bg-[var(--brand-accent)] text-white" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
-              {l}
-            </button>
-          ))}
-        </div>
-        {mode === "internal" && !walkActive && <p className="text-xs text-[var(--shell-subtext)]">Clique na cena para ativar · WASD para mover · ESC para sair</p>}
-        {walkActive && <span className="rounded-full bg-green-500 px-3 py-1 text-xs font-semibold text-white animate-pulse">Passeio ativo — ESC para sair</span>}
-      </div>
-
-      {/* Containers */}
-      <div className="relative rounded-2xl overflow-hidden border border-[var(--shell-card-border)] shadow-md" style={{ height: 540 }}>
-        {/* Street View externo */}
-        {mode === "street" && (
-          <>
-            <div ref={streetRef} className="absolute inset-0 bg-slate-900" />
-            {streetStatus === "loading" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10">
-                <div className="text-center space-y-2">
-                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-xs text-white/70">Procurando Street View...</p>
-                </div>
-              </div>
-            )}
-            {streetStatus === "no-coverage" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-900 z-10 p-6">
-                <div className="max-w-md text-center space-y-3">
-                  <div className="text-4xl">🛰️</div>
-                  <p className="text-sm font-semibold text-white">Street View indisponível neste local</p>
-                  <p className="text-xs text-white/70">O Google não tem cobertura do Street View num raio de 200m do empreendimento (típico em condomínios fechados ou regiões novas). Você pode usar o Passeio Virtual ou o Satélite.</p>
-                  <button type="button" onClick={() => { setMode("internal"); setSelectedUnit(null); }}
-                    className="rounded-full bg-[var(--brand-accent)] px-5 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
-                    Ir para o Passeio Virtual →
-                  </button>
-                </div>
-              </div>
-            )}
-            {streetStatus === "ok" && (
-              <button type="button" onClick={() => { setMode("internal"); setSelectedUnit(null); }}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 rounded-full bg-[var(--brand-accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:opacity-90 transition-opacity flex items-center gap-2">
-                Entrar no condomínio →
-              </button>
-            )}
-          </>
-        )}
-
-        {/* Aéreo: Google Maps + OverlayView */}
-        <div ref={aerialRef} className="absolute inset-0" style={{ display: mode === "aerial" ? "block" : "none" }} />
-        {mode === "aerial" && loadingAerial && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[var(--shell-bg)] z-10">
-            <div className="text-center space-y-2">
-              <div className="w-8 h-8 border-2 border-[var(--brand-accent)] border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-[var(--shell-subtext)]">Carregando mapa...</p>
-            </div>
-          </div>
-        )}
-
-        {/* Internal: Three.js */}
-        {mode === "internal" && (
-          <>
-            <div ref={walkRef} className="absolute inset-0" />
-            {/* Mira (crosshair) ao centro durante o passeio */}
-            {walkActive && (
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
-                <div className="w-2 h-2 rounded-full border-2 border-white shadow-md" />
-              </div>
-            )}
-            {/* Tooltip da unidade sob a mira */}
-            {hoverUnit && (
-              <div
-                className="absolute z-20 pointer-events-none rounded-lg bg-slate-900/95 text-white px-3 py-2 shadow-xl text-xs"
-                style={{ left: hoverUnit.x, top: hoverUnit.y, transform: "translate(-50%, 0)" }}>
-                <div className="font-bold">{hoverUnit.unit.nome}</div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLOR[hoverUnit.unit.status] }} />
-                  {STATUS_LABEL[hoverUnit.unit.status]}
-                </div>
-                {hoverUnit.unit.areaM2 && <div className="text-[11px] opacity-80">{hoverUnit.unit.areaM2} m²</div>}
-                {hoverUnit.unit.valorVenda && <div className="text-[11px] font-semibold text-amber-300 mt-0.5">{fmt(hoverUnit.unit.valorVenda)}</div>}
-                <div className="text-[10px] opacity-70 mt-1">Clique para detalhes</div>
-              </div>
-            )}
-            {hasGps && (
-              <button type="button" onClick={() => { setMode("street"); setSelectedUnit(null); setHoverUnit(null); }}
-                className="absolute top-3 left-3 z-10 rounded-lg bg-slate-900/80 backdrop-blur px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-900 transition-colors">
-                ← Sair (Street View)
-              </button>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Modal de unidade — click abre detalhes/reserva (UnitModal completo) */}
-      {selectedUnit && (
-        <UnitModal
-          unit={selectedUnit}
-          devId={dev.id}
-          onClose={() => setSelectedUnit(null)}
-          onUpdated={(u) => {
-            const tower = dev.towers.find((t) => t.units.some((x) => x.id === u.id));
-            if (tower) onUnitUpdated(tower.id, u);
-            setSelectedUnit(u);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── Aba Espelho (unificada 2D + 3D) ─────────────────────────────────────────
+// --- Aba Espelho -------------------------------------------------------------
 
 function AbaEspelho({ dev, onUnitUpdated }: {
   dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
 }) {
-  const [view, setView] = useState<"2d" | "3d">("2d");
-  const [show3d, setShow3d] = useState(false);
-
-  return (
-    <div className="space-y-5">
-      {/* Toggle de visão */}
-      <div className="flex items-center gap-3">
-        <div className="flex rounded-xl border border-[var(--shell-card-border)] overflow-hidden shadow-sm">
-          {[{ k: "2d", l: "📋 2D Estático" }, { k: "3d", l: "🏗️ 3D Interativo" }].map(({ k, l }) => (
-            <button key={k} type="button"
-              onClick={() => {
-                setView(k as any);
-                if (k === "3d") setShow3d(true);
-              }}
-              className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
-                view === k
-                  ? "bg-[var(--brand-accent)] text-white"
-                  : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
-              }`}>
-              {l}
-            </button>
-          ))}
-        </div>
-        {view === "3d" && (
-          <span className="text-xs text-[var(--shell-subtext)]">Street View na entrada · Passeio virtual interno · WASD para mover · clique numa unidade para reservar</span>
-        )}
-      </div>
-
-      {view === "2d" && <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} />}
-      {view === "3d" && show3d && <View3D dev={dev} onUnitUpdated={onUnitUpdated} />}
-    </div>
-  );
+  return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} />;
 }
 
 // ─── Tabela de Preços ─────────────────────────────────────────────────────────
@@ -2573,6 +1993,7 @@ function EditorImplantacao({ dev, towers, onSaved }: {
   dev: Development; towers: Tower[]; onSaved: () => void;
 }) {
   const [uploadingImg, setUploadingImg] = useState(false);
+  const [uploadingModel, setUploadingModel] = useState(false);
   const mode = (dev.implantacaoMode ?? null) as "SATELITE" | "IMAGEM" | null;
 
   async function setMode(m: "SATELITE" | "IMAGEM") {
@@ -2589,8 +2010,20 @@ function EditorImplantacao({ dev, towers, onSaved }: {
     try {
       await uploadImplantacao(dev.id, file);
       onSaved();
-    } catch { alert("Erro ao fazer upload da implantação"); }
+    } catch { alert("Erro ao fazer upload da implantacao"); }
     finally { setUploadingImg(false); }
+  }
+
+  async function handleModelUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.match(/\.(glb|gltf)$/i)) { alert("Formato invalido. Use .glb ou .gltf"); return; }
+    setUploadingModel(true);
+    try {
+      await uploadDevelopmentModel(dev.id, file);
+      onSaved();
+    } catch (err: any) { alert("Erro ao fazer upload do modelo: " + (err?.message ?? err)); }
+    finally { setUploadingModel(false); }
   }
 
   return (
@@ -2621,15 +2054,34 @@ function EditorImplantacao({ dev, towers, onSaved }: {
       {mode === "SATELITE" && <ImplantacaoSatelite dev={dev} towers={towers} onReload={onSaved} />}
       {mode === "IMAGEM" && <ImplantacaoImagem dev={dev} towers={towers} />}
 
-      {/* Upload da planta — disponível independente do modo */}
+      {/* Upload da planta — disponivel independente do modo */}
       <div className="border-t border-[var(--shell-card-border)] pt-4 flex items-center gap-4 flex-wrap">
         {dev.implantacaoUrl && (
-          <img src={dev.implantacaoUrl} alt="Implantação" className="max-h-20 rounded border border-[var(--shell-card-border)] object-contain" />
+          <img src={dev.implantacaoUrl} alt="Implantacao" className="max-h-20 rounded border border-[var(--shell-card-border)] object-contain" />
         )}
         <label className={`inline-flex items-center gap-2 cursor-pointer rounded-xl border border-dashed border-[var(--shell-card-border)] px-4 py-2 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors ${uploadingImg ? "opacity-50 pointer-events-none" : ""}`}>
-          {uploadingImg ? "Fazendo upload..." : dev.implantacaoUrl ? "Trocar planta" : "📎 Upload da planta (PNG / JPG)"}
+          {uploadingImg ? "Fazendo upload..." : dev.implantacaoUrl ? "Trocar planta" : "Upload da planta (PNG / JPG)"}
           <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploadingImg} />
         </label>
+      </div>
+
+      {/* Upload do modelo 3D do arquiteto */}
+      <div className="border-t border-[var(--shell-card-border)] pt-4 space-y-2">
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Modelo 3D do Arquiteto</p>
+        <p className="text-xs text-[var(--shell-subtext)]">
+          Arquivo .glb ou .gltf fornecido pelo arquiteto. Sera exibido no modo "Modelo Arquiteto" do espelho 3D.
+        </p>
+        <div className="flex items-center gap-4 flex-wrap">
+          {dev.modelUrl && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-3 py-1 text-xs font-semibold">
+              Modelo carregado
+            </span>
+          )}
+          <label className={`inline-flex items-center gap-2 cursor-pointer rounded-xl border border-dashed border-[var(--shell-card-border)] px-4 py-2 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors ${uploadingModel ? "opacity-50 pointer-events-none" : ""}`}>
+            {uploadingModel ? "Fazendo upload..." : dev.modelUrl ? "Substituir modelo (.glb/.gltf)" : "Selecionar arquivo .glb ou .gltf"}
+            <input type="file" accept=".glb,.gltf" className="hidden" onChange={handleModelUpload} disabled={uploadingModel} />
+          </label>
+        </div>
       </div>
     </div>
   );
@@ -3055,6 +2507,68 @@ function Step3Layout({ dev, onSaved }: { dev: Development; onSaved: () => void }
       <Step3TowersManager dev={dev} onSaved={onSaved} />
       <EditorTerreno dev={dev} onSaved={onSaved} />
       <EditorImplantacao dev={dev} towers={dev.towers} onSaved={onSaved} />
+      <AreasComunsCard dev={dev} onSaved={onSaved} />
+    </div>
+  );
+}
+
+// ─── Áreas Comuns do Condomínio ───────────────────────────────────────────────
+
+function AreasComunsCard({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+  const initial = dev.areasComuns ?? {};
+  const [areas, setAreas] = useState({
+    piscina:    !!(initial as any).piscina,
+    academia:   !!(initial as any).academia,
+    playground: !!(initial as any).playground,
+    jardim:     !!(initial as any).jardim,
+    portaria:   !!(initial as any).portaria,
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await updateDevelopment(dev.id, { areasComuns: areas } as any);
+      setSaved(true);
+      onSaved();
+    } catch (e: any) { alert("Erro ao salvar: " + (e?.message ?? e)); }
+    finally { setSaving(false); }
+  }
+
+  const OPTIONS: { key: keyof typeof areas; label: string }[] = [
+    { key: "piscina",    label: "Piscina" },
+    { key: "academia",   label: "Academia" },
+    { key: "playground", label: "Playground" },
+    { key: "jardim",     label: "Jardim/Paisagismo" },
+    { key: "portaria",   label: "Portaria/Guarita" },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-5 space-y-4 shadow-sm">
+      <div>
+        <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-wider">Areas Comuns do Condominio</p>
+        <p className="text-xs text-[var(--shell-subtext)] mt-1">Itens selecionados serao exibidos na cena 3D do passeio virtual.</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {OPTIONS.map(({ key, label }) => (
+          <label key={key} className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] p-3 cursor-pointer hover:bg-[var(--shell-hover)] transition-colors">
+            <input
+              type="checkbox"
+              checked={areas[key]}
+              onChange={(e) => { setAreas((p) => ({ ...p, [key]: e.target.checked })); setSaved(false); }}
+              className="h-4 w-4 rounded accent-[var(--brand-accent)]"
+            />
+            <span className="text-sm font-medium text-[var(--shell-text)]">{label}</span>
+          </label>
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={saving}
+          className="rounded-xl bg-[var(--brand-accent)] px-5 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+          {saving ? "Salvando..." : saved ? "Salvo!" : "Salvar Areas Comuns"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -3255,6 +2769,14 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
   const [busy, setBusy] = useState(false);
 
+  // Configuração de lados: { "1": "Norte", "2": "Sul", ... }
+  const initLadoConfig = (): Record<string, string> => {
+    const cfg = tower?.ladoConfig;
+    if (cfg && typeof cfg === "object") return { ...(cfg as Record<string, string>) };
+    return {};
+  };
+  const [ladoConfig, setLadoConfig] = useState<Record<string, string>>(initLadoConfig);
+
   function changeCols(newCols: number) {
     setFpCols(newCols);
     setFpCells(initCells(newCols, fpRows, undefined));
@@ -3293,6 +2815,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         facadeColor,
         balconyType,
         floorPlan: { cols: fpCols, rows: fpRows, cells: fpCells, cellWidthM: parseFloat(cellWidthM) || 4, cellDepthM: parseFloat(cellDepthM) || 5 },
+        ladoConfig: Object.keys(ladoConfig).length > 0 ? ladoConfig : null,
       };
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
@@ -3436,6 +2959,41 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
               </>
             )}
           </section>
+
+          {/* Seção: Configurar Lados */}
+          {isVertical && aptCount > 0 && (
+            <section>
+              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Configurar Lados</p>
+              <p className="text-[11px] text-[var(--shell-subtext)] mb-3">
+                Atribua um lado (vista) para cada posição de apartamento por andar. Usado para filtrar o Espelho de Vendas.
+              </p>
+              <div className="space-y-2">
+                {Array.from({ length: aptCount }, (_, i) => {
+                  const pos = String(i + 1);
+                  return (
+                    <div key={pos} className="flex items-center gap-3">
+                      <span className="w-20 text-xs font-semibold text-[var(--shell-text)] shrink-0">Posição {pos}</span>
+                      <select
+                        value={ladoConfig[pos] ?? ""}
+                        onChange={(e) => setLadoConfig((prev) => {
+                          const next = { ...prev };
+                          if (e.target.value) next[pos] = e.target.value;
+                          else delete next[pos];
+                          return next;
+                        })}
+                        className={`${inp} flex-1`}
+                      >
+                        <option value="">— sem lado —</option>
+                        {LADO_OPTIONS.map((l) => (
+                          <option key={l} value={l}>{l}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Preview 3D (SVG) */}
           {isVertical && (
