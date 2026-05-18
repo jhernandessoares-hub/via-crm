@@ -31,6 +31,12 @@ export type DevelopmentUnit = {
   lead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
 };
 
+export type FaseConfig = {
+  nome: string;
+  unidades: number;
+  subsolos: number;
+};
+
 export type FloorPlan = {
   cols: number;
   rows: number;
@@ -71,6 +77,7 @@ export type Tower = {
   ladoConfig?: Record<string, string> | null;
   subsolos?: number | null;
   floorUnitsConfig?: Record<string, number> | null;
+  fasesConfig?: FaseConfig[] | null;
   units: DevelopmentUnit[];
 };
 

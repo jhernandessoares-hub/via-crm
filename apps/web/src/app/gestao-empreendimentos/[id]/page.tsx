@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useRef, useMemo, forwardRef, useImperativeHandle, startTransition, type ForwardedRef } from "react";
+import type { FaseConfig } from "@/lib/developments.service";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { computeCompleteness, STEP_LABELS, type Completeness } from "@/lib/empreendimento-completeness";
@@ -476,7 +477,7 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
   );
 }
 
-// ─── Espelho 2D — VERTICAL (com seletor de lados) ───────────────────────────
+// ─── Espelho 2D — VERTICAL (lado a lado por fase) ───────────────────────────
 
 const LADO_OPTIONS = ["Vista Interna", "Vista Externa", "Norte", "Sul", "Leste", "Oeste"];
 
@@ -484,43 +485,47 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
   onUnitUpdated: (u: DevelopmentUnit) => void;
 }) {
-  // Deriva lados únicos do ladoConfig da torre
-  const lados = useMemo(() => {
-    const cfg = tower.ladoConfig;
-    if (!cfg || typeof cfg !== "object") return [] as string[];
-    return [...new Set(Object.values(cfg as Record<string, string>))] as string[];
-  }, [tower.ladoConfig]);
-
-  const [selectedLado, setSelectedLado] = useState<string | null>(lados[0] ?? null);
   const [detailsUnit, setDetailsUnit] = useState<DevelopmentUnit | null>(null);
   const [editUnit, setEditUnit] = useState<DevelopmentUnit | null>(null);
 
-  // Posições que pertencem ao lado selecionado
-  const ladoPosicoes = useMemo(() => {
-    if (!selectedLado || !tower.ladoConfig) return null;
-    return Object.entries(tower.ladoConfig as Record<string, string>)
-      .filter(([, v]) => v === selectedLado)
-      .map(([k]) => Number(k));
-  }, [selectedLado, tower.ladoConfig]);
+  // Deriva fases e ranges de posição
+  const faseRanges = useMemo(() => {
+    const cfg = tower.fasesConfig as FaseConfig[] | null;
+    if (cfg && cfg.length > 0) {
+      let offset = 0;
+      return cfg.map((f) => {
+        const posStart = offset + 1;
+        offset += f.unidades;
+        return { nome: f.nome, posStart, posEnd: offset, subsolos: f.subsolos };
+      });
+    }
+    // fallback: sem fasesConfig, trata como fase única
+    return [{ nome: "", posStart: 1, posEnd: tower.unitsPerFloor, subsolos: tower.subsolos ?? 0 }];
+  }, [tower.fasesConfig, tower.unitsPerFloor, tower.subsolos]);
 
-  // Unidades filtradas pelo lado selecionado
-  const ladoUnits = useMemo(() => {
-    if (!ladoPosicoes) return tower.units;
-    return tower.units.filter((u) => ladoPosicoes.includes(u.posicao ?? 0));
-  }, [tower.units, ladoPosicoes]);
+  const hasMultipleFases = faseRanges.length > 1 && faseRanges.some((f) => f.nome);
 
-  const unitsByFloor: Record<number, DevelopmentUnit[]> = {};
-  ladoUnits.forEach((u) => {
-    const f = u.andar ?? 1;
-    if (!unitsByFloor[f]) unitsByFloor[f] = [];
-    unitsByFloor[f].push(u);
-  });
-  const floors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
+  // Mapa de unidades por andar
+  const unitsByFloor = useMemo(() => {
+    const map: Record<number, DevelopmentUnit[]> = {};
+    tower.units.forEach((u) => {
+      const f = u.andar ?? 1;
+      if (!map[f]) map[f] = [];
+      map[f].push(u);
+    });
+    return map;
+  }, [tower.units]);
 
-  const floorLabel = (f: number) => {
-    if (f < 0) return `S${Math.abs(f)}`;
-    return `${f}º`;
-  };
+  const allFloors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
+
+  const floorLabel = (f: number) => f < 0 ? `S${Math.abs(f)}` : `${f}º`;
+  const isSubsolo = (f: number) => f < 0;
+
+  const unitMap = useMemo(() => {
+    const m: Record<string, DevelopmentUnit> = {};
+    tower.units.forEach((u) => { m[`${u.andar}_${u.posicao}`] = u; });
+    return m;
+  }, [tower.units]);
 
   if (tower.units.length === 0) {
     return <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade nesta torre</div>;
@@ -528,86 +533,93 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
 
   return (
     <div className="space-y-3">
-      {/* Tabs de lados */}
-      {lados.length > 0 && (
-        <div className="flex gap-2 flex-wrap items-center">
-          <span className="text-xs text-[var(--shell-subtext)] mr-1">Vista:</span>
-          {lados.map((lado) => (
-            <button key={lado} type="button"
-              onClick={() => setSelectedLado(lado)}
-              className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
-                selectedLado === lado
-                  ? "bg-[var(--brand-accent)] text-white shadow-sm"
-                  : "border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
-              }`}>
-              {lado}
-            </button>
-          ))}
-          {selectedLado && (
-            <button type="button" onClick={() => setSelectedLado(null)}
-              className="rounded-lg px-3 py-1.5 text-xs border border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]">
-              Todas
-            </button>
-          )}
-        </div>
-      )}
+      <div className="overflow-auto">
+        <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
 
-      {floors.length === 0 ? (
-        <div className="py-8 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade neste lado</div>
-      ) : (
-        <div className="overflow-auto">
-          <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
-            {/* Cabeçalho TOPO */}
-            <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
+          {/* Cabeçalho — nome da torre + headers de fase */}
+          <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white border-b-2 border-slate-900">
+            <div className="py-2 px-4 text-center">
               <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▲ Topo</div>
-              <div className="text-sm font-bold tracking-wider mt-0.5">
-                {tower.nome}{selectedLado ? ` — ${selectedLado}` : ""}
+              <div className="text-sm font-bold tracking-wider mt-0.5">{tower.nome}</div>
+            </div>
+            {hasMultipleFases && (
+              <div className="flex border-t border-slate-600">
+                <div className="w-14 shrink-0" />
+                {faseRanges.map((fase, fi) => (
+                  <div key={fi} className="flex border-l border-slate-600">
+                    <div className="text-center text-[11px] font-bold py-1 px-2 tracking-wide opacity-90 whitespace-nowrap"
+                      style={{ width: `${(fase.posEnd - fase.posStart + 1) * 64}px` }}>
+                      {fase.nome}
+                    </div>
+                  </div>
+                ))}
+                <div className="w-14 shrink-0" />
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Linhas (andares) */}
-            {floors.map((floor, idx) => {
-              const units = (unitsByFloor[floor] ?? []).sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
-              const zebra = idx % 2 === 0 ? "bg-[var(--shell-card-bg)]" : "bg-[var(--shell-bg)]";
-              return (
-                <div key={floor} className={`flex border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${zebra}`}>
-                  <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-700 py-1">
-                    {floorLabel(floor)}
-                  </div>
-                  <div className="flex">
-                    {units.map((unit) => {
-                      const visible = unitMatches(unit, filters, true);
-                      return (
-                        <button key={unit.id} type="button"
-                          onClick={() => setDetailsUnit(unit)}
-                          title={`${unit.nome} — ${STATUS_LABEL[unit.status]}${unit.valorVenda ? ` — ${fmt(unit.valorVenda)}` : ""}`}
-                          className={`w-16 h-14 flex flex-col items-center justify-center border-r border-white/30 last:border-r-0 transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
-                          style={{ backgroundColor: STATUS_COLOR[unit.status] }}
-                        >
-                          <div className="text-[11px] font-bold text-white drop-shadow leading-tight">
-                            {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
-                          </div>
-                          {unit.areaM2 != null && (
-                            <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-l border-slate-200 dark:border-slate-700 py-1">
-                    {floor}º
-                  </div>
+          {/* Linhas por andar */}
+          {allFloors.map((floor, idx) => {
+            const zebra = idx % 2 === 0 ? "bg-[var(--shell-card-bg)]" : "bg-[var(--shell-bg)]";
+            const sub = isSubsolo(floor);
+            return (
+              <div key={floor} className={`flex border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${zebra} ${sub ? "border-t-2 border-t-amber-200 dark:border-t-amber-800" : ""}`}>
+                {/* Label esquerdo */}
+                <div className={`w-14 shrink-0 flex items-center justify-center text-xs font-bold border-r border-slate-200 dark:border-slate-700 py-1 ${sub ? "text-amber-600 dark:text-amber-400" : "text-slate-600 dark:text-slate-300"}`}>
+                  {floorLabel(floor)}
                 </div>
-              );
-            })}
 
-            {/* Rodapé TÉRREO */}
-            <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900">
-              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▼ Térreo</div>
-            </div>
+                {/* Células por fase */}
+                {faseRanges.map((fase, fi) => {
+                  const faseDepth = Math.abs(floor);
+                  const faseHasFloor = !sub || faseDepth <= fase.subsolos;
+                  return (
+                    <div key={fi} className={`flex ${fi > 0 ? "border-l-2 border-slate-400 dark:border-slate-500" : ""}`}>
+                      {Array.from({ length: fase.posEnd - fase.posStart + 1 }, (_, pi) => {
+                        const pos = fase.posStart + pi;
+                        const unit = unitMap[`${floor}_${pos}`];
+                        if (!faseHasFloor || !unit) {
+                          return (
+                            <div key={pos} className="w-16 h-14 flex items-center justify-center border-r border-slate-100 dark:border-slate-800 last:border-r-0">
+                              <span className="text-[10px] text-slate-300 dark:text-slate-600">—</span>
+                            </div>
+                          );
+                        }
+                        const visible = unitMatches(unit, filters, true);
+                        return (
+                          <button key={pos} type="button"
+                            onClick={() => setDetailsUnit(unit)}
+                            title={`${unit.nome} — ${STATUS_LABEL[unit.status]}${unit.valorVenda ? ` — ${fmt(unit.valorVenda)}` : ""}`}
+                            className={`w-16 h-14 flex flex-col items-center justify-center border-r border-white/30 last:border-r-0 transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
+                            style={{ backgroundColor: STATUS_COLOR[unit.status] }}
+                          >
+                            <div className="text-[11px] font-bold text-white drop-shadow leading-tight">
+                              {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
+                            </div>
+                            {unit.areaM2 != null && (
+                              <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+
+                {/* Label direito */}
+                <div className={`w-14 shrink-0 flex items-center justify-center text-xs font-bold border-l border-slate-200 dark:border-slate-700 py-1 ${sub ? "text-amber-600 dark:text-amber-400" : "text-slate-600 dark:text-slate-300"}`}>
+                  {floorLabel(floor)}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Rodapé */}
+          <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900">
+            <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▼ Térreo</div>
           </div>
         </div>
-      )}
+      </div>
 
       {detailsUnit && (
         <UnitDetailsPopup
@@ -2405,21 +2417,15 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
   const existingFP = tower?.floorPlan;
   const [nome, setNome]               = useState(tower?.nome ?? "");
-  const [floors, setFloors]               = useState(String(tower?.floors ?? 10));
-  const [unitsPerFloor, setUnitsPerFloor] = useState(String(tower?.unitsPerFloor ?? 4));
-  const [alturaAndar, setAlturaAndar]     = useState(String(tower?.alturaAndarM ?? 3));
-  const [hasLobby, setHasLobby]           = useState(tower?.hasLobbyFloor ?? false);
-  const [subsolosCount, setSubsolosCount] = useState(tower?.subsolos ?? 0);
-  const [floorUnitsConfig, setFloorUnitsConfig] = useState<Record<string, number>>(() => {
-    const cfg = tower?.floorUnitsConfig;
-    if (cfg && typeof cfg === "object") return { ...(cfg as Record<string, number>) };
-    return {};
+  const [floors, setFloors]           = useState(String(tower?.floors ?? 10));
+  const [alturaAndar, setAlturaAndar] = useState(String(tower?.alturaAndarM ?? 3));
+  const [hasLobby, setHasLobby]       = useState(tower?.hasLobbyFloor ?? false);
+
+  const [fases, setFases] = useState<FaseConfig[]>(() => {
+    const cfg = tower?.fasesConfig;
+    if (Array.isArray(cfg) && cfg.length > 0) return cfg as FaseConfig[];
+    return [{ nome: "Frente", unidades: tower?.unitsPerFloor ?? 4, subsolos: tower?.subsolos ?? 0 }];
   });
-  const [roofType, setRoofType]       = useState(tower?.roofType ?? "PLANO");
-  const [facadeColor, setFacadeColor] = useState(tower?.facadeColor ?? "#e5e7eb");
-  const [balconyType, setBalconyType] = useState(tower?.balconyType ?? "NONE");
-  const [cellWidthM, setCellWidthM]   = useState(String(existingFP?.cellWidthM ?? 4));
-  const [cellDepthM, setCellDepthM]   = useState(String(existingFP?.cellDepthM ?? 5));
 
   const [fpCols, setFpCols] = useState(existingFP?.cols ?? (isVertical ? 4 : 5));
   const [fpRows, setFpRows] = useState(existingFP?.rows ?? (isVertical ? 1 : 2));
@@ -2429,55 +2435,29 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
   const [busy, setBusy] = useState(false);
 
-  // Configuração de lados: { "1": "Norte", "2": "Sul", ... }
-  const initLadoConfig = (): Record<string, string> => {
-    const cfg = tower?.ladoConfig;
-    if (cfg && typeof cfg === "object") return { ...(cfg as Record<string, string>) };
-    return {};
-  };
-  const [ladoConfig, setLadoConfig] = useState<Record<string, string>>(initLadoConfig);
+  const totalUnitsPerFloor = fases.reduce((s, f) => s + (f.unidades || 0), 0);
+  const maxSubsolos = fases.reduce((m, f) => Math.max(m, f.subsolos || 0), 0);
 
-  function changeCols(newCols: number) {
-    setFpCols(newCols);
-    setFpCells(initCells(newCols, fpRows, undefined));
+  function updateFase(idx: number, field: keyof FaseConfig, value: string | number) {
+    setFases((prev) => prev.map((f, i) => i === idx ? { ...f, [field]: typeof value === "string" && field !== "nome" ? parseInt(value as string) || 0 : value } : f));
   }
-  function changeRows(newRows: number) {
-    setFpRows(newRows);
-    setFpCells(initCells(fpCols, newRows, undefined));
-  }
-  function toggleCell(idx: number) {
-    setFpCells((prev) => {
-      const next = [...prev];
-      const CYCLE: Record<CellType, CellType> = { APT: "HALL", HALL: "EMPTY", EMPTY: "APT" };
-      next[idx] = CYCLE[next[idx]];
-      return next;
-    });
-  }
-
-  const aptCount = parseInt(unitsPerFloor) || 0;
-  const larguraM = fpCols * (parseFloat(cellWidthM) || 4);
-  const profM    = fpRows * (parseFloat(cellDepthM) || 5);
+  function addFase() { setFases((prev) => [...prev, { nome: "", unidades: 4, subsolos: 0 }]); }
+  function removeFase(idx: number) { setFases((prev) => prev.filter((_, i) => i !== idx)); }
 
   async function handleSave() {
     if (!nome.trim()) { alert("Informe o nome da torre."); return; }
-    if (aptCount === 0) { alert("Informe a quantidade de aptos por andar."); return; }
+    if (fases.length === 0 || totalUnitsPerFloor === 0) { alert("Adicione ao menos uma fase com aptos por andar."); return; }
+    if (fases.some((f) => !f.nome.trim())) { alert("Todas as fases precisam de um nome."); return; }
     setBusy(true);
     try {
       const payload: any = {
         nome: nome.trim(),
         floors: parseInt(floors) || 1,
-        unitsPerFloor: aptCount,
+        unitsPerFloor: totalUnitsPerFloor,
         alturaAndarM: parseFloat(alturaAndar) || 3,
-        larguraM,
-        profundidadeM: profM,
         hasLobbyFloor: hasLobby,
-        subsolos: subsolosCount,
-        floorUnitsConfig: Object.keys(floorUnitsConfig).length > 0 ? floorUnitsConfig : null,
-        roofType,
-        facadeColor,
-        balconyType,
-        floorPlan: { cols: fpCols, rows: fpRows, cells: fpCells, cellWidthM: parseFloat(cellWidthM) || 4, cellDepthM: parseFloat(cellDepthM) || 5 },
-        ladoConfig: Object.keys(ladoConfig).length > 0 ? ladoConfig : null,
+        fasesConfig: fases,
+        subsolos: maxSubsolos,
       };
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
@@ -2520,52 +2500,11 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                   onChange={(e) => setFloors(e.target.value)} className={inp} />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--shell-subtext)]">Aptos por andar</label>
-                <input type="number" min={1} max={50} value={unitsPerFloor}
-                  onChange={(e) => setUnitsPerFloor(e.target.value)} className={inp} />
-              </div>
-              {isVertical && (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Subsolos</label>
-                  <input type="number" min={0} max={5} value={subsolosCount}
-                    onChange={(e) => setSubsolosCount(Math.max(0, Math.min(5, parseInt(e.target.value) || 0)))}
-                    className={inp} />
-                </div>
-              )}
-              <div className="space-y-1">
                 <label className="text-xs font-semibold text-[var(--shell-subtext)]">Altura por andar (m)</label>
                 <input type="number" min={2} max={10} step={0.5} value={alturaAndar}
                   onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
               </div>
             </div>
-            {isVertical && subsolosCount > 0 && (
-              <div className="mt-3 space-y-2">
-                <p className="text-[11px] text-[var(--shell-subtext)]">Unidades por pavimento de subsolo (deixe em branco para usar o padrão do andar normal):</p>
-                {Array.from({ length: subsolosCount }, (_, i) => {
-                  const s = i + 1;
-                  const key = String(-s);
-                  return (
-                    <div key={key} className="flex items-center gap-3">
-                      <span className="w-16 text-xs font-semibold text-[var(--shell-text)] shrink-0">S{s}</span>
-                      <input
-                        type="number" min={1} max={50}
-                        placeholder={unitsPerFloor}
-                        value={floorUnitsConfig[key] ?? ""}
-                        onChange={(e) => setFloorUnitsConfig((prev) => {
-                          const next = { ...prev };
-                          const val = parseInt(e.target.value);
-                          if (val > 0) next[key] = val;
-                          else delete next[key];
-                          return next;
-                        })}
-                        className={`${inp} w-24`}
-                      />
-                      <span className="text-[11px] text-[var(--shell-subtext)]">aptos no {s === 1 ? "1º" : `${s}º`} subsolo</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
             <div className="mt-3 flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <div onClick={() => setHasLobby(!hasLobby)}
@@ -2577,57 +2516,101 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             </div>
           </section>
 
-          {/* Seção: Configurar Lados */}
-          {isVertical && aptCount > 0 && (
+          {/* Seção 2 — Fases */}
+          {isVertical && (
             <section>
-              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Configurar Lados</p>
+              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Fases (lados da torre)</p>
               <p className="text-[11px] text-[var(--shell-subtext)] mb-3">
-                Atribua um lado (vista) para cada posição de apartamento por andar. Usado para filtrar o Espelho de Vendas.
+                Cada fase representa um lado com suas próprias unidades por andar e subsolos independentes.
               </p>
               <div className="space-y-2">
-                {Array.from({ length: aptCount }, (_, i) => {
-                  const pos = String(i + 1);
-                  return (
-                    <div key={pos} className="flex items-center gap-3">
-                      <span className="w-20 text-xs font-semibold text-[var(--shell-text)] shrink-0">Posição {pos}</span>
-                      <select
-                        value={ladoConfig[pos] ?? ""}
-                        onChange={(e) => setLadoConfig((prev) => {
-                          const next = { ...prev };
-                          if (e.target.value) next[pos] = e.target.value;
-                          else delete next[pos];
-                          return next;
-                        })}
-                        className={`${inp} flex-1`}
-                      >
-                        <option value="">— sem lado —</option>
-                        {LADO_OPTIONS.map((l) => (
-                          <option key={l} value={l}>{l}</option>
-                        ))}
-                      </select>
-                    </div>
-                  );
-                })}
+                <div className="grid gap-1 text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wide px-1"
+                  style={{ gridTemplateColumns: "1fr 80px 80px 28px" }}>
+                  <span>Nome do lado</span><span className="text-center">Aptos/andar</span><span className="text-center">Subsolos</span><span />
+                </div>
+                {fases.map((fase, idx) => (
+                  <div key={idx} className="grid gap-2 items-center" style={{ gridTemplateColumns: "1fr 80px 80px 28px" }}>
+                    <input value={fase.nome} onChange={(e) => updateFase(idx, "nome", e.target.value)}
+                      placeholder="Ex.: Sul, Norte…" className={inp} />
+                    <input type="number" min={1} max={30} value={fase.unidades}
+                      onChange={(e) => updateFase(idx, "unidades", e.target.value)} className={`${inp} text-center`} />
+                    <input type="number" min={0} max={5} value={fase.subsolos}
+                      onChange={(e) => updateFase(idx, "subsolos", e.target.value)} className={`${inp} text-center`} />
+                    <button type="button" onClick={() => removeFase(idx)} disabled={fases.length <= 1}
+                      className="h-8 w-7 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-20 text-base">×</button>
+                  </div>
+                ))}
               </div>
+              <button type="button" onClick={addFase}
+                className="mt-2 text-xs text-[var(--brand-accent)] hover:underline font-medium">
+                + Adicionar fase
+              </button>
+              <p className="text-[11px] text-[var(--shell-subtext)] mt-2">
+                Total: <strong>{totalUnitsPerFloor}</strong> aptos/andar · max <strong>{maxSubsolos}</strong> subsolo{maxSubsolos !== 1 ? "s" : ""}
+              </p>
             </section>
           )}
 
-          {/* Preview 3D (SVG) */}
-          {isVertical && (
+          {/* Seção 3 — Pré-visualização */}
+          {isVertical && fases.length > 0 && totalUnitsPerFloor > 0 && (
             <section>
               <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Pré-visualização</p>
-              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-4 flex items-end justify-center min-h-[140px]">
-                <Tower3DPreview
-                  cols={fpCols} rows={fpRows}
-                  floors={parseInt(floors) || 1}
-                  facadeColor={facadeColor}
-                  balconyType={balconyType}
-                  roofType={roofType}
-                  hasLobby={hasLobby}
-                />
+              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-3 overflow-x-auto">
+                <table className="text-[10px] border-collapse w-full">
+                  <thead>
+                    <tr>
+                      <th className="w-12 text-left text-[var(--shell-subtext)] font-semibold pb-1 pr-2" />
+                      {fases.map((f, fi) => (
+                        <th key={fi} colSpan={f.unidades} className="text-center text-[var(--shell-text)] font-bold pb-1 px-1 border-l border-[var(--shell-card-border)]">
+                          {f.nome || `Fase ${fi+1}`} ({f.unidades})
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const floorsNum = parseInt(floors) || 1;
+                      const rows: React.ReactElement[] = [];
+                      // andares normais (desc)
+                      for (let andar = floorsNum; andar >= 1; andar--) {
+                        rows.push(
+                          <tr key={andar} className="border-t border-[var(--shell-card-border)]">
+                            <td className="pr-2 py-0.5 text-[var(--shell-subtext)] font-semibold whitespace-nowrap">{andar}º</td>
+                            {fases.map((f, fi) => (
+                              Array.from({ length: f.unidades }, (_, ui) => (
+                                <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
+                                  <div className="w-5 h-5 rounded bg-green-500 opacity-80" />
+                                </td>
+                              ))
+                            ))}
+                          </tr>
+                        );
+                      }
+                      // subsolos (desc do mais raso S1 para mais profundo)
+                      for (let s = 1; s <= maxSubsolos; s++) {
+                        rows.push(
+                          <tr key={`s${s}`} className="border-t-2 border-[var(--shell-card-border)]">
+                            <td className="pr-2 py-0.5 text-amber-600 font-bold whitespace-nowrap">S{s}</td>
+                            {fases.map((f, fi) => (
+                              Array.from({ length: f.unidades }, (_, ui) => (
+                                <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
+                                  {f.subsolos >= s
+                                    ? <div className="w-5 h-5 rounded bg-amber-400 opacity-80" />
+                                    : <div className="w-5 h-5 rounded border border-dashed border-[var(--shell-card-border)]" />}
+                                </td>
+                              ))
+                            ))}
+                          </tr>
+                        );
+                      }
+                      return rows;
+                    })()}
+                  </tbody>
+                </table>
               </div>
               <p className="text-[11px] text-center text-[var(--shell-subtext)] mt-1">
-                {parseInt(floors) || 1} andares · {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar · {(parseInt(floors) || 1) * aptCount} unidades totais
+                {parseInt(floors) || 1} andares · {totalUnitsPerFloor} aptos/andar · {(parseInt(floors) || 1) * totalUnitsPerFloor} unidades normais
+                {maxSubsolos > 0 && ` + ${fases.reduce((s, f) => s + f.unidades * f.subsolos, 0)} de subsolo`}
               </p>
             </section>
           )}
@@ -2639,7 +2622,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             className="rounded-xl border border-[var(--shell-card-border)] px-5 py-2.5 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]">
             Cancelar
           </button>
-          <button onClick={handleSave} disabled={busy || !nome.trim() || (isVertical && aptCount === 0)}
+          <button onClick={handleSave} disabled={busy || !nome.trim() || (isVertical && totalUnitsPerFloor === 0)}
             className="rounded-xl bg-[var(--brand-accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
             {busy ? "Salvando..." : isEdit ? "Salvar alterações" : `Criar ${towerLabel}`}
           </button>
