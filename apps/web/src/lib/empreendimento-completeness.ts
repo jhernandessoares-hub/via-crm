@@ -24,14 +24,13 @@ export function computeCompleteness(dev: Development): Completeness {
 
   const s4 = dev.towers.length > 0 && dev.towers.every((t) => {
     if (t.floors <= 0 || t.unitsPerFloor <= 0) return false;
-    const lobbyFloors = t.hasLobbyFloor ? 1 : 0;
     let expected: number;
     const fases = t.fasesConfig as import("./developments.service").FaseConfig[] | null;
     if (fases && fases.length > 0) {
       // Torres com fasesConfig: subsolos são por fase
       const subsoloUnits = fases.reduce((sum, f) => sum + (f.subsolos ?? 0) * (f.unidades ?? 0), 0);
       const excludedSlots = fases.reduce((sum, f) => sum + (f.excludedSlots?.length ?? 0), 0);
-      expected = (t.floors - lobbyFloors) * t.unitsPerFloor + subsoloUnits - excludedSlots;
+      expected = t.floors * t.unitsPerFloor + subsoloUnits - excludedSlots;
     } else {
       // Fallback legado
       const subsolos = t.subsolos ?? 0;
@@ -40,7 +39,7 @@ export function computeCompleteness(dev: Development): Completeness {
       for (let s = 1; s <= subsolos; s++) {
         subsoloUnits += cfg[String(-s)] ?? t.unitsPerFloor;
       }
-      expected = (t.floors - lobbyFloors) * t.unitsPerFloor + subsoloUnits;
+      expected = t.floors * t.unitsPerFloor + subsoloUnits;
     }
     return t.units.length === expected;
   });
