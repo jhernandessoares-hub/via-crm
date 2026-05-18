@@ -481,12 +481,11 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
 
 const LADO_OPTIONS = ["Vista Interna", "Vista Externa", "Norte", "Sul", "Leste", "Oeste"];
 
-function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
+function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
   onUnitUpdated: (u: DevelopmentUnit) => void;
+  onUnitClick: (u: DevelopmentUnit) => void;
 }) {
-  const [detailsUnit, setDetailsUnit] = useState<DevelopmentUnit | null>(null);
-  const [editUnit, setEditUnit] = useState<DevelopmentUnit | null>(null);
 
   // Deriva fases e ranges de posição
   const faseRanges = useMemo(() => {
@@ -588,7 +587,7 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
                         const visible = unitMatches(unit, filters, true);
                         return (
                           <button key={pos} type="button"
-                            onClick={() => setDetailsUnit(unit)}
+                            onClick={() => onUnitClick(unit)}
                             title={`${unit.nome} — ${STATUS_LABEL[unit.status]}${unit.valorVenda ? ` — ${fmt(unit.valorVenda)}` : ""}`}
                             className={`w-16 h-14 flex flex-col items-center justify-center border-r border-white/30 last:border-r-0 transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
                             style={{ backgroundColor: STATUS_COLOR[unit.status] }}
@@ -621,33 +620,16 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
         </div>
       </div>
 
-      {detailsUnit && (
-        <UnitDetailsPopup
-          unit={detailsUnit}
-          devId={devId}
-          onClose={() => setDetailsUnit(null)}
-          onUnitUpdated={(u) => { onUnitUpdated(u); setDetailsUnit(u); }}
-          onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
-        />
-      )}
-      {editUnit && (
-        <UnitModal
-          unit={editUnit}
-          devId={devId}
-          onClose={() => setEditUnit(null)}
-          onUpdated={(u) => { onUnitUpdated(u); setEditUnit(u); }}
-        />
-      )}
     </div>
   );
 }
 
-function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento }: {
+function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, isLoteamento }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
-  onUnitUpdated: (u: DevelopmentUnit) => void; isLoteamento: boolean;
+  onUnitUpdated: (u: DevelopmentUnit) => void;
+  onUnitClick: (u: DevelopmentUnit) => void;
+  isLoteamento: boolean;
 }) {
-  const [detailsUnit, setDetailsUnit] = useState<DevelopmentUnit | null>(null);
-  const [editUnit, setEditUnit] = useState<DevelopmentUnit | null>(null);
   const units = [...tower.units].sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
   const cols = Math.ceil(Math.sqrt(units.length)) || 1;
 
@@ -667,7 +649,7 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
             const visible = unitMatches(unit, filters, false);
             return (
               <button key={unit.id} type="button"
-                onClick={() => setDetailsUnit(unit)}
+                onClick={() => onUnitClick(unit)}
                 title={`${unit.loteNum ?? unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
                 className={`relative flex flex-col items-stretch rounded-md border-2 px-2.5 py-2 text-left transition-all hover:scale-105 hover:shadow-lg hover:z-10 ${visible ? "" : "opacity-20 grayscale"}`}
                 style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
@@ -692,23 +674,6 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, isLoteamento 
         </div>
       </div>
 
-      {detailsUnit && (
-        <UnitDetailsPopup
-          unit={detailsUnit}
-          devId={devId}
-          onClose={() => setDetailsUnit(null)}
-          onUnitUpdated={(u) => { onUnitUpdated(u); setDetailsUnit(u); }}
-          onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
-        />
-      )}
-      {editUnit && (
-        <UnitModal
-          unit={editUnit}
-          devId={devId}
-          onClose={() => setEditUnit(null)}
-          onUpdated={(u) => { onUnitUpdated(u); setEditUnit(u); }}
-        />
-      )}
     </div>
   );
 }
@@ -758,6 +723,8 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
 }) {
   const [filters, setFilters] = useState<EspelhoFilters>(emptyFilters());
   const [exporting, setExporting] = useState(false);
+  const [detailsUnit, setDetailsUnit] = useState<DevelopmentUnit | null>(null);
+  const [editUnit, setEditUnit] = useState<DevelopmentUnit | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   const isVertical = dev.tipo === "VERTICAL";
   const isLoteamento = dev.subtipo === "LOTEAMENTO";
@@ -862,6 +829,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
                 devId={dev.id}
                 filters={filters}
                 onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
+                onUnitClick={setDetailsUnit}
               />
             ) : (
               <EspelhoHorizontal
@@ -869,12 +837,32 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
                 devId={dev.id}
                 filters={filters}
                 onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
+                onUnitClick={setDetailsUnit}
                 isLoteamento={isLoteamento}
               />
             )}
           </div>
         ))}
       </div>
+
+      {/* Popups renderizados fora da grade para evitar stacking context */}
+      {detailsUnit && (
+        <UnitDetailsPopup
+          unit={detailsUnit}
+          devId={dev.id}
+          onClose={() => setDetailsUnit(null)}
+          onUnitUpdated={(u) => { onUnitUpdated(detailsUnit.towerId, u); setDetailsUnit(u); }}
+          onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
+        />
+      )}
+      {editUnit && (
+        <UnitModal
+          unit={editUnit}
+          devId={dev.id}
+          onClose={() => setEditUnit(null)}
+          onUpdated={(u) => { onUnitUpdated(editUnit.towerId, u); setEditUnit(u); }}
+        />
+      )}
     </div>
   );
 }
@@ -2425,6 +2413,20 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   function addFase() { setFases((prev) => [...prev, { nome: "", unidades: 4, subsolos: 0 }]); }
   function removeFase(idx: number) { setFases((prev) => prev.filter((_, i) => i !== idx)); }
 
+  function toggleSlot(faseIdx: number, andar: number, localPos: number) {
+    setFases((prev) => prev.map((f, i) => {
+      if (i !== faseIdx) return f;
+      const excluded = f.excludedSlots ?? [];
+      const already = excluded.some((s) => s.andar === andar && s.localPos === localPos);
+      return {
+        ...f,
+        excludedSlots: already
+          ? excluded.filter((s) => !(s.andar === andar && s.localPos === localPos))
+          : [...excluded, { andar, localPos }],
+      };
+    }));
+  }
+
   async function handleSave() {
     if (!nome.trim()) { alert("Informe o nome da torre."); return; }
     if (fases.length === 0 || totalUnitsPerFloor === 0) { alert("Adicione ao menos uma fase com aptos por andar."); return; }
@@ -2564,13 +2566,21 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                         rows.push(
                           <tr key={andar} className="border-t border-[var(--shell-card-border)]">
                             <td className="pr-2 py-0.5 text-[var(--shell-subtext)] font-semibold whitespace-nowrap">{andar}º</td>
-                            {fases.map((f, fi) => (
-                              Array.from({ length: f.unidades }, (_, ui) => (
-                                <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
-                                  <div className="w-5 h-5 rounded bg-green-500 opacity-80" />
-                                </td>
-                              ))
-                            ))}
+                            {fases.map((f, fi) =>
+                              Array.from({ length: f.unidades }, (_, ui) => {
+                                const lp = ui + 1;
+                                const excl = (f.excludedSlots ?? []).some((s) => s.andar === andar && s.localPos === lp);
+                                return (
+                                  <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
+                                    <button type="button" onClick={() => toggleSlot(fi, andar, lp)}
+                                      title={excl ? "Incluir unidade" : "Excluir unidade"}
+                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : "bg-green-500 opacity-80 hover:opacity-100"}`}>
+                                      {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
+                                    </button>
+                                  </td>
+                                );
+                              })
+                            )}
                           </tr>
                         );
                       }
@@ -2579,15 +2589,27 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                         rows.push(
                           <tr key={`s${s}`} className="border-t-2 border-[var(--shell-card-border)]">
                             <td className="pr-2 py-0.5 text-amber-600 font-bold whitespace-nowrap">S{s}</td>
-                            {fases.map((f, fi) => (
-                              Array.from({ length: f.unidades }, (_, ui) => (
-                                <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
-                                  {f.subsolos >= s
-                                    ? <div className="w-5 h-5 rounded bg-amber-400 opacity-80" />
-                                    : <div className="w-5 h-5 rounded border border-dashed border-[var(--shell-card-border)]" />}
-                                </td>
-                              ))
-                            ))}
+                            {fases.map((f, fi) =>
+                              Array.from({ length: f.unidades }, (_, ui) => {
+                                if (f.subsolos < s) return (
+                                  <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
+                                    <div className="w-5 h-5 rounded border border-dashed border-[var(--shell-card-border)]" />
+                                  </td>
+                                );
+                                const lp = ui + 1;
+                                const floorAndar = -s;
+                                const excl = (f.excludedSlots ?? []).some((sl) => sl.andar === floorAndar && sl.localPos === lp);
+                                return (
+                                  <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
+                                    <button type="button" onClick={() => toggleSlot(fi, floorAndar, lp)}
+                                      title={excl ? "Incluir unidade" : "Excluir unidade"}
+                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : "bg-amber-400 opacity-80 hover:opacity-100"}`}>
+                                      {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
+                                    </button>
+                                  </td>
+                                );
+                              })
+                            )}
                           </tr>
                         );
                       }
@@ -2597,8 +2619,19 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                 </table>
               </div>
               <p className="text-[11px] text-center text-[var(--shell-subtext)] mt-1">
-                {parseInt(floors) || 1} andares · {totalUnitsPerFloor} aptos/andar · {(parseInt(floors) || 1) * totalUnitsPerFloor} unidades normais
-                {maxSubsolos > 0 && ` + ${fases.reduce((s, f) => s + f.unidades * f.subsolos, 0)} de subsolo`}
+                {(() => {
+                  const fl = parseInt(floors) || 1;
+                  const normalTotal = fl * totalUnitsPerFloor;
+                  const subsoloTotal = fases.reduce((s, f) => s + f.unidades * f.subsolos, 0);
+                  const excluded = fases.reduce((s, f) => s + (f.excludedSlots?.length ?? 0), 0);
+                  const grand = normalTotal + subsoloTotal - excluded;
+                  return <>
+                    {fl} andares · {totalUnitsPerFloor} aptos/andar · {normalTotal} normais
+                    {maxSubsolos > 0 && ` + ${subsoloTotal} subsolo`}
+                    {excluded > 0 && <span className="text-red-400"> − {excluded} excluídas</span>}
+                    {" = "}<strong className="text-[var(--shell-text)]">{grand} total</strong>
+                  </>;
+                })()}
               </p>
             </section>
           )}
