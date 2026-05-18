@@ -2522,55 +2522,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             </div>
           </section>
 
-          {/* Seção 2 — Planta do Andar */}
-          {isVertical && (
-            <section>
-              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Planta do Andar</p>
-              <p className="text-[11px] text-[var(--shell-subtext)] mb-3">
-                Clique nas células para definir o layout: <strong>A</strong>=Apartamento · <strong>H</strong>=Hall · <strong>vazio</strong>=sem uso.
-                Determina a forma do prédio e a quantidade de aptos por andar.
-              </p>
-              <FloorPlanEditor
-                cols={fpCols} rows={fpRows} cells={fpCells}
-                onChangeCols={changeCols} onChangeRows={changeRows} onToggleCell={toggleCell}
-              />
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Largura de cada célula (m)</label>
-                  <input type="number" step={0.5} min={2} max={12} value={cellWidthM}
-                    onChange={(e) => setCellWidthM(e.target.value)} className={inp} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Profundidade de cada célula (m)</label>
-                  <input type="number" step={0.5} min={2} max={15} value={cellDepthM}
-                    onChange={(e) => setCellDepthM(e.target.value)} className={inp} />
-                </div>
-              </div>
-              <p className="text-[11px] text-[var(--shell-subtext)] mt-2">
-                Dimensões derivadas: <strong>{larguraM.toFixed(1)} m</strong> × <strong>{profM.toFixed(1)} m</strong> · {aptCount} apto{aptCount !== 1 ? "s" : ""}/andar
-              </p>
-            </section>
-          )}
-
-          {/* Seção 3 — Tipo de Teto */}
-          <section>
-            <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Tipo de Teto</p>
-            <div className="flex gap-2 flex-wrap">
-              {ROOF_OPTS.map((r) => (
-                <button key={r.value} type="button"
-                  onClick={() => setRoofType(r.value)}
-                  className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
-                    roofType === r.value
-                      ? "border-[var(--brand-accent)] bg-[var(--brand-accent)] text-white"
-                      : "border-[var(--shell-card-border)] text-[var(--shell-text)] hover:border-[var(--brand-accent)]"
-                  }`}>
-                  <span>{r.icon}</span> {r.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* Seção 4 — Fachada */}
+          {/* Seção 3 — Fachada */}
           <section>
             <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Cor da Fachada</p>
             <div className="flex gap-2 flex-wrap">
@@ -2588,24 +2540,6 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
               </label>
             </div>
 
-            {isVertical && (
-              <>
-                <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mt-4 mb-3">Tipo de Varanda</p>
-                <div className="flex gap-2 flex-wrap">
-                  {BALCONY_OPTS.map((b) => (
-                    <button key={b.value} type="button"
-                      onClick={() => setBalconyType(b.value)}
-                      className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
-                        balconyType === b.value
-                          ? "border-[var(--brand-accent)] bg-[var(--brand-accent)] text-white"
-                          : "border-[var(--shell-card-border)] text-[var(--shell-text)] hover:border-[var(--brand-accent)]"
-                      }`}>
-                      <span>{b.icon}</span> {b.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
           </section>
 
           {/* Seção: Configurar Lados */}
