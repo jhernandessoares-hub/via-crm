@@ -1,15 +1,13 @@
 import { Controller, ForbiddenException, Get, Post, Patch, Delete, Put, Body, Param, Request, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AddonGuard, RequiresAddon } from '../auth/plan.guard';
 import { DevelopmentsService } from './developments.service';
 
 function requireOwner(req: any) {
   if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER do tenant.');
 }
 
-@UseGuards(JwtAuthGuard, AddonGuard)
-@RequiresAddon('DEVELOPMENTS')
+@UseGuards(JwtAuthGuard)
 @Controller('developments')
 export class DevelopmentsController {
   constructor(private readonly svc: DevelopmentsService) {}
@@ -105,5 +103,12 @@ export class DevelopmentsController {
   @UseInterceptors(FileInterceptor('file'))
   uploadImplantationImage(@Request() req: any, @Param('id') id: string, @UploadedFile() file: any) {
     return this.svc.uploadImplantationImage(req.user.tenantId, id, file);
+  }
+
+  @Post(':id/upload-model')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadModel(@Request() req: any, @Param('id') id: string, @UploadedFile() file: any) {
+    requireOwner(req);
+    return this.svc.uploadModel(req.user.tenantId, id, file);
   }
 }

@@ -294,6 +294,7 @@ model Lead {
   @@unique([tenantId, numero])
   @@index([tenantId, conversaCanal])
   @@map("leads")
+  developmentUnits DevelopmentUnit[]
 }
 
 model LeadEvent {
@@ -1461,6 +1462,9 @@ model Development {
   implantacaoPublicId String?   // Cloudinary public ID para delete
   implantacaoMode     String?   // SATELITE | IMAGEM — modo de posicionamento das torres
   terrainDesign       Json?     // Desenho do terreno: { version, shapes: [{id, type, points, ...}] }
+  modelUrl            String?   // URL Cloudinary do modelo 3D do arquiteto (.glb/.gltf)
+  modelPublicId       String?   // Cloudinary public ID do modelo 3D para delete
+  areasComuns         Json?     // { piscina, academia, playground, jardim, portaria } (boolean flags)
   publishedAt         DateTime? // null = rascunho (visível só para OWNER); preenchido = publicado para todo o tenant
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -1507,6 +1511,10 @@ model Tower {
   // Implantação modo SATELITE — coordenadas GPS reais da torre
   implantacaoLat Float?
   implantacaoLng Float?
+  ladoConfig       Json?    // legado — { "1": "Norte", "2": "Sul" }
+  subsolos         Int      @default(0)
+  floorUnitsConfig Json?    // legado — { "-1": 4 }
+  fasesConfig      Json?    // [{ "nome": "Sul", "unidades": 4, "subsolos": 2 }, ...]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -1543,6 +1551,8 @@ model DevelopmentUnit {
   loteFrente     Float?   // dimensão de frente em metros
   loteFundo      Float?   // dimensão de fundo em metros
   soldAt         DateTime?
+  leadId         String?  // FK para o lead do comprador/interessado
+  lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1551,6 +1561,7 @@ model DevelopmentUnit {
 
   @@index([developmentId])
   @@index([towerId])
+  @@index([leadId])
   @@map("development_units")
 }
 

@@ -27,6 +27,14 @@ export type DevelopmentUnit = {
   loteFrente?: number | null;
   loteFundo?: number | null;
   soldAt?: string | null;
+  leadId?: string | null;
+  lead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
+};
+
+export type FaseConfig = {
+  nome: string;
+  unidades: number;
+  subsolos: number;
 };
 
 export type FloorPlan = {
@@ -66,6 +74,10 @@ export type Tower = {
   implantacaoH?: number | null;
   implantacaoLat?: number | null;
   implantacaoLng?: number | null;
+  ladoConfig?: Record<string, string> | null;
+  subsolos?: number | null;
+  floorUnitsConfig?: Record<string, number> | null;
+  fasesConfig?: FaseConfig[] | null;
   units: DevelopmentUnit[];
 };
 
@@ -108,6 +120,15 @@ export type Development = {
   implantacaoPublicId?: string | null;
   implantacaoMode?: "SATELITE" | "IMAGEM" | null;
   terrainDesign?: TerrainDesign | null;
+  modelUrl?: string | null;
+  modelPublicId?: string | null;
+  areasComuns?: {
+    piscina?: boolean;
+    academia?: boolean;
+    playground?: boolean;
+    jardim?: boolean;
+    portaria?: boolean;
+  } | null;
   publishedAt?: string | null;
   towers: Tower[];
   paymentCondition?: PaymentCondition | null;
@@ -207,6 +228,12 @@ export async function uploadImplantacao(devId: string, file: File): Promise<Deve
   const form = new FormData();
   form.append("file", file);
   return apiFetch(`/developments/${devId}/implantation/image`, { method: "POST", body: form });
+}
+
+export async function uploadDevelopmentModel(devId: string, file: File): Promise<Development> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch(`/developments/${devId}/upload-model`, { method: "POST", body: form });
 }
 
 export async function publishDevelopment(devId: string): Promise<Development> {
