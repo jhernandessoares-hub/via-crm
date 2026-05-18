@@ -1511,7 +1511,9 @@ model Tower {
   // Implantação modo SATELITE — coordenadas GPS reais da torre
   implantacaoLat Float?
   implantacaoLng Float?
-  ladoConfig    Json?    // { "1": "Norte", "2": "Norte", "3": "Sul", "4": "Sul" } — mapeamento posição→lado
+  ladoConfig       Json?    // { "1": "Norte", "2": "Norte", "3": "Sul", "4": "Sul" } — mapeamento posição→lado
+  subsolos         Int      @default(0)   // número de pavimentos de subsolo
+  floorUnitsConfig Json?    // { "-1": 4, "-2": 6 } — unidades por andar específico (sobrescreve unitsPerFloor)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

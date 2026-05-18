@@ -22,9 +22,17 @@ export function computeCompleteness(dev: Development): Completeness {
 
   const s3 = dev.towers.length > 0;
 
-  const s4 = dev.towers.length > 0 && dev.towers.every((t) =>
-    t.floors > 0 && t.unitsPerFloor > 0 && t.units.length === t.floors * t.unitsPerFloor
-  );
+  const s4 = dev.towers.length > 0 && dev.towers.every((t) => {
+    if (t.floors <= 0 || t.unitsPerFloor <= 0) return false;
+    const subsolos = t.subsolos ?? 0;
+    const cfg = t.floorUnitsConfig ?? {};
+    let subsoloUnits = 0;
+    for (let s = 1; s <= subsolos; s++) {
+      subsoloUnits += (cfg as Record<string, number>)[String(-s)] ?? t.unitsPerFloor;
+    }
+    const expected = t.floors * t.unitsPerFloor + subsoloUnits;
+    return t.units.length === expected;
+  });
 
   const s5 = !!dev.paymentCondition;
 

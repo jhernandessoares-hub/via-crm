@@ -250,7 +250,9 @@ export class DevelopmentsService {
     for (const k of ['implantacaoX','implantacaoY','implantacaoW','implantacaoH','implantacaoLat','implantacaoLng'] as const) {
       if (data[k] !== undefined) updateData[k] = nn(data[k]);
     }
-    if (data.ladoConfig !== undefined) updateData.ladoConfig = data.ladoConfig ?? null;
+    if (data.ladoConfig        !== undefined) updateData.ladoConfig        = data.ladoConfig ?? null;
+    if (data.subsolos          !== undefined) updateData.subsolos          = n(data.subsolos) ?? 0;
+    if (data.floorUnitsConfig  !== undefined) updateData.floorUnitsConfig  = data.floorUnitsConfig ?? null;
 
     return this.prisma.tower.update({ where: { id: towerId }, data: updateData });
   }
@@ -270,13 +272,29 @@ export class DevelopmentsService {
     const units: any[] = [];
     const floorsNum = Number(data.floors) || 1;
     const unitsPerFloorNum = Number(data.unitsPerFloor) || 1;
+    const subsolos = Number((tower as any).subsolos ?? 0);
+    const floorUnitsConfig: Record<string, number> = ((tower as any).floorUnitsConfig as any) ?? {};
 
+    const unitsForFloor = (andar: number) => floorUnitsConfig[String(andar)] ?? unitsPerFloorNum;
+
+    // subsolos: andares -1, -2, ..., -subsolos (S1, S2, ...)
+    for (let s = subsolos; s >= 1; s--) {
+      const andar = -s;
+      const label = `S${s}`;
+      for (let pos = 1; pos <= unitsForFloor(andar); pos++) {
+        const numero = `${label}${pos.toString().padStart(2, '0')}`;
+        units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${numero}`, andar, posicao: pos, status: 'DISPONIVEL' });
+      }
+    }
+
+    // andares normais: 1 até floors
     for (let andar = 1; andar <= floorsNum; andar++) {
-      for (let pos = 1; pos <= unitsPerFloorNum; pos++) {
+      for (let pos = 1; pos <= unitsForFloor(andar); pos++) {
         const numero = `${andar}${pos.toString().padStart(2, '0')}`;
         units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${numero}`, andar, posicao: pos, status: 'DISPONIVEL' });
       }
     }
+
     await this.prisma.developmentUnit.createMany({ data: units, skipDuplicates: true });
     return { message: `${units.length} unidades criadas` };
   }

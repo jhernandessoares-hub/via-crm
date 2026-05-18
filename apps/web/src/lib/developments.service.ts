@@ -69,6 +69,8 @@ export type Tower = {
   implantacaoLat?: number | null;
   implantacaoLng?: number | null;
   ladoConfig?: Record<string, string> | null;
+  subsolos?: number | null;
+  floorUnitsConfig?: Record<string, number> | null;
   units: DevelopmentUnit[];
 };
 

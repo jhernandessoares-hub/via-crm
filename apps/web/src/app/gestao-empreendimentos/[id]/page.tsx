@@ -517,6 +517,11 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
   });
   const floors = Object.keys(unitsByFloor).map(Number).sort((a, b) => b - a);
 
+  const floorLabel = (f: number) => {
+    if (f < 0) return `S${Math.abs(f)}`;
+    return `${f}º`;
+  };
+
   if (tower.units.length === 0) {
     return <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhuma unidade nesta torre</div>;
   }
@@ -567,7 +572,7 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated }: {
               return (
                 <div key={floor} className={`flex border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${zebra}`}>
                   <div className="w-14 shrink-0 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-700 py-1">
-                    {floor}º
+                    {floorLabel(floor)}
                   </div>
                   <div className="flex">
                     {units.map((unit) => {
@@ -2400,9 +2405,16 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
   const existingFP = tower?.floorPlan;
   const [nome, setNome]               = useState(tower?.nome ?? "");
-  const [floors, setFloors]           = useState(String(tower?.floors ?? 10));
-  const [alturaAndar, setAlturaAndar] = useState(String(tower?.alturaAndarM ?? 3));
-  const [hasLobby, setHasLobby]       = useState(tower?.hasLobbyFloor ?? false);
+  const [floors, setFloors]               = useState(String(tower?.floors ?? 10));
+  const [unitsPerFloor, setUnitsPerFloor] = useState(String(tower?.unitsPerFloor ?? 4));
+  const [alturaAndar, setAlturaAndar]     = useState(String(tower?.alturaAndarM ?? 3));
+  const [hasLobby, setHasLobby]           = useState(tower?.hasLobbyFloor ?? false);
+  const [subsolosCount, setSubsolosCount] = useState(tower?.subsolos ?? 0);
+  const [floorUnitsConfig, setFloorUnitsConfig] = useState<Record<string, number>>(() => {
+    const cfg = tower?.floorUnitsConfig;
+    if (cfg && typeof cfg === "object") return { ...(cfg as Record<string, number>) };
+    return {};
+  });
   const [roofType, setRoofType]       = useState(tower?.roofType ?? "PLANO");
   const [facadeColor, setFacadeColor] = useState(tower?.facadeColor ?? "#e5e7eb");
   const [balconyType, setBalconyType] = useState(tower?.balconyType ?? "NONE");
@@ -2442,13 +2454,13 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
     });
   }
 
-  const aptCount = fpCells.filter((c) => c === "APT").length;
+  const aptCount = parseInt(unitsPerFloor) || 0;
   const larguraM = fpCols * (parseFloat(cellWidthM) || 4);
   const profM    = fpRows * (parseFloat(cellDepthM) || 5);
 
   async function handleSave() {
     if (!nome.trim()) { alert("Informe o nome da torre."); return; }
-    if (aptCount === 0) { alert("Defina ao menos um apartamento na planta."); return; }
+    if (aptCount === 0) { alert("Informe a quantidade de aptos por andar."); return; }
     setBusy(true);
     try {
       const payload: any = {
@@ -2459,6 +2471,8 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         larguraM,
         profundidadeM: profM,
         hasLobbyFloor: hasLobby,
+        subsolos: subsolosCount,
+        floorUnitsConfig: Object.keys(floorUnitsConfig).length > 0 ? floorUnitsConfig : null,
         roofType,
         facadeColor,
         balconyType,
@@ -2506,11 +2520,52 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                   onChange={(e) => setFloors(e.target.value)} className={inp} />
               </div>
               <div className="space-y-1">
+                <label className="text-xs font-semibold text-[var(--shell-subtext)]">Aptos por andar</label>
+                <input type="number" min={1} max={50} value={unitsPerFloor}
+                  onChange={(e) => setUnitsPerFloor(e.target.value)} className={inp} />
+              </div>
+              {isVertical && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--shell-subtext)]">Subsolos</label>
+                  <input type="number" min={0} max={5} value={subsolosCount}
+                    onChange={(e) => setSubsolosCount(Math.max(0, Math.min(5, parseInt(e.target.value) || 0)))}
+                    className={inp} />
+                </div>
+              )}
+              <div className="space-y-1">
                 <label className="text-xs font-semibold text-[var(--shell-subtext)]">Altura por andar (m)</label>
                 <input type="number" min={2} max={10} step={0.5} value={alturaAndar}
                   onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
               </div>
             </div>
+            {isVertical && subsolosCount > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] text-[var(--shell-subtext)]">Unidades por pavimento de subsolo (deixe em branco para usar o padrão do andar normal):</p>
+                {Array.from({ length: subsolosCount }, (_, i) => {
+                  const s = i + 1;
+                  const key = String(-s);
+                  return (
+                    <div key={key} className="flex items-center gap-3">
+                      <span className="w-16 text-xs font-semibold text-[var(--shell-text)] shrink-0">S{s}</span>
+                      <input
+                        type="number" min={1} max={50}
+                        placeholder={unitsPerFloor}
+                        value={floorUnitsConfig[key] ?? ""}
+                        onChange={(e) => setFloorUnitsConfig((prev) => {
+                          const next = { ...prev };
+                          const val = parseInt(e.target.value);
+                          if (val > 0) next[key] = val;
+                          else delete next[key];
+                          return next;
+                        })}
+                        className={`${inp} w-24`}
+                      />
+                      <span className="text-[11px] text-[var(--shell-subtext)]">aptos no {s === 1 ? "1º" : `${s}º`} subsolo</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div className="mt-3 flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <div onClick={() => setHasLobby(!hasLobby)}
