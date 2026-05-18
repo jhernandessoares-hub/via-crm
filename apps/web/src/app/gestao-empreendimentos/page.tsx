@@ -20,6 +20,13 @@ export default function EmpreendimentosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    try { const u = localStorage.getItem("user"); setRole(u ? JSON.parse(u).role : null); } catch { /* noop */ }
+  }, []);
+
+  const isOwnerOrManager = role === "OWNER" || role === "MANAGER";
 
   async function load() {
     setLoading(true);
@@ -57,10 +64,12 @@ export default function EmpreendimentosPage() {
             <h1 className="text-2xl font-bold text-[var(--shell-text)]">Gestão de Empreendimentos</h1>
             <p className="text-sm text-[var(--shell-subtext)] mt-0.5">Gerencie empreendimentos, torres, unidades e espelho de vendas</p>
           </div>
-          <button type="button" onClick={() => router.push("/gestao-empreendimentos/novo")}
-            className="rounded-xl bg-[var(--brand-accent)] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
-            + Novo Empreendimento
-          </button>
+          {isOwnerOrManager && (
+            <button type="button" onClick={() => router.push("/gestao-empreendimentos/novo")}
+              className="rounded-xl bg-[var(--brand-accent)] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
+              + Novo Empreendimento
+            </button>
+          )}
         </div>
 
         {error && (
@@ -83,11 +92,15 @@ export default function EmpreendimentosPage() {
           <div className="py-20 text-center">
             <div className="text-5xl mb-4">🏗️</div>
             <p className="text-base font-semibold text-[var(--shell-text)]">Nenhum empreendimento cadastrado</p>
-            <p className="text-sm text-[var(--shell-subtext)] mt-1 mb-6">Comece criando seu primeiro empreendimento</p>
-            <button type="button" onClick={() => router.push("/gestao-empreendimentos/novo")}
-              className="rounded-xl bg-[var(--brand-accent)] px-6 py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
-              + Novo Empreendimento
-            </button>
+            <p className="text-sm text-[var(--shell-subtext)] mt-1 mb-6">
+              {isOwnerOrManager ? "Comece criando seu primeiro empreendimento" : "Nenhum empreendimento disponível no momento"}
+            </p>
+            {isOwnerOrManager && (
+              <button type="button" onClick={() => router.push("/gestao-empreendimentos/novo")}
+                className="rounded-xl bg-[var(--brand-accent)] px-6 py-3 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-sm">
+                + Novo Empreendimento
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -96,9 +109,11 @@ export default function EmpreendimentosPage() {
               const vendido = (item.towers || []).flatMap((t: any) => t.units || []).filter((u: any) => u.status === "VENDIDO").length;
               const vso = totalUnits > 0 ? Math.round((vendido / totalUnits) * 100) : 0;
               const completeness = computeCompleteness(item);
-              const targetUrl = completeness.allComplete
-                ? `/gestao-empreendimentos/${item.id}`
-                : `/gestao-empreendimentos/${item.id}?step=${Math.max(0, completeness.firstIncomplete)}`;
+              const targetUrl = isOwnerOrManager
+                ? (completeness.allComplete
+                    ? `/gestao-empreendimentos/${item.id}`
+                    : `/gestao-empreendimentos/${item.id}?step=${Math.max(0, completeness.firstIncomplete)}`)
+                : `/gestao-empreendimentos/${item.id}`;
 
               return (
                 <div key={item.id}
@@ -175,14 +190,18 @@ export default function EmpreendimentosPage() {
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); router.push(targetUrl); }}
                         className="text-xs font-semibold text-[var(--brand-accent)] hover:underline">
-                        {item.publishedAt ? "Ver espelho →" : completeness.allComplete ? "Publicar →" : "Continuar cadastro →"}
+                        {isOwnerOrManager
+                          ? (item.publishedAt ? "Ver espelho →" : completeness.allComplete ? "Publicar →" : "Continuar cadastro →")
+                          : "Ver espelho →"}
                       </button>
-                      <button type="button"
-                        onClick={(e) => handleDelete(e, item.id)}
-                        disabled={deleting === item.id}
-                        className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors">
-                        {deleting === item.id ? "..." : "Excluir"}
-                      </button>
+                      {isOwnerOrManager && (
+                        <button type="button"
+                          onClick={(e) => handleDelete(e, item.id)}
+                          disabled={deleting === item.id}
+                          className="text-xs text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors">
+                          {deleting === item.id ? "..." : "Excluir"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

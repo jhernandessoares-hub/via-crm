@@ -76,8 +76,8 @@ function Modal({ open, onClose, title, children, wide }: {
 
 // ─── Modal de Unidade ─────────────────────────────────────────────────────────
 
-function UnitModal({ unit, devId, onClose, onUpdated }: {
-  unit: DevelopmentUnit; devId: string; onClose: () => void; onUpdated: (u: DevelopmentUnit) => void;
+function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
+  unit: DevelopmentUnit; devId: string; onClose: () => void; onUpdated: (u: DevelopmentUnit) => void; role?: string;
 }) {
   const [saving, setSaving] = useState(false);
   const [comprador, setComprador] = useState(unit.comprador ?? "");
@@ -101,13 +101,21 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
     } finally { setSaving(false); }
   }
 
+  const isAgent = role === "AGENT";
   const allActions: { label: string; status: UnitStatus; color: string }[] = [
     { label: "Disponível", status: "DISPONIVEL" as UnitStatus, color: "bg-green-500 hover:bg-green-600" },
     { label: "Reservar",   status: "RESERVADO"  as UnitStatus, color: "bg-amber-400 hover:bg-amber-500" },
-    { label: "Vender",     status: "VENDIDO"    as UnitStatus, color: "bg-red-500 hover:bg-red-600" },
-    { label: "Bloquear",   status: "BLOQUEADO"  as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" },
+    ...(!isAgent ? [
+      { label: "Vender",   status: "VENDIDO"   as UnitStatus, color: "bg-red-500 hover:bg-red-600" },
+      { label: "Bloquear", status: "BLOQUEADO" as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" },
+    ] : []),
   ];
-  const actions = allActions.filter((a) => a.status !== status);
+  // AGENT só pode transitar entre DISPONIVEL e RESERVADO
+  const actions = allActions.filter((a) => {
+    if (a.status === status) return false;
+    if (isAgent && status !== "DISPONIVEL" && status !== "RESERVADO") return false;
+    return true;
+  });
 
   return (
     <Modal open title={`Unidade — ${unit.nome}`} onClose={onClose}>
@@ -202,10 +210,11 @@ function UnitModal({ unit, devId, onClose, onUpdated }: {
 
 // ─── Popup de detalhes da unidade (view-only + lead search) ──────────────────
 
-function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit }: {
+function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, role = "OWNER" }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void;
   onUnitUpdated: (u: DevelopmentUnit) => void;
   onEditUnit: () => void;
+  role?: string;
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState(unit);
@@ -727,8 +736,8 @@ function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onCl
   );
 }
 
-function EspelhoVendas({ dev, onUnitUpdated }: {
-  dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
+function EspelhoVendas({ dev, onUnitUpdated, role }: {
+  dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void; role: string;
 }) {
   const [filters, setFilters] = useState<EspelhoFilters>(emptyFilters());
   const [exporting, setExporting] = useState(false);
@@ -859,6 +868,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
         <UnitDetailsPopup
           unit={detailsUnit}
           devId={dev.id}
+          role={role}
           onClose={() => setDetailsUnit(null)}
           onUnitUpdated={(u) => { onUnitUpdated(detailsUnit.towerId, u); setDetailsUnit(u); }}
           onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
@@ -868,6 +878,7 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
         <UnitModal
           unit={editUnit}
           devId={dev.id}
+          role={role}
           onClose={() => setEditUnit(null)}
           onUpdated={(u) => { onUnitUpdated(editUnit.towerId, u); setEditUnit(u); }}
         />
@@ -878,10 +889,10 @@ function EspelhoVendas({ dev, onUnitUpdated }: {
 
 // --- Aba Espelho -------------------------------------------------------------
 
-function AbaEspelho({ dev, onUnitUpdated }: {
-  dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
+function AbaEspelho({ dev, onUnitUpdated, role }: {
+  dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void; role: string;
 }) {
-  return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} />;
+  return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} role={role} />;
 }
 
 // ─── Tabela de Preços ─────────────────────────────────────────────────────────
@@ -2972,35 +2983,40 @@ const TABBED_TABS: { key: TabbedKey; label: string }[] = [
   { key: "dashboard",     label: "📊 Dashboard"     },
 ];
 
-function TabbedView({ dev, dashboard, onSaved, onUnitUpdated }: {
+function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role }: {
   dev: Development; dashboard: Dashboard | null; onSaved: () => void;
   onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
+  role: string;
 }) {
+  const isOwnerOrManager = role === "OWNER" || role === "MANAGER";
+  const visibleTabs = isOwnerOrManager ? TABBED_TABS : TABBED_TABS.filter((t) => t.key === "espelho");
   const [tab, setTab] = useState<TabbedKey>("espelho");
   return (
     <div className="space-y-5">
-      <div className="border-b border-[var(--shell-card-border)] overflow-x-auto">
-        <div className="flex gap-1 min-w-max">
-          {TABBED_TABS.map(({ key, label }) => (
-            <button key={key} type="button" onClick={() => setTab(key)}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                tab === key
-                  ? "border-[var(--brand-accent)] text-[var(--brand-accent)]"
-                  : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
-              }`}>
-              {label}
-            </button>
-          ))}
+      {visibleTabs.length > 1 && (
+        <div className="border-b border-[var(--shell-card-border)] overflow-x-auto">
+          <div className="flex gap-1 min-w-max">
+            {visibleTabs.map(({ key, label }) => (
+              <button key={key} type="button" onClick={() => setTab(key)}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  tab === key
+                    ? "border-[var(--brand-accent)] text-[var(--brand-accent)]"
+                    : "border-transparent text-[var(--shell-subtext)] hover:text-[var(--shell-text)]"
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div>
         {tab === "identificacao" && <Step1Identificacao dev={dev} onSaved={onSaved} embeddedSubmit />}
         {tab === "localizacao"   && <Step2Localizacao   dev={dev} onSaved={onSaved} embeddedSubmit />}
         {tab === "layout"        && <Step3Layout        dev={dev} onSaved={onSaved} />}
         {tab === "estruturacao"  && <Step4Estruturacao  dev={dev} onSaved={onSaved} />}
         {tab === "precos"        && <Step5Precos        dev={dev} onSaved={onSaved} />}
-        {tab === "espelho"       && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} />}
-        {tab === "dashboard"     && (
+        {(tab === "espelho" || !isOwnerOrManager) && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} role={role} />}
+        {tab === "dashboard" && isOwnerOrManager && (
           dashboard ? <DashboardView dashboard={dashboard} dev={dev} /> :
           <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
         )}
@@ -3028,6 +3044,13 @@ export default function EmpreendimentoDetailPage() {
   const [dev, setDev] = useState<Development | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    try { const u = localStorage.getItem("user"); setRole(u ? JSON.parse(u).role : null); } catch { /* noop */ }
+  }, []);
+
+  const isOwnerOrManager = role === "OWNER" || role === "MANAGER";
 
   async function load() {
     try {
@@ -3128,27 +3151,38 @@ export default function EmpreendimentoDetailPage() {
               {dev.prazoEntrega && ` · Entrega: ${new Date(dev.prazoEntrega).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {dev.publishedAt ? (
-              <button onClick={handleUnpublish} disabled={publishing}
-                className="rounded-xl border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors">
-                {publishing ? "..." : "Despublicar"}
-              </button>
-            ) : (
-              <button onClick={handlePublish}
-                disabled={!completeness.allComplete || publishing}
-                title={completeness.allComplete ? "Publicar para a equipe" : "Complete os 5 passos para habilitar"}
-                className="rounded-xl bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shadow-sm">
-                {publishing ? "Publicando..." : completeness.allComplete ? "🚀 Publicar" : `Publicar (${completeness.percent}%)`}
-              </button>
-            )}
-          </div>
+          {isOwnerOrManager && (
+            <div className="flex items-center gap-2">
+              {dev.publishedAt ? (
+                <button onClick={handleUnpublish} disabled={publishing}
+                  className="rounded-xl border border-[var(--shell-card-border)] px-4 py-2 text-sm font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] disabled:opacity-50 transition-colors">
+                  {publishing ? "..." : "Despublicar"}
+                </button>
+              ) : (
+                <button onClick={handlePublish}
+                  disabled={!completeness.allComplete || publishing}
+                  title={completeness.allComplete ? "Publicar para a equipe" : "Complete os 5 passos para habilitar"}
+                  className="rounded-xl bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shadow-sm">
+                  {publishing ? "Publicando..." : completeness.allComplete ? "🚀 Publicar" : `Publicar (${completeness.percent}%)`}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {!completeness.allComplete ? (
+        {!isOwnerOrManager ? (
+          // AGENT: só vê o espelho, nunca o wizard
+          !dev.publishedAt ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 p-6 text-sm text-amber-700 dark:text-amber-300">
+              Este empreendimento ainda não está disponível para a equipe.
+            </div>
+          ) : (
+            <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "AGENT"} />
+          )
+        ) : !completeness.allComplete ? (
           <Wizard dev={dev} completeness={completeness} onSaved={load} initialStep={initialStep} />
         ) : (
-          <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} />
+          <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "OWNER"} />
         )}
       </div>
     </AppShell>
