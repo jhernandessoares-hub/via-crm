@@ -896,22 +896,23 @@ function AbaEspelho({ dev, onUnitUpdated, role }: {
   return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} role={role} />;
 }
 
-// ─── Preencher em Lote por Fase ───────────────────────────────────────────────
+// ─── Preencher em Lote por Posição ────────────────────────────────────────────
 
-type FaseValues = { areaM2: string; quartos: string; suites: string; banheiros: string; vagas: string; valorVenda: string; valorAvaliado: string };
-const emptyFaseValues = (): FaseValues => ({ areaM2: "", quartos: "", suites: "", banheiros: "", vagas: "", valorVenda: "", valorAvaliado: "" });
+type PosValues = { areaM2: string; quartos: string; suites: string; banheiros: string; vagas: string; valorVenda: string; valorAvaliado: string };
+const emptyPosValues = (): PosValues => ({ areaM2: "", quartos: "", suites: "", banheiros: "", vagas: "", valorVenda: "", valorAvaliado: "" });
 
-function BulkFillByFase({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
+function BulkFillByPosicao({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
-  const [values, setValues] = useState<Record<string, FaseValues>>({});
+  const [values, setValues] = useState<Record<string, PosValues>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [applied, setApplied] = useState<Set<string>>(new Set());
 
-  function setVal(key: string, field: keyof FaseValues, v: string) {
-    setValues((p) => ({ ...p, [key]: { ...(p[key] ?? emptyFaseValues()), [field]: v } }));
+  function setVal(key: string, field: keyof PosValues, v: string) {
+    setValues((p) => ({ ...p, [key]: { ...(p[key] ?? emptyPosValues()), [field]: v } }));
   }
 
-  async function apply(tower: Tower, posStart: number, posEnd: number, key: string, label: string, count: number) {
-    const v = values[key] ?? emptyFaseValues();
+  async function apply(towerId: string, posicao: number, key: string) {
+    const v = values[key] ?? emptyPosValues();
     const updates: Partial<DevelopmentUnit> = {};
     if (v.areaM2 !== "") updates.areaM2 = Number(v.areaM2) as any;
     if (v.quartos !== "") updates.quartos = Number(v.quartos) as any;
@@ -920,71 +921,101 @@ function BulkFillByFase({ dev, onSaved }: { dev: Development; onSaved: () => voi
     if (v.vagas !== "") updates.vagas = Number(v.vagas) as any;
     if (v.valorVenda !== "") updates.valorVenda = Number(v.valorVenda) as any;
     if (v.valorAvaliado !== "") updates.valorAvaliado = Number(v.valorAvaliado) as any;
-    if (Object.keys(updates).length === 0) { alert("Preencha ao menos um campo antes de aplicar."); return; }
+    if (Object.keys(updates).length === 0) { alert("Preencha ao menos um campo."); return; }
     setBusy(key);
     try {
-      await bulkUpdateUnits(dev.id, tower.id, { posicaoMin: posStart, posicaoMax: posEnd, updates });
+      await bulkUpdateUnits(dev.id, towerId, { posicaoMin: posicao, posicaoMax: posicao, updates });
+      setApplied((p) => new Set([...p, key]));
       onSaved();
     } catch (e: any) { alert("Erro: " + (e?.message ?? e)); }
     finally { setBusy(null); }
   }
 
-  const labelCls = "text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide mb-1 block";
-  const inp = "w-20 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1 text-xs outline-none focus:border-[var(--brand-accent)]";
-  const inpWide = "w-28 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-2 py-1 text-xs outline-none focus:border-[var(--brand-accent)]";
-
-  const rows: { tower: Tower; posStart: number; posEnd: number; key: string; label: string; count: number }[] = [];
-  for (const tower of dev.towers) {
-    const fases = (tower.fasesConfig as FaseConfig[] | null) ?? [];
-    if (fases.length > 0) {
-      let posOffset = 0;
-      for (const fase of fases) {
-        const posStart = posOffset + 1;
-        posOffset += fase.unidades;
-        const posEnd = posOffset;
-        const excluded = (fase.excludedSlots?.length ?? 0);
-        const count = tower.floors * fase.unidades - excluded;
-        rows.push({ tower, posStart, posEnd, key: `${tower.id}-${posStart}`, label: `${tower.nome} — ${fase.nome}`, count });
-      }
-    } else {
-      rows.push({ tower, posStart: 1, posEnd: tower.unitsPerFloor, key: tower.id, label: tower.nome, count: tower.units.length });
+  const towerGroups = dev.towers.map((tower) => {
+    const posMap = new Map<number, number>();
+    for (const u of tower.units) {
+      if (u.posicao != null) posMap.set(u.posicao, (posMap.get(u.posicao) ?? 0) + 1);
     }
-  }
+    const maxPos = posMap.size > 0 ? Math.max(...posMap.keys()) : 1;
+    const pad = maxPos >= 1000 ? 4 : maxPos >= 100 ? 3 : 2;
+    const positions = Array.from(posMap.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([posicao, count]) => ({ posicao, count, key: `${tower.id}-${posicao}`, label: posicao.toString().padStart(pad, "0") }));
+    return { tower, positions, pad };
+  });
+
+  const inp = "w-16 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-1.5 py-1 text-xs outline-none focus:border-[var(--brand-accent)] text-center";
+  const inpWide = "w-24 rounded border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-1.5 py-1 text-xs outline-none focus:border-[var(--brand-accent)]";
 
   return (
     <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] shadow-sm overflow-hidden">
       <div role="button" tabIndex={0} onClick={() => setOpen((o) => !o)} onKeyDown={(e) => e.key === "Enter" && setOpen((o) => !o)}
         className="flex items-center justify-between px-6 py-4 cursor-pointer select-none hover:bg-[var(--shell-bg)] transition-colors">
         <div>
-          <p className="text-sm font-semibold text-[var(--shell-text)]">Preencher em lote por fase</p>
-          <p className="text-xs text-[var(--shell-subtext)]">Aplique valores padrão a todas as unidades de um bloco/fase de uma vez</p>
+          <p className="text-sm font-semibold text-[var(--shell-text)]">Preencher em lote por posição</p>
+          <p className="text-xs text-[var(--shell-subtext)]">Todas as unidades com o mesmo final (mesma posição na torre) recebem os mesmos valores</p>
         </div>
         <span className="text-[var(--shell-subtext)] text-lg">{open ? "▲" : "▼"}</span>
       </div>
       {open && (
-        <div className="px-6 pb-6 space-y-4 border-t border-[var(--shell-card-border)]">
-          <p className="text-xs text-[var(--shell-subtext)] pt-4">Deixe em branco os campos que não quer alterar. Só os campos preenchidos serão atualizados.</p>
-          {rows.map(({ tower, posStart, posEnd, key, label, count }) => {
-            const v = values[key] ?? emptyFaseValues();
-            return (
-              <div key={key} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-4 space-y-3">
-                <p className="text-xs font-semibold text-[var(--shell-text)]">{label} <span className="font-normal text-[var(--shell-subtext)]">({count} unidades)</span></p>
-                <div className="flex flex-wrap gap-3 items-end">
-                  <div><label className={labelCls}>Área m²</label><input className={inp} placeholder="—" value={v.areaM2} onChange={(e) => setVal(key, "areaM2", e.target.value)} /></div>
-                  <div><label className={labelCls}>Quartos</label><input className={inp} placeholder="—" value={v.quartos} onChange={(e) => setVal(key, "quartos", e.target.value)} /></div>
-                  <div><label className={labelCls}>Suítes</label><input className={inp} placeholder="—" value={v.suites} onChange={(e) => setVal(key, "suites", e.target.value)} /></div>
-                  <div><label className={labelCls}>Banheiros</label><input className={inp} placeholder="—" value={v.banheiros} onChange={(e) => setVal(key, "banheiros", e.target.value)} /></div>
-                  <div><label className={labelCls}>Vagas</label><input className={inp} placeholder="—" value={v.vagas} onChange={(e) => setVal(key, "vagas", e.target.value)} /></div>
-                  <div><label className={labelCls}>Vl. Venda (R$)</label><input className={inpWide} placeholder="—" value={v.valorVenda} onChange={(e) => setVal(key, "valorVenda", e.target.value)} /></div>
-                  <div><label className={labelCls}>Vl. Avaliado (R$)</label><input className={inpWide} placeholder="—" value={v.valorAvaliado} onChange={(e) => setVal(key, "valorAvaliado", e.target.value)} /></div>
-                  <button onClick={() => apply(tower, posStart, posEnd, key, label, count)} disabled={busy === key}
-                    className="rounded-lg bg-[var(--brand-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap">
-                    {busy === key ? "Aplicando..." : `Aplicar às ${count} unidades`}
-                  </button>
-                </div>
+        <div className="border-t border-[var(--shell-card-border)]">
+          <p className="px-6 pt-4 text-xs text-[var(--shell-subtext)]">Deixe em branco os campos que não quer alterar. Clique em Aplicar por linha.</p>
+          {towerGroups.map(({ tower, positions }) => (
+            <div key={tower.id} className="px-6 py-4">
+              {dev.towers.length > 1 && (
+                <p className="text-[11px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-3">{tower.nome}</p>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--shell-card-border)]">
+                      <th className="pb-2 pr-4 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Final</th>
+                      <th className="pb-2 pr-4 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Qtd</th>
+                      <th className="pb-2 pr-2 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Área m²</th>
+                      <th className="pb-2 pr-2 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Qts</th>
+                      <th className="pb-2 pr-2 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Sts</th>
+                      <th className="pb-2 pr-2 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Bnh</th>
+                      <th className="pb-2 pr-2 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Vgs</th>
+                      <th className="pb-2 pr-2 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Vl. Venda (R$)</th>
+                      <th className="pb-2 pr-2 text-left text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Vl. Avaliado (R$)</th>
+                      <th className="pb-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {positions.map(({ posicao, count, key, label }) => {
+                      const v = values[key] ?? emptyPosValues();
+                      const done = applied.has(key);
+                      return (
+                        <tr key={key} className="border-b border-[var(--shell-card-border)]/40">
+                          <td className="py-2 pr-4">
+                            <span className="font-mono font-bold text-[var(--shell-text)] text-xs">…{label}</span>
+                          </td>
+                          <td className="py-2 pr-4 text-[var(--shell-subtext)]">{count}×</td>
+                          <td className="py-1.5 pr-2"><input className={inp} placeholder="—" value={v.areaM2} onChange={(e) => { setVal(key, "areaM2", e.target.value); setApplied((p) => { const s = new Set(p); s.delete(key); return s; }); }} /></td>
+                          <td className="py-1.5 pr-2"><input className={inp} placeholder="—" value={v.quartos} onChange={(e) => { setVal(key, "quartos", e.target.value); setApplied((p) => { const s = new Set(p); s.delete(key); return s; }); }} /></td>
+                          <td className="py-1.5 pr-2"><input className={inp} placeholder="—" value={v.suites} onChange={(e) => { setVal(key, "suites", e.target.value); setApplied((p) => { const s = new Set(p); s.delete(key); return s; }); }} /></td>
+                          <td className="py-1.5 pr-2"><input className={inp} placeholder="—" value={v.banheiros} onChange={(e) => { setVal(key, "banheiros", e.target.value); setApplied((p) => { const s = new Set(p); s.delete(key); return s; }); }} /></td>
+                          <td className="py-1.5 pr-2"><input className={inp} placeholder="—" value={v.vagas} onChange={(e) => { setVal(key, "vagas", e.target.value); setApplied((p) => { const s = new Set(p); s.delete(key); return s; }); }} /></td>
+                          <td className="py-1.5 pr-2"><input className={inpWide} placeholder="—" value={v.valorVenda} onChange={(e) => { setVal(key, "valorVenda", e.target.value); setApplied((p) => { const s = new Set(p); s.delete(key); return s; }); }} /></td>
+                          <td className="py-1.5 pr-2"><input className={inpWide} placeholder="—" value={v.valorAvaliado} onChange={(e) => { setVal(key, "valorAvaliado", e.target.value); setApplied((p) => { const s = new Set(p); s.delete(key); return s; }); }} /></td>
+                          <td className="py-1.5 pl-1 whitespace-nowrap">
+                            {done ? (
+                              <span className="text-[11px] font-semibold text-green-600 dark:text-green-400">✓ Aplicado</span>
+                            ) : (
+                              <button onClick={() => apply(tower.id, posicao, key)} disabled={busy === key}
+                                className="rounded-lg bg-[var(--brand-accent)] px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+                                {busy === key ? "..." : "Aplicar"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1011,39 +1042,64 @@ function exportUnitsCsv(dev: Development) {
   URL.revokeObjectURL(url);
 }
 
+function parseCsvLine(line: string, sep: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; continue; }
+    if (!inQ && ch === sep) { result.push(cur.trim()); cur = ""; continue; }
+    cur += ch;
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function parseCsvNum(s: string): number | null {
+  if (!s || s.trim() === "") return null;
+  // Suporta formato brasileiro (1.234,56) e internacional (1234.56)
+  const normalized = s.trim().replace(/\./g, "").replace(",", ".");
+  const n = Number(normalized);
+  return isNaN(n) ? null : n;
+}
+
 async function importUnitsCsv(file: File, dev: Development, onSaved: () => void, setImporting: (v: boolean) => void) {
   setImporting(true);
   try {
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) { alert("Arquivo vazio ou sem dados."); return; }
+
+    // Remove BOM e detecta delimitador pelo cabeçalho
     const rawHeader = lines[0].replace(/^﻿/, "");
-    const headers = rawHeader.split(/[;,]/).map((h) => h.trim().toLowerCase());
+    const sep = rawHeader.includes(";") ? ";" : ",";
+    const headers = parseCsvLine(rawHeader, sep).map((h) => h.toLowerCase().replace(/"/g, "").trim());
 
     const unitMap = new Map<string, string>();
     for (const t of dev.towers) {
-      for (const u of t.units) unitMap.set(u.nome, u.id);
+      for (const u of t.units) unitMap.set(u.nome.trim(), u.id);
     }
 
     const units: Array<{ id: string } & Partial<DevelopmentUnit>> = [];
     for (const line of lines.slice(1)) {
-      const cols = line.split(/[;,]/);
+      const cols = parseCsvLine(line, sep);
       const row: Record<string, string> = {};
-      headers.forEach((h, i) => { row[h] = cols[i]?.trim() ?? ""; });
-      const id = unitMap.get(row["unidade"]);
+      headers.forEach((h, i) => { row[h] = (cols[i] ?? "").trim(); });
+      const id = unitMap.get(row["unidade"] ?? "");
       if (!id) continue;
-      units.push({
-        id,
-        ...(row["area_m2"] !== "" && { areaM2: Number(row["area_m2"]) as any }),
-        ...(row["quartos"] !== "" && { quartos: Number(row["quartos"]) as any }),
-        ...(row["suites"] !== "" && { suites: Number(row["suites"]) as any }),
-        ...(row["banheiros"] !== "" && { banheiros: Number(row["banheiros"]) as any }),
-        ...(row["vagas"] !== "" && { vagas: Number(row["vagas"]) as any }),
-        ...(row["valor_venda"] !== "" && { valorVenda: Number(row["valor_venda"]) as any }),
-        ...(row["valor_avaliado"] !== "" && { valorAvaliado: Number(row["valor_avaliado"]) as any }),
-      });
+      const entry: { id: string } & Partial<DevelopmentUnit> = { id };
+      const areaM2 = parseCsvNum(row["area_m2"]);       if (areaM2 != null) (entry as any).areaM2 = areaM2;
+      const quartos = parseCsvNum(row["quartos"]);       if (quartos != null) (entry as any).quartos = quartos;
+      const suites = parseCsvNum(row["suites"]);         if (suites != null) (entry as any).suites = suites;
+      const banheiros = parseCsvNum(row["banheiros"]);   if (banheiros != null) (entry as any).banheiros = banheiros;
+      const vagas = parseCsvNum(row["vagas"]);           if (vagas != null) (entry as any).vagas = vagas;
+      const valorVenda = parseCsvNum(row["valor_venda"]); if (valorVenda != null) (entry as any).valorVenda = valorVenda;
+      const valorAvaliado = parseCsvNum(row["valor_avaliado"]); if (valorAvaliado != null) (entry as any).valorAvaliado = valorAvaliado;
+      units.push(entry);
     }
 
-    if (units.length === 0) { alert("Nenhuma unidade encontrada no arquivo. Verifique se os nomes na coluna 'unidade' correspondem às unidades cadastradas."); return; }
+    if (units.length === 0) { alert("Nenhuma unidade encontrada. Verifique se a coluna 'unidade' tem os nomes exatos (ex: Apto 101)."); return; }
     await bulkUpdateUnitsIndividual(dev.id, units);
     onSaved();
     alert(`${units.length} unidade(s) atualizadas com sucesso.`);
@@ -3056,7 +3112,7 @@ function TowerStructureCard({ dev, tower, onSaved }: { dev: Development; tower: 
 function Step5Precos({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   return (
     <div className="space-y-6 max-w-5xl">
-      <BulkFillByFase dev={dev} onSaved={onSaved} />
+      <BulkFillByPosicao dev={dev} onSaved={onSaved} />
       <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 shadow-sm">
         <h2 className="text-base font-semibold text-[var(--shell-text)] mb-1">Tabela de Preços</h2>
         <p className="text-xs text-[var(--shell-subtext)] mb-5">Preencha o valor de venda de cada unidade. Todas precisam ter valor para concluir o cadastro.</p>
