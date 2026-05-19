@@ -2696,6 +2696,8 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
     if (!nome.trim()) { alert("Informe o nome da torre."); return; }
     if (fases.length === 0 || totalUnitsPerFloor === 0) { alert("Adicione ao menos uma fase com aptos por andar."); return; }
     if (fases.some((f) => !f.nome.trim())) { alert("Todas as fases precisam de um nome."); return; }
+    const dupCounts = posicaoFinalMap.reduce<Record<number, number>>((acc, v) => { acc[v] = (acc[v] ?? 0) + 1; return acc; }, {});
+    if (Object.values(dupCounts).some((c) => c > 1)) { alert("Existem números repetidos na numeração. Corrija antes de salvar."); return; }
     setBusy(true);
     try {
       const floorsNum = parseInt(floors) || 1;
@@ -2813,46 +2815,65 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             <section>
               <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Numeração dos apartamentos</p>
               <p className="text-[11px] text-[var(--shell-subtext)] mb-4">
-                Defina o número final de cada posição no pavimento. Ex: posição 1 com número 5 → Apto 105.
+                Defina o número final de cada posição. Sem repetições — cada posição deve ter um número único.
               </p>
 
-              {/* Grid de posições */}
+              {/* Fileira horizontal única com labels das fases acima */}
               {(() => {
                 const FASE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4"];
+                const counts = posicaoFinalMap.reduce<Record<number, number>>((acc, v) => { acc[v] = (acc[v] ?? 0) + 1; return acc; }, {});
+                const hasDup = Object.values(counts).some((c) => c > 1);
                 let offset = 0;
+                const groups = fases.map((fase, fi) => {
+                  const color = FASE_COLORS[fi % FASE_COLORS.length];
+                  const idxs = Array.from({ length: fase.unidades || 0 }, (_, j) => offset + j);
+                  offset += fase.unidades || 0;
+                  return { fase, fi, color, idxs };
+                }).filter((g) => g.idxs.length > 0);
+
                 return (
-                  <div className="space-y-3 mb-5">
-                    {fases.map((fase, fi) => {
-                      const color = FASE_COLORS[fi % FASE_COLORS.length];
-                      const slots = Array.from({ length: fase.unidades || 0 }, (_, j) => offset + j);
-                      offset += fase.unidades || 0;
-                      if (slots.length === 0) return null;
-                      return (
-                        <div key={fi}>
-                          <p className="text-[10px] font-semibold mb-1.5" style={{ color }}>{fase.nome || `Fase ${fi + 1}`}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {slots.map((idx) => (
-                              <div key={idx} className="flex flex-col items-center gap-0.5">
-                                <div className="w-11 h-11 rounded-lg flex items-center justify-center"
-                                  style={{ backgroundColor: color + "22", border: `2px solid ${color}` }}>
-                                  <input
-                                    type="number" min={1} max={9999}
-                                    value={posicaoFinalMap[idx] ?? idx + 1}
-                                    onChange={(e) => {
-                                      const v = parseInt(e.target.value) || idx + 1;
-                                      setPosicaoFinalMap((prev) => { const next = [...prev]; next[idx] = v; return next; });
-                                    }}
-                                    className="w-9 bg-transparent text-center text-sm font-bold outline-none"
-                                    style={{ color }}
-                                  />
+                  <div className="mb-5">
+                    {/* Labels das fases */}
+                    <div className="flex gap-3 mb-1 overflow-x-auto pb-1">
+                      {groups.map(({ fase, fi, color, idxs }) => (
+                        <div key={fi} className="flex flex-col items-center flex-shrink-0">
+                          <span className="text-[10px] font-bold mb-1.5" style={{ color }}>
+                            {fase.nome || `Fase ${fi + 1}`}
+                          </span>
+                          <div className="flex gap-1.5">
+                            {idxs.map((idx) => {
+                              const val = posicaoFinalMap[idx] ?? idx + 1;
+                              const isDup = (counts[val] ?? 0) > 1;
+                              return (
+                                <div key={idx} className="flex flex-col items-center gap-0.5">
+                                  <div className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors"
+                                    style={{
+                                      backgroundColor: isDup ? "#fee2e2" : color + "22",
+                                      border: `2px solid ${isDup ? "#ef4444" : color}`,
+                                    }}>
+                                    <input
+                                      type="number" min={1} max={9999}
+                                      value={val}
+                                      onChange={(e) => {
+                                        const v = parseInt(e.target.value);
+                                        if (!isNaN(v) && v >= 1) {
+                                          setPosicaoFinalMap((prev) => { const next = [...prev]; next[idx] = v; return next; });
+                                        }
+                                      }}
+                                      className="w-8 bg-transparent text-center text-sm font-bold outline-none"
+                                      style={{ color: isDup ? "#ef4444" : color }}
+                                    />
+                                  </div>
                                 </div>
-                                <span className="text-[9px] text-[var(--shell-subtext)]">pos {idx + 1}</span>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
+                    {hasDup && (
+                      <p className="text-xs text-red-500 mt-2">Existem números repetidos. Cada posição deve ter um número único.</p>
+                    )}
                   </div>
                 );
               })()}
