@@ -1515,7 +1515,8 @@ model Tower {
   subsolos         Int      @default(0)
   floorUnitsConfig Json?    // legado — { "-1": 4 }
   fasesConfig      Json?    // [{ "nome": "Sul", "unidades": 4, "subsolos": 2 }, ...]
-  posicaoPad    Int      @default(2) // dígitos do sufixo de posição: 1=>"11", 2=>"101", 3=>"1001", 4=>"10001"
+  posicaoPad       Int      @default(2)  // dígitos do sufixo: 1=>"11", 2=>"101", 3=>"1001", 4=>"10001"
+  posicaoFinalMap  Json?    // array de finais por posição global: [3,1,4,...] = posição 1→final 3, posição 2→final 1
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

@@ -2640,6 +2640,11 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   const [alturaAndar, setAlturaAndar] = useState(String(tower?.alturaAndarM ?? 3));
   const [hasLobby, setHasLobby]       = useState(tower?.hasLobbyFloor ?? false);
   const [posicaoPad, setPosicaoPad]   = useState(tower?.posicaoPad ?? 2);
+  const [posicaoFinalMap, setPosicaoFinalMap] = useState<number[]>(() => {
+    if (Array.isArray((tower as any)?.posicaoFinalMap)) return (tower as any).posicaoFinalMap as number[];
+    const n = tower?.unitsPerFloor ?? 4;
+    return Array.from({ length: n }, (_, i) => i + 1);
+  });
 
   const [fases, setFases] = useState<FaseConfig[]>(() => {
     const cfg = tower?.fasesConfig;
@@ -2678,6 +2683,15 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
     }));
   }
 
+  // Redimensiona posicaoFinalMap quando totalUnitsPerFloor muda
+  useEffect(() => {
+    if (totalUnitsPerFloor <= 0) return;
+    setPosicaoFinalMap((prev) => {
+      if (prev.length === totalUnitsPerFloor) return prev;
+      return Array.from({ length: totalUnitsPerFloor }, (_, i) => prev[i] ?? i + 1);
+    });
+  }, [totalUnitsPerFloor]);
+
   async function handleSave() {
     if (!nome.trim()) { alert("Informe o nome da torre."); return; }
     if (fases.length === 0 || totalUnitsPerFloor === 0) { alert("Adicione ao menos uma fase com aptos por andar."); return; }
@@ -2694,6 +2708,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         fasesConfig: fases,
         subsolos: maxSubsolos,
         posicaoPad,
+        posicaoFinalMap,
       };
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
@@ -2747,24 +2762,6 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                   onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
               </div>
             </div>
-            {/* Formato de numeração — só na criação */}
-            {!isEdit && (
-              <div className="mt-4 space-y-2">
-                <label className="text-xs font-semibold text-[var(--shell-subtext)]">Formato de numeração das unidades</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {([1, 2, 3, 4] as const).map((pad) => {
-                    const exemplo = `${isVertical ? "Apto" : "Casa"} 1${"0".repeat(pad - 1)}1`;
-                    return (
-                      <button key={pad} type="button" onClick={() => setPosicaoPad(pad)}
-                        className={`rounded-lg border px-2 py-2 text-center transition-colors ${posicaoPad === pad ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-[var(--brand-accent)]/50"}`}>
-                        <p className="font-mono font-bold text-xs">{exemplo}</p>
-                        <p className="text-[10px] mt-0.5">{pad === 1 ? "até 9/andar" : pad === 2 ? "até 99/andar" : pad === 3 ? "até 999/andar" : "até 9999/andar"}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
             <div className="mt-3 flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <div onClick={() => setHasLobby(!hasLobby)}
@@ -2811,7 +2808,76 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             </section>
           )}
 
-          {/* Seção 3 — Pré-visualização */}
+          {/* Seção 3 — Numeração */}
+          {isVertical && totalUnitsPerFloor > 0 && (
+            <section>
+              <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-1">Numeração dos apartamentos</p>
+              <p className="text-[11px] text-[var(--shell-subtext)] mb-4">
+                Defina o número final de cada posição no pavimento. Ex: posição 1 com número 5 → Apto 105.
+              </p>
+
+              {/* Grid de posições */}
+              {(() => {
+                const FASE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4"];
+                let offset = 0;
+                return (
+                  <div className="space-y-3 mb-5">
+                    {fases.map((fase, fi) => {
+                      const color = FASE_COLORS[fi % FASE_COLORS.length];
+                      const slots = Array.from({ length: fase.unidades || 0 }, (_, j) => offset + j);
+                      offset += fase.unidades || 0;
+                      if (slots.length === 0) return null;
+                      return (
+                        <div key={fi}>
+                          <p className="text-[10px] font-semibold mb-1.5" style={{ color }}>{fase.nome || `Fase ${fi + 1}`}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {slots.map((idx) => (
+                              <div key={idx} className="flex flex-col items-center gap-0.5">
+                                <div className="w-11 h-11 rounded-lg flex items-center justify-center"
+                                  style={{ backgroundColor: color + "22", border: `2px solid ${color}` }}>
+                                  <input
+                                    type="number" min={1} max={9999}
+                                    value={posicaoFinalMap[idx] ?? idx + 1}
+                                    onChange={(e) => {
+                                      const v = parseInt(e.target.value) || idx + 1;
+                                      setPosicaoFinalMap((prev) => { const next = [...prev]; next[idx] = v; return next; });
+                                    }}
+                                    className="w-9 bg-transparent text-center text-sm font-bold outline-none"
+                                    style={{ color }}
+                                  />
+                                </div>
+                                <span className="text-[9px] text-[var(--shell-subtext)]">pos {idx + 1}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Formato */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-[var(--shell-subtext)]">Formato do número final</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {([1, 2, 3, 4] as const).map((pad) => {
+                    const finalEx = (posicaoFinalMap[0] ?? 1).toString().padStart(pad, "0");
+                    const ex = `${isVertical ? "Apto" : "Casa"} 1${finalEx}`;
+                    return (
+                      <button key={pad} type="button" onClick={() => setPosicaoPad(pad)}
+                        className={`rounded-lg border px-2 py-2.5 text-center transition-colors ${posicaoPad === pad ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-[var(--brand-accent)]/50"}`}>
+                        <p className="font-mono font-bold text-xs">{ex}</p>
+                        <p className="text-[10px] mt-0.5 opacity-70">{"0".repeat(pad)}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Seção 4 — Pré-visualização */}
           {isVertical && fases.length > 0 && totalUnitsPerFloor > 0 && (
             <section>
               <p className="text-xs font-bold text-[var(--shell-subtext)] uppercase tracking-widest mb-3">Pré-visualização</p>
