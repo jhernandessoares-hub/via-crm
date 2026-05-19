@@ -2639,6 +2639,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   const [floors, setFloors]           = useState(String(tower?.floors ?? 10));
   const [alturaAndar, setAlturaAndar] = useState(String(tower?.alturaAndarM ?? 3));
   const [hasLobby, setHasLobby]       = useState(tower?.hasLobbyFloor ?? false);
+  const [posicaoPad, setPosicaoPad]   = useState(tower?.posicaoPad ?? 2);
 
   const [fases, setFases] = useState<FaseConfig[]>(() => {
     const cfg = tower?.fasesConfig;
@@ -2692,6 +2693,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         hasLobbyFloor: hasLobby,
         fasesConfig: fases,
         subsolos: maxSubsolos,
+        posicaoPad,
       };
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
@@ -2745,6 +2747,24 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                   onChange={(e) => setAlturaAndar(e.target.value)} className={inp} />
               </div>
             </div>
+            {/* Formato de numeração — só na criação */}
+            {!isEdit && (
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-semibold text-[var(--shell-subtext)]">Formato de numeração das unidades</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {([1, 2, 3, 4] as const).map((pad) => {
+                    const exemplo = `${isVertical ? "Apto" : "Casa"} 1${"0".repeat(pad - 1)}1`;
+                    return (
+                      <button key={pad} type="button" onClick={() => setPosicaoPad(pad)}
+                        className={`rounded-lg border px-2 py-2 text-center transition-colors ${posicaoPad === pad ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-[var(--brand-accent)]/50"}`}>
+                        <p className="font-mono font-bold text-xs">{exemplo}</p>
+                        <p className="text-[10px] mt-0.5">{pad === 1 ? "até 9/andar" : pad === 2 ? "até 99/andar" : pad === 3 ? "até 999/andar" : "até 9999/andar"}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="mt-3 flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <div onClick={() => setHasLobby(!hasLobby)}
