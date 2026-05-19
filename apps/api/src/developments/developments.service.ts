@@ -218,6 +218,10 @@ export class DevelopmentsService {
         floorUnitsConfig: data.floorUnitsConfig ?? null,
         posicaoPad: data.posicaoPad != null ? Math.max(1, Math.min(4, Number(data.posicaoPad))) : 2,
         posicaoFinalMap: Array.isArray(data.posicaoFinalMap) ? data.posicaoFinalMap : null,
+        prefixoUnidade: data.prefixoUnidade != null ? String(data.prefixoUnidade) : '',
+        andarInicialContagem: data.andarInicialContagem ?? 'PRIMEIRO_PAV',
+        andarInicialDisplay: data.andarInicialDisplay != null ? Number(data.andarInicialDisplay) : 1,
+        subsoloDisplay: data.subsoloDisplay ?? 'PREFIXO_S',
       },
     });
   }
@@ -259,7 +263,13 @@ export class DevelopmentsService {
     if (data.ladoConfig        !== undefined) updateData.ladoConfig        = data.ladoConfig ?? null;
     if (data.subsolos          !== undefined) updateData.subsolos          = n(data.subsolos) ?? 0;
     if (data.floorUnitsConfig  !== undefined) updateData.floorUnitsConfig  = data.floorUnitsConfig ?? null;
-    if (data.fasesConfig       !== undefined) updateData.fasesConfig       = data.fasesConfig ?? null;
+    if (data.fasesConfig            !== undefined) updateData.fasesConfig            = data.fasesConfig ?? null;
+    if (data.posicaoPad             !== undefined) updateData.posicaoPad             = data.posicaoPad != null ? Math.max(1, Math.min(4, Number(data.posicaoPad))) : 2;
+    if (data.posicaoFinalMap        !== undefined) updateData.posicaoFinalMap        = Array.isArray(data.posicaoFinalMap) ? data.posicaoFinalMap : null;
+    if (data.prefixoUnidade         !== undefined) updateData.prefixoUnidade         = String(data.prefixoUnidade ?? '');
+    if (data.andarInicialContagem   !== undefined) updateData.andarInicialContagem   = data.andarInicialContagem;
+    if (data.andarInicialDisplay    !== undefined) updateData.andarInicialDisplay    = Number(data.andarInicialDisplay);
+    if (data.subsoloDisplay         !== undefined) updateData.subsoloDisplay         = data.subsoloDisplay;
 
     return this.prisma.tower.update({ where: { id: towerId }, data: updateData });
   }
@@ -275,22 +285,52 @@ export class DevelopmentsService {
     const tower = await this.prisma.tower.findFirst({ where: { id: towerId, developmentId, tenantId } });
     if (!tower) throw new NotFoundException('Torre não encontrada');
 
-    const prefix = data.prefix?.trim() || 'Apto';
     const units: any[] = [];
     const floorsNum = Number(data.floors) || 1;
     const unitsPerFloorNum = Number(data.unitsPerFloor) || 1;
     const pad = Math.max(1, Math.min(4, Number((tower as any).posicaoPad ?? 2)));
     const fmt = (n: number) => n.toString().padStart(pad, '0');
     const finalMap: number[] | null = Array.isArray((tower as any).posicaoFinalMap) ? (tower as any).posicaoFinalMap as number[] : null;
-    // globalPos é 1-based; finalMap é 0-based por índice
     const getFinal = (globalPos: number) => finalMap ? (finalMap[globalPos - 1] ?? globalPos) : globalPos;
+
+    // Configurações de numeração
+    const prefixo = ((tower as any).prefixoUnidade ?? '').trim();
+    const contagem: string = (tower as any).andarInicialContagem ?? 'PRIMEIRO_PAV';
+    const iniDisplay: number = Number((tower as any).andarInicialDisplay ?? 1);
+    const subsoloMode: string = (tower as any).subsoloDisplay ?? 'PREFIXO_S';
+    const hasLobby = !!(tower as any).hasLobbyFloor;
+
+    const buildNome = (internalAndar: number, pos: number, maxSubsolosCount: number): string => {
+      const suffix = fmt(getFinal(pos));
+      let displayStr: string;
+      if (internalAndar < 0) {
+        const s = -internalAndar;
+        if (contagem === 'SUBSOLO') {
+          displayStr = (iniDisplay + maxSubsolosCount - s).toString();
+        } else if (subsoloMode === 'PREFIXO_S') {
+          displayStr = `S${s}`;
+        } else {
+          // SEQUENCIAL abaixo do primeiro andar contado
+          displayStr = (iniDisplay - s - (contagem === 'PRIMEIRO_PAV' ? 1 : 0)).toString();
+        }
+      } else {
+        // Andares normais (>= 1)
+        if (contagem === 'SUBSOLO') {
+          displayStr = (iniDisplay + maxSubsolosCount + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
+        } else if (contagem === 'TERREO') {
+          displayStr = (iniDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
+        } else {
+          // PRIMEIRO_PAV
+          displayStr = (iniDisplay + internalAndar - 1).toString();
+        }
+      }
+      return prefixo ? `${prefixo} ${displayStr}${suffix}` : `${displayStr}${suffix}`;
+    };
 
     type FaseConfig = { nome: string; unidades: number; subsolos: number; excludedSlots?: { andar: number; localPos: number }[] };
     const fases = (tower as any).fasesConfig as FaseConfig[] | null;
-    const hasLobby = !!(tower as any).hasLobbyFloor;
 
     if (fases && fases.length > 0) {
-      // Monta ranges de posição por fase
       let posOffset = 0;
       const faseRanges = fases.map((f) => {
         const posStart = posOffset + 1;
@@ -299,7 +339,6 @@ export class DevelopmentsService {
       });
       const maxSubsolos = Math.max(...fases.map((f) => f.subsolos));
 
-      // Subsolos (do mais profundo para S1)
       for (let s = maxSubsolos; s >= 1; s--) {
         const andar = -s;
         for (const fase of faseRanges) {
@@ -307,18 +346,17 @@ export class DevelopmentsService {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
             if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
-            units.push({ tenantId, developmentId, towerId, nome: `${prefix} S${s}${fmt(getFinal(pos))}`, andar, posicao: pos, status: 'DISPONIVEL' });
+            units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, maxSubsolos), andar, posicao: pos, status: 'DISPONIVEL' });
           }
         }
       }
 
-      // Andares normais
       for (let andar = 1; andar <= floorsNum; andar++) {
         for (const fase of faseRanges) {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
             if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
-            units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${fmt(getFinal(pos))}`, andar, posicao: pos, status: 'DISPONIVEL' });
+            units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, maxSubsolos), andar, posicao: pos, status: 'DISPONIVEL' });
           }
         }
       }
@@ -331,12 +369,12 @@ export class DevelopmentsService {
       for (let s = subsolos; s >= 1; s--) {
         const andar = -s;
         for (let pos = 1; pos <= unitsForFloor(andar); pos++) {
-          units.push({ tenantId, developmentId, towerId, nome: `${prefix} S${s}${fmt(getFinal(pos))}`, andar, posicao: pos, status: 'DISPONIVEL' });
+          units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, subsolos), andar, posicao: pos, status: 'DISPONIVEL' });
         }
       }
       for (let andar = 1; andar <= floorsNum; andar++) {
         for (let pos = 1; pos <= unitsForFloor(andar); pos++) {
-          units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${fmt(getFinal(pos))}`, andar, posicao: pos, status: 'DISPONIVEL' });
+          units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, subsolos), andar, posicao: pos, status: 'DISPONIVEL' });
         }
       }
     }

@@ -81,6 +81,10 @@ export type Tower = {
   fasesConfig?: FaseConfig[] | null;
   posicaoPad?: number | null;
   posicaoFinalMap?: number[] | null;
+  prefixoUnidade?: string | null;
+  andarInicialContagem?: string | null;
+  andarInicialDisplay?: number | null;
+  subsoloDisplay?: string | null;
   units: DevelopmentUnit[];
 };
 
