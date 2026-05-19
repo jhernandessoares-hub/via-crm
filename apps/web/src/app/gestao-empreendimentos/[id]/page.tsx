@@ -2645,6 +2645,10 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
     const n = tower?.unitsPerFloor ?? 4;
     return Array.from({ length: n }, (_, i) => i + 1);
   });
+  const [prefixoUnidade, setPrefixoUnidade]           = useState<string>((tower as any)?.prefixoUnidade ?? "");
+  const [andarInicialContagem, setAndarInicialContagem] = useState<string>((tower as any)?.andarInicialContagem ?? "PRIMEIRO_PAV");
+  const [andarInicialDisplay, setAndarInicialDisplay]   = useState<number>(Number((tower as any)?.andarInicialDisplay ?? 1));
+  const [subsoloDisplay, setSubsoloDisplay]             = useState<string>((tower as any)?.subsoloDisplay ?? "PREFIXO_S");
 
   const [fases, setFases] = useState<FaseConfig[]>(() => {
     const cfg = tower?.fasesConfig;
@@ -2711,6 +2715,10 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         subsolos: maxSubsolos,
         posicaoPad,
         posicaoFinalMap,
+        prefixoUnidade,
+        andarInicialContagem,
+        andarInicialDisplay,
+        subsoloDisplay,
       };
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
@@ -2878,23 +2886,120 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                 );
               })()}
 
-              {/* Formato */}
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-[var(--shell-subtext)]">Formato do número final</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {([1, 2, 3, 4] as const).map((pad) => {
-                    const finalEx = (posicaoFinalMap[0] ?? 1).toString().padStart(pad, "0");
-                    const ex = `${isVertical ? "Apto" : "Casa"} 1${finalEx}`;
-                    return (
-                      <button key={pad} type="button" onClick={() => setPosicaoPad(pad)}
-                        className={`rounded-lg border px-2 py-2.5 text-center transition-colors ${posicaoPad === pad ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-[var(--brand-accent)]/50"}`}>
-                        <p className="font-mono font-bold text-xs">{ex}</p>
-                        <p className="text-[10px] mt-0.5 opacity-70">{"0".repeat(pad)}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Formato de numeração */}
+              {(() => {
+                // Preview ao vivo: calcula nomes do primeiro e último andar
+                const pad = posicaoPad;
+                const fmt = (n: number) => n.toString().padStart(pad, "0");
+                const finalEx = (posicaoFinalMap[0] ?? 1);
+                const totalFloors = parseInt(floors) || 1;
+
+                const buildPreview = (internalAndar: number): string => {
+                  let displayStr: string;
+                  if (internalAndar < 0) {
+                    const s = -internalAndar;
+                    if (andarInicialContagem === "SUBSOLO") {
+                      displayStr = (andarInicialDisplay + maxSubsolos - s).toString();
+                    } else if (subsoloDisplay === "PREFIXO_S") {
+                      displayStr = `S${s}`;
+                    } else {
+                      displayStr = (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
+                    }
+                  } else {
+                    if (andarInicialContagem === "SUBSOLO") {
+                      displayStr = (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
+                    } else if (andarInicialContagem === "TERREO") {
+                      displayStr = (andarInicialDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
+                    } else {
+                      displayStr = (andarInicialDisplay + internalAndar - 1).toString();
+                    }
+                  }
+                  const code = prefixoUnidade ? `${prefixoUnidade} ${displayStr}${fmt(finalEx)}` : `${displayStr}${fmt(finalEx)}`;
+                  return code;
+                };
+
+                const ex1 = maxSubsolos > 0 ? buildPreview(-maxSubsolos) : buildPreview(1);
+                const ex2 = buildPreview(totalFloors);
+
+                return (
+                  <div className="space-y-4 pt-1 border-t border-[var(--shell-card-border)]">
+                    <p className="text-[11px] font-bold text-[var(--shell-subtext)] uppercase tracking-widest pt-1">Formato de numeração</p>
+
+                    {/* Prefixo */}
+                    <div>
+                      <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Prefixo da unidade</label>
+                      <input type="text" maxLength={10} placeholder="Apto, AP, Casa, ... (deixe vazio para só o número)"
+                        value={prefixoUnidade}
+                        onChange={(e) => setPrefixoUnidade(e.target.value)}
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]"
+                      />
+                    </div>
+
+                    {/* Início da contagem */}
+                    <div>
+                      <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Início da contagem dos andares</label>
+                      <select value={andarInicialContagem} onChange={(e) => setAndarInicialContagem(e.target.value)}
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]">
+                        <option value="SUBSOLO">Do subsolo mais profundo (subsolo → térreo → andares em sequência)</option>
+                        <option value="TERREO">Do térreo (térreo = nº inicial, andares sobem a partir daí)</option>
+                        <option value="PRIMEIRO_PAV">Do 1º pavimento (subsolos tratados separado)</option>
+                      </select>
+                    </div>
+
+                    {/* Número inicial */}
+                    <div>
+                      <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">
+                        Número do {andarInicialContagem === "SUBSOLO" ? "subsolo mais profundo" : andarInicialContagem === "TERREO" ? "térreo" : "1º pavimento"}
+                      </label>
+                      <input type="number" min={0} max={999}
+                        value={andarInicialDisplay}
+                        onChange={(e) => setAndarInicialDisplay(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]"
+                      />
+                    </div>
+
+                    {/* Exibição de subsolos (só quando há subsolos e contagem não começa do subsolo) */}
+                    {maxSubsolos > 0 && andarInicialContagem !== "SUBSOLO" && (
+                      <div>
+                        <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Numeração dos subsolos</label>
+                        <select value={subsoloDisplay} onChange={(e) => setSubsoloDisplay(e.target.value)}
+                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]">
+                          <option value="PREFIXO_S">Prefixo S — ex: S1001, S2001...</option>
+                          <option value="SEQUENCIAL">Sequencial abaixo do início — ex: 0001, -1001...</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Formato do sufixo (posicaoPad) */}
+                    <div>
+                      <p className="text-[11px] text-[var(--shell-subtext)] mb-2">Dígitos do sufixo de posição</p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {([1, 2, 3, 4] as const).map((p) => {
+                          const sfx = finalEx.toString().padStart(p, "0");
+                          const code = prefixoUnidade ? `${prefixoUnidade} 1${sfx}` : `1${sfx}`;
+                          return (
+                            <button key={p} type="button" onClick={() => setPosicaoPad(p)}
+                              className={`rounded-lg border px-2 py-2.5 text-center transition-colors ${posicaoPad === p ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-[var(--brand-accent)]/50"}`}>
+                              <p className="font-mono font-bold text-xs">{code}</p>
+                              <p className="text-[10px] mt-0.5 opacity-70">{"0".repeat(p)} sufixo</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Preview ao vivo */}
+                    <div className="rounded-lg bg-[var(--shell-bg)] border border-[var(--shell-card-border)] px-3 py-2.5">
+                      <p className="text-[10px] text-[var(--shell-subtext)] mb-1 uppercase tracking-widest font-semibold">Preview</p>
+                      <div className="flex gap-4 flex-wrap">
+                        {maxSubsolos > 0 && <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(-maxSubsolos)} <span className="text-[10px] font-normal opacity-60">(1º subsolo)</span></span>}
+                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(1)} <span className="text-[10px] font-normal opacity-60">({andarInicialContagem === "SUBSOLO" || andarInicialContagem === "TERREO" ? "térreo/1º andar" : "1º pav"})</span></span>
+                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{ex2} <span className="text-[10px] font-normal opacity-60">({totalFloors}º andar)</span></span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </section>
           )}
 
