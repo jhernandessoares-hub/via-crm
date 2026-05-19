@@ -79,6 +79,7 @@ export type Tower = {
   subsolos?: number | null;
   floorUnitsConfig?: Record<string, number> | null;
   fasesConfig?: FaseConfig[] | null;
+  posicaoPad?: number | null;
   units: DevelopmentUnit[];
 };
 

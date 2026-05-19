@@ -216,6 +216,7 @@ export class DevelopmentsService {
         subsolos: data.subsolos != null ? Number(data.subsolos) : 0,
         ladoConfig: data.ladoConfig ?? null,
         floorUnitsConfig: data.floorUnitsConfig ?? null,
+        posicaoPad: data.posicaoPad != null ? Math.max(1, Math.min(4, Number(data.posicaoPad))) : 2,
       },
     });
   }
@@ -277,6 +278,8 @@ export class DevelopmentsService {
     const units: any[] = [];
     const floorsNum = Number(data.floors) || 1;
     const unitsPerFloorNum = Number(data.unitsPerFloor) || 1;
+    const pad = Math.max(1, Math.min(4, Number((tower as any).posicaoPad ?? 2)));
+    const fmt = (n: number) => n.toString().padStart(pad, '0');
 
     type FaseConfig = { nome: string; unidades: number; subsolos: number; excludedSlots?: { andar: number; localPos: number }[] };
     const fases = (tower as any).fasesConfig as FaseConfig[] | null;
@@ -300,18 +303,18 @@ export class DevelopmentsService {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
             if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
-            units.push({ tenantId, developmentId, towerId, nome: `${prefix} S${s}${localPos.toString().padStart(2, '0')}`, andar, posicao: pos, status: 'DISPONIVEL' });
+            units.push({ tenantId, developmentId, towerId, nome: `${prefix} S${s}${fmt(localPos)}`, andar, posicao: pos, status: 'DISPONIVEL' });
           }
         }
       }
 
-      // Andares normais (térreo é piso extra visual, não reduz andares numerados)
+      // Andares normais
       for (let andar = 1; andar <= floorsNum; andar++) {
         for (const fase of faseRanges) {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
             if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
-            units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${pos.toString().padStart(2, '0')}`, andar, posicao: pos, status: 'DISPONIVEL' });
+            units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${fmt(localPos)}`, andar, posicao: pos, status: 'DISPONIVEL' });
           }
         }
       }
@@ -324,12 +327,12 @@ export class DevelopmentsService {
       for (let s = subsolos; s >= 1; s--) {
         const andar = -s;
         for (let pos = 1; pos <= unitsForFloor(andar); pos++) {
-          units.push({ tenantId, developmentId, towerId, nome: `${prefix} S${s}${pos.toString().padStart(2, '0')}`, andar, posicao: pos, status: 'DISPONIVEL' });
+          units.push({ tenantId, developmentId, towerId, nome: `${prefix} S${s}${fmt(pos)}`, andar, posicao: pos, status: 'DISPONIVEL' });
         }
       }
       for (let andar = 1; andar <= floorsNum; andar++) {
         for (let pos = 1; pos <= unitsForFloor(andar); pos++) {
-          units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${pos.toString().padStart(2, '0')}`, andar, posicao: pos, status: 'DISPONIVEL' });
+          units.push({ tenantId, developmentId, towerId, nome: `${prefix} ${andar}${fmt(pos)}`, andar, posicao: pos, status: 'DISPONIVEL' });
         }
       }
     }
