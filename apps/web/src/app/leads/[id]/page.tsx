@@ -625,10 +625,9 @@ function MediaModal({ state, onClose }: { state: MediaModalState; onClose: () =>
   const src = state.src;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
       <div
         className="w-full max-w-4xl rounded-xl bg-[var(--shell-card-bg)] shadow-lg overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div className="text-sm font-semibold text-[var(--shell-text)] truncate">{state.title || "Mídia"}</div>
@@ -4136,11 +4135,9 @@ function discardAiSuggestion() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
-          onClick={() => setNomeModalOpen(false)}
-        >
+          >
           <div
             className="bg-[var(--shell-card-bg)] rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
-            onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold text-[var(--shell-text)] mb-1">Nome confirmado</h3>
             <p className="text-xs text-[var(--shell-subtext)] mb-3">

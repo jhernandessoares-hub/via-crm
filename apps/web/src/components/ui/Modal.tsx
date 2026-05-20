@@ -30,16 +30,11 @@ export function Modal({
 }: ModalProps) {
   React.useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", handler);
       document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -47,7 +42,6 @@ export function Modal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4"
       style={{ backgroundColor: "rgba(13, 27, 62, 0.55)" }}
-      onClick={onClose}
     >
       <div
         className="w-full rounded-xl border shadow-2xl my-8"
@@ -62,7 +56,6 @@ export function Modal({
             <div
               className="flex items-start justify-between border-b px-5 py-4"
               style={{ borderColor: "var(--shell-card-border)" }}
-              onClick={(e) => e.stopPropagation()}
             >
               <div>
                 {title && (
@@ -93,14 +86,13 @@ export function Modal({
               </button>
             </div>
           )}
-          <div className="p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="p-5">
             {children}
           </div>
           {footer && (
             <div
               className="flex justify-end gap-2 border-t px-5 py-3"
               style={{ borderColor: "var(--shell-card-border)" }}
-              onClick={(e) => e.stopPropagation()}
             >
               {footer}
             </div>

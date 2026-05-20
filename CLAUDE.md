@@ -427,6 +427,7 @@ NEXT_PUBLIC_API_URL=
 | Inbox WA Light — conversas por sessão | `GET /inbox?sessionId=X` filtra conversas pelo inbox específico; sem filtro retorna todas as conversas WHATSAPP_LIGHT do tenant |
 | Tailwind v4 sem opacidade em bg-black/40 | Modificador de opacidade não funciona de forma confiável — usar `style={{ backgroundColor: "rgba(...)" }}` para overlays e valores hex para fundos de modal |
 | `router.push/replace` em Next.js 16 + React 19 | Envolto em `startTransition(() => router.replace(...))` para evitar "Router action dispatched before initialization" |
+| Modais não fecham ao clicar fora | Todos os overlays/modais do sistema fecham SOMENTE via botão explícito (X, Cancelar, Fechar). Backdrop sem onClick. Dropdowns de seleção podem fechar ao clicar fora (z-40 overlay transparente), pois não são modais de formulário. Regra aplicada em Modal.tsx (componente global) e todos os modais inline do frontend. |
 | `localStorage` nunca lido durante o render | Sempre em `useEffect` + `useState` — leitura síncrona durante render causa hidratação incorreta e dispara router antes da inicialização |
 
 ---

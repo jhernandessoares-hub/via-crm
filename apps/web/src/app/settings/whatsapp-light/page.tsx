@@ -268,14 +268,11 @@ export default function WhatsappLightPage() {
       {qrModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
-          onClick={() => setQrModal(null)}
-        >
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
           <div
             className="rounded-2xl p-8 max-w-sm w-full mx-4 text-center"
             style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
+            >
             <QrCode className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--brand-accent)" }} />
             <h2 className="text-lg font-bold mb-1" style={{ color: "var(--text-primary)" }}>
               Escanear QR Code

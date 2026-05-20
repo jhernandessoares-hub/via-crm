@@ -359,8 +359,8 @@ function FileModal({ title, showNome, nomeDefault = "", onConfirm, onCancel, bus
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h3 className="text-sm font-semibold text-[var(--shell-text)]">{title}</h3>
           <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕</button>
@@ -465,7 +465,7 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
   const isPdf = mime === "application/pdf";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }}>
       <div className="relative w-full max-w-4xl mx-4 flex flex-col" style={{ maxHeight: "92vh" }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-[var(--shell-card-bg)] rounded-t-xl px-4 py-3 shrink-0">
           <span className="text-sm font-medium text-[var(--shell-text)] truncate flex-1">{nome}</span>
@@ -570,7 +570,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }}>
       <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl flex overflow-hidden mx-4"
         style={{ width: selectedDoc ? 860 : 400, maxWidth: "95vw", maxHeight: "90vh", transition: "width 0.2s ease" }}
         onClick={e => e.stopPropagation()}>
@@ -794,8 +794,8 @@ function BulkUploadModal({ leadId, onDone, onCancel }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div>
             <h3 className="text-sm font-semibold text-[var(--shell-text)]">Subir vários documentos</h3>
@@ -942,8 +942,8 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
   const aiCount = Object.values(origens).filter(v => v === "IA").length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
           <div>
             <h3 className="text-sm font-semibold text-[var(--shell-text)]">Cadastro com IA — {displayName}</h3>
@@ -1024,8 +1024,8 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
 function AddParticipanteModal({ onConfirm, onCancel }: { onConfirm: (n: string, c: string) => void; onCancel: () => void; }) {
   const [nome, setNome] = useState(""); const [classificacao, setClassificacao] = useState("CONJUGE");
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h3 className="text-sm font-semibold text-[var(--shell-text)]">Adicionar participante</h3>
           <button onClick={onCancel} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]">✕</button>
@@ -1086,7 +1086,7 @@ function IdentifyDocModal({ leadId, doc, participantes, onConfirm, onCancel, bus
   const nomeDoc = descricao.trim() || TIPOS_PADRAO.find(t => t.value === tipo)?.label || "Documento";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }} onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }}>
       <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col overflow-hidden" style={{ maxHeight: "90vh" }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
@@ -1183,8 +1183,8 @@ function ReclassifyModal({ doc, participantes, onConfirm, onCancel, busy }: {
     ...participantes.map(p => ({ value: p.nome, label: `${p.nome}${p.classificacao ? ` (${classLabel(p.classificacao)})` : ""}` })),
   ];
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div>
             <h3 className="text-sm font-semibold text-[var(--shell-text)]">Reclassificar documento</h3>
@@ -1823,7 +1823,7 @@ export default function DocumentosPage() {
           {isLead && <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">Lead</span>}
           {classificacao && classificacao !== "OUTRO" && <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-full px-2 py-0.5">{classLabel(classificacao)}</span>}
           {/* Setas de reordenação */}
-          <div className="flex items-center gap-0" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-0">
             <button onClick={onMoveUp} disabled={!onMoveUp} title="Mover para cima"
               className="p-1 rounded transition-colors"
               style={{ color: onMoveUp ? "#4b5563" : "#d1d5db", cursor: onMoveUp ? "pointer" : "not-allowed" }}>
@@ -2094,7 +2094,7 @@ export default function DocumentosPage() {
                     {p.classificacao && p.classificacao !== "OUTRO" && <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-full px-2 py-0.5 shrink-0">{classLabel(p.classificacao)}</span>}
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
-                    <div className="flex items-center" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center">
                       <button disabled={idx === 0} onClick={() => movePerson(p.id, "up")} title="Mover para cima"
                         className="p-1 rounded transition-colors"
                         style={{ color: idx === 0 ? "#d1d5db" : "#4b5563", cursor: idx === 0 ? "not-allowed" : "pointer" }}>
