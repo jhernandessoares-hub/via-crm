@@ -85,7 +85,6 @@ export type Tower = {
   andarInicialContagem?: string | null;
   andarInicialDisplay?: number | null;
   subsoloDisplay?: string | null;
-  terreoLabel?: string | null;
   units: DevelopmentUnit[];
 };
 
