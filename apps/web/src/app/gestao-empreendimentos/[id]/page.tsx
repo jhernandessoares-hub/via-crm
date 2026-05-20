@@ -2649,6 +2649,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   const [andarInicialContagem, setAndarInicialContagem] = useState<string>((tower as any)?.andarInicialContagem ?? "PRIMEIRO_PAV");
   const [andarInicialDisplay, setAndarInicialDisplay]   = useState<number>(Number((tower as any)?.andarInicialDisplay ?? 1));
   const [subsoloDisplay, setSubsoloDisplay]             = useState<string>((tower as any)?.subsoloDisplay ?? "PREFIXO_S");
+  const [terreoLabel, setTerreoLabel]                   = useState<string>((tower as any)?.terreoLabel ?? "");
 
   const [fases, setFases] = useState<FaseConfig[]>(() => {
     const cfg = tower?.fasesConfig;
@@ -2719,6 +2720,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         andarInicialContagem,
         andarInicialDisplay,
         subsoloDisplay,
+        terreoLabel: terreoLabel.trim() || null,
       };
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
@@ -2762,7 +2764,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                   placeholder={isVertical ? "Ex.: Torre A" : "Ex.: Quadra 1"} className={inp} autoFocus />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--shell-subtext)]">{isVertical ? "Andares" : "Linhas/Fileiras"}</label>
+                <label className="text-xs font-semibold text-[var(--shell-subtext)]">{isVertical ? "Pavimentos acima do solo" : "Linhas/Fileiras"}</label>
                 <input type="number" min={1} max={80} value={floors}
                   onChange={(e) => setFloors(e.target.value)} className={inp} />
               </div>
@@ -2894,6 +2896,8 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                 const finalEx = (posicaoFinalMap[0] ?? 1);
                 const totalFloors = parseInt(floors) || 1;
 
+                const useTerreoLabelPreview = terreoLabel.trim() !== "" && andarInicialContagem === "TERREO" && !hasLobby;
+
                 const buildPreview = (internalAndar: number): string => {
                   let displayStr: string;
                   if (internalAndar < 0) {
@@ -2906,7 +2910,11 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       displayStr = (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
                     }
                   } else {
-                    if (andarInicialContagem === "SUBSOLO") {
+                    if (useTerreoLabelPreview && internalAndar === 1) {
+                      displayStr = terreoLabel.trim();
+                    } else if (useTerreoLabelPreview && internalAndar > 1) {
+                      displayStr = (andarInicialDisplay + internalAndar - 2).toString();
+                    } else if (andarInicialContagem === "SUBSOLO") {
                       displayStr = (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
                     } else if (andarInicialContagem === "TERREO") {
                       displayStr = (andarInicialDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
@@ -2946,10 +2954,26 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       </select>
                     </div>
 
+                    {/* Label do térreo — só no modo TERREO sem lobby */}
+                    {andarInicialContagem === "TERREO" && !hasLobby && (
+                      <div>
+                        <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">
+                          Label do térreo <span className="opacity-60">(deixe vazio para usar número)</span>
+                        </label>
+                        <input type="text" maxLength={10} placeholder='Ex: "T", "Terreo", "PB"'
+                          value={terreoLabel}
+                          onChange={(e) => setTerreoLabel(e.target.value)}
+                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]"
+                        />
+                      </div>
+                    )}
+
                     {/* Número inicial */}
                     <div>
                       <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">
-                        Número do {andarInicialContagem === "SUBSOLO" ? "subsolo mais profundo" : andarInicialContagem === "TERREO" ? "térreo" : "1º pavimento"}
+                        {andarInicialContagem === "TERREO" && terreoLabel.trim()
+                          ? "Número do 1º pavimento acima do térreo"
+                          : `Número do ${andarInicialContagem === "SUBSOLO" ? "subsolo mais profundo" : andarInicialContagem === "TERREO" ? "térreo" : "1º pavimento"}`}
                       </label>
                       <input type="number" min={0} max={999}
                         value={andarInicialDisplay}
@@ -2993,8 +3017,9 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       <p className="text-[10px] text-[var(--shell-subtext)] mb-1 uppercase tracking-widest font-semibold">Preview</p>
                       <div className="flex gap-4 flex-wrap">
                         {maxSubsolos > 0 && <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(-maxSubsolos)} <span className="text-[10px] font-normal opacity-60">(1º subsolo)</span></span>}
-                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(1)} <span className="text-[10px] font-normal opacity-60">({andarInicialContagem === "SUBSOLO" || andarInicialContagem === "TERREO" ? "térreo/1º andar" : "1º pav"})</span></span>
-                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{ex2} <span className="text-[10px] font-normal opacity-60">({totalFloors}º andar)</span></span>
+                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(1)} <span className="text-[10px] font-normal opacity-60">({useTerreoLabelPreview ? "térreo" : andarInicialContagem === "SUBSOLO" || andarInicialContagem === "TERREO" ? "térreo/1º andar" : "1º pav"})</span></span>
+                        {useTerreoLabelPreview && totalFloors > 1 && <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(2)} <span className="text-[10px] font-normal opacity-60">(1º pav)</span></span>}
+                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{ex2} <span className="text-[10px] font-normal opacity-60">({totalFloors}º pav acima do solo)</span></span>
                       </div>
                     </div>
                   </div>
