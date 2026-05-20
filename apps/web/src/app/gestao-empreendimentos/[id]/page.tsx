@@ -3055,11 +3055,29 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                     {(() => {
                       const floorsNum = parseInt(floors) || 1;
                       const rows: React.ReactElement[] = [];
+
+                      // Gera o rótulo de andar conforme as configurações de numeração
+                      const getFloorLabel = (andar: number): string => {
+                        if (andar < 0) {
+                          const s = -andar;
+                          if (andarInicialContagem === "SUBSOLO") return (andarInicialDisplay + maxSubsolos - s).toString();
+                          if (subsoloDisplay === "PREFIXO_S") return `S${s}`;
+                          return (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
+                        }
+                        if (terreoConfig === "TERREO_LABEL" && andarInicialContagem !== "SUBSOLO") {
+                          return andar === 1 ? (terreoLabelText || "T") : (andarInicialDisplay + andar - 2).toString();
+                        }
+                        if (andarInicialContagem === "SUBSOLO") return (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + andar - 1).toString();
+                        if (andarInicialContagem === "TERREO") return (andarInicialDisplay + andar - (hasLobby ? 0 : 1)).toString();
+                        return (andarInicialDisplay + andar - 1).toString();
+                      };
+
                       // andares normais (desc) — todos têm unidades, incluindo o 1º
                       for (let andar = floorsNum; andar >= 1; andar--) {
+                        const lbl = getFloorLabel(andar);
                         rows.push(
                           <tr key={andar} className="border-t border-[var(--shell-card-border)]">
-                            <td className="pr-2 py-0.5 text-[var(--shell-subtext)] font-semibold whitespace-nowrap">{andar}º</td>
+                            <td className="pr-2 py-0.5 text-[var(--shell-subtext)] font-semibold whitespace-nowrap">{lbl}</td>
                             {fases.map((f, fi) =>
                               Array.from({ length: f.unidades }, (_, ui) => {
                                 const lp = ui + 1;
@@ -3091,7 +3109,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       for (let s = 1; s <= maxSubsolos; s++) {
                         rows.push(
                           <tr key={`s${s}`} className="border-t-2 border-[var(--shell-card-border)]">
-                            <td className="pr-2 py-0.5 text-amber-600 font-bold whitespace-nowrap">S{s}</td>
+                            <td className="pr-2 py-0.5 text-amber-600 font-bold whitespace-nowrap">{getFloorLabel(-s)}</td>
                             {fases.map((f, fi) =>
                               Array.from({ length: f.unidades }, (_, ui) => {
                                 if (f.subsolos < s) return (
