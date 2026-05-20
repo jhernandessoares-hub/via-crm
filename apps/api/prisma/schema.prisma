@@ -1521,6 +1521,7 @@ model Tower {
   andarInicialContagem String?  @default("PRIMEIRO_PAV") // "SUBSOLO" | "TERREO" | "PRIMEIRO_PAV"
   andarInicialDisplay  Int?     @default(1)   // número exibido para o primeiro andar contado
   subsoloDisplay       String?  @default("PREFIXO_S") // "PREFIXO_S" | "SEQUENCIAL"
+  terreoLabel          String?                        // ex: "T", "Terreo", "PB" — quando definido, o 1º andar acima do solo usa esse label em vez de número
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

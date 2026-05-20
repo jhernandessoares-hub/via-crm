@@ -222,6 +222,7 @@ export class DevelopmentsService {
         andarInicialContagem: data.andarInicialContagem ?? 'PRIMEIRO_PAV',
         andarInicialDisplay: data.andarInicialDisplay != null ? Number(data.andarInicialDisplay) : 1,
         subsoloDisplay: data.subsoloDisplay ?? 'PREFIXO_S',
+        terreoLabel: data.terreoLabel != null ? String(data.terreoLabel) : null,
       },
     });
   }
@@ -270,6 +271,7 @@ export class DevelopmentsService {
     if (data.andarInicialContagem   !== undefined) updateData.andarInicialContagem   = data.andarInicialContagem;
     if (data.andarInicialDisplay    !== undefined) updateData.andarInicialDisplay    = Number(data.andarInicialDisplay);
     if (data.subsoloDisplay         !== undefined) updateData.subsoloDisplay         = data.subsoloDisplay;
+    if (data.terreoLabel            !== undefined) updateData.terreoLabel            = data.terreoLabel != null ? String(data.terreoLabel) : null;
 
     return this.prisma.tower.update({ where: { id: towerId }, data: updateData });
   }
@@ -299,6 +301,9 @@ export class DevelopmentsService {
     const iniDisplay: number = Number((tower as any).andarInicialDisplay ?? 1);
     const subsoloMode: string = (tower as any).subsoloDisplay ?? 'PREFIXO_S';
     const hasLobby = !!(tower as any).hasLobbyFloor;
+    const terreoLabel: string = ((tower as any).terreoLabel ?? '').trim();
+    // terreoLabel aplica quando TERREO mode sem lobby — 1º andar acima do solo recebe o label em vez de número
+    const useTerreoLabel = terreoLabel !== '' && contagem === 'TERREO' && !hasLobby;
 
     const buildNome = (internalAndar: number, pos: number, maxSubsolosCount: number): string => {
       const suffix = fmt(getFinal(pos));
@@ -315,7 +320,13 @@ export class DevelopmentsService {
         }
       } else {
         // Andares normais (>= 1)
-        if (contagem === 'SUBSOLO') {
+        if (useTerreoLabel && internalAndar === 1) {
+          // Térreo com label textual: T001, PB001, Terreo001...
+          displayStr = terreoLabel;
+        } else if (useTerreoLabel && internalAndar > 1) {
+          // Andares acima do térreo começam em iniDisplay
+          displayStr = (iniDisplay + internalAndar - 2).toString();
+        } else if (contagem === 'SUBSOLO') {
           displayStr = (iniDisplay + maxSubsolosCount + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
         } else if (contagem === 'TERREO') {
           displayStr = (iniDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
