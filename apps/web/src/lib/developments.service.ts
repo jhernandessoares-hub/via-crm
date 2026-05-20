@@ -87,6 +87,11 @@ export type Tower = {
   subsoloDisplay?: string | null;
   terreoConfig?: string | null;
   terreoLabelText?: string | null;
+  rotuloAcima?: string | null;
+  prefixoContagem?: string | null;
+  blocoIdentificador?: string | null;
+  blocoPosition?: string | null;
+  blocoSeparador?: string | null;
   units: DevelopmentUnit[];
 };
 

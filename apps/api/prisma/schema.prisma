@@ -1520,9 +1520,14 @@ model Tower {
   prefixoUnidade       String?  @default("")  // prefixo antes do código: "Apto", "AP", "" (nenhum)
   andarInicialContagem String?  @default("PRIMEIRO_PAV") // "SUBSOLO" | "TERREO" | "PRIMEIRO_PAV"
   andarInicialDisplay  Int?     @default(1)   // número exibido para o primeiro andar contado
-  subsoloDisplay       String?  @default("PREFIXO_S") // "PREFIXO_S" | "SEQUENCIAL"
+  subsoloDisplay       String?  @default("PREFIXO_S") // "PREFIXO_S" | "SEQUENCIAL" | "PAV_INFERIOR"
   terreoConfig         String?  @default("NUMERICO")   // "SEM_APTO" | "NUMERICO" | "TERREO_LABEL"
   terreoLabelText      String?  @default("T")          // label do térreo quando terreoConfig = "TERREO_LABEL"
+  rotuloAcima          String?  @default("NUMERO_PURO") // rótulo dos andares acima: "NUMERO_PURO" | "PAV" | "ANDAR"
+  prefixoContagem      String?  @default("DERIVADO_ROTULO") // como calcular o prefixo numérico da unidade: "DERIVADO_ROTULO" | "SEQUENCIAL_TOTAL"
+  blocoIdentificador   String?  @default("")           // identificador do bloco/torre no código: "A", "B", "1", "BL A"
+  blocoPosition        String?  @default("NENHUM")     // posição do bloco no código: "NENHUM" | "INICIO" | "MEIO" | "FIM"
+  blocoSeparador       String?  @default("")           // separador entre bloco e número: "", " ", "-"
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
