@@ -224,6 +224,11 @@ export class DevelopmentsService {
         andarInicialContagem: data.andarInicialContagem ?? 'PRIMEIRO_PAV',
         andarInicialDisplay: data.andarInicialDisplay != null ? Number(data.andarInicialDisplay) : 1,
         subsoloDisplay: data.subsoloDisplay ?? 'PREFIXO_S',
+        rotuloAcima: data.rotuloAcima ?? 'NUMERO_PURO',
+        prefixoContagem: data.prefixoContagem ?? 'DERIVADO_ROTULO',
+        blocoIdentificador: data.blocoIdentificador != null ? String(data.blocoIdentificador) : '',
+        blocoPosition: data.blocoPosition ?? 'NENHUM',
+        blocoSeparador: data.blocoSeparador != null ? String(data.blocoSeparador) : '',
       },
     });
   }
@@ -278,6 +283,11 @@ export class DevelopmentsService {
     if (data.andarInicialContagem   !== undefined) updateData.andarInicialContagem   = data.andarInicialContagem;
     if (data.andarInicialDisplay    !== undefined) updateData.andarInicialDisplay    = Number(data.andarInicialDisplay);
     if (data.subsoloDisplay         !== undefined) updateData.subsoloDisplay         = data.subsoloDisplay;
+    if (data.rotuloAcima            !== undefined) updateData.rotuloAcima            = data.rotuloAcima;
+    if (data.prefixoContagem        !== undefined) updateData.prefixoContagem        = data.prefixoContagem;
+    if (data.blocoIdentificador     !== undefined) updateData.blocoIdentificador     = String(data.blocoIdentificador ?? '');
+    if (data.blocoPosition          !== undefined) updateData.blocoPosition          = data.blocoPosition;
+    if (data.blocoSeparador         !== undefined) updateData.blocoSeparador         = String(data.blocoSeparador ?? '');
 
     return this.prisma.tower.update({ where: { id: towerId }, data: updateData });
   }
@@ -310,33 +320,47 @@ export class DevelopmentsService {
     const terreoConfig: string = (tower as any).terreoConfig ?? ((tower as any).hasLobbyFloor ? 'SEM_APTO' : 'NUMERICO');
     const terreoLabelText: string = (((tower as any).terreoLabelText ?? 'T').trim()) || 'T';
     const hasLobby = terreoConfig === 'SEM_APTO';
-    const buildNome = (internalAndar: number, pos: number, maxSubsolosCount: number): string => {
-      const suffix = fmt(getFinal(pos));
-      let displayStr: string;
+    const prefixoContagem: string = (tower as any).prefixoContagem ?? 'DERIVADO_ROTULO';
+    const blocoId: string = ((tower as any).blocoIdentificador ?? '').trim();
+    const blocoPos: string = (tower as any).blocoPosition ?? 'NENHUM';
+    const blocoSep: string = (tower as any).blocoSeparador ?? '';
+
+    // Retorna a string do número do andar que entra no código da unidade
+    const getUnitPrefix = (internalAndar: number, maxSubsolosCount: number): string => {
+      if (prefixoContagem === 'SEQUENCIAL_TOTAL') {
+        const seqPos = internalAndar < 0
+          ? (maxSubsolosCount + internalAndar + 1)
+          : (maxSubsolosCount + internalAndar);
+        return (iniDisplay + seqPos - 1).toString();
+      }
+      // DERIVADO_ROTULO — usa o número derivado do rótulo do andar
       if (internalAndar < 0) {
         const s = -internalAndar;
-        if (contagem === 'SUBSOLO') {
-          displayStr = (iniDisplay + maxSubsolosCount - s).toString();
-        } else if (subsoloMode === 'PREFIXO_S') {
-          displayStr = `S${s}`;
-        } else {
-          displayStr = (iniDisplay - s - (contagem === 'PRIMEIRO_PAV' ? 1 : 0)).toString();
-        }
-      } else {
-        // Andares normais (>= 1)
-        if (terreoConfig === 'TERREO_LABEL' && contagem !== 'SUBSOLO') {
-          // Andar 1 = label textual; andares acima começam em iniDisplay
-          displayStr = internalAndar === 1 ? terreoLabelText : (iniDisplay + internalAndar - 2).toString();
-        } else if (contagem === 'SUBSOLO') {
-          displayStr = (iniDisplay + maxSubsolosCount + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
-        } else if (contagem === 'TERREO') {
-          displayStr = (iniDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
-        } else {
-          // PRIMEIRO_PAV / NUMERICO
-          displayStr = (iniDisplay + internalAndar - 1).toString();
-        }
+        if (contagem === 'SUBSOLO') return (iniDisplay + maxSubsolosCount - s).toString();
+        if (subsoloMode === 'PREFIXO_S') return `S${s}`;
+        if (subsoloMode === 'PAV_INFERIOR') return s.toString();
+        return (iniDisplay - s - (contagem === 'PRIMEIRO_PAV' ? 1 : 0)).toString();
       }
-      return prefixo ? `${prefixo} ${displayStr}${suffix}` : `${displayStr}${suffix}`;
+      if (terreoConfig === 'TERREO_LABEL' && contagem !== 'SUBSOLO') {
+        return internalAndar === 1 ? terreoLabelText : (iniDisplay + internalAndar - 2).toString();
+      }
+      if (contagem === 'SUBSOLO') return (iniDisplay + maxSubsolosCount + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
+      if (contagem === 'TERREO') return (iniDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
+      return (iniDisplay + internalAndar - 1).toString();
+    };
+
+    const buildNome = (internalAndar: number, pos: number, maxSubsolosCount: number): string => {
+      const suffix = fmt(getFinal(pos));
+      const floorStr = getUnitPrefix(internalAndar, maxSubsolosCount);
+      let numPart: string;
+      if (blocoId && blocoPos !== 'NENHUM') {
+        if (blocoPos === 'INICIO') numPart = `${blocoId}${blocoSep}${floorStr}${suffix}`;
+        else if (blocoPos === 'MEIO') numPart = `${floorStr}${blocoSep}${blocoId}${suffix}`;
+        else numPart = `${floorStr}${suffix}${blocoSep}${blocoId}`;
+      } else {
+        numPart = `${floorStr}${suffix}`;
+      }
+      return prefixo ? `${prefixo} ${numPart}` : numPart;
     };
 
     type FaseConfig = { nome: string; unidades: number; subsolos: number; excludedSlots?: { andar: number; localPos: number }[] };

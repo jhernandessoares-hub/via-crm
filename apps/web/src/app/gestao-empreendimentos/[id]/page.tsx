@@ -2654,6 +2654,11 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   const [andarInicialContagem, setAndarInicialContagem] = useState<string>((tower as any)?.andarInicialContagem ?? "PRIMEIRO_PAV");
   const [andarInicialDisplay, setAndarInicialDisplay]   = useState<number>(Number((tower as any)?.andarInicialDisplay ?? 1));
   const [subsoloDisplay, setSubsoloDisplay]             = useState<string>((tower as any)?.subsoloDisplay ?? "PREFIXO_S");
+  const [rotuloAcima, setRotuloAcima]                   = useState<string>((tower as any)?.rotuloAcima ?? "NUMERO_PURO");
+  const [prefixoContagem, setPrefixoContagem]           = useState<string>((tower as any)?.prefixoContagem ?? "DERIVADO_ROTULO");
+  const [blocoIdentificador, setBlocoIdentificador]     = useState<string>((tower as any)?.blocoIdentificador ?? "");
+  const [blocoPosition, setBlocoPosition]               = useState<string>((tower as any)?.blocoPosition ?? "NENHUM");
+  const [blocoSeparador, setBlocoSeparador]             = useState<string>((tower as any)?.blocoSeparador ?? "");
 
   const [fases, setFases] = useState<FaseConfig[]>(() => {
     const cfg = tower?.fasesConfig;
@@ -2725,6 +2730,11 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         andarInicialContagem,
         andarInicialDisplay,
         subsoloDisplay,
+        rotuloAcima,
+        prefixoContagem,
+        blocoIdentificador,
+        blocoPosition,
+        blocoSeparador,
       };
       if (isEdit) {
         await updateTower(dev.id, tower!.id, payload);
@@ -2923,28 +2933,47 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
                 const buildPreview = (internalAndar: number): string => {
                   let displayStr: string;
-                  if (internalAndar < 0) {
-                    const s = -internalAndar;
-                    if (andarInicialContagem === "SUBSOLO") {
-                      displayStr = (andarInicialDisplay + maxSubsolos - s).toString();
-                    } else if (subsoloDisplay === "PREFIXO_S") {
-                      displayStr = `S${s}`;
-                    } else {
-                      displayStr = (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
-                    }
+                  const maxS = maxSubsolos;
+                  if (prefixoContagem === "SEQUENCIAL_TOTAL") {
+                    const seqPos = internalAndar < 0
+                      ? (maxS + internalAndar + 1)
+                      : (maxS + internalAndar);
+                    displayStr = (andarInicialDisplay + seqPos - 1).toString();
                   } else {
-                    if (terreoConfig === "TERREO_LABEL" && andarInicialContagem !== "SUBSOLO") {
-                      displayStr = internalAndar === 1 ? (terreoLabelText || "T") : (andarInicialDisplay + internalAndar - 2).toString();
-                    } else if (andarInicialContagem === "SUBSOLO") {
-                      displayStr = (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
-                    } else if (andarInicialContagem === "TERREO") {
-                      displayStr = (andarInicialDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
+                    if (internalAndar < 0) {
+                      const s = -internalAndar;
+                      if (andarInicialContagem === "SUBSOLO") {
+                        displayStr = (andarInicialDisplay + maxS - s).toString();
+                      } else if (subsoloDisplay === "PREFIXO_S") {
+                        displayStr = `S${s}`;
+                      } else if (subsoloDisplay === "PAV_INFERIOR") {
+                        displayStr = s.toString();
+                      } else {
+                        displayStr = (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
+                      }
                     } else {
-                      displayStr = (andarInicialDisplay + internalAndar - 1).toString();
+                      if (terreoConfig === "TERREO_LABEL" && andarInicialContagem !== "SUBSOLO") {
+                        displayStr = internalAndar === 1 ? (terreoLabelText || "T") : (andarInicialDisplay + internalAndar - 2).toString();
+                      } else if (andarInicialContagem === "SUBSOLO") {
+                        displayStr = (andarInicialDisplay + maxS + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
+                      } else if (andarInicialContagem === "TERREO") {
+                        displayStr = (andarInicialDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
+                      } else {
+                        displayStr = (andarInicialDisplay + internalAndar - 1).toString();
+                      }
                     }
                   }
-                  const code = prefixoUnidade ? `${prefixoUnidade} ${displayStr}${fmt(finalEx)}` : `${displayStr}${fmt(finalEx)}`;
-                  return code;
+                  const suffix = fmt(finalEx);
+                  const bId = blocoIdentificador.trim();
+                  let numPart: string;
+                  if (bId && blocoPosition !== "NENHUM") {
+                    if (blocoPosition === "INICIO") numPart = `${bId}${blocoSeparador}${displayStr}${suffix}`;
+                    else if (blocoPosition === "MEIO") numPart = `${displayStr}${blocoSeparador}${bId}${suffix}`;
+                    else numPart = `${displayStr}${suffix}${blocoSeparador}${bId}`;
+                  } else {
+                    numPart = `${displayStr}${suffix}`;
+                  }
+                  return prefixoUnidade ? `${prefixoUnidade} ${numPart}` : numPart;
                 };
 
                 const ex1 = maxSubsolos > 0 ? buildPreview(-maxSubsolos) : buildPreview(1);
@@ -2989,17 +3018,79 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       />
                     </div>
 
-                    {/* Exibição de subsolos (só quando há subsolos e contagem não começa do subsolo) */}
+                    {/* Rótulo dos subsolos (só quando há subsolos e contagem não começa do subsolo) */}
                     {maxSubsolos > 0 && andarInicialContagem !== "SUBSOLO" && (
                       <div>
-                        <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Numeração dos subsolos</label>
+                        <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Rótulo dos subsolos no espelho</label>
                         <select value={subsoloDisplay} onChange={(e) => setSubsoloDisplay(e.target.value)}
                           className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]">
-                          <option value="PREFIXO_S">Prefixo S — ex: S1001, S2001...</option>
-                          <option value="SEQUENCIAL">Sequencial abaixo do início — ex: 0001, -1001...</option>
+                          <option value="PREFIXO_S">Prefixo S — ex: S1, S2, S3</option>
+                          <option value="PAV_INFERIOR">PAV INFERIOR — ex: 1º PAV INFERIOR, 2º PAV INFERIOR</option>
+                          <option value="SEQUENCIAL">Sequencial — ex: 0, -1, -2</option>
                         </select>
                       </div>
                     )}
+
+                    {/* Rótulo dos andares acima do solo */}
+                    <div>
+                      <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Rótulo dos andares acima do solo no espelho</label>
+                      <select value={rotuloAcima} onChange={(e) => setRotuloAcima(e.target.value)}
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]">
+                        <option value="NUMERO_PURO">Número puro — ex: 1, 2, 3</option>
+                        <option value="PAV">Pavimento — ex: 1º PAVIMENTO, 2º PAVIMENTO</option>
+                        <option value="ANDAR">Andar — ex: 1º ANDAR, 2º ANDAR</option>
+                      </select>
+                    </div>
+
+                    {/* Tipo de prefixo da unidade */}
+                    <div>
+                      <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Numeração das unidades</label>
+                      <select value={prefixoContagem} onChange={(e) => setPrefixoContagem(e.target.value)}
+                        className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]">
+                        <option value="DERIVADO_ROTULO">Derivado do rótulo — unidade usa o número do andar (101, 201, T01)</option>
+                        <option value="SEQUENCIAL_TOTAL">Sequencial total — contador único de baixo pra cima (1001, 2001... independente do rótulo)</option>
+                      </select>
+                    </div>
+
+                    {/* Bloco */}
+                    <div className="rounded-lg border border-[var(--shell-card-border)] p-3 space-y-3">
+                      <p className="text-[11px] font-bold text-[var(--shell-subtext)] uppercase tracking-widest">Identificador de Bloco</p>
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Identificador</label>
+                          <input type="text" maxLength={8} placeholder='ex: A, B, 1, "BL A"'
+                            value={blocoIdentificador}
+                            onChange={(e) => setBlocoIdentificador(e.target.value)}
+                            className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]"
+                          />
+                        </div>
+                        <div className="w-28">
+                          <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Separador</label>
+                          <input type="text" maxLength={2} placeholder='vazio, " ", "-"'
+                            value={blocoSeparador}
+                            onChange={(e) => setBlocoSeparador(e.target.value)}
+                            className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--brand-accent)]"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Posição no código</label>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {([
+                            { v: "NENHUM", ex: "101" },
+                            { v: "INICIO", ex: `${blocoIdentificador || "A"}${blocoSeparador}101` },
+                            { v: "MEIO",   ex: `1${blocoSeparador}${blocoIdentificador || "A"}01` },
+                            { v: "FIM",    ex: `101${blocoSeparador}${blocoIdentificador || "A"}` },
+                          ] as const).map(({ v, ex }) => (
+                            <button key={v} type="button" onClick={() => setBlocoPosition(v)}
+                              className={`rounded-lg border px-1.5 py-2 text-center transition-colors ${blocoPosition === v ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]" : "border-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:border-[var(--brand-accent)]/50"}`}>
+                              <p className="font-mono font-bold text-[10px]">{ex}</p>
+                              <p className="text-[9px] mt-0.5 opacity-70">{v === "NENHUM" ? "sem bloco" : v === "INICIO" ? "início" : v === "MEIO" ? "meio" : "fim"}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
                     {/* Formato do sufixo (posicaoPad) */}
                     <div>
@@ -3057,19 +3148,28 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       const rows: React.ReactElement[] = [];
 
                       // Gera o rótulo de andar conforme as configurações de numeração
+                      const applyRotuloAcima = (num: string) => {
+                        if (rotuloAcima === "PAV") return `${num}º PAVIMENTO`;
+                        if (rotuloAcima === "ANDAR") return `${num}º ANDAR`;
+                        return num;
+                      };
                       const getFloorLabel = (andar: number): string => {
                         if (andar < 0) {
                           const s = -andar;
                           if (andarInicialContagem === "SUBSOLO") return (andarInicialDisplay + maxSubsolos - s).toString();
                           if (subsoloDisplay === "PREFIXO_S") return `S${s}`;
+                          if (subsoloDisplay === "PAV_INFERIOR") return `${s}º PAV INFERIOR`;
                           return (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
                         }
                         if (terreoConfig === "TERREO_LABEL" && andarInicialContagem !== "SUBSOLO") {
-                          return andar === 1 ? (terreoLabelText || "T") : (andarInicialDisplay + andar - 2).toString();
+                          if (andar === 1) return terreoLabelText || "T";
+                          return applyRotuloAcima((andarInicialDisplay + andar - 2).toString());
                         }
-                        if (andarInicialContagem === "SUBSOLO") return (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + andar - 1).toString();
-                        if (andarInicialContagem === "TERREO") return (andarInicialDisplay + andar - (hasLobby ? 0 : 1)).toString();
-                        return (andarInicialDisplay + andar - 1).toString();
+                        let num: string;
+                        if (andarInicialContagem === "SUBSOLO") num = (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + andar - 1).toString();
+                        else if (andarInicialContagem === "TERREO") num = (andarInicialDisplay + andar - (hasLobby ? 0 : 1)).toString();
+                        else num = (andarInicialDisplay + andar - 1).toString();
+                        return applyRotuloAcima(num);
                       };
 
                       // andares normais (desc) — todos têm unidades, incluindo o 1º
@@ -3100,7 +3200,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       if (hasLobby) {
                         rows.push(
                           <tr key="terreo" className="border-t-2 border-[var(--shell-card-border)] bg-gray-100 dark:bg-gray-800/40">
-                            <td className="pr-2 py-0.5 text-gray-400 dark:text-gray-500 font-semibold whitespace-nowrap">T</td>
+                            <td className="pr-2 py-0.5 text-gray-400 dark:text-gray-500 font-semibold whitespace-nowrap">{terreoLabelText || "T"}</td>
                             <td colSpan={totalUnitsPerFloor} className="px-2 py-0.5 text-[9px] text-gray-400 italic">Térreo — Hall / Lobby</td>
                           </tr>
                         );
