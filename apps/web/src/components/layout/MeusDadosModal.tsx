@@ -14,7 +14,7 @@ export type FullProfile = {
   nome: string;
   email: string;
   apelido: string | null;
-  preferences: { theme?: "light" | "dark"; welcomeSeen?: boolean } | null;
+  preferences: { theme?: "light" | "dark"; welcomeSeen?: boolean; lgpdAccepted?: boolean } | null;
   role: Role;
   branchId: string | null;
   tenant: { nome: string };
@@ -62,13 +62,11 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
 
     setLoading(true);
     try {
-      // Merge com preferences existentes para nao sobrescrever outros campos (ex: welcomeSeen)
-      const mergedPreferences = { ...(profile.preferences ?? {}), theme };
       const body: Record<string, unknown> = {
         nome,
         email,
         apelido: apelido.trim() || null,
-        preferences: mergedPreferences,
+        preferences: { theme },
       };
       if (novaSenha) {
         body.senhaAtual = senhaAtual;
@@ -87,7 +85,7 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
         nome,
         email,
         apelido: apelido.trim() || null,
-        preferences: mergedPreferences,
+        preferences: { theme },
       });
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Erro ao salvar.");
