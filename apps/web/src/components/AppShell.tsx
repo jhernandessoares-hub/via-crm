@@ -10,6 +10,7 @@ import {
 } from "@/components/layout/MeusDadosModal";
 import { apiFetch } from "@/lib/api";
 import { getPalette, applyPalette } from "@/lib/palettes";
+import { WelcomeModal } from "@/components/layout/WelcomeModal";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -63,6 +64,7 @@ function AppShellInner({
   const [branding, setBranding] = useState<TenantBranding>({});
   const [tenantAddons, setTenantAddons] = useState<string[]>([]);
   const [tenantPlan, setTenantPlan] = useState<string>('');
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -78,6 +80,7 @@ function AppShellInner({
       .then((data) => {
         const p = data as FullProfile & { tenant?: TenantBranding };
         setProfile(p);
+        if (!p?.preferences?.welcomeSeen || !p?.preferences?.lgpdAccepted) setWelcomeOpen(true);
         const t = p?.preferences?.theme ?? "light";
         setTheme(t);
         applyTheme(t);
@@ -163,6 +166,20 @@ function AppShellInner({
           <main className="flex-1 p-6 overflow-y-auto">{children}</main>
         </div>
       </div>
+
+      {welcomeOpen && profile && (
+        <WelcomeModal
+          profile={profile}
+          showWelcome={!profile.preferences?.welcomeSeen}
+          showLgpd={!profile.preferences?.lgpdAccepted}
+          onDismiss={(updates) => {
+            setWelcomeOpen(false);
+            setProfile((p) =>
+              p ? { ...p, preferences: { ...p.preferences, ...updates } } : p
+            );
+          }}
+        />
+      )}
 
       {modalOpen && profile && (
         <MeusDadosModal

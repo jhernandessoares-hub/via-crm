@@ -14,7 +14,7 @@ export type FullProfile = {
   nome: string;
   email: string;
   apelido: string | null;
-  preferences: { theme?: "light" | "dark" } | null;
+  preferences: { theme?: "light" | "dark"; welcomeSeen?: boolean; lgpdAccepted?: boolean } | null;
   role: Role;
   branchId: string | null;
   tenant: { nome: string };
