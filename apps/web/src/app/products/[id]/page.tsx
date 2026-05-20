@@ -1310,9 +1310,8 @@ ${form.virtualTourUrl ? `<h2>Tour Virtual</h2><p style="color:#2563eb">${form.vi
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div className="relative w-full max-w-2xl max-h-[85vh] rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl flex flex-col overflow-hidden"
-        onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+      <div className="relative w-full max-w-2xl max-h-[85vh] rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--shell-card-border)]">
           <div>
             <h2 className="text-base font-semibold text-[var(--shell-text)]">Relatório do imóvel</h2>
@@ -1488,9 +1487,8 @@ function ImageDetailModal({ img, images, onClose, onSave, onDelete, onSetPrimary
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
-      <div className="relative w-full max-w-5xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] flex overflow-hidden shadow-2xl max-h-[90vh]"
-        onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }}>
+      <div className="relative w-full max-w-5xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] flex overflow-hidden shadow-2xl max-h-[90vh]">
 
         {/* Imagem + navegação */}
         <div className="flex-1 bg-black flex items-center justify-center min-h-[400px] overflow-hidden relative group">
@@ -2933,9 +2931,8 @@ export default function ProductEditPage() {
                 {/* Modal de upload */}
                 {showUploadModal && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
-                    onClick={() => { if (!imgUploading) setShowUploadModal(false); }}>
-                    <div className="w-full max-w-md mx-4 rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-2xl"
-                      onClick={e => e.stopPropagation()}>
+                >
+                    <div className="w-full max-w-md mx-4 rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-2xl">
                       <div className="flex items-center justify-between mb-4">
                         <p className="text-sm font-semibold text-[var(--shell-text)]">Adicionar fotos</p>
                         {!imgUploading && (

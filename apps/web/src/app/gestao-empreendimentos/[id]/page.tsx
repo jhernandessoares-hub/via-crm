@@ -62,7 +62,7 @@ function Modal({ open, onClose, title, children, wide }: {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.55)" }} onClick={onClose}>
+      style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
       <div className={`w-full ${wide ? "max-w-2xl" : "max-w-md"} mx-4 rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-xl`}
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
@@ -721,7 +721,7 @@ function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onCl
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.75)" }} onClick={onClose}>
+      style={{ backgroundColor: "rgba(0,0,0,0.75)" }}>
       <div className="w-full max-w-3xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] overflow-hidden shadow-xl"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--shell-card-border)]">
@@ -2755,8 +2755,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-6 px-2"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
-      onClick={onClose}>
+      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
       <div className="w-full max-w-2xl rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}>
         {/* Header */}
