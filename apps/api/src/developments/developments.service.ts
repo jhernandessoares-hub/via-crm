@@ -205,7 +205,9 @@ export class DevelopmentsService {
         facadeColor: data.facadeColor ?? '#e5e7eb',
         balconyType: data.balconyType ?? 'NONE',
         floorPlan: data.floorPlan ?? undefined,
-        hasLobbyFloor: data.hasLobbyFloor ? true : false,
+        hasLobbyFloor: data.terreoConfig === 'SEM_APTO' || (data.terreoConfig == null && data.hasLobbyFloor),
+        terreoConfig: data.terreoConfig ?? 'NUMERICO',
+        terreoLabelText: data.terreoLabelText != null ? String(data.terreoLabelText) : 'T',
         implantacaoX: data.implantacaoX != null && data.implantacaoX !== '' ? Number(data.implantacaoX) : null,
         implantacaoY: data.implantacaoY != null && data.implantacaoY !== '' ? Number(data.implantacaoY) : null,
         implantacaoW: data.implantacaoW != null && data.implantacaoW !== '' ? Number(data.implantacaoW) : null,
@@ -255,7 +257,13 @@ export class DevelopmentsService {
     if (data.roofType      !== undefined) updateData.roofType      = data.roofType ?? null;
     if (data.roofColor     !== undefined) updateData.roofColor     = data.roofColor ?? null;
     if (data.balconyType   !== undefined) updateData.balconyType   = data.balconyType ?? null;
-    if (data.hasLobbyFloor !== undefined) updateData.hasLobbyFloor = Boolean(data.hasLobbyFloor);
+    if (data.terreoConfig   !== undefined) {
+      updateData.terreoConfig   = data.terreoConfig;
+      updateData.hasLobbyFloor  = data.terreoConfig === 'SEM_APTO';
+    } else if (data.hasLobbyFloor !== undefined) {
+      updateData.hasLobbyFloor = Boolean(data.hasLobbyFloor);
+    }
+    if (data.terreoLabelText !== undefined) updateData.terreoLabelText = String(data.terreoLabelText ?? 'T');
     if (data.floorPlan     !== undefined) updateData.floorPlan     = data.floorPlan ?? null;
     for (const k of ['implantacaoX','implantacaoY','implantacaoW','implantacaoH','implantacaoLat','implantacaoLng'] as const) {
       if (data[k] !== undefined) updateData[k] = nn(data[k]);
@@ -298,7 +306,10 @@ export class DevelopmentsService {
     const contagem: string = (tower as any).andarInicialContagem ?? 'PRIMEIRO_PAV';
     const iniDisplay: number = Number((tower as any).andarInicialDisplay ?? 1);
     const subsoloMode: string = (tower as any).subsoloDisplay ?? 'PREFIXO_S';
-    const hasLobby = !!(tower as any).hasLobbyFloor;
+    // terreoConfig: "SEM_APTO" | "NUMERICO" | "TERREO_LABEL" — fallback para hasLobbyFloor legado
+    const terreoConfig: string = (tower as any).terreoConfig ?? ((tower as any).hasLobbyFloor ? 'SEM_APTO' : 'NUMERICO');
+    const terreoLabelText: string = (((tower as any).terreoLabelText ?? 'T').trim()) || 'T';
+    const hasLobby = terreoConfig === 'SEM_APTO';
     const buildNome = (internalAndar: number, pos: number, maxSubsolosCount: number): string => {
       const suffix = fmt(getFinal(pos));
       let displayStr: string;
@@ -309,17 +320,19 @@ export class DevelopmentsService {
         } else if (subsoloMode === 'PREFIXO_S') {
           displayStr = `S${s}`;
         } else {
-          // SEQUENCIAL abaixo do primeiro andar contado
           displayStr = (iniDisplay - s - (contagem === 'PRIMEIRO_PAV' ? 1 : 0)).toString();
         }
       } else {
         // Andares normais (>= 1)
-        if (contagem === 'SUBSOLO') {
+        if (terreoConfig === 'TERREO_LABEL' && contagem !== 'SUBSOLO') {
+          // Andar 1 = label textual; andares acima começam em iniDisplay
+          displayStr = internalAndar === 1 ? terreoLabelText : (iniDisplay + internalAndar - 2).toString();
+        } else if (contagem === 'SUBSOLO') {
           displayStr = (iniDisplay + maxSubsolosCount + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
         } else if (contagem === 'TERREO') {
           displayStr = (iniDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
         } else {
-          // PRIMEIRO_PAV
+          // PRIMEIRO_PAV / NUMERICO
           displayStr = (iniDisplay + internalAndar - 1).toString();
         }
       }

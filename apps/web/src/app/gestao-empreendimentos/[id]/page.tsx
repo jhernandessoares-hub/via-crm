@@ -2638,7 +2638,12 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   const [nome, setNome]               = useState(tower?.nome ?? "");
   const [floors, setFloors]           = useState(String(tower?.floors ?? 10));
   const [alturaAndar, setAlturaAndar] = useState(String(tower?.alturaAndarM ?? 3));
-  const [hasLobby, setHasLobby]       = useState(tower?.hasLobbyFloor ?? false);
+  const [terreoConfig, setTerreoConfig]     = useState<string>(() => {
+    if ((tower as any)?.terreoConfig) return (tower as any).terreoConfig as string;
+    return tower?.hasLobbyFloor ? "SEM_APTO" : "NUMERICO";
+  });
+  const [terreoLabelText, setTerreoLabelText] = useState<string>((tower as any)?.terreoLabelText ?? "T");
+  const hasLobby = terreoConfig === "SEM_APTO";
   const [posicaoPad, setPosicaoPad]   = useState(tower?.posicaoPad ?? 2);
   const [posicaoFinalMap, setPosicaoFinalMap] = useState<number[]>(() => {
     if (Array.isArray((tower as any)?.posicaoFinalMap)) return (tower as any).posicaoFinalMap as number[];
@@ -2710,7 +2715,8 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
         floors: floorsNum,
         unitsPerFloor: totalUnitsPerFloor,
         alturaAndarM: parseFloat(alturaAndar) || 3,
-        hasLobbyFloor: hasLobby,
+        terreoConfig,
+        terreoLabelText,
         fasesConfig: fases,
         subsolos: maxSubsolos,
         posicaoPad,
@@ -2774,11 +2780,32 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
             </div>
             <div className="mt-3 flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer select-none">
-                <div onClick={() => setHasLobby(!hasLobby)}
-                  className={`w-10 h-5 rounded-full transition-colors flex items-center ${hasLobby ? "bg-[var(--brand-accent)]" : "bg-gray-300 dark:bg-gray-600"}`}>
-                  <span className={`w-4 h-4 rounded-full bg-white shadow transition-transform mx-0.5 ${hasLobby ? "translate-x-5" : ""}`} />
+                <div className="flex flex-col gap-1.5 w-full">
+                  {[
+                    { value: "SEM_APTO",     label: "Sem apartamentos — somente hall/lobby" },
+                    { value: "NUMERICO",     label: "Com apartamentos — numerado (1, 2, 3...)" },
+                    { value: "TERREO_LABEL", label: "Com apartamentos — Térreo + numerado (T001, 1001, 2001...)" },
+                  ].map(({ value, label }) => (
+                    <label key={value} className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="terreoConfig" value={value} checked={terreoConfig === value}
+                        onChange={() => setTerreoConfig(value)}
+                        className="accent-[var(--brand-accent)]" />
+                      <span className="text-xs text-[var(--shell-text)]">{label}</span>
+                    </label>
+                  ))}
+                  {terreoConfig === "TERREO_LABEL" && (
+                    <div className="mt-2 pl-5 flex flex-col gap-2">
+                      <div>
+                        <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">Label do térreo</label>
+                        <input type="text" maxLength={10} placeholder="T, Terreo, PB..."
+                          value={terreoLabelText}
+                          onChange={(e) => setTerreoLabelText(e.target.value || "T")}
+                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-1.5 text-sm outline-none focus:border-[var(--brand-accent)]"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <span className="text-xs text-[var(--shell-text)]">Hall/Lobby térreo (sem apartamentos no 1º andar)</span>
               </label>
             </div>
           </section>
@@ -2906,7 +2933,9 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       displayStr = (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
                     }
                   } else {
-                    if (andarInicialContagem === "SUBSOLO") {
+                    if (terreoConfig === "TERREO_LABEL" && andarInicialContagem !== "SUBSOLO") {
+                      displayStr = internalAndar === 1 ? (terreoLabelText || "T") : (andarInicialDisplay + internalAndar - 2).toString();
+                    } else if (andarInicialContagem === "SUBSOLO") {
                       displayStr = (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
                     } else if (andarInicialContagem === "TERREO") {
                       displayStr = (andarInicialDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
@@ -2949,7 +2978,9 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                     {/* Número inicial */}
                     <div>
                       <label className="block text-[11px] text-[var(--shell-subtext)] mb-1">
-                        Número do {andarInicialContagem === "SUBSOLO" ? "subsolo mais profundo" : andarInicialContagem === "TERREO" ? "térreo" : "1º pavimento"}
+                        {terreoConfig === "TERREO_LABEL" && andarInicialContagem !== "SUBSOLO"
+                          ? "Número do 1º pavimento acima do térreo"
+                          : `Número do ${andarInicialContagem === "SUBSOLO" ? "subsolo mais profundo" : andarInicialContagem === "TERREO" ? "térreo" : "1º pavimento"}`}
                       </label>
                       <input type="number" min={0} max={999}
                         value={andarInicialDisplay}
@@ -2993,7 +3024,8 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       <p className="text-[10px] text-[var(--shell-subtext)] mb-1 uppercase tracking-widest font-semibold">Preview</p>
                       <div className="flex gap-4 flex-wrap">
                         {maxSubsolos > 0 && <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(-maxSubsolos)} <span className="text-[10px] font-normal opacity-60">(1º subsolo)</span></span>}
-                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(1)} <span className="text-[10px] font-normal opacity-60">({andarInicialContagem === "SUBSOLO" || andarInicialContagem === "TERREO" ? "térreo/1º andar" : "1º pav"})</span></span>
+                        <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(1)} <span className="text-[10px] font-normal opacity-60">({terreoConfig === "TERREO_LABEL" ? "térreo" : andarInicialContagem === "SUBSOLO" || andarInicialContagem === "TERREO" ? "térreo/1º andar" : "1º pav"})</span></span>
+                        {terreoConfig === "TERREO_LABEL" && totalFloors > 1 && <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{buildPreview(2)} <span className="text-[10px] font-normal opacity-60">(1º pav acima)</span></span>}
                         <span className="font-mono text-sm font-bold text-[var(--shell-text)]">{ex2} <span className="text-[10px] font-normal opacity-60">({totalFloors}º pav acima do solo)</span></span>
                       </div>
                     </div>
