@@ -835,20 +835,16 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
   }
 
   async function handleUnitCycle(unit: DevelopmentUnit) {
-    try {
-      let patch: Record<string, unknown>;
-      if (unit.ativo === false) {
-        patch = { ativo: true, pne: false };
-      } else if (!unit.pne) {
-        patch = { pne: true };
-      } else {
-        patch = { ativo: false, pne: false };
-      }
-      const updated = await updateUnit(dev.id, unit.id, patch);
-      onUnitUpdated(unit.towerId, updated);
-    } catch (err: any) {
-      alert("Erro ciclo: " + (err?.message ?? String(err)));
+    let patch: Record<string, unknown>;
+    if (unit.ativo === false) {
+      patch = { ativo: true, pne: false };
+    } else if (!unit.pne) {
+      patch = { pne: true };
+    } else {
+      patch = { ativo: false, pne: false };
     }
+    const updated = await updateUnit(dev.id, unit.id, patch);
+    onUnitUpdated(unit.towerId, updated);
   }
 
   async function exportPDF() {
@@ -2753,6 +2749,44 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   const totalUnitsPerFloor = fases.reduce((s, f) => s + (f.unidades || 0), 0);
   const maxSubsolos = fases.reduce((m, f) => Math.max(m, f.subsolos || 0), 0);
 
+  function computeUnitName(internalAndar: number, globalPos: number): string {
+    const pad = posicaoPad;
+    const fmtNum = (n: number) => n.toString().padStart(pad, "0");
+    let displayStr: string;
+    if (prefixoContagem === "SEQUENCIAL_TOTAL") {
+      const seqPos = internalAndar < 0 ? (maxSubsolos + internalAndar + 1) : (maxSubsolos + internalAndar);
+      displayStr = (andarInicialDisplay + seqPos - 1).toString();
+    } else if (internalAndar < 0) {
+      const s = -internalAndar;
+      if (andarInicialContagem === "SUBSOLO") displayStr = (andarInicialDisplay + maxSubsolos - s).toString();
+      else if (subsoloDisplay === "PREFIXO_S") displayStr = `S${s}`;
+      else if (subsoloDisplay === "PAV_INFERIOR") displayStr = s.toString();
+      else displayStr = (andarInicialDisplay - s - (andarInicialContagem === "PRIMEIRO_PAV" ? 1 : 0)).toString();
+    } else {
+      if (terreoConfig === "TERREO_LABEL" && andarInicialContagem !== "SUBSOLO") {
+        displayStr = internalAndar === 1 ? (terreoLabelText || "T") : (andarInicialDisplay + internalAndar - 2).toString();
+      } else if (andarInicialContagem === "SUBSOLO") {
+        displayStr = (andarInicialDisplay + maxSubsolos + (hasLobby ? 1 : 0) + internalAndar - 1).toString();
+      } else if (andarInicialContagem === "TERREO") {
+        displayStr = (andarInicialDisplay + internalAndar - (hasLobby ? 0 : 1)).toString();
+      } else {
+        displayStr = (andarInicialDisplay + internalAndar - 1).toString();
+      }
+    }
+    const mappedPos = posicaoFinalMap[globalPos - 1] ?? globalPos;
+    const suffix = fmtNum(mappedPos);
+    const bId = blocoIdentificador.trim();
+    let numPart: string;
+    if (bId && blocoPosition !== "NENHUM") {
+      if (blocoPosition === "INICIO") numPart = `${bId}${blocoSeparador}${displayStr}${suffix}`;
+      else if (blocoPosition === "MEIO") numPart = `${displayStr}${blocoSeparador}${bId}${suffix}`;
+      else numPart = `${displayStr}${suffix}${blocoSeparador}${bId}`;
+    } else {
+      numPart = `${displayStr}${suffix}`;
+    }
+    return prefixoUnidade ? `${prefixoUnidade} ${numPart}` : numPart;
+  }
+
   function updateFase(idx: number, field: keyof FaseConfig, value: string | number) {
     setFases((prev) => prev.map((f, i) => i === idx ? { ...f, [field]: typeof value === "string" && field !== "nome" ? parseInt(value as string) || 0 : value } : f));
   }
@@ -2763,13 +2797,23 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
     setFases((prev) => prev.map((f, i) => {
       if (i !== faseIdx) return f;
       const excluded = f.excludedSlots ?? [];
-      const already = excluded.some((s) => s.andar === andar && s.localPos === localPos);
-      return {
-        ...f,
-        excludedSlots: already
-          ? excluded.filter((s) => !(s.andar === andar && s.localPos === localPos))
-          : [...excluded, { andar, localPos }],
-      };
+      const pne = f.pneSlots ?? [];
+      const isExcluded = excluded.some((s) => s.andar === andar && s.localPos === localPos);
+      const isPne = pne.some((s) => s.andar === andar && s.localPos === localPos);
+      if (isExcluded) {
+        // Excluída → Normal
+        return { ...f, excludedSlots: excluded.filter((s) => !(s.andar === andar && s.localPos === localPos)) };
+      } else if (isPne) {
+        // PNE → Excluída
+        return {
+          ...f,
+          pneSlots: pne.filter((s) => !(s.andar === andar && s.localPos === localPos)),
+          excludedSlots: [...excluded, { andar, localPos }],
+        };
+      } else {
+        // Normal → PNE
+        return { ...f, pneSlots: [...pne, { andar, localPos }] };
+      }
     }));
   }
 
@@ -3248,6 +3292,10 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       };
 
                       // andares normais (desc) — todos têm unidades, incluindo o 1º
+                      const faseOffsets = fases.reduce<number[]>((acc, f, i) => {
+                        acc.push(i === 0 ? 0 : acc[i - 1] + fases[i - 1].unidades);
+                        return acc;
+                      }, []);
                       for (let andar = floorsNum; andar >= 1; andar--) {
                         const lbl = getFloorLabel(andar);
                         rows.push(
@@ -3257,12 +3305,15 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                               Array.from({ length: f.unidades }, (_, ui) => {
                                 const lp = ui + 1;
                                 const excl = (f.excludedSlots ?? []).some((s) => s.andar === andar && s.localPos === lp);
+                                const isPne = (f.pneSlots ?? []).some((s) => s.andar === andar && s.localPos === lp);
+                                const unitName = computeUnitName(andar, faseOffsets[fi] + lp);
                                 return (
                                   <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
                                     <button type="button" onClick={() => toggleSlot(fi, andar, lp)}
-                                      title={excl ? "Incluir unidade" : "Excluir unidade"}
-                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : "bg-green-500 opacity-80 hover:opacity-100"}`}>
+                                      title={`${unitName}${excl ? " — Excluída" : isPne ? " — PNE" : ""}`}
+                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : isPne ? "bg-purple-500 opacity-90 hover:opacity-100" : "bg-green-500 opacity-80 hover:opacity-100"}`}>
                                       {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
+                                      {isPne && <span className="text-[8px] text-white font-bold leading-none">P</span>}
                                     </button>
                                   </td>
                                 );
@@ -3295,12 +3346,15 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                                 const lp = ui + 1;
                                 const floorAndar = -s;
                                 const excl = (f.excludedSlots ?? []).some((sl) => sl.andar === floorAndar && sl.localPos === lp);
+                                const isPne = (f.pneSlots ?? []).some((sl) => sl.andar === floorAndar && sl.localPos === lp);
+                                const unitName = computeUnitName(floorAndar, faseOffsets[fi] + lp);
                                 return (
                                   <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
                                     <button type="button" onClick={() => toggleSlot(fi, floorAndar, lp)}
-                                      title={excl ? "Incluir unidade" : "Excluir unidade"}
-                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : "bg-amber-400 opacity-80 hover:opacity-100"}`}>
+                                      title={`${unitName}${excl ? " — Excluída" : isPne ? " — PNE" : ""}`}
+                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : isPne ? "bg-purple-500 opacity-90 hover:opacity-100" : "bg-amber-400 opacity-80 hover:opacity-100"}`}>
                                       {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
+                                      {isPne && <span className="text-[8px] text-white font-bold leading-none">P</span>}
                                     </button>
                                   </td>
                                 );
@@ -3320,15 +3374,22 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                   const normalTotal = fl * totalUnitsPerFloor;
                   const subsoloTotal = fases.reduce((s, f) => s + f.unidades * f.subsolos, 0);
                   const excluded = fases.reduce((s, f) => s + (f.excludedSlots?.length ?? 0), 0);
+                  const pneCount = fases.reduce((s, f) => s + (f.pneSlots?.length ?? 0), 0);
                   const grand = normalTotal + subsoloTotal - excluded;
                   return <>
                     {fl} andares · {totalUnitsPerFloor} aptos/andar · {normalTotal} normais
                     {maxSubsolos > 0 && ` + ${subsoloTotal} subsolo`}
+                    {pneCount > 0 && <span className="text-purple-500"> · {pneCount} PNE</span>}
                     {excluded > 0 && <span className="text-red-400"> − {excluded} excluídas</span>}
                     {" = "}<strong className="text-[var(--shell-text)]">{grand} total</strong>
                   </>;
                 })()}
               </p>
+              <div className="flex justify-center gap-4 mt-1.5 text-[10px] text-[var(--shell-subtext)]">
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block opacity-80" /> Normal</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-500 inline-block" /> PNE</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border border-dashed border-gray-400 bg-gray-200 dark:bg-gray-700 inline-block" /> Excluída</span>
+              </div>
             </section>
           )}
         </div>
