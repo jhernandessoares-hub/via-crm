@@ -2741,6 +2741,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
   );
 
   const [busy, setBusy] = useState(false);
+  const [slotTooltip, setSlotTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
   const totalUnitsPerFloor = fases.reduce((s, f) => s + (f.unidades || 0), 0);
   const maxSubsolos = fases.reduce((m, f) => Math.max(m, f.subsolos || 0), 0);
@@ -3297,16 +3298,18 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                         rows.push(
                           <tr key={andar} className="border-t border-[var(--shell-card-border)]">
                             <td className="pr-2 py-0.5 text-[var(--shell-subtext)] font-semibold whitespace-nowrap">{lbl}</td>
-                            {fases.map((f, fi) =>
+                            {fases.flatMap((f, fi) =>
                               Array.from({ length: f.unidades }, (_, ui) => {
                                 const lp = ui + 1;
                                 const excl = (f.excludedSlots ?? []).some((s) => s.andar === andar && s.localPos === lp);
                                 const isPne = (f.pneSlots ?? []).some((s) => s.andar === andar && s.localPos === lp);
                                 const unitName = computeUnitName(andar, faseOffsets[fi] + lp);
+                                const tipText = `${unitName}${excl ? " — Excluída" : isPne ? " — PNE" : ""}`;
                                 return (
                                   <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
                                     <button type="button" onClick={() => toggleSlot(fi, andar, lp)}
-                                      title={`${unitName}${excl ? " — Excluída" : isPne ? " — PNE" : ""}`}
+                                      onMouseEnter={(e) => { const r = e.currentTarget.getBoundingClientRect(); setSlotTooltip({ text: tipText, x: r.left + r.width / 2, y: r.top }); }}
+                                      onMouseLeave={() => setSlotTooltip(null)}
                                       className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : isPne ? "bg-purple-500 opacity-90 hover:opacity-100" : "bg-green-500 opacity-80 hover:opacity-100"}`}>
                                       {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
                                       {isPne && <span className="text-[8px] text-white font-bold leading-none">P</span>}
@@ -3332,7 +3335,7 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                         rows.push(
                           <tr key={`s${s}`} className="border-t-2 border-[var(--shell-card-border)]">
                             <td className="pr-2 py-0.5 text-amber-600 font-bold whitespace-nowrap">{getFloorLabel(-s)}</td>
-                            {fases.map((f, fi) =>
+                            {fases.flatMap((f, fi) =>
                               Array.from({ length: f.unidades }, (_, ui) => {
                                 if (f.subsolos < s) return (
                                   <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
@@ -3344,10 +3347,12 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                                 const excl = (f.excludedSlots ?? []).some((sl) => sl.andar === floorAndar && sl.localPos === lp);
                                 const isPne = (f.pneSlots ?? []).some((sl) => sl.andar === floorAndar && sl.localPos === lp);
                                 const unitName = computeUnitName(floorAndar, faseOffsets[fi] + lp);
+                                const tipText = `${unitName}${excl ? " — Excluída" : isPne ? " — PNE" : ""}`;
                                 return (
                                   <td key={`${fi}-${ui}`} className="px-0.5 py-0.5">
                                     <button type="button" onClick={() => toggleSlot(fi, floorAndar, lp)}
-                                      title={`${unitName}${excl ? " — Excluída" : isPne ? " — PNE" : ""}`}
+                                      onMouseEnter={(e) => { const r = e.currentTarget.getBoundingClientRect(); setSlotTooltip({ text: tipText, x: r.left + r.width / 2, y: r.top }); }}
+                                      onMouseLeave={() => setSlotTooltip(null)}
                                       className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${excl ? "bg-gray-200 dark:bg-gray-700 border border-dashed border-gray-400" : isPne ? "bg-purple-500 opacity-90 hover:opacity-100" : "bg-amber-400 opacity-80 hover:opacity-100"}`}>
                                       {excl && <span className="text-[8px] text-gray-500 leading-none">×</span>}
                                       {isPne && <span className="text-[8px] text-white font-bold leading-none">P</span>}
@@ -3402,6 +3407,12 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
           </button>
         </div>
       </div>
+      {slotTooltip && (
+        <div style={{ position: "fixed", left: slotTooltip.x, top: slotTooltip.y - 30, transform: "translateX(-50%)", zIndex: 9999, pointerEvents: "none" }}
+          className="bg-gray-900 text-white text-[10px] rounded px-1.5 py-0.5 whitespace-nowrap shadow-lg">
+          {slotTooltip.text}
+        </div>
+      )}
     </div>
   );
 }
