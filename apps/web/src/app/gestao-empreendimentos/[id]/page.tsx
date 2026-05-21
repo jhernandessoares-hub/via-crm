@@ -544,10 +544,10 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick, on
   return (
     <div className="space-y-3">
       <div className="overflow-auto">
-        <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
+        <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg bg-[var(--shell-card-bg)] shadow-md">
 
           {/* Cabeçalho — nome da torre + headers de fase */}
-          <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white border-b-2 border-slate-900">
+          <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white border-b-2 border-slate-900 rounded-t-lg overflow-hidden">
             <div className="py-2 px-4 text-center">
               <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▲ Topo</div>
               <div className="text-sm font-bold tracking-wider mt-0.5">{tower.nome}</div>
@@ -669,7 +669,7 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick, on
           )}
 
           {/* Rodapé */}
-          <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900">
+          <div className="bg-gradient-to-t from-slate-700 to-slate-800 text-white py-2 px-4 text-center border-t-2 border-slate-900 rounded-b-lg overflow-hidden">
             <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">▼ Base</div>
           </div>
         </div>
@@ -692,9 +692,9 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, 
 
   return (
     <div className="overflow-auto">
-      <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg overflow-hidden bg-[var(--shell-card-bg)] shadow-md">
+      <div className="inline-block min-w-max border-2 border-slate-700 rounded-lg bg-[var(--shell-card-bg)] shadow-md">
         {/* Cabeçalho */}
-        <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
+        <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900 rounded-t-lg overflow-hidden">
           <div className="text-sm font-bold tracking-wider">{tower.nome}</div>
           <div className="text-[10px] uppercase tracking-[0.2em] opacity-70 mt-0.5">{activeUnits.length} {isLoteamento ? "lotes" : "casas"}</div>
         </div>
