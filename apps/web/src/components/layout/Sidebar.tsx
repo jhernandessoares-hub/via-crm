@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
@@ -66,10 +66,9 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
   const isBusiness = plan === 'BUSINESS';
   const logoSrc = branding?.logoUrl || "/Novo%20modelo%20de%20Logo.png";
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const currentGroup = searchParams.get("group");
   const router = useRouter();
 
+  const [currentGroup, setCurrentGroup] = useState<string | null>(null);
   const [funnelOpen, setFunnelOpen] = useState<boolean>(false);
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
@@ -77,7 +76,8 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
     if (typeof window === "undefined") return;
     setFunnelOpen(localStorage.getItem("sidebar_funnel_open") === "true");
     setCollapsed(localStorage.getItem("sidebar_collapsed") === "true");
-  }, []);
+    setCurrentGroup(new URLSearchParams(window.location.search).get("group"));
+  }, [pathname]);
 
   function toggleFunnel() {
     setFunnelOpen((v) => {
