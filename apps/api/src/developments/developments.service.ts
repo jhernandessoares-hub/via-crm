@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
@@ -299,6 +300,24 @@ export class DevelopmentsService {
     return { message: 'Torre excluída' };
   }
 
+  async duplicateTower(tenantId: string, developmentId: string, towerId: string, newName: string) {
+    const original = await this.prisma.tower.findFirst({ where: { id: towerId, developmentId, tenantId } });
+    if (!original) throw new NotFoundException('Torre não encontrada');
+    const { id, createdAt, updatedAt, floorPlan, ladoConfig, floorUnitsConfig, fasesConfig, posicaoFinalMap, ...rest } = original;
+    return this.prisma.tower.create({
+      data: {
+        ...rest,
+        nome: newName,
+        floorPlan: floorPlan ?? Prisma.JsonNull,
+        ladoConfig: ladoConfig ?? Prisma.JsonNull,
+        floorUnitsConfig: floorUnitsConfig ?? Prisma.JsonNull,
+        fasesConfig: fasesConfig ?? Prisma.JsonNull,
+        posicaoFinalMap: posicaoFinalMap ?? Prisma.JsonNull,
+      },
+      include: { units: true },
+    });
+  }
+
   async bulkCreateUnits(tenantId: string, developmentId: string, towerId: string, data: { floors: number; unitsPerFloor: number; prefix?: string }) {
     const tower = await this.prisma.tower.findFirst({ where: { id: towerId, developmentId, tenantId } });
     if (!tower) throw new NotFoundException('Torre não encontrada');
@@ -471,6 +490,9 @@ export class DevelopmentsService {
     if (updateData.loteFundo !== undefined) updateData.loteFundo = updateData.loteFundo != null && updateData.loteFundo !== '' ? Number(updateData.loteFundo) : null;
     // leadId é passado como string UUID ou null — sem conversão necessária
     if (updateData.leadId !== undefined) updateData.leadId = updateData.leadId || null;
+    // campos booleanos de UX do espelho
+    if (updateData.pne !== undefined) updateData.pne = Boolean(updateData.pne);
+    if (updateData.ativo !== undefined) updateData.ativo = Boolean(updateData.ativo);
     // nunca persistir o objeto lead embutido (apenas o leadId FK)
     delete updateData.lead;
 

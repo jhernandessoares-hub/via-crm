@@ -1566,6 +1566,8 @@ model DevelopmentUnit {
   soldAt         DateTime?
   leadId         String?  // FK para o lead do comprador/interessado
   lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  pne            Boolean  @default(false) // unidade adaptada para PNE
+  ativo          Boolean  @default(true)  // false = inativo/removido do espelho (não deletado fisicamente)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
