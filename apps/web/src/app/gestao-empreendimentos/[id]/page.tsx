@@ -612,10 +612,12 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick, on
                           );
                         }
                         const visible = unitMatches(unit, filters, true);
+                        const tooltipText = `${unit.nome}${unit.pne ? " · PNE" : ""} — ${STATUS_LABEL[unit.status]}${unit.areaM2 != null ? ` · ${unit.areaM2}m²` : ""}${unit.valorVenda != null ? ` · ${fmt(unit.valorVenda)}` : ""}`;
                         return (
                           <div key={pos} className="relative group w-16 h-14 border-r border-white/30 last:border-r-0">
                             <button type="button"
                               onClick={() => onUnitClick(unit)}
+                              title={tooltipText}
                               className={`w-full h-full flex flex-col items-center justify-center transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
                               style={{ backgroundColor: STATUS_COLOR[unit.status] }}
                             >
@@ -628,14 +630,6 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick, on
                                 <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
                               ) : null}
                             </button>
-                            {/* Tooltip de hover */}
-                            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-100 bg-slate-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap min-w-max">
-                              <div className="font-bold leading-tight">{unit.nome}{unit.pne ? " · PNE" : ""}</div>
-                              <div className="text-slate-300 leading-tight mt-0.5">{STATUS_LABEL[unit.status]}</div>
-                              {unit.areaM2 != null && <div className="text-slate-400 leading-tight">{unit.areaM2}m²</div>}
-                              {unit.valorVenda != null && <div className="text-slate-400 leading-tight">{fmt(unit.valorVenda)}</div>}
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-                            </div>
                             {/* Botão ⋯ para abrir popup de edição */}
                             {onUnitPopup && (
                               <button onClick={(e) => { e.stopPropagation(); onUnitPopup(unit); }}
@@ -714,10 +708,12 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, 
               );
             }
             const visible = unitMatches(unit, filters, false);
+            const tooltipText = `${unit.loteNum ?? unit.nome}${unit.pne ? " · PNE" : ""} — ${STATUS_LABEL[unit.status]}${unit.loteAreaM2 != null ? ` · ${unit.loteAreaM2}m²` : ""}${unit.valorVenda != null ? ` · ${fmt(unit.valorVenda)}` : ""}`;
             return (
               <div key={unit.id} className="relative group">
                 <button type="button"
                   onClick={() => onUnitClick(unit)}
+                  title={tooltipText}
                   className={`relative w-full flex flex-col items-stretch rounded-md border-2 px-2.5 py-2 text-left transition-all hover:scale-105 hover:shadow-lg hover:z-10 ${visible ? "" : "opacity-20 grayscale"}`}
                   style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
                 >
@@ -739,14 +735,6 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, 
                     </div>
                   )}
                 </button>
-                {/* Tooltip de hover */}
-                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-100 bg-slate-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap min-w-max">
-                  <div className="font-bold leading-tight">{unit.loteNum ?? unit.nome}{unit.pne ? " · PNE" : ""}</div>
-                  <div className="text-slate-300 leading-tight mt-0.5">{STATUS_LABEL[unit.status]}</div>
-                  {unit.loteAreaM2 != null && <div className="text-slate-400 leading-tight">{unit.loteAreaM2}m²</div>}
-                  {unit.valorVenda != null && <div className="text-slate-400 leading-tight">{fmt(unit.valorVenda)}</div>}
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-                </div>
                 {/* Botão ⋯ para popup de edição */}
                 {onUnitPopup && (
                   <button onClick={(e) => { e.stopPropagation(); onUnitPopup(unit); }}
