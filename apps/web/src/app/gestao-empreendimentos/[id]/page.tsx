@@ -835,16 +835,20 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
   }
 
   async function handleUnitCycle(unit: DevelopmentUnit) {
-    let patch: Record<string, unknown>;
-    if (unit.ativo === false) {
-      patch = { ativo: true, pne: false };
-    } else if (!unit.pne) {
-      patch = { pne: true };
-    } else {
-      patch = { ativo: false, pne: false };
+    try {
+      let patch: Record<string, unknown>;
+      if (unit.ativo === false) {
+        patch = { ativo: true, pne: false };
+      } else if (!unit.pne) {
+        patch = { pne: true };
+      } else {
+        patch = { ativo: false, pne: false };
+      }
+      const updated = await updateUnit(dev.id, unit.id, patch);
+      onUnitUpdated(unit.towerId, updated);
+    } catch (err: any) {
+      alert("Erro ciclo: " + (err?.message ?? String(err)));
     }
-    const updated = await updateUnit(dev.id, unit.id, patch);
-    onUnitUpdated(unit.towerId, updated);
   }
 
   async function exportPDF() {
