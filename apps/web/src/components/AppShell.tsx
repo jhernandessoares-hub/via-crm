@@ -8,10 +8,14 @@ import {
   MeusDadosModal,
   type FullProfile,
 } from "@/components/layout/MeusDadosModal";
-import { WelcomeModal } from "@/components/layout/WelcomeModal";
+import dynamic from "next/dynamic";
 import { apiFetch } from "@/lib/api";
 import { getPalette, applyPalette } from "@/lib/palettes";
-import { WelcomeModal } from "@/components/layout/WelcomeModal";
+
+const WelcomeModal = dynamic(
+  () => import("@/components/layout/WelcomeModal").then((m) => ({ default: m.WelcomeModal })),
+  { ssr: false }
+);
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -60,7 +64,6 @@ function AppShellInner({
   const [profile, setProfile] = useState<FullProfile | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [modalOpen, setModalOpen] = useState(false);
-  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [pendingDeletions, setPendingDeletions] = useState(0);
   const [branding, setBranding] = useState<TenantBranding>({});
@@ -86,7 +89,6 @@ function AppShellInner({
         const t = p?.preferences?.theme ?? "light";
         setTheme(t);
         applyTheme(t);
-        // Aplica paleta e favicon do tenant
         const b: TenantBranding = {
           brandPalette: (p as any)?.tenant?.brandPalette,
           logoUrl: (p as any)?.tenant?.logoUrl,
@@ -100,10 +102,6 @@ function AppShellInner({
           let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
           if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
           link.href = b.faviconUrl;
-        }
-        // Exibe boas-vindas se o usuario ainda nao viu
-        if (!p?.preferences?.welcomeSeen) {
-          setWelcomeOpen(true);
         }
       })
       .catch(() => null);
@@ -128,15 +126,13 @@ function AppShellInner({
     setTheme(next);
     applyTheme(next);
     try {
-      // Merge com preferences existentes para nao sobrescrever outros campos (ex: welcomeSeen)
-      const merged = { ...(profile?.preferences ?? {}), theme: next };
       await apiFetch("/users/me", {
         method: "PATCH",
-        body: JSON.stringify({ preferences: merged }),
+        body: JSON.stringify({ preferences: { theme: next } }),
       });
-      setProfile((p) => (p ? { ...p, preferences: { ...(p.preferences ?? {}), theme: next } } : p));
+      setProfile((p) => (p ? { ...p, preferences: { theme: next } } : p));
     } catch {
-      /* falha silenciosa — UI ja refletiu */
+      /* falha silenciosa — UI já refletiu */
     }
   }
 
@@ -199,21 +195,6 @@ function AppShellInner({
               setTheme(updated.preferences.theme);
               applyTheme(updated.preferences.theme);
             }
-          }}
-        />
-      )}
-
-      {welcomeOpen && profile && role && (
-        <WelcomeModal
-          userName={profile.nome}
-          tenantNome={tenantNome ?? ""}
-          role={role}
-          currentPreferences={profile.preferences as Record<string, unknown> | null}
-          onDismiss={(updatedPreferences) => {
-            setWelcomeOpen(false);
-            setProfile((prev) =>
-              prev ? { ...prev, preferences: updatedPreferences as FullProfile["preferences"] } : prev
-            );
           }}
         />
       )}
