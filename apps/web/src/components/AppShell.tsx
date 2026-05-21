@@ -8,9 +8,14 @@ import {
   MeusDadosModal,
   type FullProfile,
 } from "@/components/layout/MeusDadosModal";
+import dynamic from "next/dynamic";
 import { apiFetch } from "@/lib/api";
 import { getPalette, applyPalette } from "@/lib/palettes";
-import { WelcomeModal } from "@/components/layout/WelcomeModal";
+
+const WelcomeModal = dynamic(
+  () => import("@/components/layout/WelcomeModal").then((m) => ({ default: m.WelcomeModal })),
+  { ssr: false }
+);
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
