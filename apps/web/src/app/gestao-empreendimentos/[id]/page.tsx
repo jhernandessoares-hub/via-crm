@@ -6,7 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { computeCompleteness, STEP_LABELS, type Completeness } from "@/lib/empreendimento-completeness";
 import AppShell from "@/components/AppShell";
 import {
-  getDevelopment, updateDevelopment, createTower, updateTower, deleteTower,
+  getDevelopment, updateDevelopment, createTower, updateTower, deleteTower, duplicateTower,
   bulkCreateUnits, updateUnit, bulkUpdateUnits, bulkUpdateUnitsIndividual,
   getDashboard, getPaymentCondition, upsertPaymentCondition,
   uploadImplantacao, uploadDevelopmentModel, publishDevelopment, unpublishDevelopment,
@@ -491,10 +491,11 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
 
 const LADO_OPTIONS = ["Vista Interna", "Vista Externa", "Norte", "Sul", "Leste", "Oeste"];
 
-function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick }: {
+function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick, onUnitPopup }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
   onUnitUpdated: (u: DevelopmentUnit) => void;
   onUnitClick: (u: DevelopmentUnit) => void;
+  onUnitPopup?: (u: DevelopmentUnit) => void;
 }) {
 
   // Deriva fases e ranges de posição
@@ -587,28 +588,63 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick }: 
                       {Array.from({ length: fase.posEnd - fase.posStart + 1 }, (_, pi) => {
                         const pos = fase.posStart + pi;
                         const unit = unitMap[`${floor}_${pos}`];
-                        if (!faseHasFloor || !unit) {
+                        if (!faseHasFloor) {
                           return (
                             <div key={pos} className="w-16 h-14 flex items-center justify-center border-r border-slate-100 dark:border-slate-800 last:border-r-0">
                               <span className="text-[10px] text-slate-300 dark:text-slate-600">—</span>
                             </div>
                           );
                         }
+                        // Slot sem unidade ou unidade inativa — caixa pontilhada clicável
+                        if (!unit || unit.ativo === false) {
+                          return (
+                            <div key={pos} className="w-16 h-14 flex items-center justify-center border-r border-slate-100 dark:border-slate-800 last:border-r-0">
+                              {unit ? (
+                                <button onClick={() => onUnitClick(unit)}
+                                  title="Clique para reativar"
+                                  className="w-14 h-12 flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600 rounded hover:border-[var(--brand-accent)] transition-colors">
+                                  <span className="text-[10px] text-slate-300 dark:text-slate-500">+</span>
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-300 dark:text-slate-600">—</span>
+                              )}
+                            </div>
+                          );
+                        }
                         const visible = unitMatches(unit, filters, true);
                         return (
-                          <button key={pos} type="button"
-                            onClick={() => onUnitClick(unit)}
-                            title={`${unit.nome} — ${STATUS_LABEL[unit.status]}${unit.valorVenda ? ` — ${fmt(unit.valorVenda)}` : ""}`}
-                            className={`w-16 h-14 flex flex-col items-center justify-center border-r border-white/30 last:border-r-0 transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
-                            style={{ backgroundColor: STATUS_COLOR[unit.status] }}
-                          >
-                            <div className="text-[11px] font-bold text-white drop-shadow leading-tight">
-                              {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
+                          <div key={pos} className="relative group w-16 h-14 border-r border-white/30 last:border-r-0">
+                            <button type="button"
+                              onClick={() => onUnitClick(unit)}
+                              className={`w-full h-full flex flex-col items-center justify-center transition-all hover:brightness-110 hover:z-10 hover:shadow-lg ${visible ? "" : "opacity-20 grayscale"}`}
+                              style={{ backgroundColor: STATUS_COLOR[unit.status] }}
+                            >
+                              <div className="text-[11px] font-bold text-white drop-shadow leading-tight">
+                                {unit.nome.replace(/^(Apto|Casa|Lote)\s*/i, "")}
+                              </div>
+                              {unit.pne ? (
+                                <div className="text-[8px] font-bold text-white bg-purple-700/80 px-1 rounded leading-tight mt-0.5">PNE</div>
+                              ) : unit.areaM2 != null ? (
+                                <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
+                              ) : null}
+                            </button>
+                            {/* Tooltip de hover */}
+                            <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-100 bg-slate-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap min-w-max">
+                              <div className="font-bold leading-tight">{unit.nome}{unit.pne ? " · PNE" : ""}</div>
+                              <div className="text-slate-300 leading-tight mt-0.5">{STATUS_LABEL[unit.status]}</div>
+                              {unit.areaM2 != null && <div className="text-slate-400 leading-tight">{unit.areaM2}m²</div>}
+                              {unit.valorVenda != null && <div className="text-slate-400 leading-tight">{fmt(unit.valorVenda)}</div>}
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
                             </div>
-                            {unit.areaM2 != null && (
-                              <div className="text-[9px] text-white/90 leading-tight">{unit.areaM2}m²</div>
+                            {/* Botão ⋯ para abrir popup de edição */}
+                            {onUnitPopup && (
+                              <button onClick={(e) => { e.stopPropagation(); onUnitPopup(unit); }}
+                                className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] flex items-center justify-center transition-opacity hover:bg-black/70"
+                                title="Ver detalhes / editar">
+                                ⋯
+                              </button>
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -643,14 +679,16 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick }: 
   );
 }
 
-function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, isLoteamento }: {
+function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, onUnitPopup, isLoteamento }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
   onUnitUpdated: (u: DevelopmentUnit) => void;
   onUnitClick: (u: DevelopmentUnit) => void;
+  onUnitPopup?: (u: DevelopmentUnit) => void;
   isLoteamento: boolean;
 }) {
   const units = [...tower.units].sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
-  const cols = Math.ceil(Math.sqrt(units.length)) || 1;
+  const activeUnits = units.filter((u) => u.ativo !== false);
+  const cols = Math.ceil(Math.sqrt(activeUnits.length)) || 1;
 
   return (
     <div className="overflow-auto">
@@ -658,36 +696,66 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, 
         {/* Cabeçalho */}
         <div className="bg-gradient-to-b from-slate-700 to-slate-800 text-white py-2.5 px-4 text-center border-b-2 border-slate-900">
           <div className="text-sm font-bold tracking-wider">{tower.nome}</div>
-          <div className="text-[10px] uppercase tracking-[0.2em] opacity-70 mt-0.5">{units.length} {isLoteamento ? "lotes" : "casas"}</div>
+          <div className="text-[10px] uppercase tracking-[0.2em] opacity-70 mt-0.5">{activeUnits.length} {isLoteamento ? "lotes" : "casas"}</div>
         </div>
 
         {/* Grade de lotes/casas */}
         <div className="p-4 grid gap-2 bg-[var(--shell-bg)]"
           style={{ gridTemplateColumns: `repeat(${cols}, minmax(6rem, 1fr))` }}>
           {units.map((unit) => {
+            if (unit.ativo === false) {
+              return (
+                <button key={unit.id} type="button"
+                  onClick={() => onUnitClick(unit)}
+                  title="Clique para reativar"
+                  className="flex items-center justify-center rounded-md border-2 border-dashed border-slate-300 dark:border-slate-600 px-2.5 py-2 min-h-[5rem] hover:border-[var(--brand-accent)] transition-colors">
+                  <span className="text-[11px] text-slate-300 dark:text-slate-500">+</span>
+                </button>
+              );
+            }
             const visible = unitMatches(unit, filters, false);
             return (
-              <button key={unit.id} type="button"
-                onClick={() => onUnitClick(unit)}
-                title={`${unit.loteNum ?? unit.nome}\n${STATUS_LABEL[unit.status]}${unit.valorVenda ? `\n${fmt(unit.valorVenda)}` : ""}`}
-                className={`relative flex flex-col items-stretch rounded-md border-2 px-2.5 py-2 text-left transition-all hover:scale-105 hover:shadow-lg hover:z-10 ${visible ? "" : "opacity-20 grayscale"}`}
-                style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
-              >
-                <div className="text-sm font-bold leading-tight" style={{ color: STATUS_COLOR[unit.status] }}>
-                  {unit.loteNum ?? unit.nome}
-                </div>
-                {!isLoteamento && (
-                  <div className="text-[9px] text-[var(--shell-subtext)] mt-0.5">Casa</div>
-                )}
-                {unit.loteAreaM2 && (
-                  <div className="text-[10px] font-medium text-[var(--shell-subtext)]">{unit.loteAreaM2} m²</div>
-                )}
-                {unit.valorVenda && (
-                  <div className="text-[10px] font-semibold mt-1" style={{ color: STATUS_COLOR[unit.status] }}>
-                    {fmt(unit.valorVenda)}
+              <div key={unit.id} className="relative group">
+                <button type="button"
+                  onClick={() => onUnitClick(unit)}
+                  className={`relative w-full flex flex-col items-stretch rounded-md border-2 px-2.5 py-2 text-left transition-all hover:scale-105 hover:shadow-lg hover:z-10 ${visible ? "" : "opacity-20 grayscale"}`}
+                  style={{ backgroundColor: STATUS_COLOR[unit.status] + "22", borderColor: STATUS_COLOR[unit.status] }}
+                >
+                  <div className="text-sm font-bold leading-tight" style={{ color: STATUS_COLOR[unit.status] }}>
+                    {unit.loteNum ?? unit.nome}
                   </div>
+                  {unit.pne && (
+                    <div className="inline-block text-[8px] font-bold text-white bg-purple-700/80 px-1 rounded leading-tight mt-0.5 self-start">PNE</div>
+                  )}
+                  {!isLoteamento && !unit.pne && (
+                    <div className="text-[9px] text-[var(--shell-subtext)] mt-0.5">Casa</div>
+                  )}
+                  {unit.loteAreaM2 && (
+                    <div className="text-[10px] font-medium text-[var(--shell-subtext)]">{unit.loteAreaM2} m²</div>
+                  )}
+                  {unit.valorVenda && (
+                    <div className="text-[10px] font-semibold mt-1" style={{ color: STATUS_COLOR[unit.status] }}>
+                      {fmt(unit.valorVenda)}
+                    </div>
+                  )}
+                </button>
+                {/* Tooltip de hover */}
+                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-100 bg-slate-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap min-w-max">
+                  <div className="font-bold leading-tight">{unit.loteNum ?? unit.nome}{unit.pne ? " · PNE" : ""}</div>
+                  <div className="text-slate-300 leading-tight mt-0.5">{STATUS_LABEL[unit.status]}</div>
+                  {unit.loteAreaM2 != null && <div className="text-slate-400 leading-tight">{unit.loteAreaM2}m²</div>}
+                  {unit.valorVenda != null && <div className="text-slate-400 leading-tight">{fmt(unit.valorVenda)}</div>}
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                </div>
+                {/* Botão ⋯ para popup de edição */}
+                {onUnitPopup && (
+                  <button onClick={(e) => { e.stopPropagation(); onUnitPopup(unit); }}
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 w-5 h-5 rounded-full bg-black/40 text-white text-[10px] flex items-center justify-center transition-opacity hover:bg-black/60"
+                    title="Ver detalhes / editar">
+                    ⋯
+                  </button>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
@@ -749,13 +817,14 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
   const isLoteamento = dev.subtipo === "LOTEAMENTO";
 
   const allUnits = dev.towers.flatMap((t) => t.units);
-  const total = allUnits.length;
-  const vendido = allUnits.filter((u) => u.status === "VENDIDO").length;
-  const reservado = allUnits.filter((u) => u.status === "RESERVADO").length;
-  const disponivel = allUnits.filter((u) => u.status === "DISPONIVEL").length;
+  const activeUnits = allUnits.filter((u) => u.ativo !== false);
+  const total = activeUnits.length;
+  const vendido = activeUnits.filter((u) => u.status === "VENDIDO").length;
+  const reservado = activeUnits.filter((u) => u.status === "RESERVADO").length;
+  const disponivel = activeUnits.filter((u) => u.status === "DISPONIVEL").length;
 
   const allFloors = isVertical
-    ? Array.from(new Set(allUnits.map((u) => u.andar ?? 0))).filter((n) => n > 0).sort((a, b) => a - b)
+    ? Array.from(new Set(activeUnits.map((u) => u.andar ?? 0))).filter((n) => n > 0).sort((a, b) => a - b)
     : [];
 
   async function captureCanvas() {
@@ -775,6 +844,19 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
       link.click();
     } catch (e: any) { alert("Erro ao exportar PNG: " + (e?.message ?? e)); }
     finally { setExporting(false); }
+  }
+
+  async function handleUnitCycle(unit: DevelopmentUnit) {
+    let patch: Record<string, unknown>;
+    if (unit.ativo === false) {
+      patch = { ativo: true, pne: false };
+    } else if (!unit.pne) {
+      patch = { pne: true };
+    } else {
+      patch = { ativo: false, pne: false };
+    }
+    const updated = await updateUnit(dev.id, unit.id, patch);
+    onUnitUpdated(unit.towerId, updated);
   }
 
   async function exportPDF() {
@@ -848,7 +930,8 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
                 devId={dev.id}
                 filters={filters}
                 onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
-                onUnitClick={setDetailsUnit}
+                onUnitClick={handleUnitCycle}
+                onUnitPopup={setDetailsUnit}
               />
             ) : (
               <EspelhoHorizontal
@@ -856,7 +939,8 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
                 devId={dev.id}
                 filters={filters}
                 onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
-                onUnitClick={setDetailsUnit}
+                onUnitClick={handleUnitCycle}
+                onUnitPopup={setDetailsUnit}
                 isLoteamento={isLoteamento}
               />
             )}
@@ -3276,6 +3360,9 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () => void }) {
   const [showModal, setShowModal] = useState(false);
   const [editTower, setEditTower] = useState<Tower | undefined>(undefined);
+  const [duplicateTarget, setDuplicateTarget] = useState<Tower | null>(null);
+  const [duplicateName, setDuplicateName] = useState("");
+  const [duplicating, setDuplicating] = useState(false);
   const isVertical = dev.tipo === "VERTICAL";
   const towerLabel = isVertical ? "Torre" : "Quadra";
 
@@ -3283,6 +3370,18 @@ function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () =>
     if (!confirm(`Excluir esta ${towerLabel.toLowerCase()}? Todas as unidades serão removidas.`)) return;
     await deleteTower(dev.id, towerId);
     onSaved();
+  }
+
+  async function handleDuplicate() {
+    if (!duplicateTarget || !duplicateName.trim()) return;
+    setDuplicating(true);
+    try {
+      await duplicateTower(dev.id, duplicateTarget.id, duplicateName.trim());
+      setDuplicateTarget(null);
+      onSaved();
+    } finally {
+      setDuplicating(false);
+    }
   }
 
   return (
@@ -3315,6 +3414,10 @@ function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () =>
                   className="text-xs font-semibold text-[var(--brand-accent)] hover:underline px-2">
                   Editar
                 </button>
+                <button type="button" onClick={() => { setDuplicateTarget(t); setDuplicateName(t.nome + " (cópia)"); }}
+                  className="text-xs font-semibold text-[var(--shell-subtext)] hover:underline px-2">
+                  Duplicar
+                </button>
                 <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600 text-xs font-semibold px-2">
                   Excluir
                 </button>
@@ -3331,6 +3434,36 @@ function Step3TowersManager({ dev, onSaved }: { dev: Development; onSaved: () =>
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); onSaved(); }}
         />
+      )}
+
+      {duplicateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] p-6 w-80 space-y-4 shadow-2xl">
+            <p className="text-sm font-bold text-[var(--shell-text)]">Duplicar {towerLabel}</p>
+            <p className="text-xs text-[var(--shell-subtext)]">Informe um nome para a cópia. Unidades não serão copiadas.</p>
+            <input
+              autoFocus
+              value={duplicateName}
+              onChange={(e) => setDuplicateName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleDuplicate(); if (e.key === "Escape") setDuplicateTarget(null); }}
+              className="w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-3 py-2 text-sm text-[var(--shell-text)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-accent)]"
+              placeholder={`Nome da nova ${towerLabel.toLowerCase()}`}
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDuplicateTarget(null)}
+                className="text-xs text-[var(--shell-subtext)] px-3 py-1.5 rounded-lg hover:bg-[var(--shell-hover)]">
+                Cancelar
+              </button>
+              <button
+                disabled={!duplicateName.trim() || duplicating}
+                onClick={handleDuplicate}
+                className="text-xs font-semibold bg-[var(--brand-accent)] text-white px-4 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity">
+                {duplicating ? "Duplicando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

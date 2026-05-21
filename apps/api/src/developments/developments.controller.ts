@@ -69,6 +69,11 @@ export class DevelopmentsController {
     return this.svc.removeTower(req.user.tenantId, id, towerId);
   }
 
+  @Post(':id/towers/:towerId/duplicate')
+  duplicateTower(@Request() req: any, @Param('id') id: string, @Param('towerId') towerId: string, @Body('nome') nome: string) {
+    return this.svc.duplicateTower(req.user.tenantId, id, towerId, nome);
+  }
+
   @Post(':id/towers/:towerId/units/bulk')
   bulkCreateUnits(@Request() req: any, @Param('id') id: string, @Param('towerId') towerId: string, @Body() body: any) {
     return this.svc.bulkCreateUnits(req.user.tenantId, id, towerId, body);

@@ -29,6 +29,8 @@ export type DevelopmentUnit = {
   soldAt?: string | null;
   leadId?: string | null;
   lead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
+  pne?: boolean;
+  ativo?: boolean;
 };
 
 export type FaseConfig = {
@@ -212,6 +214,10 @@ export async function updateTower(devId: string, towerId: string, body: Partial<
 
 export async function deleteTower(devId: string, towerId: string): Promise<void> {
   await apiFetch(`/developments/${devId}/towers/${towerId}`, { method: "DELETE" });
+}
+
+export async function duplicateTower(devId: string, towerId: string, nome: string): Promise<Tower> {
+  return apiFetch(`/developments/${devId}/towers/${towerId}/duplicate`, { method: "POST", body: JSON.stringify({ nome }) });
 }
 
 export async function bulkCreateUnits(devId: string, towerId: string, body: { floors: number; unitsPerFloor: number; prefix?: string }) {
