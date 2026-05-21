@@ -491,9 +491,8 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
 
 const LADO_OPTIONS = ["Vista Interna", "Vista Externa", "Norte", "Sul", "Leste", "Oeste"];
 
-function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick, onUnitPopup }: {
+function EspelhoVertical({ tower, devId, filters, onUnitClick, onUnitPopup }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
-  onUnitUpdated: (u: DevelopmentUnit) => void;
   onUnitClick: (u: DevelopmentUnit) => void;
   onUnitPopup?: (u: DevelopmentUnit) => void;
 }) {
@@ -673,9 +672,8 @@ function EspelhoVertical({ tower, devId, filters, onUnitUpdated, onUnitClick, on
   );
 }
 
-function EspelhoHorizontal({ tower, devId, filters, onUnitUpdated, onUnitClick, onUnitPopup, isLoteamento }: {
+function EspelhoHorizontal({ tower, devId, filters, onUnitClick, onUnitPopup, isLoteamento }: {
   tower: Tower; devId: string; filters: EspelhoFilters;
-  onUnitUpdated: (u: DevelopmentUnit) => void;
   onUnitClick: (u: DevelopmentUnit) => void;
   onUnitPopup?: (u: DevelopmentUnit) => void;
   isLoteamento: boolean;
@@ -917,7 +915,6 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
                 tower={tower}
                 devId={dev.id}
                 filters={filters}
-                onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
                 onUnitClick={handleUnitCycle}
                 onUnitPopup={setDetailsUnit}
               />
@@ -926,7 +923,6 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
                 tower={tower}
                 devId={dev.id}
                 filters={filters}
-                onUnitUpdated={(u) => onUnitUpdated(tower.id, u)}
                 onUnitClick={handleUnitCycle}
                 onUnitPopup={setDetailsUnit}
                 isLoteamento={isLoteamento}
@@ -2748,6 +2744,10 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
 
   const totalUnitsPerFloor = fases.reduce((s, f) => s + (f.unidades || 0), 0);
   const maxSubsolos = fases.reduce((m, f) => Math.max(m, f.subsolos || 0), 0);
+  const faseOffsets = useMemo(
+    () => fases.reduce<number[]>((acc, f, i) => { acc.push(i === 0 ? 0 : acc[i - 1] + fases[i - 1].unidades); return acc; }, []),
+    [fases]
+  );
 
   function computeUnitName(internalAndar: number, globalPos: number): string {
     const pad = posicaoPad;
@@ -3292,10 +3292,6 @@ function TowerConfigModal({ dev, tower, onClose, onSaved }: {
                       };
 
                       // andares normais (desc) — todos têm unidades, incluindo o 1º
-                      const faseOffsets = fases.reduce<number[]>((acc, f, i) => {
-                        acc.push(i === 0 ? 0 : acc[i - 1] + fases[i - 1].unidades);
-                        return acc;
-                      }, []);
                       for (let andar = floorsNum; andar >= 1; andar--) {
                         const lbl = getFloorLabel(andar);
                         rows.push(
