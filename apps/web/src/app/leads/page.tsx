@@ -345,7 +345,7 @@ export default function LeadsPage() {
               className="w-16 rounded-lg border px-2 py-1 text-sm text-center"
               style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
             />
-            {hasMore && (
+            {visibleCount < filtered.length && (
               <button
                 onClick={() => setVisibleCount((v) => v + loadMoreN)}
                 className="rounded-lg border px-4 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors"
