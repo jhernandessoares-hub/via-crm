@@ -334,9 +334,15 @@ export default function LeadsPage() {
           {loading ? "Atualizando..." : "Atualizar"}
         </Button>
 
-        <div className="text-sm text-[var(--shell-subtext)]">
-          Total: <span className="text-[var(--shell-text)] font-medium">{filtered.length}</span>
-        </div>
+        {view === "LISTA" ? (
+          <span className="text-xs text-[var(--shell-subtext)]">
+            Exibindo {Math.min(visibleCount, filtered.length)} de {filtered.length}
+          </span>
+        ) : (
+          <div className="text-sm text-[var(--shell-subtext)]">
+            Total: <span className="text-[var(--shell-text)] font-medium">{filtered.length}</span>
+          </div>
+        )}
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <Input className="w-56" placeholder="Buscar..." value={q} onChange={(e) => setQ(e.target.value)} />
@@ -466,8 +472,7 @@ export default function LeadsPage() {
                     </div>
                   );
                 })}
-                <div className="flex items-center justify-between gap-4 border-t px-4 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
-                  <span className="text-xs text-[var(--shell-subtext)]">Exibindo {shown.length} de {filtered.length}</span>
+                <div className="flex items-center justify-end gap-4 border-t px-4 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
                   {hasMore && (
                     <div className="flex items-center gap-2">
                       <input type="number" min={1} value={loadMoreN}

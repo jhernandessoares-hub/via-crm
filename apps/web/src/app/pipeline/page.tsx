@@ -273,6 +273,11 @@ export default function PipelinePage() {
         <Button variant="outline" size="sm" onClick={load} loading={loading}>
           {loading ? "Carregando..." : "Atualizar"}
         </Button>
+        {view === "LISTA" && (
+          <span className="text-xs text-[var(--shell-subtext)]">
+            Exibindo {Math.min(visibleCount, filtered.length)} de {filtered.length}
+          </span>
+        )}
         <Input
           className="w-56"
           placeholder="Buscar..."
@@ -454,8 +459,7 @@ export default function PipelinePage() {
                     </div>
                   );
                 })}
-                <div className="flex items-center justify-between gap-4 border-t px-4 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
-                  <span className="text-xs text-[var(--shell-subtext)]">Exibindo {shown.length} de {filtered.length}</span>
+                <div className="flex items-center justify-end gap-4 border-t px-4 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
                   {hasMore && (
                     <div className="flex items-center gap-2">
                       <input
