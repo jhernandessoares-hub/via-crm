@@ -94,6 +94,14 @@ export const PERMISSION_MODULES = [
       { key: "delete", label: "Excluir" },
     ],
   },
+  {
+    key: "gestao_empreendimentos",
+    label: "Gestão de Empreendimentos",
+    actions: [
+      { key: "edit",   label: "Editar unidades" },
+      { key: "delete", label: "Bloquear unidades" },
+    ],
+  },
 ] as const;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

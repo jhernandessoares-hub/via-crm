@@ -382,7 +382,7 @@ export class DevelopmentsService {
       return prefixo ? `${prefixo} ${numPart}` : numPart;
     };
 
-    type FaseConfig = { nome: string; unidades: number; subsolos: number; excludedSlots?: { andar: number; localPos: number }[] };
+    type FaseConfig = { nome: string; unidades: number; subsolos: number; excludedSlots?: { andar: number; localPos: number }[]; pneSlots?: { andar: number; localPos: number }[] };
     const fases = (tower as any).fasesConfig as FaseConfig[] | null;
 
     if (fases && fases.length > 0) {
@@ -401,7 +401,8 @@ export class DevelopmentsService {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
             if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
-            units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, maxSubsolos), andar, posicao: pos, status: 'DISPONIVEL' });
+            const isPne = (fase.pneSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos);
+            units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, maxSubsolos), andar, posicao: pos, status: 'DISPONIVEL', pne: isPne });
           }
         }
       }
@@ -411,7 +412,8 @@ export class DevelopmentsService {
           for (let pos = fase.posStart; pos <= fase.posEnd; pos++) {
             const localPos = pos - fase.posStart + 1;
             if ((fase.excludedSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos)) continue;
-            units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, maxSubsolos), andar, posicao: pos, status: 'DISPONIVEL' });
+            const isPne = (fase.pneSlots ?? []).some((sl) => sl.andar === andar && sl.localPos === localPos);
+            units.push({ tenantId, developmentId, towerId, nome: buildNome(andar, pos, maxSubsolos), andar, posicao: pos, status: 'DISPONIVEL', pne: isPne });
           }
         }
       }
