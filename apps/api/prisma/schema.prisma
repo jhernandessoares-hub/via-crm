@@ -1546,7 +1546,7 @@ model DevelopmentUnit {
   nome           String
   andar          Int?
   posicao        Int?
-  status         String   @default("DISPONIVEL") // DISPONIVEL | RESERVADO | VENDIDO | BLOQUEADO
+  status         String   @default("DISPONIVEL") // DISPONIVEL | PROPOSTA | RESERVADO | VENDIDO | BLOQUEADO
   bloqueioMotivo String?
   areaM2         Float?
   quartos        Int?
@@ -1563,7 +1563,9 @@ model DevelopmentUnit {
   loteAreaM2     Float?   // área real do lote em m²
   loteFrente     Float?   // dimensão de frente em metros
   loteFundo      Float?   // dimensão de fundo em metros
-  soldAt         DateTime?
+  soldAt            DateTime?
+  propostaPagamento String?  // forma de pagamento da proposta (FINANCIAMENTO | FGTS | A_VISTA | CONSORCIO)
+  propostaObs       String?  // observações livres da proposta
   leadId         String?  // FK para o lead do comprador/interessado
   lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
   pne            Boolean  @default(false) // unidade adaptada para PNE

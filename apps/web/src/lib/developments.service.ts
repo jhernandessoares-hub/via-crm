@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 
-export type UnitStatus = "DISPONIVEL" | "RESERVADO" | "VENDIDO" | "BLOQUEADO";
+export type UnitStatus = "DISPONIVEL" | "PROPOSTA" | "RESERVADO" | "VENDIDO" | "BLOQUEADO";
 
 export type DevelopmentUnit = {
   id: string;
@@ -20,6 +20,8 @@ export type DevelopmentUnit = {
   valorAvaliado?: number | null;
   finalPrice?: number | null;
   comprador?: string | null;
+  propostaPagamento?: string | null;
+  propostaObs?: string | null;
   balconyType?: string | null;
   windowLayout?: any | null;
   loteNum?: string | null;
@@ -179,6 +181,7 @@ export type TerrainDesign = {
 export type Dashboard = {
   total: number;
   disponivel: number;
+  proposta?: number;
   reservado: number;
   vendido: number;
   bloqueado: number;

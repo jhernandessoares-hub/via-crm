@@ -29,6 +29,7 @@ type Tab = "cadastro" | "espelho" | "precos" | "dashboard";
 
 const STATUS_COLOR: Record<UnitStatus, string> = {
   DISPONIVEL: "#22c55e",
+  PROPOSTA:   "#f97316",
   RESERVADO:  "#f59e0b",
   VENDIDO:    "#ef4444",
   BLOQUEADO:  "#9ca3af",
@@ -36,6 +37,7 @@ const STATUS_COLOR: Record<UnitStatus, string> = {
 
 const STATUS_LABEL: Record<UnitStatus, string> = {
   DISPONIVEL: "Disponível",
+  PROPOSTA:   "Proposta",
   RESERVADO:  "Reservado",
   VENDIDO:    "Vendido",
   BLOQUEADO:  "Bloqueado",
@@ -43,6 +45,7 @@ const STATUS_LABEL: Record<UnitStatus, string> = {
 
 const STATUS_BG: Record<UnitStatus, string> = {
   DISPONIVEL: "bg-green-500",
+  PROPOSTA:   "bg-orange-500",
   RESERVADO:  "bg-amber-400",
   VENDIDO:    "bg-red-500",
   BLOQUEADO:  "bg-gray-400",
@@ -101,7 +104,8 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
     try {
       const updated = await updateUnit(devId, unit.id, {
         status: newStatus,
-        comprador: comprador || null,
+        leadId: newStatus === "DISPONIVEL" ? null : undefined,
+        comprador: newStatus === "DISPONIVEL" ? null : comprador || null,
         finalPrice: finalPrice ? parseFloat(finalPrice) : null,
         bloqueioMotivo: newStatus === "BLOQUEADO" ? bloqueioMotivo || null : null,
         soldAt: newStatus === "VENDIDO" ? new Date().toISOString() : null,
@@ -114,6 +118,13 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
   type ActionDef = { label: string; status: UnitStatus; color: string; disabled?: boolean; disabledReason?: string };
   const allActions: ActionDef[] = [
     { label: "Disponível", status: "DISPONIVEL", color: "bg-green-500 hover:bg-green-600" },
+    {
+      label: "Proposta",
+      status: "PROPOSTA",
+      color: "bg-orange-500 hover:bg-orange-600",
+      disabled: !hasLinkedLead,
+      disabledReason: !hasLinkedLead ? "Vincule um lead no popup de detalhes primeiro" : undefined,
+    },
     {
       label: "Reservar",
       status: "RESERVADO",
@@ -131,10 +142,16 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
     ...(canBlock ? [{ label: "Bloquear", status: "BLOQUEADO" as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" }] : []),
   ];
 
-  // Remove a ação correspondente ao status atual; AGENT só transita entre DISPONIVEL↔RESERVADO
+  // Remove a ação correspondente ao status atual
+  // AGENT só pode: DISPONIVEL→PROPOSTA ou PROPOSTA→DISPONIVEL
   const actions = allActions.filter((a) => {
     if (a.status === status) return false;
-    if (isAgent && status !== "DISPONIVEL" && status !== "RESERVADO") return false;
+    if (isAgent) {
+      const agentAllowed =
+        (status === "DISPONIVEL" && a.status === "PROPOSTA") ||
+        (status === "PROPOSTA" && a.status === "DISPONIVEL");
+      if (!agentAllowed) return false;
+    }
     return true;
   });
 
@@ -216,8 +233,8 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
           )}
         </div>
 
-        {/* Comprador / Preço final (para reserva/venda) */}
-        {(status === "RESERVADO" || status === "VENDIDO" || actions.some(a => a.status === "RESERVADO" || a.status === "VENDIDO")) && (
+        {/* Comprador / Preço final (para proposta/reserva/venda) */}
+        {(status === "PROPOSTA" || status === "RESERVADO" || status === "VENDIDO" || actions.some(a => a.status === "PROPOSTA" || a.status === "RESERVADO" || a.status === "VENDIDO")) && (
           <div className="space-y-3 pt-2 border-t border-[var(--shell-card-border)]">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Comprador / Interessado</label>
@@ -336,7 +353,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   }
 
   const buyerName = current.lead?.nomeCorreto ?? current.lead?.nome ?? current.comprador;
-  const canLink = current.status === "VENDIDO" || current.status === "RESERVADO";
+  const canLink = current.status === "VENDIDO" || current.status === "RESERVADO" || current.status === "PROPOSTA";
 
   // ── Sub-view: detalhes do lead ───────────────────────────────────────────────
   if (view === "lead" && current.leadId) {
@@ -422,12 +439,28 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
           </div>
         )}
 
+        {/* Proposta */}
+        {current.status === "PROPOSTA" && (
+          <div className="mt-2 rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-900/20 p-3">
+            <p className="text-xs font-semibold text-orange-800 dark:text-orange-300 mb-1">Detalhes da Proposta</p>
+            {current.finalPrice && (
+              <p className="text-xs text-orange-700 dark:text-orange-400">Valor proposto: {Number(current.finalPrice).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 })}</p>
+            )}
+            {current.propostaPagamento && (
+              <p className="text-xs text-orange-700 dark:text-orange-400">Pagamento: {current.propostaPagamento.replace(/_/g, " ")}</p>
+            )}
+            {current.propostaObs && (
+              <p className="text-xs text-orange-700 dark:text-orange-400">Obs: {current.propostaObs}</p>
+            )}
+          </div>
+        )}
+
         {/* Comprador + Lead */}
         {canLink && (
           <div className="pt-3 border-t border-[var(--shell-card-border)] space-y-2">
             {buyerName && (
               <div>
-                <p className="text-xs text-[var(--shell-subtext)] mb-0.5">{current.status === "VENDIDO" ? "Comprador" : "Interessado"}</p>
+                <p className="text-xs text-[var(--shell-subtext)] mb-0.5">{current.status === "VENDIDO" ? "Comprador" : current.status === "PROPOSTA" ? "Proponente" : "Interessado"}</p>
                 <p className="text-sm font-semibold text-[var(--shell-text)]">{buyerName}</p>
               </div>
             )}
@@ -513,13 +546,13 @@ type EspelhoFilters = {
 
 function emptyFilters(): EspelhoFilters {
   return {
-    statuses: new Set<UnitStatus>(["DISPONIVEL", "RESERVADO", "VENDIDO", "BLOQUEADO"]),
+    statuses: new Set<UnitStatus>(["DISPONIVEL", "PROPOSTA", "RESERVADO", "VENDIDO", "BLOQUEADO"]),
     priceMin: null, priceMax: null, floorMin: null, floorMax: null,
   };
 }
 
 function isFiltersActive(f: EspelhoFilters): boolean {
-  return f.statuses.size !== 4
+  return f.statuses.size !== 5
     || f.priceMin !== null || f.priceMax !== null
     || f.floorMin !== null || f.floorMax !== null;
 }
@@ -574,7 +607,7 @@ function FiltersPopover({ filters, setFilters, isVertical, allFloors }: {
             <div>
               <div className="text-[10px] font-bold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Status</div>
               <div className="grid grid-cols-2 gap-1.5">
-                {(["DISPONIVEL","RESERVADO","VENDIDO","BLOQUEADO"] as UnitStatus[]).map((s) => (
+                {(["DISPONIVEL","PROPOSTA","RESERVADO","VENDIDO","BLOQUEADO"] as UnitStatus[]).map((s) => (
                   <label key={s} className="flex items-center gap-1.5 cursor-pointer text-xs text-[var(--shell-text)]">
                     <input type="checkbox" checked={filters.statuses.has(s)}
                       onChange={() => toggleStatus(s)}
@@ -944,6 +977,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
   const activeUnits = allUnits.filter((u) => u.ativo !== false);
   const total = activeUnits.length;
   const vendido = activeUnits.filter((u) => u.status === "VENDIDO").length;
+  const proposta = activeUnits.filter((u) => u.status === "PROPOSTA").length;
   const reservado = activeUnits.filter((u) => u.status === "RESERVADO").length;
   const disponivel = activeUnits.filter((u) => u.status === "DISPONIVEL").length;
 
@@ -996,12 +1030,13 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
   return (
     <div className="space-y-5">
       {/* Resumo */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         {[
-          { label: "Total",      value: total,      color: "text-[var(--shell-text)]",  bg: "bg-[var(--shell-bg)]" },
-          { label: "Disponível", value: disponivel, color: "text-green-600",             bg: "bg-green-50 dark:bg-green-900/20" },
-          { label: "Reservado",  value: reservado,  color: "text-amber-600",             bg: "bg-amber-50 dark:bg-amber-900/20" },
-          { label: "Vendido",    value: vendido,    color: "text-red-600",               bg: "bg-red-50 dark:bg-red-900/20" },
+          { label: "Total",      value: total,      color: "text-[var(--shell-text)]",   bg: "bg-[var(--shell-bg)]" },
+          { label: "Disponível", value: disponivel, color: "text-green-600",              bg: "bg-green-50 dark:bg-green-900/20" },
+          { label: "Proposta",   value: proposta,   color: "text-orange-600",             bg: "bg-orange-50 dark:bg-orange-900/20" },
+          { label: "Reservado",  value: reservado,  color: "text-amber-600",              bg: "bg-amber-50 dark:bg-amber-900/20" },
+          { label: "Vendido",    value: vendido,    color: "text-red-600",                bg: "bg-red-50 dark:bg-red-900/20" },
         ].map((c) => (
           <div key={c.label} className={`rounded-xl border border-[var(--shell-card-border)] ${c.bg} px-4 py-3 text-center`}>
             <p className={`text-2xl font-bold ${c.color}`}>{c.value}</p>
@@ -1528,13 +1563,14 @@ function DashboardView({ dashboard, dev }: { dashboard: Dashboard; dev: Developm
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
         {[
-          { l: "Total",      v: dashboard.total,      c: "#6b7280" },
-          { l: "Disponível", v: dashboard.disponivel, c: STATUS_COLOR.DISPONIVEL },
-          { l: "Reservado",  v: dashboard.reservado,  c: STATUS_COLOR.RESERVADO },
-          { l: "Vendido",    v: dashboard.vendido,    c: STATUS_COLOR.VENDIDO },
-          { l: "Bloqueado",  v: dashboard.bloqueado,  c: STATUS_COLOR.BLOQUEADO },
+          { l: "Total",      v: dashboard.total,           c: "#6b7280" },
+          { l: "Disponível", v: dashboard.disponivel,      c: STATUS_COLOR.DISPONIVEL },
+          { l: "Proposta",   v: dashboard.proposta ?? 0,   c: STATUS_COLOR.PROPOSTA },
+          { l: "Reservado",  v: dashboard.reservado,       c: STATUS_COLOR.RESERVADO },
+          { l: "Vendido",    v: dashboard.vendido,         c: STATUS_COLOR.VENDIDO },
+          { l: "Bloqueado",  v: dashboard.bloqueado,       c: STATUS_COLOR.BLOQUEADO },
         ].map((c) => (
           <div key={c.l} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-4 py-3 text-center">
             <p className="text-2xl font-bold" style={{ color: c.c }}>{c.v}</p>

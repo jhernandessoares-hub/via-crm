@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
@@ -477,7 +477,7 @@ export class DevelopmentsService {
     return { updated: units.length };
   }
 
-  async updateUnit(tenantId: string, developmentId: string, unitId: string, data: any, actor?: { id: string; nome: string }) {
+  async updateUnit(tenantId: string, developmentId: string, unitId: string, data: any, actor?: { id: string; nome: string; role?: string }) {
     const unit = await this.prisma.developmentUnit.findFirst({ where: { id: unitId, developmentId, tenantId } });
     if (!unit) throw new NotFoundException('Unidade não encontrada');
 
@@ -498,8 +498,48 @@ export class DevelopmentsService {
     if (updateData.ativo !== undefined) updateData.ativo = Boolean(updateData.ativo);
     delete updateData.lead;
 
-    // Histórico de bloqueio: registra toda transição que envolva BLOQUEADO
+    // PROPOSTA: validações
     const newStatus = updateData.status;
+    if (newStatus && newStatus !== unit.status) {
+      if (newStatus === 'PROPOSTA') {
+        const leadIdToUse = updateData.leadId || unit.leadId;
+        if (!leadIdToUse) throw new BadRequestException('PROPOSTA requer um lead vinculado.');
+
+        const leadRecord = await this.prisma.lead.findFirst({
+          where: { id: leadIdToUse },
+          select: { stageId: true },
+        });
+        if (leadRecord?.stageId) {
+          const stage = await this.prisma.pipelineStage.findFirst({
+            where: { id: leadRecord.stageId },
+            select: { group: true },
+          });
+          const ALLOWED = ['NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
+          if (stage && !ALLOWED.includes(stage.group ?? '')) {
+            throw new BadRequestException('O lead precisa estar em Negociações ou etapa posterior para fazer uma proposta.');
+          }
+        }
+      }
+
+      // RESERVADO a partir de PROPOSTA: só OWNER/MANAGER
+      if (newStatus === 'RESERVADO' && unit.status === 'PROPOSTA') {
+        if (actor?.role && !['OWNER', 'MANAGER'].includes(actor.role)) {
+          throw new ForbiddenException('Apenas OWNER ou MANAGER podem confirmar uma proposta como reserva.');
+        }
+      }
+
+      // Ao voltar para DISPONIVEL: limpar campos da proposta/venda
+      if (newStatus === 'DISPONIVEL') {
+        updateData.leadId = null;
+        updateData.finalPrice = null;
+        updateData.propostaPagamento = null;
+        updateData.propostaObs = null;
+        updateData.comprador = null;
+        updateData.soldAt = null;
+      }
+    }
+
+    // Histórico de bloqueio: registra toda transição que envolva BLOQUEADO
     if (newStatus && newStatus !== unit.status) {
       if (newStatus === 'BLOQUEADO' || unit.status === 'BLOQUEADO') {
         await this.prisma.unitBloqueioHistory.create({

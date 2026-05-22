@@ -98,6 +98,7 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
     key: 'gestao_empreendimentos',
     label: 'Gestão de Empreendimentos',
     actions: [
+      { key: 'create', label: 'Fazer proposta de unidade' },
       { key: 'edit',   label: 'Editar unidades' },
       { key: 'delete', label: 'Bloquear unidades' },
     ],
@@ -116,7 +117,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     settings:      { view: false, edit: false },
     pipeline:      { view: true  },
     knowledgeBase: { view: true,  create: true,  edit: true,  delete: true  },
-    gestao_empreendimentos: { edit: true, delete: false },
+    gestao_empreendimentos: { create: true, edit: true, delete: false },
   },
   agent: {
     leads:         { view: true,  create: true,  edit: true,  delete: false },
@@ -128,7 +129,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     settings:      { view: false, edit: false },
     pipeline:      { view: true  },
     knowledgeBase: { view: true,  create: false, edit: false, delete: false },
-    gestao_empreendimentos: { edit: false, delete: false },
+    gestao_empreendimentos: { create: false, edit: false, delete: false },
   },
 };
 
