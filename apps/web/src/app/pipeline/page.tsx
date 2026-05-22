@@ -274,9 +274,26 @@ export default function PipelinePage() {
           {loading ? "Carregando..." : "Atualizar"}
         </Button>
         {view === "LISTA" && (
-          <span className="text-xs text-[var(--shell-subtext)]">
-            Exibindo {Math.min(visibleCount, filtered.length)} de {filtered.length}
-          </span>
+          <>
+            <span className="text-xs text-[var(--shell-subtext)]">
+              Exibindo {Math.min(visibleCount, filtered.length)} de {filtered.length}
+            </span>
+            <input
+              type="number" min={1} value={loadMoreN}
+              onChange={(e) => setLoadMoreN(Math.max(1, parseInt(e.target.value) || 10))}
+              className="w-16 rounded-lg border px-2 py-1 text-sm text-center"
+              style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+            />
+            {hasMore && (
+              <button
+                onClick={() => setVisibleCount((v) => v + loadMoreN)}
+                className="rounded-lg border px-4 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors"
+                style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+              >
+                Ver mais {loadMoreN}
+              </button>
+            )}
+          </>
         )}
         <Input
           className="w-56"
@@ -459,25 +476,6 @@ export default function PipelinePage() {
                     </div>
                   );
                 })}
-                <div className="flex items-center justify-end gap-4 border-t px-4 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
-                  {hasMore && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number" min={1} value={loadMoreN}
-                        onChange={(e) => setLoadMoreN(Math.max(1, parseInt(e.target.value) || 10))}
-                        className="w-16 rounded-lg border px-2 py-1 text-sm text-center"
-                        style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
-                      />
-                      <button
-                        onClick={() => setVisibleCount((v) => v + loadMoreN)}
-                        className="rounded-lg border px-4 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors"
-                        style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
-                      >
-                        Ver mais {loadMoreN}
-                      </button>
-                    </div>
-                  )}
-                </div>
               </>
             );
           })()}
