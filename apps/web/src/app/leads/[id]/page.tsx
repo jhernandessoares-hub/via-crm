@@ -1244,6 +1244,9 @@ export default function LeadDetailChatPage() {
   const lastInboundIdRef = useRef<string | null>(null);
 
   const [qualOpen, setQualOpen] = useState(false);
+  const [origemEditField, setOrigemEditField] = useState<string | null>(null);
+  const [origemEditValue, setOrigemEditValue] = useState('');
+  const [savingOrigemField, setSavingOrigemField] = useState(false);
 
   // Atribuição manual
   const [teamMembers, setTeamMembers] = useState<{ id: string; nome: string; role: string }[]>([]);
@@ -1894,6 +1897,24 @@ function discardAiSuggestion() {
   }
 }
 
+  async function saveOrigemField(field: string, value: string) {
+    if (!lead) return;
+    setSavingOrigemField(true);
+    try {
+      const updated = { ...(lead.cadastroOrigem ?? {}), [field]: value.trim() || null };
+      await apiFetch(`/leads/${lead.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ cadastroOrigem: updated }),
+      });
+      setLead((prev) => prev ? { ...prev, cadastroOrigem: updated } : prev);
+      setOrigemEditField(null);
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao salvar.');
+    } finally {
+      setSavingOrigemField(false);
+    }
+  }
+
   async function toggleAutopilot(nextValue: boolean) {
     setAutopilotEnabled(nextValue);
     await apiFetch(`/leads/${id}/bot-paused`, {
@@ -2492,33 +2513,57 @@ function discardAiSuggestion() {
                     </div>
                   )}
 
-                  {lead.cadastroOrigem?.indicacao && (
-                    <div>
-                      <div className="text-xs text-[var(--shell-subtext)]">Indicação</div>
-                      <div className="text-[var(--shell-text)]">{lead.cadastroOrigem.indicacao}</div>
-                    </div>
-                  )}
-
-                  {lead.cadastroOrigem?.grupoMcmv && (
-                    <div>
-                      <div className="text-xs text-[var(--shell-subtext)]">Grupo</div>
-                      <div className="text-[var(--shell-text)]">{lead.cadastroOrigem.grupoMcmv}</div>
-                    </div>
-                  )}
-
-                  {lead.cadastroOrigem?.faixaRenda && (
-                    <div>
-                      <div className="text-xs text-[var(--shell-subtext)]">Faixa de Renda (SM)</div>
-                      <div className="text-[var(--shell-text)]">{lead.cadastroOrigem.faixaRenda}</div>
-                    </div>
-                  )}
-
-                  {lead.cadastroOrigem?.codigoOcorrencia && (
-                    <div>
-                      <div className="text-xs text-[var(--shell-subtext)]">Ocorrência</div>
-                      <div className="font-mono text-xs text-[var(--shell-text)]">{lead.cadastroOrigem.codigoOcorrencia}</div>
-                    </div>
-                  )}
+                  {lead.cadastroOrigem && (() => {
+                    const origemFields = [
+                      { key: 'indicacao',         label: 'Indicação' },
+                      { key: 'grupoMcmv',         label: 'Grupo' },
+                      { key: 'faixaRenda',        label: 'Faixa de Renda (SM)' },
+                      { key: 'codigoOcorrencia',  label: 'Ocorrência' },
+                    ] as const;
+                    return origemFields.map(({ key, label }) => {
+                      const val = (lead.cadastroOrigem as any)?.[key] as string | null | undefined;
+                      const isEditing = origemEditField === key;
+                      if (!val && !isEditing) return null;
+                      return (
+                        <div key={key}>
+                          <div className="text-xs text-[var(--shell-subtext)]">{label}</div>
+                          {isEditing ? (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <input
+                                autoFocus
+                                className="flex-1 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)]"
+                                value={origemEditValue}
+                                onChange={(e) => setOrigemEditValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveOrigemField(key, origemEditValue);
+                                  if (e.key === 'Escape') setOrigemEditField(null);
+                                }}
+                                disabled={savingOrigemField}
+                              />
+                              <button
+                                className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50"
+                                onClick={() => saveOrigemField(key, origemEditValue)}
+                                disabled={savingOrigemField}
+                              >✓</button>
+                              <button
+                                className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]"
+                                onClick={() => setOrigemEditField(null)}
+                                disabled={savingOrigemField}
+                              >✕</button>
+                            </div>
+                          ) : (
+                            <div
+                              className="group flex items-center gap-1 cursor-pointer"
+                              onClick={() => { setOrigemEditField(key); setOrigemEditValue(val ?? ''); }}
+                            >
+                              <span className="text-sm text-[var(--shell-text)]">{val}</span>
+                              <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)]">✏️</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
 
                   {/* Responsável — select para OWNER/MANAGER */}
                   <div>
