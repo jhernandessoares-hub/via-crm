@@ -161,7 +161,6 @@ export default function LeadsPage() {
   );
 
   const filtered = useMemo(() => {
-    setVisibleCount(10);
     const qq = q.trim().toLowerCase();
     return leads.filter((l) => {
       if (activeGroup && !visibleStageIds.has(l.stageId ?? "")) return false;
@@ -170,6 +169,8 @@ export default function LeadsPage() {
         .join(" ").toLowerCase().includes(qq);
     });
   }, [leads, q, activeGroup, visibleStageIds]);
+
+  useEffect(() => { setVisibleCount(10); }, [leads, q, activeGroup]);
 
   const groupedKanban = useMemo(() => {
     const map: Record<string, Lead[]> = {};

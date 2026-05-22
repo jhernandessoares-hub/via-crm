@@ -85,13 +85,14 @@ export default function MeusLeadsPage() {
   }, [stages]);
 
   const filtered = useMemo(() => {
-    setVisibleCount(10);
     const qq = q.trim().toLowerCase();
     if (!qq) return leads;
     return leads.filter((l) =>
       [l.nome, l.nomeCorreto, l.telefone, l.whatsapp].join(" ").toLowerCase().includes(qq)
     );
   }, [leads, q]);
+
+  useEffect(() => { setVisibleCount(10); }, [leads, q]);
 
   const groupedLeads = useMemo(() => {
     const map: Record<string, Lead[]> = {};
