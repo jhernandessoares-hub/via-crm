@@ -61,6 +61,13 @@ type Lead = {
   perfilImovel?: string | null;
   produtoInteresseId?: string | null;
   resumoLead?: string | null;
+  cadastroOrigem?: {
+    codigoOcorrencia?: string | null;
+    grupoMcmv?: string | null;
+    faixaRenda?: string | null;
+    indicacao?: string | null;
+    [key: string]: unknown;
+  } | null;
 };
 
 const TIPOS_DOCUMENTO = [
@@ -1237,6 +1244,7 @@ export default function LeadDetailChatPage() {
   const lastInboundIdRef = useRef<string | null>(null);
 
   const [qualOpen, setQualOpen] = useState(false);
+  const [mcmvOpen, setMcmvOpen] = useState(false);
 
   // Atribuição manual
   const [teamMembers, setTeamMembers] = useState<{ id: string; nome: string; role: string }[]>([]);
@@ -2741,6 +2749,59 @@ function discardAiSuggestion() {
                 </div>
               );
             })()}
+
+            {/* Dados de Origem MCMV */}
+            {lead?.cadastroOrigem && (
+              lead.cadastroOrigem.codigoOcorrencia ||
+              lead.cadastroOrigem.grupoMcmv ||
+              lead.cadastroOrigem.faixaRenda ||
+              lead.cadastroOrigem.indicacao
+            ) && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 text-left"
+                  onClick={() => setMcmvOpen((v) => !v)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">Dados de Origem</span>
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                      MCMV
+                    </span>
+                  </div>
+                  <span className="text-[var(--shell-subtext)] text-xs">{mcmvOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {mcmvOpen && (
+                  <div className="mt-3 space-y-2 text-sm">
+                    {lead.cadastroOrigem.codigoOcorrencia && (
+                      <div>
+                        <div className="text-xs text-[var(--shell-subtext)]">Código de Ocorrência</div>
+                        <div className="font-mono text-xs text-[var(--shell-text)]">{lead.cadastroOrigem.codigoOcorrencia}</div>
+                      </div>
+                    )}
+                    {lead.cadastroOrigem.grupoMcmv && (
+                      <div>
+                        <div className="text-xs text-[var(--shell-subtext)]">Grupo MCMV</div>
+                        <div className="text-[var(--shell-text)]">{lead.cadastroOrigem.grupoMcmv}</div>
+                      </div>
+                    )}
+                    {lead.cadastroOrigem.faixaRenda && (
+                      <div>
+                        <div className="text-xs text-[var(--shell-subtext)]">Faixa de Renda (SM)</div>
+                        <div className="text-[var(--shell-text)]">{lead.cadastroOrigem.faixaRenda}</div>
+                      </div>
+                    )}
+                    {lead.cadastroOrigem.indicacao && (
+                      <div>
+                        <div className="text-xs text-[var(--shell-subtext)]">Indicação</div>
+                        <div className="text-[var(--shell-text)]">{lead.cadastroOrigem.indicacao}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Documentos */}
             {lead && (
