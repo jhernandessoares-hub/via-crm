@@ -30,8 +30,15 @@ type Lead = {
   perfilImovel?: string | null;
   stageId?: string | null;
   stageName?: string | null;
+  rendaBrutaFamiliar?: number | null;
+  cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
 };
+
+function formatRenda(v: number | null | undefined): string {
+  if (!v) return "—";
+  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+}
 
 function displayName(l: Lead): string {
   return l.nomeCorreto || l.nome || "Sem nome";
@@ -88,9 +95,11 @@ export default function MeusLeadsPage() {
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     if (!qq) return leads;
-    return leads.filter((l) =>
-      [l.nome, l.nomeCorreto, l.telefone, l.whatsapp].join(" ").toLowerCase().includes(qq)
-    );
+    return leads.filter((l) => {
+      const indicacao = (l.cadastroOrigem as any)?.indicacao ?? "";
+      return [l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.origem, l.status, l.perfilImovel, l.stageName, indicacao, String(l.rendaBrutaFamiliar ?? "")]
+        .join(" ").toLowerCase().includes(qq);
+    });
   }, [leads, q]);
 
   useEffect(() => { setPage(1); }, [q, leads]);
@@ -217,6 +226,16 @@ export default function MeusLeadsPage() {
                                   {l.perfilImovel}
                                 </span>
                               )}
+                              {(l.cadastroOrigem as any)?.indicacao && (
+                                <span className="inline-block rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] text-teal-700 truncate max-w-[120px]" title={(l.cadastroOrigem as any).indicacao}>
+                                  {(l.cadastroOrigem as any).indicacao}
+                                </span>
+                              )}
+                              {l.rendaBrutaFamiliar && (
+                                <span className="inline-block rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
+                                  {formatRenda(l.rendaBrutaFamiliar)}
+                                </span>
+                              )}
                             </div>
                           </Link>
                         );
@@ -237,8 +256,8 @@ export default function MeusLeadsPage() {
           style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
         >
           <div
-            className="grid grid-cols-14 gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
-            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
+            className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr" }}
           >
             <div>Número</div>
             <div>Nome</div>
@@ -247,6 +266,8 @@ export default function MeusLeadsPage() {
             <div>Etapa</div>
             <div>Status</div>
             <div>Interesse</div>
+            <div>Indicação</div>
+            <div>Renda</div>
           </div>
 
           {filtered.length === 0 ? (
@@ -262,7 +283,7 @@ export default function MeusLeadsPage() {
                   const groupKey = stageInfo?.group ?? "PRE_ATENDIMENTO";
                   const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
                   return (
-                    <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}>
+                    <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr" }}>
                       <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
                       <div className="min-w-0">
                         <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
@@ -274,6 +295,8 @@ export default function MeusLeadsPage() {
                       </div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate">{l.status || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate">{formatRenda(l.rendaBrutaFamiliar)}</div>
                     </div>
                   );
                 })}

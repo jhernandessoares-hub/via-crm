@@ -44,8 +44,15 @@ type Lead = {
   stageId?: string | null;
   stageKey?: string | null;
   stageName?: string | null;
+  rendaBrutaFamiliar?: number | null;
+  cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
 };
+
+function formatRenda(v: number | null | undefined): string {
+  if (!v) return "—";
+  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+}
 
 function displayName(l: Lead): string {
   return l.nomeCorreto || l.nome || "Sem nome";
@@ -166,7 +173,8 @@ export default function LeadsPage() {
     return leads.filter((l) => {
       if (activeGroup && !visibleStageIds.has(l.stageId ?? "")) return false;
       if (!qq) return true;
-      return [l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.id]
+      const indicacao = (l.cadastroOrigem as any)?.indicacao ?? "";
+      return [l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.origem, l.status, l.perfilImovel, l.stageName, indicacao, String(l.rendaBrutaFamiliar ?? ""), l.id]
         .join(" ").toLowerCase().includes(qq);
     });
   }, [leads, q, activeGroup, visibleStageIds]);
@@ -305,7 +313,7 @@ export default function LeadsPage() {
         >
           <div
             className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
-            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr" }}
           >
             <div>Número</div>
             <div>Nome</div>
@@ -314,6 +322,8 @@ export default function LeadsPage() {
             <div>Etapa</div>
             <div>Status</div>
             <div>Interesse</div>
+            <div>Indicação</div>
+            <div>Renda</div>
           </div>
 
           {filtered.length === 0 ? (
@@ -330,7 +340,7 @@ export default function LeadsPage() {
                     <div
                       key={l.id}
                       className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
-                      style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
+                      style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr" }}
                     >
                       <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
                       <div className="min-w-0">
@@ -345,6 +355,8 @@ export default function LeadsPage() {
                       </div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate">{l.status || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate">{formatRenda(l.rendaBrutaFamiliar)}</div>
                     </div>
                   );
                 })}
@@ -435,6 +447,16 @@ export default function LeadsPage() {
                               {l.perfilImovel && (
                                 <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>
                                   {l.perfilImovel}
+                                </span>
+                              )}
+                              {(l.cadastroOrigem as any)?.indicacao && (
+                                <span className="inline-block rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] text-teal-700 truncate max-w-[120px]" title={(l.cadastroOrigem as any).indicacao}>
+                                  {(l.cadastroOrigem as any).indicacao}
+                                </span>
+                              )}
+                              {l.rendaBrutaFamiliar && (
+                                <span className="inline-block rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
+                                  {formatRenda(l.rendaBrutaFamiliar)}
                                 </span>
                               )}
                             </div>

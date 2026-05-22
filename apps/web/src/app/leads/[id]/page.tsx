@@ -2484,8 +2484,8 @@ function discardAiSuggestion() {
                     <div className="min-w-0">
                       <div className="text-xs text-[var(--shell-subtext)] mb-1">Nome confirmado</div>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-[var(--shell-text)] truncate" title={(lead.nomeCorreto || lead.nome) ?? undefined}>
-                          {lead.nomeCorreto || lead.nome || "—"}
+                        <span className="font-medium text-[var(--shell-text)] truncate" title={lead.nomeCorreto ?? undefined}>
+                          {lead.nomeCorreto || "não confirmado"}
                         </span>
                         {lead.nomeCorretoOrigem === "IA" && (
                           <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700">IA</span>
