@@ -1292,6 +1292,7 @@ async getById(user: any, id: string) {
   let effectiveStageId = lead.stageId ?? null;
   let stageKey: string | null = null;
   let stageName: string | null = null;
+  let stageGroup: string | null = null;
   let previousStageName: string | null = null;
   let previousStageKey: string | null = null;
 
@@ -1323,12 +1324,14 @@ async getById(user: any, id: string) {
         id: true,
         key: true,
         name: true,
+        group: true,
       },
     });
 
     if (currentStage) {
       stageKey = currentStage.key;
       stageName = currentStage.name;
+      stageGroup = currentStage.group ?? null;
     }
   }
 
@@ -1367,13 +1370,31 @@ async getById(user: any, id: string) {
     }
   }
 
+  const linkedUnits = await this.prisma.developmentUnit.findMany({
+    where: { leadId: id },
+    select: {
+      id: true,
+      nome: true,
+      status: true,
+      developmentId: true,
+      finalPrice: true,
+      propostaPagamento: true,
+      propostaObs: true,
+      comprador: true,
+      soldAt: true,
+      development: { select: { id: true, nome: true } },
+    },
+  });
+
   return {
     ...lead,
     stageId: effectiveStageId,
     stageKey,
     stageName,
+    stageGroup,
     previousStageName,
     previousStageKey,
+    developmentUnits: linkedUnits,
   };
 }
 

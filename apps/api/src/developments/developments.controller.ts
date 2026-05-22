@@ -91,7 +91,7 @@ export class DevelopmentsController {
 
   @Patch(':id/units/:unitId')
   updateUnit(@Request() req: any, @Param('id') id: string, @Param('unitId') unitId: string, @Body() body: any) {
-    return this.svc.updateUnit(req.user.tenantId, id, unitId, body, { id: req.user.sub, nome: req.user.nome });
+    return this.svc.updateUnit(req.user.tenantId, id, unitId, body, { id: req.user.sub, nome: req.user.nome, role: req.user.role });
   }
 
   @Get(':id/payment-condition')
