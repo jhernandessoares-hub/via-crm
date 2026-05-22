@@ -430,7 +430,7 @@ export default function MeusLeadsPage() {
         isOpen={reportOpen}
         onClose={() => setReportOpen(false)}
         leads={filtered}
-        stages={pipelineStages}
+        stages={stages}
       />
     </AppShell>
   );
