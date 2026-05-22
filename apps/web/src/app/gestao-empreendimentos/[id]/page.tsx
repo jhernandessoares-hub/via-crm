@@ -121,7 +121,13 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
       disabled: !hasLinkedLead,
       disabledReason: "Vincule um lead no popup de detalhes primeiro",
     },
-    ...(!isAgent ? [{ label: "Vender", status: "VENDIDO" as UnitStatus, color: "bg-red-500 hover:bg-red-600" }] : []),
+    ...(!isAgent ? [{
+      label: "Vender",
+      status: "VENDIDO" as UnitStatus,
+      color: "bg-red-500 hover:bg-red-600",
+      disabled: !hasLinkedLead,
+      disabledReason: "Vincule um lead no popup de detalhes primeiro",
+    }] : []),
     ...(canBlock ? [{ label: "Bloquear", status: "BLOQUEADO" as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" }] : []),
   ];
 
@@ -190,6 +196,24 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
               <p className="font-semibold text-[var(--shell-text)]">{unit.loteAreaM2} m²</p>
             </div>
           )}
+          {unit.banheiros != null && unit.banheiros > 0 && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Banheiros</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.banheiros}</p>
+            </div>
+          )}
+          {unit.loteFrente != null && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Frente</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.loteFrente} m</p>
+            </div>
+          )}
+          {unit.loteFundo != null && (
+            <div>
+              <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Fundo</p>
+              <p className="font-semibold text-[var(--shell-text)]">{unit.loteFundo} m</p>
+            </div>
+          )}
         </div>
 
         {/* Comprador / Preço final (para reserva/venda) */}
@@ -231,6 +255,28 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
             </div>
           ))}
         </div>
+
+        {/* Histórico de bloqueio */}
+        {unit.bloqueioHistory && unit.bloqueioHistory.length > 0 && (
+          <div className="pt-3 border-t border-[var(--shell-card-border)]">
+            <p className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Histórico de bloqueio</p>
+            <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              {unit.bloqueioHistory.map((h) => (
+                <div key={h.id} className="flex items-start gap-2 text-xs">
+                  <span className={`mt-0.5 flex-shrink-0 rounded-full w-2 h-2 ${h.acao === "BLOQUEADO" ? "bg-gray-400" : "bg-green-500"}`} />
+                  <div>
+                    <span className="font-semibold text-[var(--shell-text)]">
+                      {h.acao === "BLOQUEADO" ? "Bloqueado" : "Desbloqueado"}
+                    </span>
+                    {h.userName && <span className="text-[var(--shell-subtext)]"> por {h.userName}</span>}
+                    <span className="text-[var(--shell-subtext)]"> · {new Date(h.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                    {h.motivo && <p className="text-[var(--shell-subtext)] mt-0.5">Motivo: {h.motivo}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -251,6 +297,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [savingPne, setSavingPne] = useState(false);
 
   useEffect(() => {
     if (!showSearch || !query.trim()) { setResults([]); return; }
@@ -264,6 +311,17 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
     }, 300);
     return () => clearTimeout(t);
   }, [query, showSearch]);
+
+  async function togglePne() {
+    setSavingPne(true);
+    try {
+      const updated = await updateUnit(devId, current.id, { pne: !current.pne } as any);
+      const next = { ...current, pne: updated.pne };
+      setCurrent(next);
+      onUnitUpdated(next);
+    } catch (e: any) { alert(e?.message ?? "Erro ao atualizar PNE"); }
+    finally { setSavingPne(false); }
+  }
 
   async function linkLead(lead: any) {
     try {
@@ -327,6 +385,12 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
             <span className="inline-flex items-center rounded-full bg-purple-600 px-2.5 py-0.5 text-[10px] font-bold text-white">
               PNE
             </span>
+          )}
+          {role !== "AGENT" && (
+            <button type="button" disabled={savingPne} onClick={togglePne}
+              className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-50 ${current.pne ? "bg-purple-100 text-purple-700 hover:bg-purple-200" : "bg-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-purple-100 hover:text-purple-700"}`}>
+              {savingPne ? "..." : current.pne ? "Remover PNE" : "Marcar PNE"}
+            </button>
           )}
         </div>
 
