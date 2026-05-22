@@ -50,6 +50,7 @@ type Lead = {
   // Qualificação IA
   nomeCorreto?: string | null;
   nomeCorretoOrigem?: string | null; // "IA" | "MANUAL"
+  cpf?: string | null;
   rendaBrutaFamiliar?: number | null;
   fgts?: number | null;
   valorEntrada?: number | null;
@@ -1244,7 +1245,7 @@ export default function LeadDetailChatPage() {
   const lastInboundIdRef = useRef<string | null>(null);
 
   const [qualOpen, setQualOpen] = useState(false);
-  const [leadInfoOpen, setLeadInfoOpen] = useState(true);
+  const [leadInfoOpen, setLeadInfoOpen] = useState(false);
   const [origemEditField, setOrigemEditField] = useState<string | null>(null);
   const [origemEditValue, setOrigemEditValue] = useState('');
   const [savingOrigemField, setSavingOrigemField] = useState(false);
@@ -2483,8 +2484,8 @@ function discardAiSuggestion() {
                     <div className="min-w-0">
                       <div className="text-xs text-[var(--shell-subtext)] mb-1">Nome confirmado</div>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-[var(--shell-text)] truncate" title={lead.nomeCorreto ?? undefined}>
-                          {lead.nomeCorreto || <span className="text-[var(--shell-subtext)] italic text-xs">não confirmado</span>}
+                        <span className="font-medium text-[var(--shell-text)] truncate" title={(lead.nomeCorreto || lead.nome) ?? undefined}>
+                          {lead.nomeCorreto || lead.nome || "—"}
                         </span>
                         {lead.nomeCorretoOrigem === "IA" && (
                           <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] text-blue-700">IA</span>
@@ -2505,7 +2506,7 @@ function discardAiSuggestion() {
                     </div>
                   </div>
 
-                  {/* Par 2: Telefone + Status */}
+                  {/* Par 2: Telefone + CPF */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="min-w-0">
                       <div className="text-xs text-[var(--shell-subtext)]">Telefone</div>
@@ -2513,9 +2514,22 @@ function discardAiSuggestion() {
                     </div>
 
                     <div className="min-w-0">
-                      <div className="text-xs text-[var(--shell-subtext)]">Status</div>
-                      <div className="text-[var(--shell-text)] truncate">{lead.status || "NOVO"}</div>
+                      <div className="text-xs text-[var(--shell-subtext)]">CPF</div>
+                      {lead.cpf ? (
+                        <div>
+                          <div className="text-[var(--shell-text)] truncate font-mono text-xs">{lead.cpf}</div>
+                          <div className="text-[10px] text-[var(--shell-subtext)] truncate">{lead.nomeCorreto || lead.nome}</div>
+                        </div>
+                      ) : (
+                        <div className="text-[var(--shell-subtext)] italic text-xs">—</div>
+                      )}
                     </div>
+                  </div>
+
+                  {/* Status */}
+                  <div className="min-w-0">
+                    <div className="text-xs text-[var(--shell-subtext)]">Status</div>
+                    <div className="text-[var(--shell-text)]">{lead.status || "NOVO"}</div>
                   </div>
 
                   {/* Par 3: Origem + Indicação */}
