@@ -32,6 +32,28 @@ function safeJsonParse<T>(s: string | null): T | null {
   }
 }
 
+type DevUnit = {
+  id: string;
+  nome: string;
+  status: string;
+  andar?: number | null;
+  areaM2?: number | null;
+  quartos?: number | null;
+  valorVenda?: number | null;
+  finalPrice?: number | null;
+  propostaPagamento?: string | null;
+  propostaObs?: string | null;
+  comprador?: string | null;
+  leadId?: string | null;
+  developmentId?: string;
+  development?: { id: string; nome: string };
+};
+
+type Development = {
+  id: string;
+  nome: string;
+};
+
 type Lead = {
   id: string;
   numero?: number | null;
@@ -47,6 +69,8 @@ type Lead = {
   branchId?: string | null;
   telefoneKey?: string | null;
   avatarUrl?: string | null;
+  stageGroup?: string | null;
+  developmentUnits?: DevUnit[];
   // Qualificação IA
   nomeCorreto?: string | null;
   nomeCorretoOrigem?: string | null; // "IA" | "MANUAL"
@@ -1235,6 +1259,15 @@ export default function LeadDetailChatPage() {
   const [productTab, setProductTab] = useState<ProductTab | null>(null);
   const [productsNotice, setProductsNotice] = useState<string | null>(null);
 
+  const [prodTab, setProdTab] = useState<"catalogo" | "empreendimentos">("catalogo");
+  const [developments, setDevelopments] = useState<Development[]>([]);
+  const [selectedDevId, setSelectedDevId] = useState<string>("");
+  const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
+  const [devUnitsLoading, setDevUnitsLoading] = useState(false);
+  const [propostaModal, setPropostaModal] = useState<{ unit: DevUnit; devId: string } | null>(null);
+  const [propostaForm, setPropostaForm] = useState({ valor: "", pagamento: "FINANCIAMENTO", obs: "" });
+  const [propostaSaving, setPropostaSaving] = useState(false);
+
   const filePickerRef = useRef<HTMLInputElement | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachSending, setAttachSending] = useState(false);
@@ -1437,12 +1470,60 @@ export default function LeadDetailChatPage() {
     } catch { /* silently ignore */ }
   }
 
+  async function loadDevelopments() {
+    try {
+      const data = await apiFetch("/developments");
+      setDevelopments(Array.isArray(data) ? data : []);
+    } catch { /* silently ignore */ }
+  }
+
+  async function loadDevUnits(devId: string) {
+    if (!devId) { setDevUnits([]); return; }
+    setDevUnitsLoading(true);
+    try {
+      const data = await apiFetch(`/developments/${devId}`);
+      const allUnits: DevUnit[] = [];
+      for (const tower of data?.towers ?? []) {
+        for (const unit of tower?.units ?? []) {
+          allUnits.push({ ...unit, developmentId: devId });
+        }
+      }
+      setDevUnits(allUnits);
+    } catch { setDevUnits([]); }
+    finally { setDevUnitsLoading(false); }
+  }
+
+  async function confirmarProposta() {
+    if (!propostaModal || !lead) return;
+    setPropostaSaving(true);
+    try {
+      const valor = propostaForm.valor ? parseFloat(propostaForm.valor.replace(/\./g, "").replace(",", ".")) : null;
+      await apiFetch(`/developments/${propostaModal.devId}/units/${propostaModal.unit.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          leadId: lead.id,
+          status: "PROPOSTA",
+          finalPrice: valor,
+          propostaPagamento: propostaForm.pagamento,
+          propostaObs: propostaForm.obs || null,
+        }),
+      });
+      setPropostaModal(null);
+      await loadDevUnits(selectedDevId);
+      await loadLead();
+    } catch (e: any) {
+      alert(e?.message || "Erro ao registrar proposta");
+    } finally {
+      setPropostaSaving(false);
+    }
+  }
+
   async function loadAll() {
     setErr(null);
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData()]);
+      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments()]);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -3149,351 +3230,445 @@ function discardAiSuggestion() {
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-semibold text-[var(--shell-text)]">Produtos Disponíveis</div>
-                <button
-                  type="button"
-                  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                  onClick={() => loadProducts()}
-                  disabled={productsLoading}
-                >
-                  {productsLoading ? "Carregando..." : "Recarregar"}
-                </button>
-              </div>
-
-              {productsErr ? (
-                <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{productsErr}</div>
-              ) : null}
-
-              {productsNotice ? (
-                <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
-                  {productsNotice}
-                </div>
-              ) : null}
-
-              <div className="mt-3">
-                <input
-                  value={productsQuery}
-                  onChange={(e) => setProductsQuery(e.target.value)}
-                  placeholder="Buscar por título/cidade/bairro..."
-                  className="w-full rounded-md border p-2 text-sm"
-                />
-                <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">Mostrando até 50 resultados. Total carregado: {products.length}</div>
-              </div>
-
-              <div className="mt-3 grid gap-2">
-                <select
-                  className="w-full rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
-                  value={selectedProductId}
-                  onChange={(e) => {
-                    const v = e.target.value || "";
-                    setSelectedProductId(v);
-                    setProductTab(null);
-                  }}
-                  disabled={productsLoading}
-                >
-                  <option value="">(Selecione um produto)</option>
-                  {filteredProducts.map((p) => {
-                    const t = p?.title ? String(p.title) : p.id;
-                    const meta = [p?.city, p?.neighborhood].filter(Boolean).join(" - ");
-                    return (
-                      <option key={p.id} value={p.id}>
-                        {t}
-                        {meta ? " - " + meta : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-
-                {selectedProduct ? (
-                  <div className="rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-text)]">
-                    <div className="font-semibold text-[var(--shell-text)] truncate">{selectedProduct.title || "Produto"}</div>
-                    <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
-                      {selectedProduct.city ? <span>{selectedProduct.city}</span> : null}
-                      {selectedProduct.neighborhood ? <span>{" - " + selectedProduct.neighborhood}</span> : null}
-                    </div>
-
-                    <div className="mt-3 rounded-md border bg-[var(--shell-card-bg)] p-2">
-                      <div className="text-[11px] text-[var(--shell-subtext)] mb-1">Resumo</div>
-                      <div className="text-xs whitespace-pre-wrap text-[var(--shell-text)]">{buildProductSummary(selectedProduct)}</div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                          onClick={() => insertIntoChat(buildProductSummary(selectedProduct))}
-                          title="Insere o resumo no campo de mensagem"
-                        >
-                          Inserir resumo no chat
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-subtext)]">
-                    Selecione um produto para ver imagens/documentos/vídeos.
-                  </div>
+                {prodTab === "catalogo" && (
+                  <button
+                    type="button"
+                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                    onClick={() => loadProducts()}
+                    disabled={productsLoading}
+                  >
+                    {productsLoading ? "Carregando..." : "Recarregar"}
+                  </button>
                 )}
+              </div>
 
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(["IMAGENS", "DOCUMENTOS", "VIDEOS"] as ProductTab[]).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setProductTab(t)}
-                      className={[
-                        "rounded-md border px-3 py-2 text-xs font-semibold",
-                        productTab === t ? "bg-slate-900 text-white border-slate-900" : "bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)]",
-                      ].join(" ")}
-                      disabled={!selectedProduct}
-                    >
-                      {t === "IMAGENS" ? "Imagens" : t === "DOCUMENTOS" ? "Documentos" : "Vídeos"}
-                    </button>
-                  ))}
-                </div>
+              {/* Tabs */}
+              <div className="mt-3 flex gap-1 rounded-lg border p-1" style={{ background: "var(--shell-bg)" }}>
+                {(["catalogo", "empreendimentos"] as const).map((t) => (
+                  <button key={t} type="button"
+                    onClick={() => setProdTab(t)}
+                    className="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                    style={{
+                      background: prodTab === t ? "var(--shell-card-bg)" : "transparent",
+                      color: prodTab === t ? "var(--shell-text)" : "var(--shell-subtext)",
+                      fontWeight: prodTab === t ? 600 : 400,
+                    }}>
+                    {t === "catalogo" ? "Catálogo" : "Empreendimentos"}
+                  </button>
+                ))}
+              </div>
 
-                <div className="mt-2">
-                  {!selectedProduct ? (
-                    <div className="text-xs text-[var(--shell-subtext)]">—</div>
-                  ) : productTab === null ? (
-                    <div className="text-xs text-[var(--shell-subtext)]">
-                      Clique em <b>Imagens</b>, <b>Documentos</b> ou <b>Vídeos</b> para mostrar o conteúdo.
+              {/* Aba Catálogo */}
+              {prodTab === "catalogo" && (
+                <div>
+                  {productsErr ? (
+                    <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{productsErr}</div>
+                  ) : null}
+
+                  {productsNotice ? (
+                    <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+                      {productsNotice}
                     </div>
-                  ) : productTab === "IMAGENS" ? (
-                    (selectedProduct.images || []).length === 0 ? (
-                      <div className="text-xs text-[var(--shell-subtext)]">Sem imagens neste produto.</div>
+                  ) : null}
+
+                  <div className="mt-3">
+                    <input
+                      value={productsQuery}
+                      onChange={(e) => setProductsQuery(e.target.value)}
+                      placeholder="Buscar por título/cidade/bairro..."
+                      className="w-full rounded-md border p-2 text-sm"
+                    />
+                    <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">Mostrando até 50 resultados. Total carregado: {products.length}</div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    <select
+                      className="w-full rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
+                      value={selectedProductId}
+                      onChange={(e) => {
+                        const v = e.target.value || "";
+                        setSelectedProductId(v);
+                        setProductTab(null);
+                      }}
+                      disabled={productsLoading}
+                    >
+                      <option value="">(Selecione um produto)</option>
+                      {filteredProducts.map((p) => {
+                        const t = p?.title ? String(p.title) : p.id;
+                        const meta = [p?.city, p?.neighborhood].filter(Boolean).join(" - ");
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {t}
+                            {meta ? " - " + meta : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+
+                    {selectedProduct ? (
+                      <div className="rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-text)]">
+                        <div className="font-semibold text-[var(--shell-text)] truncate">{selectedProduct.title || "Produto"}</div>
+                        <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
+                          {selectedProduct.city ? <span>{selectedProduct.city}</span> : null}
+                          {selectedProduct.neighborhood ? <span>{" - " + selectedProduct.neighborhood}</span> : null}
+                        </div>
+
+                        <div className="mt-3 rounded-md border bg-[var(--shell-card-bg)] p-2">
+                          <div className="text-[11px] text-[var(--shell-subtext)] mb-1">Resumo</div>
+                          <div className="text-xs whitespace-pre-wrap text-[var(--shell-text)]">{buildProductSummary(selectedProduct)}</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                              onClick={() => insertIntoChat(buildProductSummary(selectedProduct))}
+                              title="Insere o resumo no campo de mensagem"
+                            >
+                              Inserir resumo no chat
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-subtext)]">
+                        Selecione um produto para ver imagens/documentos/vídeos.
+                      </div>
+                    )}
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(["IMAGENS", "DOCUMENTOS", "VIDEOS"] as ProductTab[]).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setProductTab(t)}
+                          className={[
+                            "rounded-md border px-3 py-2 text-xs font-semibold",
+                            productTab === t ? "bg-slate-900 text-white border-slate-900" : "bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)]",
+                          ].join(" ")}
+                          disabled={!selectedProduct}
+                        >
+                          {t === "IMAGENS" ? "Imagens" : t === "DOCUMENTOS" ? "Documentos" : "Vídeos"}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="mt-2">
+                      {!selectedProduct ? (
+                        <div className="text-xs text-[var(--shell-subtext)]">—</div>
+                      ) : productTab === null ? (
+                        <div className="text-xs text-[var(--shell-subtext)]">
+                          Clique em <b>Imagens</b>, <b>Documentos</b> ou <b>Vídeos</b> para mostrar o conteúdo.
+                        </div>
+                      ) : productTab === "IMAGENS" ? (
+                        (selectedProduct.images || []).length === 0 ? (
+                          <div className="text-xs text-[var(--shell-subtext)]">Sem imagens neste produto.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {(selectedProduct.images || [])
+                              .slice()
+                              .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                              .slice(0, 20)
+                              .map((img) => {
+                                const url = String(img.url || "");
+                                const nameBase = img.title || img.label || "imagem-" + img.id;
+                                return (
+                                  <div key={img.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
+                                    <div className="text-xs font-semibold text-[var(--shell-text)] truncate">
+                                      {img.title || img.label || "Imagem"}
+                                      {img.isPrimary ? " = (capa)" : ""}
+                                    </div>
+
+                                    <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
+
+                                    {url ? (
+                                      <a href={url} target="_blank" rel="noreferrer noopener" className="mt-2 block">
+                                        <img src={url} alt="img" className="h-28 w-full object-cover rounded-md border" />
+                                      </a>
+                                    ) : null}
+
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                        onClick={() => insertIntoChat(url)}
+                                        disabled={!url}
+                                        title="Insere o link no campo de mensagem"
+                                      >
+                                        Inserir link no chat
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                        onClick={async () => {
+                                          if (!url) return;
+                                          try {
+                                            await prepareAttachmentFromUrl("image", url, nameBase);
+                                          } catch (e: any) {
+                                            setProductsNotice("Falha ao preparar anexo: " + (e?.message || "erro"));
+                                            setTimeout(() => setProductsNotice(null), 2500);
+                                          }
+                                        }}
+                                        disabled={!url}
+                                        title="Prepara o anexo para você revisar e enviar no chat"
+                                      >
+                                        Enviar imagem
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                        onClick={() => handleCopyLink(url)}
+                                        disabled={!url}
+                                        title="Copiar link"
+                                      >
+                                        Copiar link
+                                      </button>
+
+                                      <a
+                                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                      >
+                                        Abrir
+                                      </a>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                            {(selectedProduct.images || []).length > 20 ? (
+                              <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiras imagens.</div>
+                            ) : null}
+                          </div>
+                        )
+                      ) : productTab === "DOCUMENTOS" ? (
+                        (selectedProduct.documents || []).length === 0 ? (
+                          <div className="text-xs text-[var(--shell-subtext)]">Sem documentos neste produto.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {(selectedProduct.documents || [])
+                              .slice()
+                              .sort((a, b) => {
+                                const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                                const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                                return tb - ta;
+                              })
+                              .slice(0, 20)
+                              .map((doc) => {
+                                const url = String(doc.url || "");
+                                const base = safeFileNameBase(doc.title || doc.type || "documento-" + doc.id);
+                                const filename = base + ".pdf";
+
+                                return (
+                                  <div key={doc.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
+                                    <div className="text-xs font-semibold text-[var(--shell-text)] truncate">{doc.title || doc.type || "Documento"}</div>
+
+                                    <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
+                                      {doc.type ? <span>{doc.type}</span> : null}
+                                      {doc.category ? <span>{" - " + doc.category}</span> : null}
+                                      {doc.visibility ? <span>{" - " + doc.visibility}</span> : null}
+                                    </div>
+
+                                    <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
+
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                        onClick={() => insertIntoChat(url)}
+                                        disabled={!url}
+                                        title="Insere o link no campo de mensagem"
+                                      >
+                                        Inserir link no chat
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                        onClick={async () => {
+                                          if (!url) return;
+                                          try {
+                                            await prepareAttachmentFromUrl("document", url, base);
+                                          } catch (e: any) {
+                                            setProductsNotice("Falha ao preparar anexo: " + (e?.message || "erro"));
+                                            setTimeout(() => setProductsNotice(null), 2500);
+                                          }
+                                        }}
+                                        disabled={!url}
+                                        title="Prepara o documento para você revisar e enviar no chat"
+                                      >
+                                        Enviar documento
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                        onClick={() => handleCopyLink(url)}
+                                        disabled={!url}
+                                        title="Copiar link"
+                                      >
+                                        Copiar link
+                                      </button>
+
+                                      <a className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" href={url} target="_blank" rel="noreferrer noopener">
+                                        Abrir
+                                      </a>
+
+                                      <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => downloadWithAuth(url, filename)} disabled={!url}>
+                                        Baixar
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                            {(selectedProduct.documents || []).length > 20 ? (
+                              <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiros documentos.</div>
+                            ) : null}
+                          </div>
+                        )
+                      ) : (selectedProduct.videos || []).length === 0 ? (
+                        <div className="text-xs text-[var(--shell-subtext)]">Sem vídeos neste produto.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(selectedProduct.videos || [])
+                            .slice()
+                            .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                            .slice(0, 20)
+                            .map((v) => {
+                              const url = String(v.url || "");
+                              const name = safeFileNameBase(v.title || "video-" + v.id) + ".mp4";
+
+                              return (
+                                <div key={v.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
+                                  <div className="text-xs font-semibold text-[var(--shell-text)] truncate">{v.title || "Vídeo"}</div>
+                                  <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
+
+                                  {url ? (
+                                    <video controls preload="metadata" className="mt-2 max-h-40 w-full rounded-md border">
+                                      <source src={url} />
+                                    </video>
+                                  ) : null}
+
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => insertIntoChat(url)} disabled={!url}>
+                                      Inserir link no chat
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
+                                      onClick={async () => {
+                                        if (!url) return;
+                                        try {
+                                          await prepareAttachmentFromUrl("video", url, v.title || "video-" + v.id);
+                                        } catch (e: any) {
+                                          setProductsNotice("Falha ao preparar anexo: " + (e?.message || "erro"));
+                                          setTimeout(() => setProductsNotice(null), 2500);
+                                        }
+                                      }}
+                                      disabled={!url}
+                                    >
+                                      Enviar vídeo
+                                    </button>
+
+                                    <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => handleCopyLink(url)} disabled={!url}>
+                                      Copiar link
+                                    </button>
+
+                                    <a className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" href={url} target="_blank" rel="noreferrer noopener">
+                                      Abrir
+                                    </a>
+
+                                    <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => downloadWithAuth(url, name)} disabled={!url}>
+                                      Baixar
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                          {(selectedProduct.videos || []).length > 20 ? (
+                            <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiros vídeos.</div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Aba Empreendimentos */}
+              {prodTab === "empreendimentos" && (
+                <div className="mt-3 space-y-3">
+                  {/* Proposta ativa do lead */}
+                  {(lead?.developmentUnits ?? []).filter(u => u.status === "PROPOSTA").map(u => (
+                    <div key={u.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-white">PROPOSTA ATIVA</span>
+                        <span className="font-semibold text-amber-900">{u.development?.nome}</span>
+                        <span className="text-amber-700">— {u.nome}</span>
+                      </div>
+                      {u.finalPrice && <div className="mt-1 text-amber-800">Valor proposto: R$ {u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>}
+                      {u.propostaPagamento && <div className="text-amber-700">Pagamento: {u.propostaPagamento.replace("_", " ")}</div>}
+                      {u.propostaObs && <div className="text-amber-700">Obs: {u.propostaObs}</div>}
+                    </div>
+                  ))}
+
+                  {/* Dropdown de empreendimento */}
+                  <select
+                    className="w-full rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
+                    value={selectedDevId}
+                    onChange={(e) => { setSelectedDevId(e.target.value); loadDevUnits(e.target.value); }}
+                  >
+                    <option value="">(Selecione um empreendimento)</option>
+                    {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                  </select>
+
+                  {/* Lista de unidades DISPONIVEL */}
+                  {devUnitsLoading ? (
+                    <div className="text-xs text-[var(--shell-subtext)]">Carregando unidades...</div>
+                  ) : selectedDevId ? (
+                    devUnits.filter(u => u.status === "DISPONIVEL").length === 0 ? (
+                      <div className="text-xs text-[var(--shell-subtext)]">Nenhuma unidade disponível neste empreendimento.</div>
                     ) : (
                       <div className="space-y-2">
-                        {(selectedProduct.images || [])
-                          .slice()
-                          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-                          .slice(0, 20)
-                          .map((img) => {
-                            const url = String(img.url || "");
-                            const nameBase = img.title || img.label || "imagem-" + img.id;
-                            return (
-                              <div key={img.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
-                                <div className="text-xs font-semibold text-[var(--shell-text)] truncate">
-                                  {img.title || img.label || "Imagem"}
-                                  {img.isPrimary ? " = (capa)" : ""}
-                                </div>
-
-                                <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
-
-                                {url ? (
-                                  <a href={url} target="_blank" rel="noreferrer noopener" className="mt-2 block">
-                                    <img src={url} alt="img" className="h-28 w-full object-cover rounded-md border" />
-                                  </a>
-                                ) : null}
-
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                    onClick={() => insertIntoChat(url)}
-                                    disabled={!url}
-                                    title="Insere o link no campo de mensagem"
-                                  >
-                                    Inserir link no chat
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                    onClick={async () => {
-                                      if (!url) return;
-                                      try {
-                                        await prepareAttachmentFromUrl("image", url, nameBase);
-                                      } catch (e: any) {
-                                        setProductsNotice("Falha ao preparar anexo: " + (e?.message || "erro"));
-                                        setTimeout(() => setProductsNotice(null), 2500);
-                                      }
-                                    }}
-                                    disabled={!url}
-                                    title="Prepara o anexo para você revisar e enviar no chat"
-                                  >
-                                    Enviar imagem
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                    onClick={() => handleCopyLink(url)}
-                                    disabled={!url}
-                                    title="Copiar link"
-                                  >
-                                    Copiar link
-                                  </button>
-
-                                  <a
-                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                    href={url}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                  >
-                                    Abrir
-                                  </a>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                        {(selectedProduct.images || []).length > 20 ? (
-                          <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiras imagens.</div>
-                        ) : null}
-                      </div>
-                    )
-                  ) : productTab === "DOCUMENTOS" ? (
-                    (selectedProduct.documents || []).length === 0 ? (
-                      <div className="text-xs text-[var(--shell-subtext)]">Sem documentos neste produto.</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {(selectedProduct.documents || [])
-                          .slice()
-                          .sort((a, b) => {
-                            const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                            const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                            return tb - ta;
-                          })
-                          .slice(0, 20)
-                          .map((doc) => {
-                            const url = String(doc.url || "");
-                            const base = safeFileNameBase(doc.title || doc.type || "documento-" + doc.id);
-                            const filename = base + ".pdf";
-
-                            return (
-                              <div key={doc.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
-                                <div className="text-xs font-semibold text-[var(--shell-text)] truncate">{doc.title || doc.type || "Documento"}</div>
-
-                                <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">
-                                  {doc.type ? <span>{doc.type}</span> : null}
-                                  {doc.category ? <span>{" - " + doc.category}</span> : null}
-                                  {doc.visibility ? <span>{" - " + doc.visibility}</span> : null}
-                                </div>
-
-                                <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
-
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                    onClick={() => insertIntoChat(url)}
-                                    disabled={!url}
-                                    title="Insere o link no campo de mensagem"
-                                  >
-                                    Inserir link no chat
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                    onClick={async () => {
-                                      if (!url) return;
-                                      try {
-                                        await prepareAttachmentFromUrl("document", url, base);
-                                      } catch (e: any) {
-                                        setProductsNotice("Falha ao preparar anexo: " + (e?.message || "erro"));
-                                        setTimeout(() => setProductsNotice(null), 2500);
-                                      }
-                                    }}
-                                    disabled={!url}
-                                    title="Prepara o documento para você revisar e enviar no chat"
-                                  >
-                                    Enviar documento
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                    onClick={() => handleCopyLink(url)}
-                                    disabled={!url}
-                                    title="Copiar link"
-                                  >
-                                    Copiar link
-                                  </button>
-
-                                  <a className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" href={url} target="_blank" rel="noreferrer noopener">
-                                    Abrir
-                                  </a>
-
-                                  <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => downloadWithAuth(url, filename)} disabled={!url}>
-                                    Baixar
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                        {(selectedProduct.documents || []).length > 20 ? (
-                          <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiros documentos.</div>
-                        ) : null}
-                      </div>
-                    )
-                  ) : (selectedProduct.videos || []).length === 0 ? (
-                    <div className="text-xs text-[var(--shell-subtext)]">Sem vídeos neste produto.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(selectedProduct.videos || [])
-                        .slice()
-                        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-                        .slice(0, 20)
-                        .map((v) => {
-                          const url = String(v.url || "");
-                          const name = safeFileNameBase(v.title || "video-" + v.id) + ".mp4";
-
+                        {devUnits.filter(u => u.status === "DISPONIVEL").map(u => {
+                          const ALLOWED_GROUPS = ["NEGOCIACOES", "CREDITO_IMOBILIARIO", "NEGOCIO_FECHADO", "POS_VENDA"];
+                          const canProposta = ALLOWED_GROUPS.includes(lead?.stageGroup ?? "");
                           return (
-                            <div key={v.id} className="rounded-lg border bg-[var(--shell-card-bg)] p-2">
-                              <div className="text-xs font-semibold text-[var(--shell-text)] truncate">{v.title || "Vídeo"}</div>
-                              <div className="mt-1 text-[11px] text-[var(--shell-subtext)] break-all">{url}</div>
-
-                              {url ? (
-                                <video controls preload="metadata" className="mt-2 max-h-40 w-full rounded-md border">
-                                  <source src={url} />
-                                </video>
-                              ) : null}
-
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => insertIntoChat(url)} disabled={!url}>
-                                  Inserir link no chat
-                                </button>
-
-                                <button
-                                  type="button"
-                                  className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                                  onClick={async () => {
-                                    if (!url) return;
-                                    try {
-                                      await prepareAttachmentFromUrl("video", url, v.title || "video-" + v.id);
-                                    } catch (e: any) {
-                                      setProductsNotice("Falha ao preparar anexo: " + (e?.message || "erro"));
-                                      setTimeout(() => setProductsNotice(null), 2500);
-                                    }
-                                  }}
-                                  disabled={!url}
-                                >
-                                  Enviar vídeo
-                                </button>
-
-                                <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => handleCopyLink(url)} disabled={!url}>
-                                  Copiar link
-                                </button>
-
-                                <a className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" href={url} target="_blank" rel="noreferrer noopener">
-                                  Abrir
-                                </a>
-
-                                <button type="button" className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]" onClick={() => downloadWithAuth(url, name)} disabled={!url}>
-                                  Baixar
-                                </button>
+                            <div key={u.id} className="flex items-center justify-between gap-3 rounded-lg border bg-[var(--shell-bg)] p-3">
+                              <div className="text-xs">
+                                <div className="font-semibold text-[var(--shell-text)]">{u.nome}</div>
+                                <div className="text-[var(--shell-subtext)] mt-0.5 flex gap-2">
+                                  {u.andar != null && <span>Andar {u.andar}</span>}
+                                  {u.areaM2 != null && <span>{u.areaM2}m²</span>}
+                                  {u.quartos != null && <span>{u.quartos} qts</span>}
+                                  {u.valorVenda != null && <span>R$ {u.valorVenda.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>}
+                                </div>
                               </div>
+                              <button
+                                type="button"
+                                disabled={!canProposta}
+                                title={!canProposta ? "O lead precisa estar em Negociações ou etapa posterior" : "Fazer proposta"}
+                                onClick={() => {
+                                  setPropostaForm({ valor: u.valorVenda ? String(u.valorVenda) : "", pagamento: "FINANCIAMENTO", obs: "" });
+                                  setPropostaModal({ unit: u, devId: selectedDevId });
+                                }}
+                                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                style={{ background: canProposta ? "var(--brand-accent)" : "#9ca3af" }}
+                              >
+                                Proposta
+                              </button>
                             </div>
                           );
                         })}
-
-                      {(selectedProduct.videos || []).length > 20 ? (
-                        <div className="text-[11px] text-[var(--shell-subtext)]">Mostrando 20 primeiros vídeos.</div>
-                      ) : null}
-                    </div>
-                  )}
+                      </div>
+                    )
+                  ) : null}
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -4320,6 +4495,68 @@ function discardAiSuggestion() {
           </div>
         </div>
       )}
+      {/* Modal de Proposta de Unidade */}
+      {propostaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="w-full max-w-md rounded-xl border bg-[var(--shell-card-bg)] p-6 shadow-xl">
+            <h3 className="text-base font-semibold text-[var(--shell-text)] mb-1">Registrar Proposta</h3>
+            <p className="text-xs text-[var(--shell-subtext)] mb-4">{propostaModal.unit.nome}{propostaModal.unit.andar != null ? ` · Andar ${propostaModal.unit.andar}` : ""}{propostaModal.unit.areaM2 != null ? ` · ${propostaModal.unit.areaM2}m²` : ""}</p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-[var(--shell-text)]">Valor proposto (R$)</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg,var(--shell-bg))] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)]"
+                  value={propostaForm.valor}
+                  onChange={(e) => setPropostaForm(f => ({ ...f, valor: e.target.value }))}
+                  placeholder={propostaModal.unit.valorVenda ? `Tabela: R$ ${propostaModal.unit.valorVenda.toLocaleString("pt-BR")}` : "Valor da proposta"}
+                />
+                {propostaModal.unit.valorVenda && (
+                  <div className="mt-0.5 text-[10px] text-[var(--shell-subtext)]">Preço de tabela: R$ {propostaModal.unit.valorVenda.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--shell-text)]">Forma de pagamento</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-3 py-2 text-sm text-[var(--shell-text)]"
+                  value={propostaForm.pagamento}
+                  onChange={(e) => setPropostaForm(f => ({ ...f, pagamento: e.target.value }))}
+                >
+                  <option value="FINANCIAMENTO">Financiamento</option>
+                  <option value="FGTS">FGTS</option>
+                  <option value="A_VISTA">À Vista</option>
+                  <option value="CONSORCIO">Consórcio</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--shell-text)]">Observações</label>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg,var(--shell-bg))] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] resize-none"
+                  rows={3}
+                  value={propostaForm.obs}
+                  onChange={(e) => setPropostaForm(f => ({ ...f, obs: e.target.value }))}
+                  placeholder="Condições especiais, prazo, observações..."
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3 justify-end">
+              <button type="button" onClick={() => setPropostaModal(null)}
+                className="rounded-lg border px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]"
+                style={{ borderColor: "var(--shell-card-border)" }}>
+                Cancelar
+              </button>
+              <button type="button" onClick={confirmarProposta} disabled={propostaSaving}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: "var(--brand-accent)" }}>
+                {propostaSaving ? "Salvando..." : "Confirmar Proposta"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </AppShell>
   );
 }
