@@ -55,6 +55,7 @@ import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unoff
 import { MessagingService } from '../messaging/messaging.service';
 import { LeadDocumentsService } from '../lead-documents/lead-documents.service';
 import { getNextLeadNumber } from './lead-numbering.helper';
+import { resolvePermissions } from '../tenants/permissions.config';
 
 @Injectable()
 export class LeadsService {
@@ -990,7 +991,8 @@ export class LeadsService {
 
     let extraFilter: Record<string, unknown> = {};
     if (role === 'AGENT') {
-      extraFilter = { assignedUserId: id };
+      const canViewAll = await this.agentCanViewPipeline(tenantId);
+      if (!canViewAll) extraFilter = { assignedUserId: id };
     } else if (role === 'MANAGER' && branchId) {
       extraFilter = { branchId };
     }
@@ -1245,19 +1247,26 @@ export class LeadsService {
     };
   }
 
+  private async agentCanViewPipeline(tenantId: string): Promise<boolean> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+    return perms.agent.pipeline?.view ?? false;
+  }
+
   async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
     const { id, tenantId, role, branchId } = user;
 
     let extraFilter: Record<string, unknown> = {};
 
     if (role === 'AGENT') {
-      // AGENT: apenas leads atribuídos a ele
-      extraFilter = { assignedUserId: id };
+      const canViewAll = await this.agentCanViewPipeline(tenantId);
+      if (!canViewAll) extraFilter = { assignedUserId: id };
     } else if (role === 'MANAGER' && branchId) {
-      // MANAGER: todos os leads da filial dele
       extraFilter = { branchId };
     }
-    // OWNER: sem filtro extra — vê todos do tenant
 
     const leads = await this.prisma.lead.findMany({
       where: { tenantId, ...extraFilter, deletedAt: null },
