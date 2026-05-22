@@ -2515,14 +2515,11 @@ function discardAiSuggestion() {
 
                     <div className="min-w-0">
                       <div className="text-xs text-[var(--shell-subtext)]">CPF</div>
-                      {lead.cpf ? (
-                        <div>
-                          <div className="text-[var(--shell-text)] truncate font-mono text-xs">{lead.cpf}</div>
-                          <div className="text-[10px] text-[var(--shell-subtext)] truncate">{lead.nomeCorreto || lead.nome}</div>
-                        </div>
-                      ) : (
-                        <div className="text-[var(--shell-subtext)] italic text-xs">—</div>
-                      )}
+                      <div className="text-sm text-[var(--shell-text)] truncate font-mono">
+                        {lead.cpf
+                          ? lead.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') || lead.cpf
+                          : "—"}
+                      </div>
                     </div>
                   </div>
 

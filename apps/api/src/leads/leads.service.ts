@@ -1162,7 +1162,7 @@ export class LeadsService {
         status: true, stageId: true, assignedUserId: true,
       },
       orderBy: { criadoEm: 'desc' },
-      take: 8,
+      take: 5,
     });
 
     // Enriches recentes com stage name e responsavel
