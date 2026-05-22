@@ -28,6 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { apiLogout } from "@/lib/api";
+import { usePermissions } from "@/lib/permissions";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -67,6 +68,7 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
   const logoSrc = branding?.logoUrl || "/Novo%20modelo%20de%20Logo.png";
   const pathname = usePathname();
   const router = useRouter();
+  const { can } = usePermissions();
 
   const [currentGroup, setCurrentGroup] = useState<string | null>(null);
   const [funnelOpen, setFunnelOpen] = useState<boolean>(false);
@@ -210,7 +212,7 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
         <NavItem href="/dashboard" label="Dashboard" icon={LayoutDashboard} />
         <NavItem href="/meus-leads" label="Meus Leads" icon={User} badge={counts?.mine} />
-        {role !== "AGENT" && (
+        {(role !== "AGENT" || can("pipeline", "view")) && (
           <NavItem href="/pipeline" label="Todos os Leads" icon={Users} badge={counts?.total} />
         )}
 
