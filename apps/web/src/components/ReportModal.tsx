@@ -44,10 +44,10 @@ const FIELD_GROUPS = [
     ],
   },
   {
-    label: "MCMV",
+    label: "Informações Adicionais",
     fields: [
       { key: "codigoOcorrencia", label: "Código de Ocorrência" },
-      { key: "grupoMcmv", label: "Grupo MCMV" },
+      { key: "grupoMcmv", label: "Grupo Social" },
       { key: "faixaRenda", label: "Faixa de Renda" },
       { key: "indicacao", label: "Indicação" },
     ],
