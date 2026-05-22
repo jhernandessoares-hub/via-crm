@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { apiFetch } from "@/lib/api";
 import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
+import { ReportModal } from "@/components/ReportModal";
 
 type PipelineStage = {
   id: string;
@@ -89,6 +90,7 @@ export default function PipelinePage() {
   // paginação configurável
   const [visibleCount, setVisibleCount] = useState(10);
   const [loadMoreN, setLoadMoreN] = useState(10);
+  const [reportOpen, setReportOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -195,10 +197,9 @@ export default function PipelinePage() {
       return [num, displayName(l), l.telefone || l.whatsapp || "—", l.origem || "—", sn,
         l.status || "—", l.perfilImovel || "—", (l.cadastroOrigem as any)?.indicacao || "—",
         l.rendaBrutaFamiliar ? String(l.rendaBrutaFamiliar) : "—",
-      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",");
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";");
     });
-    const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["﻿" + [headers.join(";"), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -218,20 +219,14 @@ export default function PipelinePage() {
         <td>${l.rendaBrutaFamiliar ? formatRenda(l.rendaBrutaFamiliar) : "—"}</td></tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório de Leads</title>
-      <style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}
-      h2{margin-bottom:8px}p{margin-bottom:12px;color:#666}
-      table{width:100%;border-collapse:collapse}
-      th{background:#f0f0f0;text-align:left;padding:5px 8px;border:1px solid #ccc;font-size:10px;text-transform:uppercase}
-      td{padding:4px 8px;border:1px solid #eee}tr:nth-child(even){background:#f9f9f9}
-      @media print{body{margin:0}}</style>
-    </head><body>
-      <h2>Relatório de Leads</h2>
-      <p>${new Date().toLocaleDateString("pt-BR")} · ${filtered.length} leads${activeFilterCount ? ` · ${activeFilterCount} filtro(s) ativo(s)` : ""}</p>
-      <table><thead><tr>
-        <th>Número</th><th>Nome</th><th>Telefone</th><th>Origem</th><th>Etapa</th>
-        <th>Status</th><th>Interesse</th><th>Indicação</th><th>Renda</th>
-      </tr></thead><tbody>${tableRows}</tbody></table>
-    </body></html>`;
+      <style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{margin-bottom:8px}p{margin-bottom:12px;color:#666}
+      table{width:100%;border-collapse:collapse}th{background:#f0f0f0;text-align:left;padding:5px 8px;border:1px solid #ccc;font-size:10px;text-transform:uppercase}
+      td{padding:4px 8px;border:1px solid #eee}tr:nth-child(even){background:#f9f9f9}@media print{body{margin:0}}</style>
+      </head><body><h2>Relatório de Leads</h2>
+      <p>${new Date().toLocaleDateString("pt-BR")} · ${filtered.length} leads</p>
+      <table><thead><tr><th>Número</th><th>Nome</th><th>Telefone</th><th>Origem</th><th>Etapa</th>
+      <th>Status</th><th>Interesse</th><th>Indicação</th><th>Renda</th></tr></thead>
+      <tbody>${tableRows}</tbody></table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
   }
@@ -325,6 +320,9 @@ export default function PipelinePage() {
               </button>
               <button onClick={exportPDF} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>
                 ↓ PDF
+              </button>
+              <button onClick={() => setReportOpen(true)} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}>
+                ↓ Relatório
               </button>
             </div>
           </>
@@ -481,6 +479,12 @@ export default function PipelinePage() {
           })()}
         </div>
       )}
+      <ReportModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        leads={filtered}
+        stages={pipelineStages}
+      />
     </AppShell>
   );
 }
