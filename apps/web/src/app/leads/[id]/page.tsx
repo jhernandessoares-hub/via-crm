@@ -1244,6 +1244,7 @@ export default function LeadDetailChatPage() {
   const lastInboundIdRef = useRef<string | null>(null);
 
   const [qualOpen, setQualOpen] = useState(false);
+  const [leadInfoOpen, setLeadInfoOpen] = useState(true);
   const [origemEditField, setOrigemEditField] = useState<string | null>(null);
   const [origemEditValue, setOrigemEditValue] = useState('');
   const [savingOrigemField, setSavingOrigemField] = useState(false);
@@ -2443,23 +2444,34 @@ function discardAiSuggestion() {
             {/* Lead */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
               <div className="text-sm font-semibold text-[var(--shell-text)] flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2">
-                  <span>Lead</span>
+                <button
+                  className="flex items-center gap-2 text-left flex-1 min-w-0"
+                  onClick={() => setLeadInfoOpen((o) => !o)}
+                >
+                  <span className="shrink-0">Lead</span>
                   {formatLeadNumber(lead?.numero, lead?.reentradaCount ?? 1) && (
-                    <span className="text-[var(--shell-subtext)] font-mono text-sm font-normal">
+                    <span className="text-[var(--shell-subtext)] font-mono text-sm font-normal shrink-0">
                       - {formatLeadNumber(lead?.numero, lead?.reentradaCount ?? 1)}
                     </span>
                   )}
-                </span>
-                <label className="text-xs text-[var(--shell-subtext)] flex items-center gap-2 select-none">
-                  <input type="checkbox" checked={debugOn} onChange={(e) => setDebugOn(e.target.checked)} />
-                  Debug
-                </label>
+                  {!leadInfoOpen && lead && (
+                    <span className="text-[var(--shell-text)] font-normal truncate ml-1">
+                      {lead.nomeCorreto || lead.nome || ""}
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0 text-[var(--shell-subtext)]">{leadInfoOpen ? "▲" : "▼"}</span>
+                </button>
+                {leadInfoOpen && (
+                  <label className="text-xs text-[var(--shell-subtext)] flex items-center gap-2 select-none shrink-0">
+                    <input type="checkbox" checked={debugOn} onChange={(e) => setDebugOn(e.target.checked)} />
+                    Debug
+                  </label>
+                )}
               </div>
 
-              {loadingLead ? (
+              {leadInfoOpen && loadingLead ? (
                 <div className="mt-3 text-sm text-[var(--shell-subtext)]">Carregando...</div>
-              ) : lead ? (
+              ) : leadInfoOpen && lead ? (
                 <div className="mt-3 space-y-2 text-sm">
                   {/* Par 1: Nome da fonte + Nome confirmado */}
                   <div className="grid grid-cols-2 gap-3">
@@ -2506,64 +2518,109 @@ function discardAiSuggestion() {
                     </div>
                   </div>
 
-                  {lead.origem && (
-                    <div>
-                      <div className="text-xs text-[var(--shell-subtext)]">Origem</div>
-                      <div className="text-[var(--shell-text)]">{lead.origem}</div>
-                    </div>
-                  )}
-
-                  {lead.cadastroOrigem && (() => {
-                    const origemFields = [
-                      { key: 'indicacao',         label: 'Indicação' },
-                      { key: 'grupoMcmv',         label: 'Grupo' },
-                      { key: 'faixaRenda',        label: 'Faixa de Renda (SM)' },
-                      { key: 'codigoOcorrencia',  label: 'Ocorrência' },
-                    ] as const;
-                    return origemFields.map(({ key, label }) => {
-                      const val = (lead.cadastroOrigem as any)?.[key] as string | null | undefined;
-                      const isEditing = origemEditField === key;
-                      if (!val && !isEditing) return null;
-                      return (
-                        <div key={key}>
-                          <div className="text-xs text-[var(--shell-subtext)]">{label}</div>
-                          {isEditing ? (
+                  {/* Par 3: Origem + Indicação */}
+                  {(lead.origem || (lead.cadastroOrigem as any)?.indicacao) && (() => {
+                    const indKey = 'indicacao' as const;
+                    const indVal = (lead.cadastroOrigem as any)?.[indKey] as string | null | undefined;
+                    const isEditingInd = origemEditField === indKey;
+                    return (
+                      <div className="grid grid-cols-2 gap-3">
+                        {lead.origem && (
+                          <div className="min-w-0">
+                            <div className="text-xs text-[var(--shell-subtext)]">Origem</div>
+                            <div className="text-[var(--shell-text)] truncate">{lead.origem}</div>
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-xs text-[var(--shell-subtext)]">Indicação</div>
+                          {isEditingInd ? (
                             <div className="flex items-center gap-1 mt-0.5">
                               <input
                                 autoFocus
-                                className="flex-1 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)]"
+                                className="flex-1 min-w-0 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)]"
                                 value={origemEditValue}
                                 onChange={(e) => setOrigemEditValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveOrigemField(key, origemEditValue);
-                                  if (e.key === 'Escape') setOrigemEditField(null);
-                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveOrigemField(indKey, origemEditValue); if (e.key === 'Escape') setOrigemEditField(null); }}
                                 disabled={savingOrigemField}
                               />
-                              <button
-                                className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50"
-                                onClick={() => saveOrigemField(key, origemEditValue)}
-                                disabled={savingOrigemField}
-                              >✓</button>
-                              <button
-                                className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]"
-                                onClick={() => setOrigemEditField(null)}
-                                disabled={savingOrigemField}
-                              >✕</button>
+                              <button className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50" onClick={() => saveOrigemField(indKey, origemEditValue)} disabled={savingOrigemField}>✓</button>
+                              <button className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]" onClick={() => setOrigemEditField(null)} disabled={savingOrigemField}>✕</button>
                             </div>
                           ) : (
-                            <div
-                              className="group flex items-center gap-1 cursor-pointer"
-                              onClick={() => { setOrigemEditField(key); setOrigemEditValue(val ?? ''); }}
-                            >
-                              <span className="text-sm text-[var(--shell-text)]">{val}</span>
-                              <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)]">✏️</span>
+                            <div className="group flex items-center gap-1 cursor-pointer" onClick={() => { setOrigemEditField(indKey); setOrigemEditValue(indVal ?? ''); }}>
+                              <span className="text-sm text-[var(--shell-text)] truncate">{indVal || <span className="italic text-[var(--shell-subtext)]">—</span>}</span>
+                              <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)] shrink-0">✏️</span>
                             </div>
                           )}
                         </div>
-                      );
-                    });
+                      </div>
+                    );
                   })()}
+
+                  {/* Par 4: Grupo + Faixa de Renda */}
+                  {(lead.cadastroOrigem as any)?.grupoMcmv || (lead.cadastroOrigem as any)?.faixaRenda ? (() => {
+                    const grupoKey = 'grupoMcmv' as const;
+                    const faixaKey = 'faixaRenda' as const;
+                    const grupoVal = (lead.cadastroOrigem as any)?.[grupoKey] as string | null | undefined;
+                    const faixaVal = (lead.cadastroOrigem as any)?.[faixaKey] as string | null | undefined;
+                    return (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs text-[var(--shell-subtext)]">Grupo</div>
+                          {origemEditField === grupoKey ? (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <input autoFocus className="flex-1 min-w-0 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)]" value={origemEditValue} onChange={(e) => setOrigemEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveOrigemField(grupoKey, origemEditValue); if (e.key === 'Escape') setOrigemEditField(null); }} disabled={savingOrigemField} />
+                              <button className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50" onClick={() => saveOrigemField(grupoKey, origemEditValue)} disabled={savingOrigemField}>✓</button>
+                              <button className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]" onClick={() => setOrigemEditField(null)} disabled={savingOrigemField}>✕</button>
+                            </div>
+                          ) : (
+                            <div className="group flex items-center gap-1 cursor-pointer" onClick={() => { setOrigemEditField(grupoKey); setOrigemEditValue(grupoVal ?? ''); }}>
+                              <span className="text-sm text-[var(--shell-text)] truncate">{grupoVal || <span className="italic text-[var(--shell-subtext)]">—</span>}</span>
+                              <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)] shrink-0">✏️</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-[var(--shell-subtext)]">Faixa de Renda (SM)</div>
+                          {origemEditField === faixaKey ? (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <input autoFocus className="flex-1 min-w-0 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)]" value={origemEditValue} onChange={(e) => setOrigemEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveOrigemField(faixaKey, origemEditValue); if (e.key === 'Escape') setOrigemEditField(null); }} disabled={savingOrigemField} />
+                              <button className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50" onClick={() => saveOrigemField(faixaKey, origemEditValue)} disabled={savingOrigemField}>✓</button>
+                              <button className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]" onClick={() => setOrigemEditField(null)} disabled={savingOrigemField}>✕</button>
+                            </div>
+                          ) : (
+                            <div className="group flex items-center gap-1 cursor-pointer" onClick={() => { setOrigemEditField(faixaKey); setOrigemEditValue(faixaVal ?? ''); }}>
+                              <span className="text-sm text-[var(--shell-text)] truncate">{faixaVal || <span className="italic text-[var(--shell-subtext)]">—</span>}</span>
+                              <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)] shrink-0">✏️</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })() : null}
+
+                  {/* Ocorrência — linha inteira */}
+                  {(lead.cadastroOrigem as any)?.codigoOcorrencia || origemEditField === 'codigoOcorrencia' ? (() => {
+                    const ocKey = 'codigoOcorrencia' as const;
+                    const ocVal = (lead.cadastroOrigem as any)?.[ocKey] as string | null | undefined;
+                    return (
+                      <div>
+                        <div className="text-xs text-[var(--shell-subtext)]">Ocorrência</div>
+                        {origemEditField === ocKey ? (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <input autoFocus className="flex-1 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)]" value={origemEditValue} onChange={(e) => setOrigemEditValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveOrigemField(ocKey, origemEditValue); if (e.key === 'Escape') setOrigemEditField(null); }} disabled={savingOrigemField} />
+                            <button className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50" onClick={() => saveOrigemField(ocKey, origemEditValue)} disabled={savingOrigemField}>✓</button>
+                            <button className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]" onClick={() => setOrigemEditField(null)} disabled={savingOrigemField}>✕</button>
+                          </div>
+                        ) : (
+                          <div className="group flex items-center gap-1 cursor-pointer" onClick={() => { setOrigemEditField(ocKey); setOrigemEditValue(ocVal ?? ''); }}>
+                            <span className="text-sm text-[var(--shell-text)]">{ocVal}</span>
+                            <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)]">✏️</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })() : null}
 
                   {/* Responsável — select para OWNER/MANAGER */}
                   <div>
@@ -2603,19 +2660,21 @@ function discardAiSuggestion() {
                   </div>
 
                 </div>
-              ) : (
+              ) : leadInfoOpen ? (
                 <div className="mt-3 text-sm text-[var(--shell-subtext)]">Não carregou.</div>
+              ) : null}
+
+              {leadInfoOpen && (
+                <button
+                  className="mt-4 w-full rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
+                  onClick={loadAll}
+                  disabled={loadingLead || loadingEvents}
+                >
+                  Atualizar
+                </button>
               )}
 
-              <button
-                className="mt-4 w-full rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)]"
-                onClick={loadAll}
-                disabled={loadingLead || loadingEvents}
-              >
-                Atualizar
-              </button>
-
-              {user?.role === "OWNER" && lead && (
+              {leadInfoOpen && user?.role === "OWNER" && lead && (
                 <button
                   className="mt-2 w-full rounded-md border border-red-200 bg-[var(--shell-card-bg)] px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                   onClick={async () => {
@@ -2632,11 +2691,11 @@ function discardAiSuggestion() {
                 </button>
               )}
 
-              {err ? (
+              {leadInfoOpen && err ? (
                 <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>
               ) : null}
 
-              {debugOn ? (
+              {leadInfoOpen && debugOn ? (
                 <div className="mt-4 rounded-lg border bg-[var(--shell-bg)] p-3 text-xs text-[var(--shell-text)] space-y-2">
                   <div className="font-semibold text-[var(--shell-text)]">Debug (Front)</div>
 
