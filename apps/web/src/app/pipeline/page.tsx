@@ -483,7 +483,7 @@ export default function PipelinePage() {
         isOpen={reportOpen}
         onClose={() => setReportOpen(false)}
         leads={filtered}
-        stages={pipelineStages}
+        stages={stages}
       />
     </AppShell>
   );
