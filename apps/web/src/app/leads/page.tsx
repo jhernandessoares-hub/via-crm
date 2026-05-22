@@ -174,7 +174,8 @@ export default function LeadsPage() {
       if (activeGroup && !visibleStageIds.has(l.stageId ?? "")) return false;
       if (!qq) return true;
       const indicacao = (l.cadastroOrigem as any)?.indicacao ?? "";
-      return [l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.origem, l.status, l.perfilImovel, l.stageName, indicacao, String(l.rendaBrutaFamiliar ?? ""), l.id]
+      const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "";
+      return [l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.origem, l.status, l.perfilImovel, l.stageName, indicacao, String(l.rendaBrutaFamiliar ?? ""), numero]
         .join(" ").toLowerCase().includes(qq);
     });
   }, [leads, q, activeGroup, visibleStageIds]);
