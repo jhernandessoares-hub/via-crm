@@ -59,7 +59,8 @@ export default function MeusLeadsPage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
-  const [visibleCount, setVisibleCount] = useState(10);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   async function load() {
     setLoading(true);
@@ -92,7 +93,7 @@ export default function MeusLeadsPage() {
     );
   }, [leads, q]);
 
-  useEffect(() => { setVisibleCount(10); }, [leads, q]);
+  useEffect(() => { setPage(1); }, [q, leads]);
 
   const groupedLeads = useMemo(() => {
     const map: Record<string, Lead[]> = {};
@@ -250,64 +251,43 @@ export default function MeusLeadsPage() {
 
           {filtered.length === 0 ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead atribuído a você.</div>
-          ) : (
-            <>
-              {filtered.slice(0, visibleCount).map((l) => {
-                const stageInfo = l.stageId ? stageMap[l.stageId] : null;
-                const stageName = l.stageName ?? stageInfo?.name ?? "—";
-                const groupKey = stageInfo?.group ?? "PRE_ATENDIMENTO";
-                const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-
-                return (
-                  <div
-                    key={l.id}
-                    className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
-                    style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}
-                  >
-                    <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">
-                      {numero || "—"}
+          ) : (() => {
+            const shown = filtered.slice(0, page * PAGE_SIZE);
+            const hasMore = shown.length < filtered.length;
+            return (
+              <>
+                {shown.map((l) => {
+                  const stageInfo = l.stageId ? stageMap[l.stageId] : null;
+                  const stageName = l.stageName ?? stageInfo?.name ?? "—";
+                  const groupKey = stageInfo?.group ?? "PRE_ATENDIMENTO";
+                  const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                  return (
+                    <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 1fr 1fr 0.9fr 1.1fr" }}>
+                      <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
+                      <div className="min-w-0">
+                        <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
+                      </div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
+                      <div className="min-w-0">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE_COLOR[groupKey]} truncate max-w-full`} title={stageName}>{stageName}</span>
+                      </div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.status || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                     </div>
-                    <div className="min-w-0">
-                      <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">
-                        {displayName(l)}
-                      </Link>
-                    </div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate">
-                      {l.telefone || l.whatsapp || "—"}
-                    </div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>
-                      {l.origem || "—"}
-                    </div>
-                    <div className="min-w-0">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE_COLOR[groupKey]} truncate max-w-full`} title={stageName}>
-                        {stageName}
-                      </span>
-                    </div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate">
-                      {l.status || "—"}
-                    </div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>
-                      {l.perfilImovel || "—"}
-                    </div>
-                  </div>
-                );
-              })}
-              {visibleCount < filtered.length && (
-                <div className="flex items-center justify-center gap-3 border-t px-4 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
-                  <span className="text-xs text-[var(--shell-subtext)]">
-                    Exibindo {Math.min(visibleCount, filtered.length)} de {filtered.length}
-                  </span>
-                  <button
-                    className="rounded-lg border px-4 py-1.5 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors"
-                    style={{ borderColor: "var(--shell-card-border)" }}
-                    onClick={() => setVisibleCount((c) => c + 10)}
-                  >
-                    Ver mais 10
-                  </button>
+                  );
+                })}
+                <div className="flex items-center justify-between border-t px-4 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
+                  <span className="text-xs text-[var(--shell-subtext)]">Exibindo {shown.length} de {filtered.length}</span>
+                  {hasMore && (
+                    <button className="rounded-lg border px-4 py-1.5 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)" }} onClick={() => setPage((p) => p + 1)}>
+                      Ver mais 10
+                    </button>
+                  )}
                 </div>
-              )}
-            </>
-          )}
+              </>
+            );
+          })()}
         </div>
       )}
     </AppShell>
