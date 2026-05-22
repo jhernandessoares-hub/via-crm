@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { apiFetch } from "@/lib/api";
 import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
+import { ReportModal } from "@/components/ReportModal";
 
 type PipelineStage = {
   id: string;
@@ -87,6 +88,7 @@ export default function MeusLeadsPage() {
 
   const [visibleCount, setVisibleCount] = useState(10);
   const [loadMoreN, setLoadMoreN] = useState(10);
+  const [reportOpen, setReportOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -294,6 +296,7 @@ export default function MeusLeadsPage() {
             <div className="ml-auto flex items-center gap-2">
               <button onClick={exportCSV} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>↓ Excel</button>
               <button onClick={exportPDF} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>↓ PDF</button>
+              <button onClick={() => setReportOpen(true)} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}>↓ Relatório</button>
             </div>
           </>
         )}
@@ -423,6 +426,12 @@ export default function MeusLeadsPage() {
           })()}
         </div>
       )}
+      <ReportModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        leads={filtered}
+        stages={pipelineStages}
+      />
     </AppShell>
   );
 }
