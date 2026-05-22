@@ -28,7 +28,10 @@ export class DevelopmentsService {
         towers: {
           include: {
             units: {
-              include: { lead: { select: { id: true, nome: true, nomeCorreto: true } } },
+              include: {
+                lead: { select: { id: true, nome: true, nomeCorreto: true } },
+                bloqueioHistory: { orderBy: { createdAt: 'asc' } },
+              },
             },
           },
           orderBy: { nome: 'asc' },
@@ -474,10 +477,10 @@ export class DevelopmentsService {
     return { updated: units.length };
   }
 
-  async updateUnit(tenantId: string, developmentId: string, unitId: string, data: any) {
+  async updateUnit(tenantId: string, developmentId: string, unitId: string, data: any, actor?: { id: string; nome: string }) {
     const unit = await this.prisma.developmentUnit.findFirst({ where: { id: unitId, developmentId, tenantId } });
     if (!unit) throw new NotFoundException('Unidade não encontrada');
-    
+
     const updateData = { ...data };
     if (updateData.areaM2 !== undefined) updateData.areaM2 = updateData.areaM2 != null && updateData.areaM2 !== '' ? Number(updateData.areaM2) : null;
     if (updateData.quartos !== undefined) updateData.quartos = updateData.quartos != null && updateData.quartos !== '' ? Number(updateData.quartos) : null;
@@ -490,15 +493,35 @@ export class DevelopmentsService {
     if (updateData.loteAreaM2 !== undefined) updateData.loteAreaM2 = updateData.loteAreaM2 != null && updateData.loteAreaM2 !== '' ? Number(updateData.loteAreaM2) : null;
     if (updateData.loteFrente !== undefined) updateData.loteFrente = updateData.loteFrente != null && updateData.loteFrente !== '' ? Number(updateData.loteFrente) : null;
     if (updateData.loteFundo !== undefined) updateData.loteFundo = updateData.loteFundo != null && updateData.loteFundo !== '' ? Number(updateData.loteFundo) : null;
-    // leadId é passado como string UUID ou null — sem conversão necessária
     if (updateData.leadId !== undefined) updateData.leadId = updateData.leadId || null;
-    // campos booleanos de UX do espelho
     if (updateData.pne !== undefined) updateData.pne = Boolean(updateData.pne);
     if (updateData.ativo !== undefined) updateData.ativo = Boolean(updateData.ativo);
-    // nunca persistir o objeto lead embutido (apenas o leadId FK)
     delete updateData.lead;
 
-    return this.prisma.developmentUnit.update({ where: { id: unitId }, data: updateData });
+    // Histórico de bloqueio: registra toda transição que envolva BLOQUEADO
+    const newStatus = updateData.status;
+    if (newStatus && newStatus !== unit.status) {
+      if (newStatus === 'BLOQUEADO' || unit.status === 'BLOQUEADO') {
+        await this.prisma.unitBloqueioHistory.create({
+          data: {
+            unitId: unit.id,
+            acao: newStatus === 'BLOQUEADO' ? 'BLOQUEADO' : 'DESBLOQUEADO',
+            motivo: newStatus === 'BLOQUEADO' ? (updateData.bloqueioMotivo ?? null) : null,
+            userName: actor?.nome ?? null,
+            userId: actor?.id ?? null,
+          },
+        });
+      }
+    }
+
+    return this.prisma.developmentUnit.update({
+      where: { id: unitId },
+      data: updateData,
+      include: {
+        lead: { select: { id: true, nome: true, nomeCorreto: true } },
+        bloqueioHistory: { orderBy: { createdAt: 'asc' } },
+      },
+    });
   }
 
   async getPaymentCondition(tenantId: string, developmentId: string) {

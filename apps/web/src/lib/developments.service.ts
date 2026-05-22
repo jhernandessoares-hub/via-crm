@@ -31,6 +31,13 @@ export type DevelopmentUnit = {
   lead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
   pne?: boolean;
   ativo?: boolean;
+  bloqueioHistory?: Array<{
+    id: string;
+    acao: "BLOQUEADO" | "DESBLOQUEADO";
+    motivo?: string | null;
+    userName?: string | null;
+    createdAt: string;
+  }>;
 };
 
 export type FaseConfig = {
