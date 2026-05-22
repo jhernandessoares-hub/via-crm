@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { computeCompleteness, STEP_LABELS, type Completeness } from "@/lib/empreendimento-completeness";
 import AppShell from "@/components/AppShell";
+import { usePermissions } from "@/lib/permissions";
 import {
   getDevelopment, updateDevelopment, createTower, updateTower, deleteTower, duplicateTower,
   bulkCreateUnits, updateUnit, bulkUpdateUnits, bulkUpdateUnitsIndividual,
@@ -80,13 +81,21 @@ function Modal({ open, onClose, title, children, wide }: {
 function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void; onUpdated: (u: DevelopmentUnit) => void; role?: string;
 }) {
+  const { can } = usePermissions();
   const [saving, setSaving] = useState(false);
   const [comprador, setComprador] = useState(unit.comprador ?? "");
   const [finalPrice, setFinalPrice] = useState(String(unit.finalPrice ?? unit.valorVenda ?? ""));
   const [bloqueioMotivo, setBloqueioMotivo] = useState(unit.bloqueioMotivo ?? "");
   const [status, setStatus] = useState<UnitStatus>(unit.status);
 
+  const isAgent = role === "AGENT";
+  const canBlock = role === "OWNER" || (role === "MANAGER" && can("gestao_empreendimentos", "delete"));
+  const hasLinkedLead = !!unit.leadId;
+
   async function changeStatus(newStatus: UnitStatus) {
+    if (newStatus === "BLOQUEADO" && !bloqueioMotivo.trim()) {
+      alert("Informe o motivo do bloqueio antes de continuar."); return;
+    }
     if (newStatus === "VENDIDO" && !confirm(`Confirmar venda da unidade ${unit.nome}?`)) return;
     setSaving(true);
     try {
@@ -102,16 +111,21 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
     } finally { setSaving(false); }
   }
 
-  const isAgent = role === "AGENT";
-  const allActions: { label: string; status: UnitStatus; color: string }[] = [
-    { label: "Disponível", status: "DISPONIVEL" as UnitStatus, color: "bg-green-500 hover:bg-green-600" },
-    { label: "Reservar",   status: "RESERVADO"  as UnitStatus, color: "bg-amber-400 hover:bg-amber-500" },
-    ...(!isAgent ? [
-      { label: "Vender",   status: "VENDIDO"   as UnitStatus, color: "bg-red-500 hover:bg-red-600" },
-      { label: "Bloquear", status: "BLOQUEADO" as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" },
-    ] : []),
+  type ActionDef = { label: string; status: UnitStatus; color: string; disabled?: boolean; disabledReason?: string };
+  const allActions: ActionDef[] = [
+    { label: "Disponível", status: "DISPONIVEL", color: "bg-green-500 hover:bg-green-600" },
+    {
+      label: "Reservar",
+      status: "RESERVADO",
+      color: "bg-amber-400 hover:bg-amber-500",
+      disabled: !hasLinkedLead,
+      disabledReason: "Vincule um lead no popup de detalhes primeiro",
+    },
+    ...(!isAgent ? [{ label: "Vender", status: "VENDIDO" as UnitStatus, color: "bg-red-500 hover:bg-red-600" }] : []),
+    ...(canBlock ? [{ label: "Bloquear", status: "BLOQUEADO" as UnitStatus, color: "bg-gray-400 hover:bg-gray-500" }] : []),
   ];
-  // AGENT só pode transitar entre DISPONIVEL e RESERVADO
+
+  // Remove a ação correspondente ao status atual; AGENT só transita entre DISPONIVEL↔RESERVADO
   const actions = allActions.filter((a) => {
     if (a.status === status) return false;
     if (isAgent && status !== "DISPONIVEL" && status !== "RESERVADO") return false;
@@ -122,40 +136,43 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
     <Modal open title={`Unidade — ${unit.nome}`} onClose={onClose}>
       <div className="space-y-4">
         {/* Status atual */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-white ${STATUS_BG[status]}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
             {STATUS_LABEL[status]}
           </span>
+          {unit.pne && (
+            <span className="inline-flex items-center rounded-full bg-purple-600 px-2.5 py-0.5 text-[10px] font-bold text-white">PNE</span>
+          )}
         </div>
 
         {/* Dados da unidade */}
         <div className="grid grid-cols-2 gap-3 text-sm">
-          {unit.andar && (
+          {unit.andar != null && (
             <div>
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Andar</p>
               <p className="font-semibold text-[var(--shell-text)]">{unit.andar}º</p>
             </div>
           )}
-          {unit.areaM2 && (
+          {unit.areaM2 != null && (
             <div>
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área</p>
               <p className="font-semibold text-[var(--shell-text)]">{unit.areaM2} m²</p>
             </div>
           )}
-          {unit.quartos && (
+          {unit.quartos != null && (
             <div>
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Quartos</p>
               <p className="font-semibold text-[var(--shell-text)]">{unit.quartos}</p>
             </div>
           )}
-          {unit.vagas && (
+          {unit.vagas != null && (
             <div>
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Vagas</p>
               <p className="font-semibold text-[var(--shell-text)]">{unit.vagas}</p>
             </div>
           )}
-          {unit.valorVenda && (
+          {unit.valorVenda != null && (
             <div>
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Valor</p>
               <p className="font-semibold text-[var(--brand-accent)]">{fmt(unit.valorVenda)}</p>
@@ -167,7 +184,7 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
               <p className="font-semibold text-[var(--shell-text)]">{unit.loteNum}</p>
             </div>
           )}
-          {unit.loteAreaM2 && (
+          {unit.loteAreaM2 != null && (
             <div>
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área do lote</p>
               <p className="font-semibold text-[var(--shell-text)]">{unit.loteAreaM2} m²</p>
@@ -176,7 +193,7 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
         </div>
 
         {/* Comprador / Preço final (para reserva/venda) */}
-        {(status === "RESERVADO" || status === "VENDIDO" || actions.find(a => a.status === "RESERVADO" || a.status === "VENDIDO")) && (
+        {(status === "RESERVADO" || status === "VENDIDO" || actions.some(a => a.status === "RESERVADO" || a.status === "VENDIDO")) && (
           <div className="space-y-3 pt-2 border-t border-[var(--shell-card-border)]">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Comprador / Interessado</label>
@@ -186,22 +203,32 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
               <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Valor negociado (R$)</label>
               <input type="number" value={finalPrice} onChange={(e) => setFinalPrice(e.target.value)} placeholder={String(unit.valorVenda ?? "")} className={inp} />
             </div>
-            {(status === "BLOQUEADO" || actions.find(a => a.status === "BLOQUEADO")) && (
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Motivo do bloqueio</label>
-                <input value={bloqueioMotivo} onChange={(e) => setBloqueioMotivo(e.target.value)} placeholder="Ex: Pendência documental" className={inp} />
-              </div>
-            )}
+          </div>
+        )}
+
+        {/* Motivo do bloqueio — visível apenas se canBlock e ação Bloquear disponível */}
+        {canBlock && (status === "BLOQUEADO" || actions.some(a => a.status === "BLOQUEADO")) && (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Motivo do bloqueio *</label>
+            <input value={bloqueioMotivo} onChange={(e) => setBloqueioMotivo(e.target.value)} placeholder="Ex: Pendência documental" className={inp} />
           </div>
         )}
 
         {/* Botões de ação */}
         <div className="flex flex-wrap gap-2 pt-2">
           {actions.map((a) => (
-            <button key={a.status} type="button" disabled={saving} onClick={() => changeStatus(a.status)}
-              className={`rounded-lg px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${a.color}`}>
-              {saving ? "..." : a.label}
-            </button>
+            <div key={a.status} className="flex flex-col gap-0.5">
+              <button type="button"
+                disabled={saving || !!a.disabled}
+                onClick={() => changeStatus(a.status)}
+                title={a.disabled ? a.disabledReason : undefined}
+                className={`rounded-lg px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${a.color}`}>
+                {saving ? "..." : a.label}
+              </button>
+              {a.disabled && a.disabledReason && (
+                <p className="text-[10px] text-[var(--shell-subtext)] px-1">{a.disabledReason}</p>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -219,6 +246,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState(unit);
+  const [view, setView] = useState<"unit" | "lead">("unit");
   const [showSearch, setShowSearch] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -252,21 +280,68 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   const buyerName = current.lead?.nomeCorreto ?? current.lead?.nome ?? current.comprador;
   const canLink = current.status === "VENDIDO" || current.status === "RESERVADO";
 
+  // ── Sub-view: detalhes do lead ───────────────────────────────────────────────
+  if (view === "lead" && current.leadId) {
+    return (
+      <Modal open title="Lead vinculado" onClose={onClose}>
+        <div className="space-y-4">
+          <button type="button" onClick={() => setView("unit")}
+            className="flex items-center gap-1.5 text-xs text-[var(--brand-accent)] hover:underline">
+            ← Voltar para a unidade
+          </button>
+          <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-bg)] p-4 space-y-2">
+            <p className="text-sm font-bold text-[var(--shell-text)]">
+              {current.lead?.nomeCorreto ?? current.lead?.nome ?? "—"}
+            </p>
+            {(current.lead as any)?.telefone && (
+              <p className="text-xs text-[var(--shell-subtext)]">{(current.lead as any).telefone}</p>
+            )}
+            {(current.lead as any)?.email && (
+              <p className="text-xs text-[var(--shell-subtext)]">{(current.lead as any).email}</p>
+            )}
+            {(current.lead as any)?.stage && (
+              <p className="text-xs text-[var(--shell-subtext)]">Etapa: {(current.lead as any).stage}</p>
+            )}
+          </div>
+          <button type="button"
+            onClick={() => { onClose(); startTransition(() => router.push(`/leads/${current.leadId}`)); }}
+            className="w-full rounded-lg bg-[var(--brand-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+            Abrir lead completo →
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── View principal: dados da unidade ────────────────────────────────────────
   return (
     <Modal open title={current.nome} onClose={onClose}>
       <div className="space-y-4">
-        {/* Status badge */}
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-white ${STATUS_BG[current.status]}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
-          {STATUS_LABEL[current.status]}
-        </span>
+        {/* Status badge + PNE */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-white ${STATUS_BG[current.status]}`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+            {STATUS_LABEL[current.status]}
+          </span>
+          {current.pne && (
+            <span className="inline-flex items-center rounded-full bg-purple-600 px-2.5 py-0.5 text-[10px] font-bold text-white">
+              PNE
+            </span>
+          )}
+        </div>
 
-        {/* Dados */}
+        {/* Dados da unidade */}
         <div className="grid grid-cols-2 gap-3 text-sm">
+          {current.andar != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Andar</p><p className="font-semibold text-[var(--shell-text)]">{current.andar}º</p></div>}
           {current.areaM2 != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área</p><p className="font-semibold text-[var(--shell-text)]">{current.areaM2} m²</p></div>}
           {current.quartos != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Quartos</p><p className="font-semibold text-[var(--shell-text)]">{current.quartos}</p></div>}
           {current.suites != null && current.suites > 0 && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Suítes</p><p className="font-semibold text-[var(--shell-text)]">{current.suites}</p></div>}
+          {current.banheiros != null && current.banheiros > 0 && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Banheiros</p><p className="font-semibold text-[var(--shell-text)]">{current.banheiros}</p></div>}
           {current.vagas != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Vagas</p><p className="font-semibold text-[var(--shell-text)]">{current.vagas}</p></div>}
+          {current.loteNum && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Lote</p><p className="font-semibold text-[var(--shell-text)]">{current.loteNum}</p></div>}
+          {current.loteAreaM2 != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Área do lote</p><p className="font-semibold text-[var(--shell-text)]">{current.loteAreaM2} m²</p></div>}
+          {current.loteFrente != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Frente</p><p className="font-semibold text-[var(--shell-text)]">{current.loteFrente} m</p></div>}
+          {current.loteFundo != null && <div><p className="text-xs text-[var(--shell-subtext)] mb-0.5">Fundo</p><p className="font-semibold text-[var(--shell-text)]">{current.loteFundo} m</p></div>}
           {(current.finalPrice ?? current.valorVenda) != null && (
             <div className="col-span-2">
               <p className="text-xs text-[var(--shell-subtext)] mb-0.5">{current.finalPrice ? "Valor negociado" : "Valor de venda"}</p>
@@ -351,8 +426,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
             Detalhes da Unidade
           </button>
           {current.leadId && (
-            <button type="button"
-              onClick={() => { onClose(); startTransition(() => router.push(`/leads/${current.leadId}`)); }}
+            <button type="button" onClick={() => setView("lead")}
               className="flex-1 rounded-lg bg-[var(--brand-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
               Ver Lead →
             </button>
@@ -832,19 +906,6 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
     finally { setExporting(false); }
   }
 
-  async function handleUnitCycle(unit: DevelopmentUnit) {
-    let patch: Record<string, unknown>;
-    if (unit.ativo === false) {
-      patch = { ativo: true, pne: false };
-    } else if (!unit.pne) {
-      patch = { pne: true };
-    } else {
-      patch = { ativo: false, pne: false };
-    }
-    const updated = await updateUnit(dev.id, unit.id, patch);
-    onUnitUpdated(unit.towerId, updated);
-  }
-
   async function exportPDF() {
     setExporting(true);
     try {
@@ -915,7 +976,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
                 tower={tower}
                 devId={dev.id}
                 filters={filters}
-                onUnitClick={handleUnitCycle}
+                onUnitClick={(u) => setDetailsUnit(u)}
                 onUnitPopup={setDetailsUnit}
               />
             ) : (
@@ -923,7 +984,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
                 tower={tower}
                 devId={dev.id}
                 filters={filters}
-                onUnitClick={handleUnitCycle}
+                onUnitClick={(u) => setDetailsUnit(u)}
                 onUnitPopup={setDetailsUnit}
                 isLoteamento={isLoteamento}
               />

@@ -94,6 +94,14 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
       { key: 'delete', label: 'Excluir' },
     ],
   },
+  {
+    key: 'gestao_empreendimentos',
+    label: 'Gestão de Empreendimentos',
+    actions: [
+      { key: 'edit',   label: 'Editar unidades' },
+      { key: 'delete', label: 'Bloquear unidades' },
+    ],
+  },
 ];
 
 /** Permissões padrão quando o tenant não tem config salva. */
@@ -108,6 +116,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     settings:      { view: false, edit: false },
     pipeline:      { view: true  },
     knowledgeBase: { view: true,  create: true,  edit: true,  delete: true  },
+    gestao_empreendimentos: { edit: true, delete: false },
   },
   agent: {
     leads:         { view: true,  create: true,  edit: true,  delete: false },
@@ -119,6 +128,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     settings:      { view: false, edit: false },
     pipeline:      { view: true  },
     knowledgeBase: { view: true,  create: false, edit: false, delete: false },
+    gestao_empreendimentos: { edit: false, delete: false },
   },
 };
 
