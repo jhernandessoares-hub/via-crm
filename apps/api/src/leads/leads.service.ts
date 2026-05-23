@@ -1271,6 +1271,19 @@ export class LeadsService {
     const leads = await this.prisma.lead.findMany({
       where: { tenantId, ...extraFilter, deletedAt: null },
       orderBy: { criadoEm: 'desc' },
+      include: {
+        developmentUnits: {
+          select: {
+            id: true,
+            nome: true,
+            status: true,
+            finalPrice: true,
+            propostaPagamento: true,
+            soldAt: true,
+            development: { select: { nome: true } },
+          },
+        },
+      },
     });
 
     return this.attachLastInboundPreview(tenantId, leads);

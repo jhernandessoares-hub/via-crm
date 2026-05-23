@@ -52,6 +52,15 @@ const FIELD_GROUPS = [
       { key: "indicacao", label: "Indicação" },
     ],
   },
+  {
+    label: "Empreendimento / Unidade",
+    fields: [
+      { key: "unidadeEmpreendimento", label: "Empreendimento" },
+      { key: "unidadeNome", label: "Unidade" },
+      { key: "unidadeStatus", label: "Status da Unidade" },
+      { key: "unidadeValor", label: "Valor Final" },
+    ],
+  },
 ];
 
 const ALL_FIELDS = FIELD_GROUPS.flatMap((g) => g.fields);
@@ -98,6 +107,29 @@ function getValue(lead: any, key: string, stages?: { id: string; name: string }[
       return (lead.cadastroOrigem as any)?.faixaRenda || "";
     case "indicacao":
       return (lead.cadastroOrigem as any)?.indicacao || "";
+    case "unidadeEmpreendimento": {
+      const units: any[] = lead.developmentUnits || [];
+      return units.map((u: any) => u.development?.nome).filter(Boolean).join("; ");
+    }
+    case "unidadeNome": {
+      const units: any[] = lead.developmentUnits || [];
+      return units.map((u: any) => u.nome).join("; ");
+    }
+    case "unidadeStatus": {
+      const STATUS: Record<string, string> = {
+        DISPONIVEL: "Disponível", PROPOSTA: "Proposta",
+        RESERVADO: "Reservado", VENDIDO: "Vendido", BLOQUEADO: "Bloqueado",
+      };
+      const units: any[] = lead.developmentUnits || [];
+      return units.map((u: any) => STATUS[u.status] || u.status).join("; ");
+    }
+    case "unidadeValor": {
+      const units: any[] = lead.developmentUnits || [];
+      return units
+        .filter((u: any) => u.finalPrice)
+        .map((u: any) => `R$ ${Number(u.finalPrice).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`)
+        .join("; ");
+    }
     default:
       return lead[key] || "";
   }
