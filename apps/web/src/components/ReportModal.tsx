@@ -113,7 +113,7 @@ function getValue(lead: any, key: string, stages?: { id: string; name: string }[
     }
     case "unidadeNome": {
       const units: any[] = lead.developmentUnits || [];
-      return units.map((u: any) => u.nome).join("; ");
+      return units.map((u: any) => [u.tower?.nome, u.nome].filter(Boolean).join(" · ")).join("; ");
     }
     case "unidadeStatus": {
       const STATUS: Record<string, string> = {
