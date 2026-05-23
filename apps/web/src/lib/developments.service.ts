@@ -2,6 +2,20 @@ import { apiFetch } from "./api";
 
 export type UnitStatus = "DISPONIVEL" | "PROPOSTA" | "RESERVADO" | "VENDIDO" | "BLOQUEADO";
 
+export type UnitReservaHistory = {
+  id: string;
+  leadId?: string | null;
+  leadNome?: string | null;
+  statusAnterior: string;
+  finalPrice?: number | null;
+  propostaPagamento?: string | null;
+  propostaObs?: string | null;
+  comprador?: string | null;
+  soldAt?: string | null;
+  desvinculadoPor?: string | null;
+  createdAt: string;
+};
+
 export type DevelopmentUnit = {
   id: string;
   towerId: string;
@@ -40,6 +54,7 @@ export type DevelopmentUnit = {
     userName?: string | null;
     createdAt: string;
   }>;
+  reservaHistory?: UnitReservaHistory[];
 };
 
 export type FaseConfig = {
@@ -245,6 +260,10 @@ export async function bulkUpdateUnitsIndividual(devId: string, units: Array<{ id
 
 export async function updateUnit(devId: string, unitId: string, body: Partial<DevelopmentUnit>): Promise<DevelopmentUnit> {
   return apiFetch(`/developments/${devId}/units/${unitId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function unlinkUnit(devId: string, unitId: string): Promise<DevelopmentUnit> {
+  return apiFetch(`/developments/${devId}/units/${unitId}/unlink`, { method: "PATCH" });
 }
 
 export async function getDashboard(devId: string): Promise<Dashboard> {

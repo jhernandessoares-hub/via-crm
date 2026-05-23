@@ -31,6 +31,7 @@ export class DevelopmentsService {
               include: {
                 lead: { select: { id: true, nome: true, nomeCorreto: true } },
                 bloqueioHistory: { orderBy: { createdAt: 'asc' } },
+                reservaHistory: { orderBy: { createdAt: 'asc' } },
               },
             },
           },
@@ -560,6 +561,51 @@ export class DevelopmentsService {
       include: {
         lead: { select: { id: true, nome: true, nomeCorreto: true } },
         bloqueioHistory: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+  }
+
+  async unlinkUnit(tenantId: string, developmentId: string, unitId: string, actor?: { id: string; nome: string }) {
+    const unit = await this.prisma.developmentUnit.findFirst({
+      where: { id: unitId, developmentId, tenantId },
+      include: { lead: { select: { id: true, nome: true, nomeCorreto: true } } },
+    });
+    if (!unit) throw new NotFoundException('Unidade não encontrada');
+
+    // Guarda histórico antes de limpar
+    if (['PROPOSTA', 'RESERVADO', 'VENDIDO'].includes(unit.status)) {
+      await this.prisma.unitReservaHistory.create({
+        data: {
+          unitId: unit.id,
+          leadId: unit.leadId ?? null,
+          leadNome: unit.lead ? (unit.lead.nomeCorreto ?? unit.lead.nome) : null,
+          statusAnterior: unit.status,
+          finalPrice: unit.finalPrice ?? null,
+          propostaPagamento: unit.propostaPagamento ?? null,
+          propostaObs: unit.propostaObs ?? null,
+          comprador: unit.comprador ?? null,
+          soldAt: unit.soldAt ?? null,
+          desvinculadoPor: actor?.nome ?? null,
+        },
+      });
+    }
+
+    // Volta para DISPONIVEL limpando campos de proposta
+    return this.prisma.developmentUnit.update({
+      where: { id: unitId },
+      data: {
+        status: 'DISPONIVEL',
+        leadId: null,
+        finalPrice: null,
+        propostaPagamento: null,
+        propostaObs: null,
+        comprador: null,
+        soldAt: null,
+      },
+      include: {
+        lead: { select: { id: true, nome: true, nomeCorreto: true } },
+        bloqueioHistory: { orderBy: { createdAt: 'asc' } },
+        reservaHistory: { orderBy: { createdAt: 'asc' } },
       },
     });
   }

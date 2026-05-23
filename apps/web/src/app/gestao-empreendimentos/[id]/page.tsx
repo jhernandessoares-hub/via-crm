@@ -294,6 +294,26 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
             </div>
           </div>
         )}
+        {/* Histórico de reservas */}
+        {unit.reservaHistory && unit.reservaHistory.length > 0 && (
+          <div className="pt-3 border-t border-[var(--shell-card-border)]">
+            <p className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wider mb-2">Histórico de reservas</p>
+            <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              {unit.reservaHistory.map((h) => (
+                <div key={h.id} className="flex items-start gap-2 text-xs">
+                  <span className="mt-0.5 flex-shrink-0 rounded-full w-2 h-2 bg-amber-400" />
+                  <div>
+                    <span className="font-semibold text-[var(--shell-text)]">{h.statusAnterior}</span>
+                    {h.leadNome && <span className="text-[var(--shell-subtext)]"> — {h.leadNome}</span>}
+                    {h.finalPrice && <span className="text-[var(--shell-subtext)]"> · R$ {h.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}</span>}
+                    {h.desvinculadoPor && <span className="text-[var(--shell-subtext)]"> · desvinculado por {h.desvinculadoPor}</span>}
+                    <span className="text-[var(--shell-subtext)]"> · {new Date(h.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );
