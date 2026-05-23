@@ -44,6 +44,7 @@ type DevUnit = {
   propostaPagamento?: string | null;
   propostaObs?: string | null;
   comprador?: string | null;
+  soldAt?: string | null;
   leadId?: string | null;
   developmentId?: string;
   development?: { id: string; nome: string };
@@ -3253,7 +3254,7 @@ function discardAiSuggestion() {
                       color: prodTab === t ? "var(--shell-text)" : "var(--shell-subtext)",
                       fontWeight: prodTab === t ? 600 : 400,
                     }}>
-                    {t === "catalogo" ? "Catálogo" : "Empreendimentos"}
+                    {t === "catalogo" ? "Catálogo de Produtos" : "Gestão de Empreendimento"}
                   </button>
                 ))}
               </div>
@@ -3599,74 +3600,74 @@ function discardAiSuggestion() {
                 </div>
               )}
 
-              {/* Aba Empreendimentos */}
+              {/* Aba Gestão de Empreendimento */}
               {prodTab === "empreendimentos" && (
                 <div className="mt-3 space-y-3">
-                  {/* Proposta ativa do lead */}
-                  {(lead?.developmentUnits ?? []).filter(u => u.status === "PROPOSTA").map(u => (
-                    <div key={u.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-white">PROPOSTA ATIVA</span>
-                        <span className="font-semibold text-amber-900">{u.development?.nome}</span>
-                        <span className="text-amber-700">— {u.nome}</span>
-                      </div>
-                      {u.finalPrice && <div className="mt-1 text-amber-800">Valor proposto: R$ {u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>}
-                      {u.propostaPagamento && <div className="text-amber-700">Pagamento: {u.propostaPagamento.replace("_", " ")}</div>}
-                      {u.propostaObs && <div className="text-amber-700">Obs: {u.propostaObs}</div>}
-                    </div>
-                  ))}
-
-                  {/* Dropdown de empreendimento */}
-                  <select
-                    className="w-full rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
-                    value={selectedDevId}
-                    onChange={(e) => { setSelectedDevId(e.target.value); loadDevUnits(e.target.value); }}
-                  >
-                    <option value="">(Selecione um empreendimento)</option>
-                    {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-                  </select>
-
-                  {/* Lista de unidades DISPONIVEL */}
-                  {devUnitsLoading ? (
-                    <div className="text-xs text-[var(--shell-subtext)]">Carregando unidades...</div>
-                  ) : selectedDevId ? (
-                    devUnits.filter(u => u.status === "DISPONIVEL").length === 0 ? (
-                      <div className="text-xs text-[var(--shell-subtext)]">Nenhuma unidade disponível neste empreendimento.</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {devUnits.filter(u => u.status === "DISPONIVEL").map(u => {
-                          const ALLOWED_GROUPS = ["NEGOCIACOES", "CREDITO_IMOBILIARIO", "NEGOCIO_FECHADO", "POS_VENDA"];
-                          const canProposta = ALLOWED_GROUPS.includes(lead?.stageGroup ?? "");
-                          return (
-                            <div key={u.id} className="flex items-center justify-between gap-3 rounded-lg border bg-[var(--shell-bg)] p-3">
-                              <div className="text-xs">
-                                <div className="font-semibold text-[var(--shell-text)]">{u.nome}</div>
-                                <div className="text-[var(--shell-subtext)] mt-0.5 flex gap-2">
-                                  {u.andar != null && <span>Andar {u.andar}</span>}
-                                  {u.areaM2 != null && <span>{u.areaM2}m²</span>}
-                                  {u.quartos != null && <span>{u.quartos} qts</span>}
-                                  {u.valorVenda != null && <span>R$ {u.valorVenda.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>}
-                                </div>
+                  {/* Unidades vinculadas ao lead (todos os status) */}
+                  {(lead?.developmentUnits ?? []).length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Vinculado a este lead</div>
+                      {(lead?.developmentUnits ?? []).map(u => {
+                        const statusMap: Record<string, { border: string; bg: string; badge: string; label: string }> = {
+                          PROPOSTA:  { border: "border-orange-200", bg: "bg-orange-50",  badge: "bg-orange-500",  label: "Proposta" },
+                          RESERVADO: { border: "border-amber-200",  bg: "bg-amber-50",   badge: "bg-amber-400",   label: "Reservado" },
+                          VENDIDO:   { border: "border-red-200",    bg: "bg-red-50",     badge: "bg-red-500",     label: "Vendido" },
+                          BLOQUEADO: { border: "border-gray-200",   bg: "bg-gray-50",    badge: "bg-gray-400",    label: "Bloqueado" },
+                          DISPONIVEL:{ border: "border-green-200",  bg: "bg-green-50",   badge: "bg-green-500",   label: "Disponível" },
+                        };
+                        const s = statusMap[u.status] ?? statusMap.DISPONIVEL;
+                        return (
+                          <div key={u.id} className={`rounded-lg border ${s.border} ${s.bg} p-3 text-xs`}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
+                              <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
+                              <span className="text-[var(--shell-subtext)]">— {u.nome}</span>
+                            </div>
+                            {u.finalPrice && (
+                              <div className="mt-1 text-[var(--shell-text)]">
+                                Valor: R$ {u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                               </div>
+                            )}
+                            {u.propostaPagamento && <div className="text-[var(--shell-subtext)]">Pagamento: {u.propostaPagamento.replace(/_/g, " ")}</div>}
+                            {u.propostaObs && <div className="text-[var(--shell-subtext)]">Obs: {u.propostaObs}</div>}
+                            {u.soldAt && <div className="text-[var(--shell-subtext)]">Vendido em: {new Date(u.soldAt).toLocaleDateString("pt-BR")}</div>}
+                            {u.development?.id && (
                               <button
                                 type="button"
-                                disabled={!canProposta}
-                                title={!canProposta ? "O lead precisa estar em Negociações ou etapa posterior" : "Fazer proposta"}
-                                onClick={() => {
-                                  setPropostaForm({ valor: u.valorVenda ? String(u.valorVenda) : "", pagamento: "FINANCIAMENTO", obs: "" });
-                                  setPropostaModal({ unit: u, devId: selectedDevId });
-                                }}
-                                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                style={{ background: canProposta ? "var(--brand-accent)" : "#9ca3af" }}
+                                onClick={() => window.open(`/gestao-empreendimentos/${u.development!.id}?tab=espelho`, "_blank")}
+                                className="mt-2 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
+                                style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
                               >
-                                Proposta
+                                Ver no espelho →
                               </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )
-                  ) : null}
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Selecionar empreendimento e abrir espelho */}
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Abrir espelho de vendas</div>
+                  <div className="flex gap-2">
+                    <select
+                      className="flex-1 rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
+                      value={selectedDevId}
+                      onChange={(e) => setSelectedDevId(e.target.value)}
+                    >
+                      <option value="">(Selecione um empreendimento)</option>
+                      {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!selectedDevId}
+                      onClick={() => window.open(`/gestao-empreendimentos/${selectedDevId}?tab=espelho`, "_blank")}
+                      className="rounded-md px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: "var(--brand-accent)" }}
+                    >
+                      Abrir Espelho
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -4490,67 +4491,6 @@ function discardAiSuggestion() {
                 disabled={savingNomeConfirmado}
               >
                 {savingNomeConfirmado ? "Salvando..." : "Confirmar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Modal de Proposta de Unidade */}
-      {propostaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
-          <div className="w-full max-w-md rounded-xl border bg-[var(--shell-card-bg)] p-6 shadow-xl">
-            <h3 className="text-base font-semibold text-[var(--shell-text)] mb-1">Registrar Proposta</h3>
-            <p className="text-xs text-[var(--shell-subtext)] mb-4">{propostaModal.unit.nome}{propostaModal.unit.andar != null ? ` · Andar ${propostaModal.unit.andar}` : ""}{propostaModal.unit.areaM2 != null ? ` · ${propostaModal.unit.areaM2}m²` : ""}</p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-[var(--shell-text)]">Valor proposto (R$)</label>
-                <input
-                  type="text"
-                  className="mt-1 w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg,var(--shell-bg))] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)]"
-                  value={propostaForm.valor}
-                  onChange={(e) => setPropostaForm(f => ({ ...f, valor: e.target.value }))}
-                  placeholder={propostaModal.unit.valorVenda ? `Tabela: R$ ${propostaModal.unit.valorVenda.toLocaleString("pt-BR")}` : "Valor da proposta"}
-                />
-                {propostaModal.unit.valorVenda && (
-                  <div className="mt-0.5 text-[10px] text-[var(--shell-subtext)]">Preço de tabela: R$ {propostaModal.unit.valorVenda.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
-                )}
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--shell-text)]">Forma de pagamento</label>
-                <select
-                  className="mt-1 w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-3 py-2 text-sm text-[var(--shell-text)]"
-                  value={propostaForm.pagamento}
-                  onChange={(e) => setPropostaForm(f => ({ ...f, pagamento: e.target.value }))}
-                >
-                  <option value="FINANCIAMENTO">Financiamento</option>
-                  <option value="FGTS">FGTS</option>
-                  <option value="A_VISTA">À Vista</option>
-                  <option value="CONSORCIO">Consórcio</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--shell-text)]">Observações</label>
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg,var(--shell-bg))] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] resize-none"
-                  rows={3}
-                  value={propostaForm.obs}
-                  onChange={(e) => setPropostaForm(f => ({ ...f, obs: e.target.value }))}
-                  placeholder="Condições especiais, prazo, observações..."
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 flex gap-3 justify-end">
-              <button type="button" onClick={() => setPropostaModal(null)}
-                className="rounded-lg border px-4 py-2 text-sm font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]"
-                style={{ borderColor: "var(--shell-card-border)" }}>
-                Cancelar
-              </button>
-              <button type="button" onClick={confirmarProposta} disabled={propostaSaving}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                style={{ background: "var(--brand-accent)" }}>
-                {propostaSaving ? "Salvando..." : "Confirmar Proposta"}
               </button>
             </div>
           </div>
