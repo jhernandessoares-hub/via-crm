@@ -1281,6 +1281,7 @@ export class LeadsService {
             propostaPagamento: true,
             soldAt: true,
             development: { select: { nome: true } },
+            tower: { select: { nome: true } },
           },
         },
       },
@@ -1396,6 +1397,7 @@ async getById(user: any, id: string) {
       comprador: true,
       soldAt: true,
       development: { select: { id: true, nome: true } },
+      tower: { select: { nome: true } },
     },
   });
 

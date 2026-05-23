@@ -48,6 +48,7 @@ type DevUnit = {
   leadId?: string | null;
   developmentId?: string;
   development?: { id: string; nome: string };
+  tower?: { nome: string } | null;
 };
 
 type Development = {
@@ -3014,6 +3015,7 @@ function discardAiSuggestion() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
                           <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
+                          {u.tower?.nome && <span className="text-[var(--shell-subtext)]">· {u.tower.nome}</span>}
                           <span className="text-[var(--shell-subtext)]">— {u.nome}</span>
                         </div>
                         {u.finalPrice && (
