@@ -56,6 +56,16 @@ type Development = {
   nome: string;
 };
 
+type WaSession = {
+  id: string;
+  nome: string;
+  status: string;
+  phoneNumber: string | null;
+  pushName: string | null;
+};
+
+type CanalOut = { type: "light"; sessionId: string } | { type: "oficial" };
+
 type Lead = {
   id: string;
   numero?: number | null;
@@ -73,6 +83,8 @@ type Lead = {
   avatarUrl?: string | null;
   stageGroup?: string | null;
   developmentUnits?: DevUnit[];
+  conversaCanal?: string | null;
+  conversaSessionId?: string | null;
   // Qualificação IA
   nomeCorreto?: string | null;
   nomeCorretoOrigem?: string | null; // "IA" | "MANUAL"
@@ -1263,6 +1275,9 @@ export default function LeadDetailChatPage() {
 
   const [prodTab, setProdTab] = useState<"catalogo" | "empreendimentos">("catalogo");
   const [prodOpen, setProdOpen] = useState(false);
+  const [waLightSessions, setWaLightSessions] = useState<WaSession[]>([]);
+  const [waOficialConfigured, setWaOficialConfigured] = useState(false);
+  const [selectedCanalOut, setSelectedCanalOut] = useState<CanalOut | null>(null);
   const [developments, setDevelopments] = useState<Development[]>([]);
   const [selectedDevId, setSelectedDevId] = useState<string>("");
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
@@ -1521,12 +1536,33 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  async function loadWaChannels() {
+    try {
+      const [sessions, waConfig] = await Promise.all([
+        apiFetch("/inbox-wa-light").catch(() => []),
+        apiFetch("/tenants/whatsapp-settings").catch(() => null),
+      ]);
+      const list: WaSession[] = Array.isArray(sessions) ? sessions : [];
+      setWaLightSessions(list);
+      const hasOficial = !!(waConfig?.whatsappPhoneNumberId && waConfig?.whatsappTokenConfigured);
+      setWaOficialConfigured(hasOficial);
+      // Auto-seleciona: primeiro CONNECTED, depois Oficial, senão null
+      setSelectedCanalOut(prev => {
+        if (prev) return prev;
+        const connected = list.find(s => s.status === "CONNECTED");
+        if (connected) return { type: "light", sessionId: connected.id };
+        if (hasOficial) return { type: "oficial" };
+        return null;
+      });
+    } catch {}
+  }
+
   async function loadAll() {
     setErr(null);
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments()]);
+      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels()]);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -2293,6 +2329,7 @@ function discardAiSuggestion() {
           text: msg,
           aiAssistancePercent: finalPercent,
           aiAssistanceLabel: finalLabel,
+          ...((!lead?.conversaCanal && selectedCanalOut?.type === "light") ? { sessionId: selectedCanalOut.sessionId } : {}),
         }),
       });
       setText("");
@@ -4207,6 +4244,53 @@ function discardAiSuggestion() {
                     ) : null}
                   </div>
                 </div>
+
+                {/* Seletor de canal — só quando o lead ainda não tem canal definido */}
+                {!lead?.conversaCanal && (
+                  <div className="mb-2 rounded-lg border p-3" style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)" }}>
+                    {waLightSessions.length === 0 && !waOficialConfigured ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-semibold text-amber-700">Nenhum número WhatsApp cadastrado</div>
+                          <div className="text-[11px] text-[var(--shell-subtext)]">Cadastre um número para enviar mensagens a este lead</div>
+                        </div>
+                        <a
+                          href="/inbox-wa-light"
+                          className="shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                          style={{ background: "var(--brand-accent)" }}
+                        >
+                          Cadastrar número
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="shrink-0 text-[11px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Canal de saída</span>
+                        <select
+                          value={selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId : selectedCanalOut?.type === "oficial" ? "__oficial__" : ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "__oficial__") setSelectedCanalOut({ type: "oficial" });
+                            else if (v) setSelectedCanalOut({ type: "light", sessionId: v });
+                            else setSelectedCanalOut(null);
+                          }}
+                          className="flex-1 rounded-md border bg-[var(--shell-card-bg)] px-2 py-1.5 text-xs"
+                          style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+                        >
+                          <option value="">(Selecione...)</option>
+                          {waLightSessions.map(s => (
+                            <option key={s.id} value={s.id}>
+                              📱 {s.nome}{s.phoneNumber ? ` (${s.phoneNumber})` : ""}
+                              {s.status !== "CONNECTED" ? ` • ${s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status}` : ""}
+                            </option>
+                          ))}
+                          {waOficialConfigured && (
+                            <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
+                          )}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <textarea
                   ref={textAreaRef}
