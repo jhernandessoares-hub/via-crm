@@ -2974,259 +2974,6 @@ function discardAiSuggestion() {
               );
             })()}
 
-            {/* Documentos */}
-            {lead && (
-              <a
-                href={`/leads/${lead.id}/documentos`}
-                className="mt-4 flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
-              >
-                <span className="flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                  Cadastro e Documentos
-                </span>
-                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-              </a>
-            )}
-
-            {/* Análise de Crédito */}
-            {lead && (
-              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--shell-card-border)]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">💳</span>
-                    <span className="text-sm font-semibold text-[var(--shell-text)]">Análise de Crédito</span>
-                    {creditRequests.length > 0 && (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{creditRequests.length}</span>
-                    )}
-                  </div>
-                  <button onClick={() => setShowCreditForm((p) => !p)}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors">
-                    + Enviar para Correspondente
-                  </button>
-                </div>
-
-                {/* Formulário de nova solicitação */}
-                {showCreditForm && (
-                  <div className="px-4 py-4 border-b border-[var(--shell-card-border)] bg-blue-50/50 space-y-3">
-                    <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nova Solicitação</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-xs text-[var(--shell-subtext)]">Correspondente *</label>
-                        <select value={creditForm.correspondentId}
-                          onChange={(e) => setCreditForm((p) => ({ ...p, correspondentId: e.target.value }))}
-                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm text-[var(--shell-text)]">
-                          <option value="">Selecione...</option>
-                          {correspondents.map((c) => (
-                            <option key={c.id} value={c.id}>{c.nome}{c.empresa ? ` — ${c.empresa}` : ""}</option>
-                          ))}
-                        </select>
-                      </div>
-                      {[
-                        { k: "valorImovel",  l: "Valor do Imóvel (R$)" },
-                        { k: "valorCredito", l: "Crédito Solicitado (R$)" },
-                        { k: "rendaMensal",  l: "Renda Mensal (R$)" },
-                      ].map(({ k, l }) => (
-                        <div key={k} className="space-y-1">
-                          <label className="text-xs text-[var(--shell-subtext)]">{l}</label>
-                          <input type="number" value={(creditForm as any)[k]}
-                            onChange={(e) => setCreditForm((p) => ({ ...p, [k]: e.target.value }))}
-                            className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm" />
-                        </div>
-                      ))}
-                      <div className="space-y-1">
-                        <label className="text-xs text-[var(--shell-subtext)]">Tipo de Financiamento</label>
-                        <select value={creditForm.tipoFinanciamento}
-                          onChange={(e) => setCreditForm((p) => ({ ...p, tipoFinanciamento: e.target.value }))}
-                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm">
-                          <option value="SBPE">SBPE</option>
-                          <option value="MINHA_CASA_MINHA_VIDA">Minha Casa Minha Vida</option>
-                          <option value="FGTS">FGTS</option>
-                          <option value="CONSORCIO">Consórcio</option>
-                          <option value="OUTRO">Outro</option>
-                        </select>
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-xs text-[var(--shell-subtext)]">Observações</label>
-                        <textarea value={creditForm.observacoes}
-                          onChange={(e) => setCreditForm((p) => ({ ...p, observacoes: e.target.value }))}
-                          rows={2} className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm resize-none" />
-                      </div>
-                    </div>
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => setShowCreditForm(false)}
-                        className="rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]">
-                        Cancelar
-                      </button>
-                      <button
-                        disabled={savingCredit || !creditForm.correspondentId}
-                        onClick={async () => {
-                          setSavingCredit(true);
-                          try {
-                            await createCreditRequest(lead.id, {
-                              correspondentId:  creditForm.correspondentId,
-                              valorImovel:      creditForm.valorImovel ? parseFloat(creditForm.valorImovel) : undefined,
-                              valorCredito:     creditForm.valorCredito ? parseFloat(creditForm.valorCredito) : undefined,
-                              rendaMensal:      creditForm.rendaMensal ? parseFloat(creditForm.rendaMensal) : undefined,
-                              tipoFinanciamento: creditForm.tipoFinanciamento || undefined,
-                              observacoes:      creditForm.observacoes || undefined,
-                            } as any);
-                            setShowCreditForm(false);
-                            setCreditForm({ correspondentId: "", valorImovel: "", valorCredito: "", rendaMensal: "", tipoFinanciamento: "SBPE", observacoes: "" });
-                            await loadCreditData();
-                          } finally { setSavingCredit(false); }
-                        }}
-                        className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
-                        {savingCredit ? "Enviando..." : "Enviar"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Lista de solicitações */}
-                {creditRequests.length > 0 ? (
-                  <div className="divide-y divide-[var(--shell-card-border)]">
-                    {creditRequests.map((cr) => (
-                      <div key={cr.id} className="px-4 py-3 flex items-center gap-3">
-                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold"
-                          style={{ backgroundColor: CREDIT_STATUS_COLOR[cr.status] + "22", color: CREDIT_STATUS_COLOR[cr.status] }}>
-                          {CREDIT_STATUS_LABEL[cr.status]}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-[var(--shell-text)]">{cr.correspondent.nome}</p>
-                          {cr.correspondent.empresa && <p className="text-[10px] text-[var(--shell-subtext)]">{cr.correspondent.empresa}</p>}
-                          {cr.parecer && <p className="text-[11px] text-[var(--shell-subtext)] mt-0.5 italic">"{cr.parecer}"</p>}
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-[10px] text-[var(--shell-subtext)]">{new Date(cr.createdAt).toLocaleDateString("pt-BR")}</p>
-                        </div>
-                        <button onClick={async () => { await cancelCreditRequest(lead.id, cr.id); await loadCreditData(); }}
-                          className="text-[10px] text-red-400 hover:text-red-600" title="Cancelar">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  !showCreditForm && (
-                    <div className="px-4 py-4 text-xs text-center text-[var(--shell-subtext)]">
-                      Nenhuma solicitação enviada ainda.
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-
-            {/* Painel SLA */}
-            {slaData && (
-              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="text-sm font-semibold text-[var(--shell-text)]">SLA</div>
-                  {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
-                </div>
-
-                {/* Stage group badge */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    slaData.stageGroup === 'PRE_ATENDIMENTO'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
-                  }`}>
-                    {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
-                  </span>
-                  {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
-                    <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
-                  )}
-                </div>
-
-                {/* 23h window */}
-                {slaData.lastInboundAt && (
-                  <div className={`rounded-md border p-2 mb-3 text-xs ${
-                    slaData.windowExpired
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : slaData.windowRemainingMinutes < 120
-                        ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  }`}>
-                    <div className="font-medium mb-0.5">Janela WhatsApp (23h)</div>
-                    {slaData.windowExpired ? (
-                      <div>Janela expirada</div>
-                    ) : (
-                      <div>
-                        Fecha em{' '}
-                        {slaData.windowRemainingMinutes >= 60
-                          ? `${Math.floor(slaData.windowRemainingMinutes / 60)}h ${slaData.windowRemainingMinutes % 60}min`
-                          : `${slaData.windowRemainingMinutes}min`}
-                        {' '}· {new Date(slaData.windowCloseAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Scheduled jobs */}
-                {slaData.scheduledJobs?.length > 0 ? (
-                  <div className="mb-3">
-                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
-                    <div className="space-y-1">
-                      {slaData.scheduledJobs.map((job: any) => {
-                        const urgencyColor: Record<string, string> = {
-                          BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-                          MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
-                          ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
-                          CRITICA: 'text-red-700 bg-red-50 border-red-200',
-                        };
-                        const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
-                        return (
-                          <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
-                            <span className="font-medium">{job.name}</span>
-                            <span>
-                              {new Date(job.scheduledFor).toLocaleString('pt-BR', {
-                                day: '2-digit', month: '2-digit',
-                                hour: '2-digit', minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
-                  <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
-                ) : null}
-
-                {/* Recent history */}
-                {slaData.history?.length > 0 && (
-                  <div>
-                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Histórico recente</div>
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {slaData.history.slice(0, 8).map((ev: any) => {
-                        const p = ev.payload || {};
-                        const isBlocked = p.outcome === 'BLOCKED';
-                        const isDue = p.outcome === 'DUE';
-                        const isSuggestion = ev.channel === 'ai.suggestion';
-                        return (
-                          <div key={ev.id} className="flex items-start gap-1.5 text-xs text-[var(--shell-subtext)]">
-                            <span className="mt-0.5 shrink-0">
-                              {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
-                            </span>
-                            <span className="flex-1 min-w-0">
-                              <span className="font-medium">
-                                {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
-                              </span>
-                              {' · '}
-                              <span className="text-[var(--shell-subtext)]">
-                                {new Date(ev.criadoEm).toLocaleString('pt-BR', {
-                                  day: '2-digit', month: '2-digit',
-                                  hour: '2-digit', minute: '2-digit',
-                                })}
-                              </span>
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Produtos Disponíveis */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
               <div className="flex items-center justify-between gap-2">
@@ -3242,6 +2989,50 @@ function discardAiSuggestion() {
                   </button>
                 )}
               </div>
+
+              {/* Vinculado a este lead — sempre visível no topo */}
+              {(lead?.developmentUnits ?? []).length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Vinculado a este lead</div>
+                  {(lead?.developmentUnits ?? []).map(u => {
+                    const statusMap: Record<string, { border: string; bg: string; badge: string; label: string }> = {
+                      PROPOSTA:  { border: "border-orange-200", bg: "bg-orange-50",  badge: "bg-orange-500",  label: "Proposta" },
+                      RESERVADO: { border: "border-amber-200",  bg: "bg-amber-50",   badge: "bg-amber-400",   label: "Reservado" },
+                      VENDIDO:   { border: "border-red-200",    bg: "bg-red-50",     badge: "bg-red-500",     label: "Vendido" },
+                      BLOQUEADO: { border: "border-gray-200",   bg: "bg-gray-50",    badge: "bg-gray-400",    label: "Bloqueado" },
+                      DISPONIVEL:{ border: "border-green-200",  bg: "bg-green-50",   badge: "bg-green-500",   label: "Disponível" },
+                    };
+                    const s = statusMap[u.status] ?? statusMap.DISPONIVEL;
+                    return (
+                      <div key={u.id} className={`rounded-lg border ${s.border} ${s.bg} p-3 text-xs`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
+                          <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
+                          <span className="text-[var(--shell-subtext)]">— {u.nome}</span>
+                        </div>
+                        {u.finalPrice && (
+                          <div className="mt-1 text-[var(--shell-text)]">
+                            Valor: R$ {u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </div>
+                        )}
+                        {u.propostaPagamento && <div className="text-[var(--shell-subtext)]">Pagamento: {u.propostaPagamento.replace(/_/g, " ")}</div>}
+                        {u.propostaObs && <div className="text-[var(--shell-subtext)]">Obs: {u.propostaObs}</div>}
+                        {u.soldAt && <div className="text-[var(--shell-subtext)]">Vendido em: {new Date(u.soldAt).toLocaleDateString("pt-BR")}</div>}
+                        {u.development?.id && (
+                          <button
+                            type="button"
+                            onClick={() => window.open(`/gestao-empreendimentos/${u.development!.id}?tab=espelho`, "_blank")}
+                            className="mt-2 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
+                            style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+                          >
+                            Ver no espelho →
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Tabs */}
               <div className="mt-3 flex gap-1 rounded-lg border p-1" style={{ background: "var(--shell-bg)" }}>
@@ -3603,50 +3394,6 @@ function discardAiSuggestion() {
               {/* Aba Gestão de Empreendimento */}
               {prodTab === "empreendimentos" && (
                 <div className="mt-3 space-y-3">
-                  {/* Unidades vinculadas ao lead (todos os status) */}
-                  {(lead?.developmentUnits ?? []).length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Vinculado a este lead</div>
-                      {(lead?.developmentUnits ?? []).map(u => {
-                        const statusMap: Record<string, { border: string; bg: string; badge: string; label: string }> = {
-                          PROPOSTA:  { border: "border-orange-200", bg: "bg-orange-50",  badge: "bg-orange-500",  label: "Proposta" },
-                          RESERVADO: { border: "border-amber-200",  bg: "bg-amber-50",   badge: "bg-amber-400",   label: "Reservado" },
-                          VENDIDO:   { border: "border-red-200",    bg: "bg-red-50",     badge: "bg-red-500",     label: "Vendido" },
-                          BLOQUEADO: { border: "border-gray-200",   bg: "bg-gray-50",    badge: "bg-gray-400",    label: "Bloqueado" },
-                          DISPONIVEL:{ border: "border-green-200",  bg: "bg-green-50",   badge: "bg-green-500",   label: "Disponível" },
-                        };
-                        const s = statusMap[u.status] ?? statusMap.DISPONIVEL;
-                        return (
-                          <div key={u.id} className={`rounded-lg border ${s.border} ${s.bg} p-3 text-xs`}>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
-                              <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
-                              <span className="text-[var(--shell-subtext)]">— {u.nome}</span>
-                            </div>
-                            {u.finalPrice && (
-                              <div className="mt-1 text-[var(--shell-text)]">
-                                Valor: R$ {u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                              </div>
-                            )}
-                            {u.propostaPagamento && <div className="text-[var(--shell-subtext)]">Pagamento: {u.propostaPagamento.replace(/_/g, " ")}</div>}
-                            {u.propostaObs && <div className="text-[var(--shell-subtext)]">Obs: {u.propostaObs}</div>}
-                            {u.soldAt && <div className="text-[var(--shell-subtext)]">Vendido em: {new Date(u.soldAt).toLocaleDateString("pt-BR")}</div>}
-                            {u.development?.id && (
-                              <button
-                                type="button"
-                                onClick={() => window.open(`/gestao-empreendimentos/${u.development!.id}?tab=espelho`, "_blank")}
-                                className="mt-2 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
-                                style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
-                              >
-                                Ver no espelho →
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
                   {/* Selecionar empreendimento e abrir espelho */}
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Abrir espelho de vendas</div>
                   <div className="flex gap-2">
@@ -3671,6 +3418,260 @@ function discardAiSuggestion() {
                 </div>
               )}
             </div>
+
+            {/* Documentos */}
+            {lead && (
+              <a
+                href={`/leads/${lead.id}/documentos`}
+                className="mt-4 flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+              >
+                <span className="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Cadastro e Documentos
+                </span>
+                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+              </a>
+            )}
+
+            {/* Análise de Crédito */}
+            {lead && (
+              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--shell-card-border)]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">💳</span>
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">Análise de Crédito</span>
+                    {creditRequests.length > 0 && (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{creditRequests.length}</span>
+                    )}
+                  </div>
+                  <button onClick={() => setShowCreditForm((p) => !p)}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors">
+                    + Enviar para Correspondente
+                  </button>
+                </div>
+
+                {/* Formulário de nova solicitação */}
+                {showCreditForm && (
+                  <div className="px-4 py-4 border-b border-[var(--shell-card-border)] bg-blue-50/50 space-y-3">
+                    <p className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Nova Solicitação</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs text-[var(--shell-subtext)]">Correspondente *</label>
+                        <select value={creditForm.correspondentId}
+                          onChange={(e) => setCreditForm((p) => ({ ...p, correspondentId: e.target.value }))}
+                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm text-[var(--shell-text)]">
+                          <option value="">Selecione...</option>
+                          {correspondents.map((c) => (
+                            <option key={c.id} value={c.id}>{c.nome}{c.empresa ? ` — ${c.empresa}` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {[
+                        { k: "valorImovel",  l: "Valor do Imóvel (R$)" },
+                        { k: "valorCredito", l: "Crédito Solicitado (R$)" },
+                        { k: "rendaMensal",  l: "Renda Mensal (R$)" },
+                      ].map(({ k, l }) => (
+                        <div key={k} className="space-y-1">
+                          <label className="text-xs text-[var(--shell-subtext)]">{l}</label>
+                          <input type="number" value={(creditForm as any)[k]}
+                            onChange={(e) => setCreditForm((p) => ({ ...p, [k]: e.target.value }))}
+                            className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm" />
+                        </div>
+                      ))}
+                      <div className="space-y-1">
+                        <label className="text-xs text-[var(--shell-subtext)]">Tipo de Financiamento</label>
+                        <select value={creditForm.tipoFinanciamento}
+                          onChange={(e) => setCreditForm((p) => ({ ...p, tipoFinanciamento: e.target.value }))}
+                          className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm">
+                          <option value="SBPE">SBPE</option>
+                          <option value="MINHA_CASA_MINHA_VIDA">Minha Casa Minha Vida</option>
+                          <option value="FGTS">FGTS</option>
+                          <option value="CONSORCIO">Consórcio</option>
+                          <option value="OUTRO">Outro</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs text-[var(--shell-subtext)]">Observações</label>
+                        <textarea value={creditForm.observacoes}
+                          onChange={(e) => setCreditForm((p) => ({ ...p, observacoes: e.target.value }))}
+                          rows={2} className="w-full rounded-lg border border-[var(--shell-card-border)] bg-white px-3 py-2 text-sm resize-none" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setShowCreditForm(false)}
+                        className="rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]">
+                        Cancelar
+                      </button>
+                      <button
+                        disabled={savingCredit || !creditForm.correspondentId}
+                        onClick={async () => {
+                          setSavingCredit(true);
+                          try {
+                            await createCreditRequest(lead.id, {
+                              correspondentId:  creditForm.correspondentId,
+                              valorImovel:      creditForm.valorImovel ? parseFloat(creditForm.valorImovel) : undefined,
+                              valorCredito:     creditForm.valorCredito ? parseFloat(creditForm.valorCredito) : undefined,
+                              rendaMensal:      creditForm.rendaMensal ? parseFloat(creditForm.rendaMensal) : undefined,
+                              tipoFinanciamento: creditForm.tipoFinanciamento || undefined,
+                              observacoes:      creditForm.observacoes || undefined,
+                            } as any);
+                            setShowCreditForm(false);
+                            setCreditForm({ correspondentId: "", valorImovel: "", valorCredito: "", rendaMensal: "", tipoFinanciamento: "SBPE", observacoes: "" });
+                            await loadCreditData();
+                          } finally { setSavingCredit(false); }
+                        }}
+                        className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+                        {savingCredit ? "Enviando..." : "Enviar"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de solicitações */}
+                {creditRequests.length > 0 ? (
+                  <div className="divide-y divide-[var(--shell-card-border)]">
+                    {creditRequests.map((cr) => (
+                      <div key={cr.id} className="px-4 py-3 flex items-center gap-3">
+                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold"
+                          style={{ backgroundColor: CREDIT_STATUS_COLOR[cr.status] + "22", color: CREDIT_STATUS_COLOR[cr.status] }}>
+                          {CREDIT_STATUS_LABEL[cr.status]}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[var(--shell-text)]">{cr.correspondent.nome}</p>
+                          {cr.correspondent.empresa && <p className="text-[10px] text-[var(--shell-subtext)]">{cr.correspondent.empresa}</p>}
+                          {cr.parecer && <p className="text-[11px] text-[var(--shell-subtext)] mt-0.5 italic">"{cr.parecer}"</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[10px] text-[var(--shell-subtext)]">{new Date(cr.createdAt).toLocaleDateString("pt-BR")}</p>
+                        </div>
+                        <button onClick={async () => { await cancelCreditRequest(lead.id, cr.id); await loadCreditData(); }}
+                          className="text-[10px] text-red-400 hover:text-red-600" title="Cancelar">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  !showCreditForm && (
+                    <div className="px-4 py-4 text-xs text-center text-[var(--shell-subtext)]">
+                      Nenhuma solicitação enviada ainda.
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
+            {/* Painel SLA */}
+            {slaData && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="text-sm font-semibold text-[var(--shell-text)]">SLA</div>
+                  {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
+                </div>
+
+                {/* Stage group badge */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    slaData.stageGroup === 'PRE_ATENDIMENTO'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
+                  }`}>
+                    {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
+                  </span>
+                  {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
+                    <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
+                  )}
+                </div>
+
+                {/* 23h window */}
+                {slaData.lastInboundAt && (
+                  <div className={`rounded-md border p-2 mb-3 text-xs ${
+                    slaData.windowExpired
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : slaData.windowRemainingMinutes < 120
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}>
+                    <div className="font-medium mb-0.5">Janela WhatsApp (23h)</div>
+                    {slaData.windowExpired ? (
+                      <div>Janela expirada</div>
+                    ) : (
+                      <div>
+                        Fecha em{' '}
+                        {slaData.windowRemainingMinutes >= 60
+                          ? `${Math.floor(slaData.windowRemainingMinutes / 60)}h ${slaData.windowRemainingMinutes % 60}min`
+                          : `${slaData.windowRemainingMinutes}min`}
+                        {' '}· {new Date(slaData.windowCloseAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Scheduled jobs */}
+                {slaData.scheduledJobs?.length > 0 ? (
+                  <div className="mb-3">
+                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
+                    <div className="space-y-1">
+                      {slaData.scheduledJobs.map((job: any) => {
+                        const urgencyColor: Record<string, string> = {
+                          BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                          MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
+                          ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
+                          CRITICA: 'text-red-700 bg-red-50 border-red-200',
+                        };
+                        const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
+                        return (
+                          <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
+                            <span className="font-medium">{job.name}</span>
+                            <span>
+                              {new Date(job.scheduledFor).toLocaleString('pt-BR', {
+                                day: '2-digit', month: '2-digit',
+                                hour: '2-digit', minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
+                  <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
+                ) : null}
+
+                {/* Recent history */}
+                {slaData.history?.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Histórico recente</div>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {slaData.history.slice(0, 8).map((ev: any) => {
+                        const p = ev.payload || {};
+                        const isBlocked = p.outcome === 'BLOCKED';
+                        const isDue = p.outcome === 'DUE';
+                        const isSuggestion = ev.channel === 'ai.suggestion';
+                        return (
+                          <div key={ev.id} className="flex items-start gap-1.5 text-xs text-[var(--shell-subtext)]">
+                            <span className="mt-0.5 shrink-0">
+                              {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="font-medium">
+                                {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
+                              </span>
+                              {' · '}
+                              <span className="text-[var(--shell-subtext)]">
+                                {new Date(ev.criadoEm).toLocaleString('pt-BR', {
+                                  day: '2-digit', month: '2-digit',
+                                  hour: '2-digit', minute: '2-digit',
+                                })}
+                              </span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
 
           {/* CHAT */}
