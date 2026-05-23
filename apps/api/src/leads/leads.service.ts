@@ -2312,6 +2312,24 @@ const aiAssistanceLabel =
     return { ok: true };
   }
 
+  async updateCanal(user: any, leadId: string, body: { conversaCanal: string | null; conversaSessionId?: string | null }) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!lead) throw new NotFoundException('Lead não encontrado');
+
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        conversaCanal: body.conversaCanal,
+        conversaSessionId: body.conversaCanal === 'WHATSAPP_LIGHT' ? (body.conversaSessionId ?? null) : null,
+      },
+    });
+
+    return { ok: true };
+  }
+
   async deleteLead(user: any, leadId: string, reason?: string) {
     if (user.role !== 'OWNER') {
       throw new ForbiddenException('Apenas o proprietário pode excluir leads');

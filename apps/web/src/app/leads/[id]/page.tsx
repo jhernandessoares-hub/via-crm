@@ -1278,6 +1278,8 @@ export default function LeadDetailChatPage() {
   const [waLightSessions, setWaLightSessions] = useState<WaSession[]>([]);
   const [waOficialConfigured, setWaOficialConfigured] = useState(false);
   const [selectedCanalOut, setSelectedCanalOut] = useState<CanalOut | null>(null);
+  const [alterandoCanal, setAlterandoCanal] = useState(false);
+  const [savingCanal, setSavingCanal] = useState(false);
   const [developments, setDevelopments] = useState<Development[]>([]);
   const [selectedDevId, setSelectedDevId] = useState<string>("");
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
@@ -3772,7 +3774,97 @@ function discardAiSuggestion() {
                         lastInboundAgoLabel}
                     </span>
                     {lead?.telefone ? <span>{"Tel: " + lead.telefone}</span> : null}
+                    {/* Canal indicator */}
+                    {lead?.conversaCanal && !alterandoCanal && (
+                      <span className="flex items-center gap-1">
+                        {lead.conversaCanal === "WHATSAPP_LIGHT"
+                          ? ("📱 " + (waLightSessions.find(s => s.id === lead.conversaSessionId)?.nome ?? "WA Light"))
+                          : "✅ WA Oficial"}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) {
+                              setSelectedCanalOut({ type: "light", sessionId: lead.conversaSessionId });
+                            } else if (lead?.conversaCanal === "WHATSAPP_OFICIAL") {
+                              setSelectedCanalOut({ type: "oficial" });
+                            }
+                            setAlterandoCanal(true);
+                          }}
+                          className="ml-1 underline text-[var(--brand-accent)] hover:opacity-80"
+                        >
+                          Alterar
+                        </button>
+                      </span>
+                    )}
                   </div>
+                  {/* Seletor de alteração de canal */}
+                  {lead?.conversaCanal && alterandoCanal && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <select
+                        value={
+                          selectedCanalOut?.type === "light"
+                            ? selectedCanalOut.sessionId
+                            : selectedCanalOut?.type === "oficial"
+                            ? "__oficial__"
+                            : ""
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "__oficial__") setSelectedCanalOut({ type: "oficial" });
+                          else if (v) setSelectedCanalOut({ type: "light", sessionId: v });
+                          else setSelectedCanalOut(null);
+                        }}
+                        className="rounded border bg-[var(--shell-card-bg)] px-2 py-1 text-xs"
+                        style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+                      >
+                        <option value="">(Selecione...)</option>
+                        {waLightSessions.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {"📱 " + s.nome + (s.phoneNumber ? ` (${s.phoneNumber})` : "") + (s.status !== "CONNECTED" ? " • " + (s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status) : "")}
+                          </option>
+                        ))}
+                        {waOficialConfigured && (
+                          <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={savingCanal || !selectedCanalOut}
+                        onClick={async () => {
+                          if (!selectedCanalOut) return;
+                          setSavingCanal(true);
+                          try {
+                            const body: Record<string, string | null> = {
+                              conversaCanal: selectedCanalOut.type === "light" ? "WHATSAPP_LIGHT" : "WHATSAPP_OFICIAL",
+                            };
+                            if (selectedCanalOut.type === "light") body.conversaSessionId = selectedCanalOut.sessionId;
+                            await apiFetch(`/leads/${id}/canal`, { method: "PATCH", body: JSON.stringify(body) });
+                            setLead((prev: any) => prev ? {
+                              ...prev,
+                              conversaCanal: body.conversaCanal,
+                              conversaSessionId: selectedCanalOut.type === "light" ? selectedCanalOut.sessionId : null,
+                            } : prev);
+                            setAlterandoCanal(false);
+                          } catch {
+                            alert("Erro ao alterar canal");
+                          } finally {
+                            setSavingCanal(false);
+                          }
+                        }}
+                        className="rounded px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                        style={{ background: "var(--brand-accent)" }}
+                      >
+                        {savingCanal ? "Salvando..." : "Confirmar"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAlterandoCanal(false)}
+                        className="rounded px-2 py-1 text-xs font-semibold text-[var(--shell-subtext)] hover:opacity-80"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -309,6 +309,11 @@ export class LeadsController {
     return this.leadsService.sendWhatsappMessage(req.user, id, body);
   }
 
+  @Patch(':id/canal')
+  async updateCanal(@Req() req: any, @Param('id') id: string, @Body() body: { conversaCanal: string | null; conversaSessionId?: string | null }) {
+    return this.leadsService.updateCanal(req.user, id, body);
+  }
+
   /**
    * 🎤 ENVIO REAL WHATSAPP (ÁUDIO)
    * POST /leads/:id/send-whatsapp-audio
