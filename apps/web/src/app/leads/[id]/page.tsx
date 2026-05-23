@@ -1261,6 +1261,7 @@ export default function LeadDetailChatPage() {
   const [productsNotice, setProductsNotice] = useState<string | null>(null);
 
   const [prodTab, setProdTab] = useState<"catalogo" | "empreendimentos">("catalogo");
+  const [prodOpen, setProdOpen] = useState(false);
   const [developments, setDevelopments] = useState<Development[]>([]);
   const [selectedDevId, setSelectedDevId] = useState<string>("");
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
@@ -2976,19 +2977,24 @@ function discardAiSuggestion() {
 
             {/* Produtos Disponíveis */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
-              <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setProdOpen(v => !v)}
+                className="flex w-full items-center justify-between gap-2"
+              >
                 <div className="text-sm font-semibold text-[var(--shell-text)]">Produtos Disponíveis</div>
-                {prodTab === "catalogo" && (
-                  <button
-                    type="button"
-                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-xs hover:bg-[var(--shell-bg)]"
-                    onClick={() => loadProducts()}
-                    disabled={productsLoading}
-                  >
-                    {productsLoading ? "Carregando..." : "Recarregar"}
-                  </button>
-                )}
-              </div>
+                <div className="flex items-center gap-2">
+                  {(lead?.developmentUnits ?? []).length > 0 && !prodOpen && (
+                    <span className="rounded-full bg-[var(--brand-accent)] px-2 py-0.5 text-[10px] font-bold text-white">
+                      {(lead?.developmentUnits ?? []).length}
+                    </span>
+                  )}
+                  <svg
+                    className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${prodOpen ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  ><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
+                </div>
+              </button>
 
               {/* Vinculado a este lead — sempre visível no topo */}
               {(lead?.developmentUnits ?? []).length > 0 && (
@@ -3034,22 +3040,36 @@ function discardAiSuggestion() {
                 </div>
               )}
 
-              {/* Tabs */}
+              {prodOpen && (
               <div className="mt-3 flex gap-1 rounded-lg border p-1" style={{ background: "var(--shell-bg)" }}>
                 {(["catalogo", "empreendimentos"] as const).map((t) => (
                   <button key={t} type="button"
                     onClick={() => setProdTab(t)}
                     className="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
                     style={{
-                      background: prodTab === t ? "var(--shell-card-bg)" : "transparent",
-                      color: prodTab === t ? "var(--shell-text)" : "var(--shell-subtext)",
+                      background: prodTab === t ? "var(--brand-accent-muted)" : "transparent",
+                      color: prodTab === t ? "var(--brand-accent)" : "var(--shell-subtext)",
                       fontWeight: prodTab === t ? 600 : 400,
                     }}>
                     {t === "catalogo" ? "Catálogo de Produtos" : "Gestão de Empreendimento"}
                   </button>
                 ))}
               </div>
+              )}
 
+              {prodOpen && <>
+              {prodTab === "catalogo" && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="rounded-md border bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs hover:bg-[var(--shell-bg)]"
+                    onClick={() => loadProducts()}
+                    disabled={productsLoading}
+                  >
+                    {productsLoading ? "Carregando..." : "Recarregar"}
+                  </button>
+                </div>
+              )}
               {/* Aba Catálogo */}
               {prodTab === "catalogo" && (
                 <div>
@@ -3417,6 +3437,7 @@ function discardAiSuggestion() {
                   </div>
                 </div>
               )}
+              </>}
             </div>
 
             {/* Documentos */}
