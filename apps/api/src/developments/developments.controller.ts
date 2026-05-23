@@ -89,6 +89,11 @@ export class DevelopmentsController {
     return this.svc.bulkUpdateUnitsIndividual(req.user.tenantId, id, body.units ?? []);
   }
 
+  @Patch(':id/units/:unitId/unlink')
+  unlinkUnit(@Request() req: any, @Param('id') id: string, @Param('unitId') unitId: string) {
+    return this.svc.unlinkUnit(req.user.tenantId, id, unitId, { id: req.user.sub, nome: req.user.nome });
+  }
+
   @Patch(':id/units/:unitId')
   updateUnit(@Request() req: any, @Param('id') id: string, @Param('unitId') unitId: string, @Body() body: any) {
     return this.svc.updateUnit(req.user.tenantId, id, unitId, body, { id: req.user.sub, nome: req.user.nome, role: req.user.role });

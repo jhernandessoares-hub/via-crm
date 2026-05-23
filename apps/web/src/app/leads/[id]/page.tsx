@@ -11,6 +11,7 @@ import {
   type Correspondent, type CreditRequest,
 } from "@/lib/correspondente.service";
 import { formatLeadNumber } from "@/lib/format-lead-number";
+import { unlinkUnit } from "@/lib/developments.service";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -32,6 +33,17 @@ function safeJsonParse<T>(s: string | null): T | null {
   }
 }
 
+type UnitReservaHistory = {
+  id: string;
+  leadId?: string | null;
+  leadNome?: string | null;
+  statusAnterior: string;
+  finalPrice?: number | null;
+  propostaPagamento?: string | null;
+  desvinculadoPor?: string | null;
+  createdAt: string;
+};
+
 type DevUnit = {
   id: string;
   nome: string;
@@ -49,6 +61,7 @@ type DevUnit = {
   developmentId?: string;
   development?: { id: string; nome: string };
   tower?: { nome: string } | null;
+  reservaHistory?: UnitReservaHistory[];
 };
 
 type Development = {
@@ -1280,6 +1293,8 @@ export default function LeadDetailChatPage() {
   const [selectedCanalOut, setSelectedCanalOut] = useState<CanalOut | null>(null);
   const [alterandoCanal, setAlterandoCanal] = useState(false);
   const [savingCanal, setSavingCanal] = useState(false);
+  const [desvinculandoUnitId, setDesvinculandoUnitId] = useState<string | null>(null);
+  const [trocandoUnit, setTrocandoUnit] = useState<string | null>(null);
   const [developments, setDevelopments] = useState<Development[]>([]);
   const [selectedDevId, setSelectedDevId] = useState<string>("");
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
@@ -3049,38 +3064,111 @@ function discardAiSuggestion() {
                       DISPONIVEL:{ border: "border-green-200",  bg: "bg-green-50",   badge: "bg-green-500",   label: "Disponível" },
                     };
                     const s = statusMap[u.status] ?? statusMap.DISPONIVEL;
+                    const isDesvinculando = desvinculandoUnitId === u.id;
+                    const isTrocando = trocandoUnit === u.id;
                     return (
                       <div key={u.id} className={`rounded-lg border ${s.border} ${s.bg} p-3 text-xs`}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
-                          <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
-                          {u.tower?.nome && <span className="text-[var(--shell-subtext)]">· {u.tower.nome}</span>}
-                          <span className="text-[var(--shell-subtext)]">— {u.nome}</span>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
+                            <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
+                            {u.tower?.nome && <span className="text-[var(--shell-subtext)]">{"\u00b7 " + u.tower.nome}</span>}
+                            <span className="text-[var(--shell-subtext)]">{"\u2014 " + u.nome}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => { setTrocandoUnit(u.id); setProdOpen(true); setProdTab("empreendimentos"); }}
+                              className="rounded px-1.5 py-0.5 text-[10px] font-medium border hover:bg-[var(--shell-hover)] transition-colors"
+                              style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+                            >
+                              Trocar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDesvinculandoUnitId(isDesvinculando ? null : u.id)}
+                              className="rounded px-1.5 py-0.5 text-[10px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              Desvincular
+                            </button>
+                          </div>
                         </div>
                         {u.finalPrice && (
                           <div className="mt-1 text-[var(--shell-text)]">
-                            Valor: R$ {u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            {"Valor: R$ " + u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </div>
                         )}
-                        {u.propostaPagamento && <div className="text-[var(--shell-subtext)]">Pagamento: {u.propostaPagamento.replace(/_/g, " ")}</div>}
-                        {u.propostaObs && <div className="text-[var(--shell-subtext)]">Obs: {u.propostaObs}</div>}
-                        {u.soldAt && <div className="text-[var(--shell-subtext)]">Vendido em: {new Date(u.soldAt).toLocaleDateString("pt-BR")}</div>}
-                        {u.development?.id && (
-                          <button
-                            type="button"
-                            onClick={() => window.open(`/gestao-empreendimentos/${u.development!.id}?tab=espelho`, "_blank")}
-                            className="mt-2 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
-                            style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
-                          >
-                            Ver no espelho →
-                          </button>
+                        {u.propostaPagamento && <div className="text-[var(--shell-subtext)]">{"Pagamento: " + u.propostaPagamento.replace(/_/g, " ")}</div>}
+                        {u.propostaObs && <div className="text-[var(--shell-subtext)]">{"Obs: " + u.propostaObs}</div>}
+                        {u.soldAt && <div className="text-[var(--shell-subtext)]">{"Vendido em: " + new Date(u.soldAt).toLocaleDateString("pt-BR")}</div>}
+                        {(u.reservaHistory ?? []).length > 0 && (
+                          <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--shell-card-border)" }}>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-1">Histórico</div>
+                            {(u.reservaHistory ?? []).map(h => (
+                              <div key={h.id} className="text-[10px] text-[var(--shell-subtext)] flex flex-wrap gap-x-2">
+                                <span>{new Date(h.createdAt).toLocaleDateString("pt-BR")}</span>
+                                <span className="font-medium">{h.statusAnterior}</span>
+                                {h.leadNome && <span>{"\u2192 " + h.leadNome}</span>}
+                                {h.finalPrice && <span>{"R$ " + h.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}</span>}
+                                {h.desvinculadoPor && <span>{"por " + h.desvinculadoPor}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 flex items-center gap-2">
+                          {u.development?.id && (
+                            <button
+                              type="button"
+                              onClick={() => window.open(`/gestao-empreendimentos/${u.development!.id}?tab=espelho`, "_blank")}
+                              className="rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
+                              style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+                            >
+                              Ver no espelho →
+                            </button>
+                          )}
+                        </div>
+                        {isDesvinculando && (
+                          <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 flex items-center gap-2">
+                            <span className="text-[10px] text-red-700 flex-1">Desvincular unidade? O status volta para Disponível e o histórico é preservado no espelho.</span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await unlinkUnit(u.developmentId!, u.id);
+                                  setLead((prev: any) => prev ? {
+                                    ...prev,
+                                    developmentUnits: (prev.developmentUnits ?? []).filter((x: any) => x.id !== u.id),
+                                  } : prev);
+                                } catch {
+                                  alert("Erro ao desvincular unidade");
+                                } finally {
+                                  setDesvinculandoUnitId(null);
+                                }
+                              }}
+                              className="rounded px-2 py-0.5 text-[10px] font-bold text-white bg-red-600 hover:bg-red-700"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDesvinculandoUnitId(null)}
+                              className="rounded px-2 py-0.5 text-[10px] text-[var(--shell-subtext)] hover:opacity-80"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
+                        {isTrocando && (
+                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800 flex items-center gap-2">
+                            <span className="flex-1">Selecione a nova unidade no espelho abaixo. A unidade atual será desvinculada ao vincular a nova.</span>
+                            <button type="button" onClick={() => setTrocandoUnit(null)} className="underline text-amber-700 shrink-0">Cancelar</button>
+                          </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
               )}
-
               {prodOpen && (
               <div className="mt-3 flex gap-1 rounded-lg border p-1" style={{ background: "var(--shell-bg)" }}>
                 {(["catalogo", "empreendimentos"] as const).map((t) => (

@@ -1398,6 +1398,7 @@ async getById(user: any, id: string) {
       soldAt: true,
       development: { select: { id: true, nome: true } },
       tower: { select: { nome: true } },
+      reservaHistory: { orderBy: { createdAt: 'desc' } },
     },
   });
 

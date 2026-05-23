@@ -1574,6 +1574,7 @@ model DevelopmentUnit {
   updatedAt      DateTime @updatedAt
 
   bloqueioHistory UnitBloqueioHistory[]
+  reservaHistory  UnitReservaHistory[]
 
   tower       Tower       @relation(fields: [towerId], references: [id], onDelete: Cascade)
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
@@ -1597,6 +1598,26 @@ model UnitBloqueioHistory {
 
   @@index([unitId])
   @@map("unit_bloqueio_history")
+}
+
+model UnitReservaHistory {
+  id                String    @id @default(uuid())
+  unitId            String
+  leadId            String?
+  leadNome          String?
+  statusAnterior    String    // PROPOSTA | RESERVADO | VENDIDO
+  finalPrice        Float?
+  propostaPagamento String?
+  propostaObs       String?
+  comprador         String?
+  soldAt            DateTime?
+  desvinculadoPor   String?
+  createdAt         DateTime  @default(now())
+
+  unit DevelopmentUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@index([unitId])
+  @@map("unit_reserva_history")
 }
 
 model DevelopmentPaymentCondition {
