@@ -637,7 +637,7 @@ export default function SitePage() {
           style={previewWidth ? { maxWidth: previewWidth, border: "1px solid #e2e8f0", borderRadius: "1rem", overflow: "hidden", margin: "1rem auto" } : undefined}
         >
           <main
-            className={`min-h-screen text-slate-950 ${!view.theme?.pageBg ? "bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_35%),linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)]" : ""}`}
+            className={`min-h-screen text-slate-950 ${!view.theme?.pageBg ? "bg-white" : ""}`}
             style={{
               backgroundColor: view.theme?.pageBg,
               fontFamily: view.theme?.fontFamily === "serif" ? "Georgia, 'Times New Roman', serif" : view.theme?.fontFamily === "mono" ? "'Courier New', monospace" : undefined,
@@ -646,41 +646,60 @@ export default function SitePage() {
             } as React.CSSProperties}
           >
             {/* Cabeçalho — fallback quando não há seção de tipo "header" nas seções dinâmicas */}
-            {!draft.dynamicSections.some((s) => s.kind === "header") && <div className="px-6 pt-6 lg:px-8">
-              <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
-                <EditableLogo active={interactiveEditing} selected={selectedField === "branding.headerLogo"} label="Logo principal" src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt} height={view.branding.headerLogo.height} styleBox={getElementStyle("branding.headerLogo")} minWidth={160} minHeight={40} onMove={(ns) => updateElementStyle("branding.headerLogo", ns)} onResize={(ns) => updateElementStyle("branding.headerLogo", ns)} onClick={() => setSelectedField("branding.headerLogo")} />
-                <div className="flex items-center gap-5">
-                  <nav className="flex items-center gap-5 text-sm font-medium text-slate-600">
-                    {interactiveEditing ? (
-                      <EditableText active={interactiveEditing} selected={selectedField === "nav.problem"} label="Menu Problema" value={view.nav.problem} onClick={() => setSelectedField("nav.problem")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.problem", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.problem")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.problem", ns)} onResize={(ns) => updateElementStyle("nav.problem", ns)} />
-                    ) : <a href="#problema" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.problem}</a>}
-                    {interactiveEditing ? (
-                      <EditableText active={interactiveEditing} selected={selectedField === "nav.solution"} label="Menu Solução" value={view.nav.solution} onClick={() => setSelectedField("nav.solution")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.solution", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.solution")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.solution", ns)} onResize={(ns) => updateElementStyle("nav.solution", ns)} />
-                    ) : <a href="#solucao" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.solution}</a>}
-                    {interactiveEditing ? (
-                      <EditableText active={interactiveEditing} selected={selectedField === "nav.plans"} label="Menu Planos" value={view.nav.plans} onClick={() => setSelectedField("nav.plans")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.plans", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.plans")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.plans", ns)} onResize={(ns) => updateElementStyle("nav.plans", ns)} />
-                    ) : <a href="#planos" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.plans}</a>}
-                  </nav>
-                  {interactiveEditing ? (
-                    <EditableText active={interactiveEditing} selected={selectedField === "header.loginLabel"} label="Botão Entrar" value={view.header.loginLabel} onClick={() => setSelectedField("header.loginLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.loginLabel", v))} className="hidden text-sm font-medium text-slate-600 sm:inline-flex" styleBox={getElementStyle("header.loginLabel")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("header.loginLabel", ns)} onResize={(ns) => updateElementStyle("header.loginLabel", ns)} />
-                  ) : (
-                    <Link href="/login" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-950 sm:inline-flex">{view.header.loginLabel}</Link>
-                  )}
-                  {interactiveEditing ? (
-                    <EditableText active={interactiveEditing} selected={selectedField === "header.ctaLabel"} label="Botão CTA header" value={view.header.ctaLabel} onClick={() => setSelectedField("header.ctaLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.ctaLabel", v))} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white" styleBox={getElementStyle("header.ctaLabel")} minWidth={150} minHeight={44} onMove={(ns) => updateElementStyle("header.ctaLabel", ns)} onResize={(ns) => updateElementStyle("header.ctaLabel", ns)} />
-                  ) : (
-                    <Link href="/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</Link>
-                  )}
+            {!draft.dynamicSections.some((s) => s.kind === "header") && (
+              !interactiveEditing ? (
+                <div className="sticky top-0 z-40 px-6 pt-4 pb-2 bg-white/80 backdrop-blur-md lg:px-8">
+                  <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
+                    <EditableLogo active={interactiveEditing} selected={selectedField === "branding.headerLogo"} label="Logo principal" src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt} height={view.branding.headerLogo.height} styleBox={getElementStyle("branding.headerLogo")} minWidth={160} minHeight={40} onMove={(ns) => updateElementStyle("branding.headerLogo", ns)} onResize={(ns) => updateElementStyle("branding.headerLogo", ns)} onClick={() => setSelectedField("branding.headerLogo")} />
+                    <div className="flex items-center gap-5">
+                      <nav className="flex items-center gap-5 text-sm font-medium text-slate-600">
+                        <a href="#problema" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.problem}</a>
+                        <a href="#solucao" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.solution}</a>
+                        <a href="#planos" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.plans}</a>
+                      </nav>
+                      <Link href="/login" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-950 sm:inline-flex">{view.header.loginLabel}</Link>
+                      <Link href="/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</Link>
+                    </div>
+                  </header>
                 </div>
-              </header>
-            </div>}
+              ) : (
+                <div className="px-6 pt-6 lg:px-8">
+                  <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
+                    <EditableLogo active={interactiveEditing} selected={selectedField === "branding.headerLogo"} label="Logo principal" src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt} height={view.branding.headerLogo.height} styleBox={getElementStyle("branding.headerLogo")} minWidth={160} minHeight={40} onMove={(ns) => updateElementStyle("branding.headerLogo", ns)} onResize={(ns) => updateElementStyle("branding.headerLogo", ns)} onClick={() => setSelectedField("branding.headerLogo")} />
+                    <div className="flex items-center gap-5">
+                      <nav className="flex items-center gap-5 text-sm font-medium text-slate-600">
+                        {interactiveEditing ? (
+                          <EditableText active={interactiveEditing} selected={selectedField === "nav.problem"} label="Menu Problema" value={view.nav.problem} onClick={() => setSelectedField("nav.problem")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.problem", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.problem")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.problem", ns)} onResize={(ns) => updateElementStyle("nav.problem", ns)} />
+                        ) : <a href="#problema" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.problem}</a>}
+                        {interactiveEditing ? (
+                          <EditableText active={interactiveEditing} selected={selectedField === "nav.solution"} label="Menu Solução" value={view.nav.solution} onClick={() => setSelectedField("nav.solution")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.solution", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.solution")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.solution", ns)} onResize={(ns) => updateElementStyle("nav.solution", ns)} />
+                        ) : <a href="#solucao" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.solution}</a>}
+                        {interactiveEditing ? (
+                          <EditableText active={interactiveEditing} selected={selectedField === "nav.plans"} label="Menu Planos" value={view.nav.plans} onClick={() => setSelectedField("nav.plans")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "nav.plans", v))} className="text-sm font-medium text-slate-600" styleBox={getElementStyle("nav.plans")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("nav.plans", ns)} onResize={(ns) => updateElementStyle("nav.plans", ns)} />
+                        ) : <a href="#planos" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.plans}</a>}
+                      </nav>
+                      {interactiveEditing ? (
+                        <EditableText active={interactiveEditing} selected={selectedField === "header.loginLabel"} label="Botão Entrar" value={view.header.loginLabel} onClick={() => setSelectedField("header.loginLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.loginLabel", v))} className="hidden text-sm font-medium text-slate-600 sm:inline-flex" styleBox={getElementStyle("header.loginLabel")} minWidth={90} minHeight={36} onMove={(ns) => updateElementStyle("header.loginLabel", ns)} onResize={(ns) => updateElementStyle("header.loginLabel", ns)} />
+                      ) : (
+                        <Link href="/login" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-950 sm:inline-flex">{view.header.loginLabel}</Link>
+                      )}
+                      {interactiveEditing ? (
+                        <EditableText active={interactiveEditing} selected={selectedField === "header.ctaLabel"} label="Botão CTA header" value={view.header.ctaLabel} onClick={() => setSelectedField("header.ctaLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.ctaLabel", v))} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white" styleBox={getElementStyle("header.ctaLabel")} minWidth={150} minHeight={44} onMove={(ns) => updateElementStyle("header.ctaLabel", ns)} onResize={(ns) => updateElementStyle("header.ctaLabel", ns)} />
+                      ) : (
+                        <Link href="/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</Link>
+                      )}
+                    </div>
+                  </header>
+                </div>
+              )
+            )}
 
             {/* Seções do template base — só aparecem quando não há seções personalizadas */}
             {draft.dynamicSections.length === 0 && <>
             <section className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 pb-16 pt-6 lg:px-8">
               <div className="grid flex-1 items-center gap-14 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:py-20">
                 <div className="max-w-3xl">
-                  <EditableText active={interactiveEditing} selected={selectedField === "hero.badge"} label="Badge hero" value={view.hero.badge} onClick={() => setSelectedField("hero.badge")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.badge", v))} className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1 text-sm font-medium text-emerald-700" styleBox={getElementStyle("hero.badge")} minWidth={180} minHeight={38} onMove={(ns) => updateElementStyle("hero.badge", ns)} onResize={(ns) => updateElementStyle("hero.badge", ns)} />
+                  <EditableText active={interactiveEditing} selected={selectedField === "hero.badge"} label="Badge hero" value={view.hero.badge} onClick={() => setSelectedField("hero.badge")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.badge", v))} className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-semibold tracking-wide text-emerald-700 uppercase" styleBox={getElementStyle("hero.badge")} minWidth={180} minHeight={38} onMove={(ns) => updateElementStyle("hero.badge", ns)} onResize={(ns) => updateElementStyle("hero.badge", ns)} />
                   <div className="mt-6 space-y-3">
                     <EditableText active={interactiveEditing} selected={selectedField === "hero.titleLine1"} label="Título hero linha 1" value={view.hero.titleLine1} onClick={() => setSelectedField("hero.titleLine1")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.titleLine1", v))} className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl" styleBox={getElementStyle("hero.titleLine1")} minWidth={280} minHeight={72} onMove={(ns) => updateElementStyle("hero.titleLine1", ns)} onResize={(ns) => updateElementStyle("hero.titleLine1", ns)} />
                     <EditableText active={interactiveEditing} selected={selectedField === "hero.titleLine2"} label="Título hero linha 2" value={view.hero.titleLine2} onClick={() => setSelectedField("hero.titleLine2")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.titleLine2", v))} className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl" styleBox={getElementStyle("hero.titleLine2")} minWidth={280} minHeight={72} onMove={(ns) => updateElementStyle("hero.titleLine2", ns)} onResize={(ns) => updateElementStyle("hero.titleLine2", ns)} />
@@ -703,9 +722,9 @@ export default function SitePage() {
                   {renderCustomFieldCanvas("hero", "border-slate-200 bg-white/40")}
                   <div className="mt-10 grid gap-4 sm:grid-cols-3">
                     {view.metrics.map((m) => (
-                      <div key={m.label} className="rounded-2xl border border-white/80 bg-white/80 p-5 shadow-sm">
-                        <div className="text-3xl font-semibold text-slate-950">{m.value}</div>
-                        <div className="mt-2 text-sm leading-6 text-slate-600">{m.label}</div>
+                      <div key={m.value} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                        <div className="text-3xl font-bold text-emerald-600">{m.value}</div>
+                        <div className="mt-2 text-sm leading-6 text-slate-500">{m.label}</div>
                       </div>
                     ))}
                   </div>
@@ -766,16 +785,21 @@ export default function SitePage() {
             </section>
 
             {/* Seções fixas legadas */}
-            <section id="problema" className="scroll-mt-24 border-y border-slate-200 bg-white/70">
-              <div className="mx-auto grid max-w-7xl gap-8 px-6 py-16 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+            <section id="problema" className="scroll-mt-24 bg-slate-950 text-white">
+              <div className="mx-auto grid max-w-7xl gap-10 px-6 py-20 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{view.problem.eyebrow}</div>
-                  <EditableText active={interactiveEditing} selected={selectedField === "problem.title"} label="Título Problema" value={view.problem.title} onClick={() => setSelectedField("problem.title")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "problem.title", v))} multiline className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl" styleBox={getElementStyle("problem.title")} minWidth={260} minHeight={110} onResize={(ns) => updateElementStyle("problem.title", ns)} />
-                  {renderCustomFieldCanvas("problem", "border-slate-200 bg-white/40")}
+                  <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{view.problem.eyebrow}</div>
+                  <EditableText active={interactiveEditing} selected={selectedField === "problem.title"} label="Título Problema" value={view.problem.title} onClick={() => setSelectedField("problem.title")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "problem.title", v))} multiline className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl" styleBox={getElementStyle("problem.title")} minWidth={260} minHeight={110} onResize={(ns) => updateElementStyle("problem.title", ns)} />
+                  {renderCustomFieldCanvas("problem", "border-white/20 bg-white/5")}
                 </div>
                 <div className="grid gap-4">
-                  {view.problem.items.map((pain) => (
-                    <div key={pain} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="text-base leading-7 text-slate-600">{pain}</div></div>
+                  {view.problem.items.map((pain, i) => (
+                    <div key={pain} className="flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 p-6">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-slate-300 ring-1 ring-white/10">
+                        {i + 1}
+                      </span>
+                      <div className="text-base leading-7 text-slate-300">{pain}</div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -789,11 +813,13 @@ export default function SitePage() {
                 {renderCustomFieldCanvas("solution", "border-slate-200 bg-white/40")}
               </div>
               <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {view.features.map((f) => (
-                  <article key={f.title} className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white">{f.title.split(" ").slice(0, 2).map((p) => p[0]).join("")}</div>
-                    <h3 className="mt-5 text-xl font-semibold text-slate-950">{f.title}</h3>
-                    <p className="mt-3 text-sm leading-7 text-slate-600">{f.description}</p>
+                {view.features.map((f, i) => (
+                  <article key={f.title} className="group rounded-[1.75rem] border border-slate-100 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-emerald-100 hover:shadow-md">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-sm font-bold text-emerald-600 ring-1 ring-emerald-100">
+                      {String(i + 1).padStart(2, "0")}
+                    </div>
+                    <h3 className="mt-5 text-lg font-semibold text-slate-950">{f.title}</h3>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">{f.description}</p>
                   </article>
                 ))}
               </div>
@@ -818,7 +844,9 @@ export default function SitePage() {
                       <div className="mt-6 space-y-3">
                         {plan.items.map((item) => (
                           <div key={item} className={`flex items-center gap-3 text-sm ${plan.featured ? "text-slate-700" : "text-slate-200"}`}>
-                            <span className={`h-2.5 w-2.5 rounded-full ${plan.featured ? "bg-emerald-500" : "bg-white"}`} />
+                            <svg className={`h-4 w-4 shrink-0 ${plan.featured ? "text-emerald-500" : "text-emerald-300"}`} viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
                             {item}
                           </div>
                         ))}
@@ -850,6 +878,43 @@ export default function SitePage() {
             </section>
 
             </>}
+
+            {!interactiveEditing && draft.dynamicSections.length === 0 && (
+              <footer className="border-t border-slate-100 bg-slate-950 py-12 px-6 lg:px-8">
+                <div className="mx-auto max-w-7xl">
+                  <div className="flex flex-col items-start gap-8 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      {view.branding.headerLogo.src ? (
+                        <img src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt || "VIA CRM"} className="h-8 w-auto brightness-0 invert" />
+                      ) : (
+                        <span className="text-base font-bold text-white">VIA CRM</span>
+                      )}
+                      <p className="mt-3 text-sm text-slate-400 max-w-xs">CRM imobiliário para atendimento, operação e gestão.</p>
+                    </div>
+                    <div className="flex flex-col gap-6 sm:flex-row sm:gap-12">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Produto</div>
+                        <ul className="space-y-2 text-sm text-slate-400">
+                          <li><a href="#problema" className="hover:text-white transition">O problema</a></li>
+                          <li><a href="#solucao" className="hover:text-white transition">A solução</a></li>
+                          <li><a href="#planos" className="hover:text-white transition">Planos</a></li>
+                        </ul>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Acesso</div>
+                        <ul className="space-y-2 text-sm text-slate-400">
+                          <li><Link href="/login" className="hover:text-white transition">Entrar</Link></li>
+                          <li><Link href="/login" className="hover:text-white transition">Agendar demo</Link></li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-10 border-t border-slate-800 pt-6 text-xs text-slate-600">
+                    &copy; {new Date().getFullYear()} VIA CRM &middot; Todos os direitos reservados
+                  </div>
+                </div>
+              </footer>
+            )}
 
             {renderDynamicSections()}
           </main>
