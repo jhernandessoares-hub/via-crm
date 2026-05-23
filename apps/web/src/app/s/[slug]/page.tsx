@@ -9,6 +9,7 @@ import {
   EditorElementStyle,
   normalizeSiteContent,
 } from "@/lib/site-content";
+import { ContactFormBlock } from "@/components/site/ContactFormBlock";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -181,7 +182,7 @@ function PublicBlock({
   }
 
   if (block.type === "contact-form") {
-    return <ContactFormBlock slug={slug} title={block.text} />;
+    return <ContactFormBlock slug={slug} title={block.text || undefined} />;
   }
 
   if (block.type === "property-grid") {
@@ -227,18 +228,8 @@ function PublicBlock({
   }
 
   if (block.type === "property-search") {
-    return (
-      <form action={`/s/${slug}/busca`} method="GET" className="flex w-full max-w-2xl gap-2">
-        <input
-          name="q"
-          placeholder="Buscar por cidade, bairro ou tipo de imóvel..."
-          className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:border-slate-950"
-        />
-        <button type="submit" className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
-          Buscar
-        </button>
-      </form>
-    );
+    // Filtro client-side — a busca real por rota dedicada ainda não existe
+    return null;
   }
 
   if (block.type === "property-map") {
@@ -258,27 +249,6 @@ function PublicBlock({
   }
 
   return null;
-}
-
-// Client-side contact form
-function ContactFormBlock({ slug, title }: { slug: string; title?: string }) {
-  return (
-    <div className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="text-sm font-semibold text-slate-950">{title || "Fale conosco"}</div>
-      <form
-        action={`${API}/sites/public/${slug}/lead`}
-        method="POST"
-        className="mt-4 space-y-3"
-      >
-        <input name="nome" required className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Seu nome" />
-        <input name="telefone" required className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="WhatsApp" />
-        <textarea name="mensagem" rows={3} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Mensagem (opcional)" />
-        <button type="submit" className="w-full rounded-full bg-slate-950 py-2 text-sm font-semibold text-white">
-          Enviar
-        </button>
-      </form>
-    </div>
-  );
 }
 
 // ─── Section Renderer ─────────────────────────────────────────────────────────

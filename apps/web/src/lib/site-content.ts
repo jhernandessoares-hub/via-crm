@@ -191,11 +191,11 @@ export const defaultSiteContent: SiteContent = {
   dynamicBlocks: [],
   header: {
     loginLabel: "Entrar",
-    ctaLabel: "Agendar demonstracao",
+    ctaLabel: "Agendar demonstração",
   },
   nav: {
     problem: "Problema",
-    solution: "Solucao",
+    solution: "Solução",
     plans: "Planos",
   },
   hero: {
@@ -203,11 +203,11 @@ export const defaultSiteContent: SiteContent = {
     titleLine1: "Corretor com cliente,",
     titleLine2: "a VIA no CRM.",
     description:
-      "Organize atendimento, rotina dos corretores, agenda e acompanhamento do cliente em um fluxo unico. Menos ruido, mais produtividade e mais clareza para a sua operacao imobiliaria.",
+      "Organize atendimento, rotina dos corretores, agenda e acompanhamento do cliente em um fluxo único. Menos ruído, mais produtividade e mais clareza para a sua operação imobiliária.",
     primaryCta: "Quero ver funcionando",
     secondaryCta: "Ver planos",
     panelEyebrow: "Painel VIA CRM",
-    panelTitle: "Atendimento e operacao em sintonia",
+    panelTitle: "Atendimento e operação em sintonia",
     panelStatus: "Online",
     image: {
       src: null,
@@ -219,91 +219,91 @@ export const defaultSiteContent: SiteContent = {
   },
   metrics: [
     { value: "3x", label: "mais agilidade no atendimento e no retorno ao cliente" },
-    { value: "24h", label: "de operacao organizada entre corretor, gestao e agenda" },
-    { value: "1", label: "painel unico para corretor, gestor e acompanhamento do cliente" },
+    { value: "24h", label: "de operação organizada entre corretor, gestão e agenda" },
+    { value: "1", label: "painel único para corretor, gestor e acompanhamento do cliente" },
   ],
   problem: {
     eyebrow: "O problema",
-    title: "Seu time atende pior quando a operacao depende de memoria, mensagens soltas e improviso.",
+    title: "Seu time atende pior quando a operação depende de memória, mensagens soltas e improviso.",
     items: [
-      "O atendimento perde ritmo quando conversas, tarefas e historico do cliente ficam espalhados em varios lugares.",
-      "Corretores gastam tempo demais tentando lembrar combinados, proximos passos e retornos pendentes.",
-      "A gestao perde visibilidade da operacao e so percebe atrasos quando o cliente ja teve uma experiencia ruim.",
+      "O atendimento perde ritmo quando conversas, tarefas e histórico do cliente ficam espalhados em vários lugares.",
+      "Corretores gastam tempo demais tentando lembrar combinados, próximos passos e retornos pendentes.",
+      "A gestão perde visibilidade da operação e só percebe atrasos quando o cliente já teve uma experiência ruim.",
     ],
   },
   solution: {
-    eyebrow: "A solucao",
-    title: "Um ambiente unico para atender melhor, organizar a operacao e acompanhar cada cliente com clareza.",
+    eyebrow: "A solução",
+    title: "Um ambiente único para atender melhor, organizar a operação e acompanhar cada cliente com clareza.",
     description:
-      "O VIA CRM foi desenhado para a rotina imobiliaria. O corretor ganha produtividade, a gestao enxerga o andamento e o cliente recebe uma experiencia mais rapida e organizada.",
+      "O VIA CRM foi desenhado para a rotina imobiliária. O corretor ganha produtividade, a gestão enxerga o andamento e o cliente recebe uma experiência mais rápida e organizada.",
   },
   features: [
     {
       title: "Acompanhamento do cliente",
       description:
-        "Visualize a jornada de cada atendimento, organize proximos passos e mantenha contexto em toda a relacao.",
+        "Visualize a jornada de cada atendimento, organize próximos passos e mantenha contexto em toda a relação.",
     },
     {
       title: "Central de atendimento",
       description:
-        "Conecte canais, distribua contatos e mantenha o contexto completo do atendimento em um so lugar.",
+        "Conecte canais, distribua contatos e mantenha o contexto completo do atendimento em um só lugar.",
     },
     {
-      title: "Agenda e secretaria",
+      title: "Agenda e secretária",
       description:
-        "Coordene visitas, retornos e tarefas operacionais com menos ruido entre corretor, backoffice e gestao.",
+        "Coordene visitas, retornos e tarefas operacionais com menos ruído entre corretor, backoffice e gestão.",
     },
     {
       title: "Produtividade do corretor",
       description:
-        "Reduza retrabalho com acesso rapido a clientes, agenda, historico e informacoes importantes da rotina.",
+        "Reduza retrabalho com acesso rápido a clientes, agenda, histórico e informações importantes da rotina.",
     },
     {
-      title: "Operacao mais organizada",
+      title: "Operação mais organizada",
       description:
         "Padronize processos, repasses e acompanhamentos para a equipe operar melhor no dia a dia.",
     },
     {
-      title: "Visao gerencial",
+      title: "Visão gerencial",
       description:
-        "Monitore o andamento do time, gargalos de atendimento e pontos criticos da operacao com clareza.",
+        "Monitore o andamento do time, gargalos de atendimento e pontos críticos da operação com clareza.",
     },
   ],
   plansSection: {
     eyebrow: "Planos",
-    title: "Estrutura de contratacao compativel com o estagio da sua operacao.",
+    title: "Estrutura de contratação compatível com o estágio da sua operação.",
     description:
-      "Comece com o essencial, organize a rotina e avance para uma operacao imobiliaria mais fluida.",
+      "Comece com o essencial, organize a rotina e avance para uma operação imobiliária mais fluida.",
   },
   plans: [
     {
       name: "Start",
-      price: "R$ 297/mes",
-      description: "Para operacoes enxutas que precisam sair do improviso.",
-      items: ["Ate 3 usuarios", "Atendimento centralizado", "Agenda basica", "Suporte por e-mail"],
+      price: "R$ 297/mês",
+      description: "Para operações enxutas que precisam sair do improviso.",
+      items: ["Até 3 usuários", "Atendimento centralizado", "Agenda básica", "Suporte por e-mail"],
     },
     {
       name: "Performance",
-      price: "R$ 697/mes",
-      description: "Para imobiliarias em crescimento com foco em organizacao e produtividade.",
-      items: ["Ate 10 usuarios", "Canais integrados", "Secretaria e agenda", "Dashboards operacionais"],
+      price: "R$ 697/mês",
+      description: "Para imobiliárias em crescimento com foco em organização e produtividade.",
+      items: ["Até 10 usuários", "Canais integrados", "Secretária e agenda", "Dashboards operacionais"],
       featured: true,
     },
     {
       name: "Scale",
       price: "Sob consulta",
-      description: "Para operacoes com multiplas equipes, maior volume e automacoes avancadas.",
-      items: ["Usuarios ilimitados", "Configuracao dedicada", "Fluxos avancados", "Onboarding assistido"],
+      description: "Para operações com múltiplas equipes, maior volume e automações avançadas.",
+      items: ["Usuários ilimitados", "Configuração dedicada", "Fluxos avançados", "Onboarding assistido"],
     },
   ],
   finalCta: {
-    eyebrow: "CTA final",
-    title: "Se a sua operacao imobiliaria cresceu, o atendimento e a organizacao precisam crescer junto.",
+    eyebrow: "Pronto para começar?",
+    title: "Se a sua operação imobiliária cresceu, o atendimento e a organização precisam crescer junto.",
     description:
-      "Veja como o VIA CRM organiza a rotina, acelera o atendimento e da mais clareza para corretores e gestao.",
+      "Veja como o VIA CRM organiza a rotina, acelera o atendimento e dá mais clareza para corretores e gestão.",
     sideText:
-      "Demonstracao focada na rotina de imobiliarias, com atendimento mais consistente e operacao mais controlada.",
-    buttonLabel: "Solicitar apresentacao",
+      "Demonstração focada na rotina de imobiliárias, com atendimento mais consistente e operação mais controlada.",
+    buttonLabel: "Solicitar apresentação",
   },
 };
 
