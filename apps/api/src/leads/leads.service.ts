@@ -2191,15 +2191,20 @@ const aiAssistanceLabel =
           ? 'Parcial IA'
           : 'Humano';
 
-    const isLight = lead.conversaCanal === 'WHATSAPP_LIGHT';
+    // Quando conversaCanal ainda não está definido (lead manual), o frontend pode
+    // indicar qual sessão WA Light usar. Se sessionId informado → trata como Light.
+    const chosenSessionId: string | null = input.sessionId || null;
+    const isLight = lead.conversaCanal === 'WHATSAPP_LIGHT' ||
+      (lead.conversaCanal === null && !!chosenSessionId);
+    const activeSessionId = lead.conversaSessionId || chosenSessionId;
 
     if (isLight) {
-      if (!lead.conversaSessionId) {
-        throw new Error('Lead WhatsApp Light sem sessão de origem');
+      if (!activeSessionId) {
+        throw new Error('Sessão WhatsApp Light não especificada');
       }
 
       try {
-        await this.unofficialService.sendText(lead.conversaSessionId, lead.telefone, text);
+        await this.unofficialService.sendText(activeSessionId, lead.telefone, text);
       } catch (sendErr: any) {
         await this.prisma.leadEvent.create({
           data: {
@@ -2208,7 +2213,7 @@ const aiAssistanceLabel =
             channel: 'whatsapp.unofficial.out.failed',
             payloadRaw: {
               to: lead.telefone,
-              sessionId: lead.conversaSessionId,
+              sessionId: activeSessionId,
               type: 'text',
               message: text,
               error: sendErr?.message || String(sendErr),
@@ -2227,7 +2232,7 @@ const aiAssistanceLabel =
           channel: 'whatsapp.unofficial.out',
           payloadRaw: {
             to: lead.telefone,
-            sessionId: lead.conversaSessionId,
+            sessionId: activeSessionId,
             type: 'text',
             text,
             message: text,
@@ -2237,6 +2242,14 @@ const aiAssistanceLabel =
           },
         },
       });
+
+      // Fixa o canal no lead na primeira mensagem outbound
+      if (!lead.conversaCanal) {
+        await this.prisma.lead.update({
+          where: { id: leadId },
+          data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: activeSessionId },
+        });
+      }
 
       return { ok: true };
     }
@@ -2287,6 +2300,14 @@ const aiAssistanceLabel =
         },
       },
     });
+
+    // Fixa o canal no lead na primeira mensagem outbound
+    if (!lead.conversaCanal) {
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: { conversaCanal: 'WHATSAPP_OFICIAL' },
+      });
+    }
 
     return { ok: true };
   }
