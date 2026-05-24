@@ -645,8 +645,8 @@ export default function SitePage() {
               "--site-accent": view.theme?.accentColor ?? "#10b981",
             } as React.CSSProperties}
           >
-            {/* Cabeçalho — fallback quando não há seção de tipo "header" nas seções dinâmicas */}
-            {!draft.dynamicSections.some((s) => s.kind === "header") && (
+            {/* Cabeçalho — no modo público sempre aparece; no editor só quando não há seção "header" dinâmica */}
+            {(!editorMode || !draft.dynamicSections.some((s) => s.kind === "header")) && (
               !interactiveEditing ? (
                 <div className="sticky top-0 z-40 px-6 pt-4 pb-2 bg-white/80 backdrop-blur-md lg:px-8">
                   <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
@@ -694,8 +694,8 @@ export default function SitePage() {
               )
             )}
 
-            {/* Seções do template base — só aparecem quando não há seções personalizadas */}
-            {draft.dynamicSections.length === 0 && <>
+            {/* Seções do template base — no modo público sempre aparecem; no editor só quando não há seções dinâmicas */}
+            {(!editorMode || draft.dynamicSections.length === 0) && <>
             <section className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 pb-16 pt-6 lg:px-8">
               <div className="grid flex-1 items-center gap-14 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:py-20">
                 <div className="max-w-3xl">
@@ -916,7 +916,7 @@ export default function SitePage() {
               </footer>
             )}
 
-            {renderDynamicSections()}
+            {editorMode && renderDynamicSections()}
           </main>
         </div>
       </div>
