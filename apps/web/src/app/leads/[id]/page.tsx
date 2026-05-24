@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
@@ -3119,7 +3119,7 @@ function discardAiSuggestion() {
                           {u.development?.id && (
                             <button
                               type="button"
-                              onClick={() => window.open(`/gestao-empreendimentos/${u.development!.id}?tab=espelho`, "_blank")}
+                              onClick={() => { startTransition(() => router.push(`/gestao-empreendimentos/${u.development!.id}?tab=espelho&leadId=${id}`)); }}
                               className="rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
                               style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
                             >
@@ -3557,7 +3557,7 @@ function discardAiSuggestion() {
                     <button
                       type="button"
                       disabled={!selectedDevId}
-                      onClick={() => window.open(`/gestao-empreendimentos/${selectedDevId}?tab=espelho`, "_blank")}
+                      onClick={() => { startTransition(() => router.push(`/gestao-empreendimentos/${selectedDevId}?tab=espelho&leadId=${id}`)); }}
                       className="rounded-md px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ background: "var(--brand-accent)" }}
                     >
