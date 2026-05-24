@@ -3078,7 +3078,12 @@ function discardAiSuggestion() {
                           <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
-                              onClick={() => { setTrocandoUnit(u.id); setProdOpen(true); setProdTab("empreendimentos"); }}
+                              onClick={() => {
+                                const devId = u.developmentId;
+                                if (!devId) return;
+                                const unitLabel = [u.development?.nome, u.tower?.nome, u.nome].filter(Boolean).join(" · ");
+                                window.location.href = `/gestao-empreendimentos/${devId}?tab=espelho&leadId=${id}&trocandoUnitId=${u.id}&trocandoUnitNome=${encodeURIComponent(unitLabel)}`;
+                              }}
                               className="rounded px-1.5 py-0.5 text-[10px] font-medium border hover:bg-[var(--shell-hover)] transition-colors"
                               style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
                             >
@@ -3119,7 +3124,7 @@ function discardAiSuggestion() {
                           {u.development?.id && (
                             <button
                               type="button"
-                              onClick={() => { startTransition(() => router.push(`/gestao-empreendimentos/${u.development!.id}?tab=espelho&leadId=${id}`)); }}
+                              onClick={() => { window.location.href = `/gestao-empreendimentos/${u.development!.id}?tab=espelho&leadId=${id}`; }}
                               className="rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
                               style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
                             >
@@ -3158,12 +3163,7 @@ function discardAiSuggestion() {
                             </button>
                           </div>
                         )}
-                        {isTrocando && (
-                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800 flex items-center gap-2">
-                            <span className="flex-1">Selecione a nova unidade no espelho abaixo. A unidade atual será desvinculada ao vincular a nova.</span>
-                            <button type="button" onClick={() => setTrocandoUnit(null)} className="underline text-amber-700 shrink-0">Cancelar</button>
-                          </div>
-                        )}
+
                       </div>
                     );
                   })}
@@ -3557,7 +3557,7 @@ function discardAiSuggestion() {
                     <button
                       type="button"
                       disabled={!selectedDevId}
-                      onClick={() => { startTransition(() => router.push(`/gestao-empreendimentos/${selectedDevId}?tab=espelho&leadId=${id}`)); }}
+                      onClick={() => { window.location.href = `/gestao-empreendimentos/${selectedDevId}?tab=espelho&leadId=${id}`; }}
                       className="rounded-md px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ background: "var(--brand-accent)" }}
                     >

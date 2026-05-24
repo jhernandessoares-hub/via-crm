@@ -8,7 +8,7 @@ import AppShell from "@/components/AppShell";
 import { usePermissions } from "@/lib/permissions";
 import {
   getDevelopment, updateDevelopment, createTower, updateTower, deleteTower, duplicateTower,
-  bulkCreateUnits, updateUnit, bulkUpdateUnits, bulkUpdateUnitsIndividual,
+  bulkCreateUnits, updateUnit, unlinkUnit, bulkUpdateUnits, bulkUpdateUnitsIndividual,
   getDashboard, getPaymentCondition, upsertPaymentCondition,
   uploadImplantacao, uploadDevelopmentModel, publishDevelopment, unpublishDevelopment,
   type Development, type Tower, type DevelopmentUnit, type UnitStatus,
@@ -322,12 +322,13 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER", preLinkedL
 
 // ─── Popup de detalhes da unidade (view-only + lead search) ──────────────────
 
-function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, role = "OWNER", preLinkedLead }: {
+function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, role = "OWNER", preLinkedLead, trocandoUnitId }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void;
   onUnitUpdated: (u: DevelopmentUnit) => void;
   onEditUnit: () => void;
   role?: string;
   preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
+  trocandoUnitId?: string;
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState(unit);
@@ -337,6 +338,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [savingPne, setSavingPne] = useState(false);
+  const [trocando, setTrocando] = useState(false);
 
   useEffect(() => {
     if (!showSearch || !query.trim()) { setResults([]); return; }
@@ -372,6 +374,20 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
       setQuery("");
       setResults([]);
     } catch (e: any) { alert(e?.message ?? "Erro ao vincular lead"); }
+  }
+
+  async function handleTrocar() {
+    if (!trocandoUnitId || !preLinkedLead) return;
+    if (!confirm(`Trocar para a unidade ${current.nome}?\n\nDE: unidade anterior\nPARA: ${current.nome}`)) return;
+    setTrocando(true);
+    try {
+      await unlinkUnit(devId, trocandoUnitId);
+      await updateUnit(devId, current.id, { leadId: preLinkedLead.id, status: "PROPOSTA" } as any);
+      window.location.href = `/leads/${preLinkedLead.id}`;
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao trocar unidade");
+      setTrocando(false);
+    }
   }
 
   const buyerName = current.lead?.nomeCorreto ?? current.lead?.nome ?? current.comprador
@@ -539,19 +555,49 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
           </div>
         )}
 
-        {/* Ações */}
-        <div className="flex gap-2 pt-3 border-t border-[var(--shell-card-border)]">
-          <button type="button" onClick={onEditUnit}
-            className="flex-1 rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
-            Detalhes da Unidade
-          </button>
-          {current.leadId && (
-            <button type="button" onClick={() => setView("lead")}
-              className="flex-1 rounded-lg bg-[var(--brand-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
-              Ver Lead →
+        {/* Trocar para esta unidade (modo troca) */}
+        {trocandoUnitId && preLinkedLead && current.status === "DISPONIVEL" && (
+          <div className="pt-3 border-t border-[var(--shell-card-border)]">
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 mb-3">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-0.5">Confirmar troca</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Lead: <strong>{preLinkedLead.nomeCorreto ?? preLinkedLead.nome}</strong>
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                PARA: <strong>{current.nome}</strong>
+              </p>
+            </div>
+            <button type="button" disabled={trocando} onClick={handleTrocar}
+              className="w-full rounded-lg bg-amber-500 hover:bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-50">
+              {trocando ? "Trocando..." : `✔ Selecionar ${current.nome} como nova unidade`}
             </button>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Unidade não disponível em modo troca */}
+        {trocandoUnitId && current.status !== "DISPONIVEL" && (
+          <div className="pt-3 border-t border-[var(--shell-card-border)]">
+            <p className="text-xs text-[var(--shell-subtext)] text-center">
+              Esta unidade não está disponível para troca.
+            </p>
+          </div>
+        )}
+
+        {/* Ações normais (apenas fora do modo troca) */}
+        {!trocandoUnitId && (
+          <div className="flex gap-2 pt-3 border-t border-[var(--shell-card-border)]">
+            <button type="button" onClick={onEditUnit}
+              className="flex-1 rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
+              Detalhes da Unidade
+            </button>
+            {current.leadId && (
+              <button type="button" onClick={() => setView("lead")}
+                className="flex-1 rounded-lg bg-[var(--brand-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+                Ver Lead →
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -985,9 +1031,10 @@ function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onCl
   );
 }
 
-function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead }: {
+function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead, trocandoUnitId }: {
   dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void; role: string;
   preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
+  trocandoUnitId?: string;
 }) {
   const [filters, setFilters] = useState<EspelhoFilters>(emptyFilters());
   const [exporting, setExporting] = useState(false);
@@ -1123,6 +1170,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead }: {
           devId={dev.id}
           role={role}
           preLinkedLead={preLinkedLead}
+          trocandoUnitId={trocandoUnitId}
           onClose={() => setDetailsUnit(null)}
           onUnitUpdated={(u) => { onUnitUpdated(detailsUnit.towerId, u); setDetailsUnit(u); }}
           onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
@@ -1144,11 +1192,12 @@ function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead }: {
 
 // --- Aba Espelho -------------------------------------------------------------
 
-function AbaEspelho({ dev, onUnitUpdated, role, preLinkedLead }: {
+function AbaEspelho({ dev, onUnitUpdated, role, preLinkedLead, trocandoUnitId }: {
   dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void; role: string;
   preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
+  trocandoUnitId?: string;
 }) {
-  return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} role={role} preLinkedLead={preLinkedLead} />;
+  return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} role={role} preLinkedLead={preLinkedLead} trocandoUnitId={trocandoUnitId} />;
 }
 
 // ─── Preencher em Lote por Posição ────────────────────────────────────────────
@@ -3957,11 +4006,12 @@ const TABBED_TABS: { key: TabbedKey; label: string }[] = [
   { key: "dashboard",     label: "📊 Dashboard"     },
 ];
 
-function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role, preLinkedLead }: {
+function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role, preLinkedLead, trocandoUnitId }: {
   dev: Development; dashboard: Dashboard | null; onSaved: () => void;
   onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
   role: string;
   preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
+  trocandoUnitId?: string;
 }) {
   const isOwnerOrManager = role === "OWNER" || role === "MANAGER";
   const visibleTabs = isOwnerOrManager ? TABBED_TABS : TABBED_TABS.filter((t) => t.key === "espelho");
@@ -3990,7 +4040,7 @@ function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role, preLinkedLea
         {tab === "layout"        && <Step3Layout        dev={dev} onSaved={onSaved} />}
         {tab === "estruturacao"  && <Step4Estruturacao  dev={dev} onSaved={onSaved} />}
         {tab === "precos"        && <Step5Precos        dev={dev} onSaved={onSaved} />}
-        {(tab === "espelho" || !isOwnerOrManager) && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} role={role} preLinkedLead={preLinkedLead} />}
+        {(tab === "espelho" || !isOwnerOrManager) && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} role={role} preLinkedLead={preLinkedLead} trocandoUnitId={trocandoUnitId} />}
         {tab === "dashboard" && isOwnerOrManager && (
           dashboard ? <DashboardView dashboard={dashboard} dev={dev} /> :
           <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
@@ -4016,6 +4066,8 @@ export default function EmpreendimentoDetailPage() {
   const stepParam = searchParams.get("step");
   const initialStep = stepParam !== null ? parseInt(stepParam) : undefined;
   const fromLeadId = searchParams.get("leadId");
+  const trocandoUnitId = searchParams.get("trocandoUnitId");
+  const trocandoUnitNome = searchParams.get("trocandoUnitNome") ?? undefined;
 
   const [dev, setDev] = useState<Development | null>(null);
   const [fromLead, setFromLead] = useState<{ id: string; nome: string; nomeCorreto?: string | null } | null>(null);
@@ -4154,18 +4206,32 @@ export default function EmpreendimentoDetailPage() {
           )}
         </div>
 
-        {/* Banner de retorno ao lead */}
+        {/* Banner de contexto do lead */}
         {fromLead && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
-              <span>🔗</span>
-              <span>Vinculando ao lead: <strong>{fromLead.nomeCorreto ?? fromLead.nome}</strong></span>
-              <span className="text-blue-600 dark:text-blue-300 text-xs">— Clique em uma unidade disponível para fazer proposta</span>
+          <div className={`rounded-xl border px-4 py-3 flex items-center justify-between gap-3 ${trocandoUnitId ? "border-amber-300 bg-amber-50 dark:bg-amber-900/20" : "border-blue-200 bg-blue-50 dark:bg-blue-900/20"}`}>
+            <div className="flex flex-col gap-0.5">
+              {trocandoUnitId ? (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+                    <span>🔄</span>
+                    <span>Trocando unidade do lead: <strong>{fromLead.nomeCorreto ?? fromLead.nome}</strong></span>
+                  </div>
+                  <div className="text-xs text-amber-700 dark:text-amber-300">
+                    DE: <strong>{trocandoUnitNome}</strong> → Clique em uma unidade <strong>Disponível</strong> para selecionar
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
+                  <span>🔗</span>
+                  <span>Vinculando ao lead: <strong>{fromLead.nomeCorreto ?? fromLead.nome}</strong></span>
+                  <span className="text-blue-600 dark:text-blue-300 text-xs">— Clique em uma unidade disponível para fazer proposta</span>
+                </div>
+              )}
             </div>
             <button
               type="button"
-              onClick={() => startTransition(() => router.push(`/leads/${fromLead.id}`))}
-              className="shrink-0 rounded-lg border border-blue-300 bg-white dark:bg-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-200 hover:bg-blue-50 transition-colors"
+              onClick={() => { window.location.href = `/leads/${fromLead.id}`; }}
+              className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${trocandoUnitId ? "border-amber-300 bg-white dark:bg-amber-800 text-amber-700 dark:text-amber-200 hover:bg-amber-50" : "border-blue-300 bg-white dark:bg-blue-800 text-blue-700 dark:text-blue-200 hover:bg-blue-50"}`}
             >
               ← Voltar ao lead
             </button>
@@ -4179,12 +4245,12 @@ export default function EmpreendimentoDetailPage() {
               Este empreendimento ainda não está disponível para a equipe.
             </div>
           ) : (
-            <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "AGENT"} preLinkedLead={fromLead} />
+            <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "AGENT"} preLinkedLead={fromLead} trocandoUnitId={trocandoUnitId ?? undefined} />
           )
         ) : !completeness.allComplete ? (
           <Wizard dev={dev} completeness={completeness} onSaved={load} initialStep={initialStep} />
         ) : (
-          <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "OWNER"} preLinkedLead={fromLead} />
+          <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "OWNER"} preLinkedLead={fromLead} trocandoUnitId={trocandoUnitId ?? undefined} />
         )}
       </div>
     </AppShell>
