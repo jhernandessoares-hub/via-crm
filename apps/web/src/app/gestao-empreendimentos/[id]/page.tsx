@@ -81,8 +81,9 @@ function Modal({ open, onClose, title, children, wide }: {
 
 // ─── Modal de Unidade ─────────────────────────────────────────────────────────
 
-function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
+function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER", preLinkedLead }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void; onUpdated: (u: DevelopmentUnit) => void; role?: string;
+  preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
 }) {
   const { can } = usePermissions();
   const [saving, setSaving] = useState(false);
@@ -93,7 +94,7 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
 
   const isAgent = role === "AGENT";
   const canBlock = role === "OWNER" || (role === "MANAGER" && can("gestao_empreendimentos", "delete"));
-  const hasLinkedLead = !!unit.leadId;
+  const hasLinkedLead = !!unit.leadId || !!preLinkedLead;
 
   async function changeStatus(newStatus: UnitStatus) {
     if (newStatus === "BLOQUEADO" && !bloqueioMotivo.trim()) {
@@ -104,7 +105,7 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
     try {
       const updated = await updateUnit(devId, unit.id, {
         status: newStatus,
-        leadId: newStatus === "DISPONIVEL" ? null : undefined,
+        leadId: newStatus === "DISPONIVEL" ? null : (unit.leadId || preLinkedLead?.id || undefined),
         comprador: newStatus === "DISPONIVEL" ? null : comprador || null,
         finalPrice: finalPrice ? parseFloat(finalPrice) : null,
         bloqueioMotivo: newStatus === "BLOQUEADO" ? bloqueioMotivo || null : null,
@@ -321,11 +322,12 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER" }: {
 
 // ─── Popup de detalhes da unidade (view-only + lead search) ──────────────────
 
-function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, role = "OWNER" }: {
+function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, role = "OWNER", preLinkedLead }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void;
   onUnitUpdated: (u: DevelopmentUnit) => void;
   onEditUnit: () => void;
   role?: string;
+  preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState(unit);
@@ -372,7 +374,8 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
     } catch (e: any) { alert(e?.message ?? "Erro ao vincular lead"); }
   }
 
-  const buyerName = current.lead?.nomeCorreto ?? current.lead?.nome ?? current.comprador;
+  const buyerName = current.lead?.nomeCorreto ?? current.lead?.nome ?? current.comprador
+    ?? (preLinkedLead ? (preLinkedLead.nomeCorreto ?? preLinkedLead.nome) : null);
   const canLink = current.status === "VENDIDO" || current.status === "RESERVADO" || current.status === "PROPOSTA";
 
   // ── Sub-view: detalhes do lead ───────────────────────────────────────────────
@@ -982,8 +985,9 @@ function StreetViewModal({ lat, lng, onClose }: { lat: number; lng: number; onCl
   );
 }
 
-function EspelhoVendas({ dev, onUnitUpdated, role }: {
+function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead }: {
   dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void; role: string;
+  preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
 }) {
   const [filters, setFilters] = useState<EspelhoFilters>(emptyFilters());
   const [exporting, setExporting] = useState(false);
@@ -1118,6 +1122,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
           unit={detailsUnit}
           devId={dev.id}
           role={role}
+          preLinkedLead={preLinkedLead}
           onClose={() => setDetailsUnit(null)}
           onUnitUpdated={(u) => { onUnitUpdated(detailsUnit.towerId, u); setDetailsUnit(u); }}
           onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
@@ -1128,6 +1133,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
           unit={editUnit}
           devId={dev.id}
           role={role}
+          preLinkedLead={preLinkedLead}
           onClose={() => setEditUnit(null)}
           onUpdated={(u) => { onUnitUpdated(editUnit.towerId, u); setEditUnit(u); }}
         />
@@ -1138,10 +1144,11 @@ function EspelhoVendas({ dev, onUnitUpdated, role }: {
 
 // --- Aba Espelho -------------------------------------------------------------
 
-function AbaEspelho({ dev, onUnitUpdated, role }: {
+function AbaEspelho({ dev, onUnitUpdated, role, preLinkedLead }: {
   dev: Development; onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void; role: string;
+  preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
 }) {
-  return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} role={role} />;
+  return <EspelhoVendas dev={dev} onUnitUpdated={onUnitUpdated} role={role} preLinkedLead={preLinkedLead} />;
 }
 
 // ─── Preencher em Lote por Posição ────────────────────────────────────────────
@@ -3950,14 +3957,15 @@ const TABBED_TABS: { key: TabbedKey; label: string }[] = [
   { key: "dashboard",     label: "📊 Dashboard"     },
 ];
 
-function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role }: {
+function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role, preLinkedLead }: {
   dev: Development; dashboard: Dashboard | null; onSaved: () => void;
   onUnitUpdated: (towerId: string, unit: DevelopmentUnit) => void;
   role: string;
+  preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
 }) {
   const isOwnerOrManager = role === "OWNER" || role === "MANAGER";
   const visibleTabs = isOwnerOrManager ? TABBED_TABS : TABBED_TABS.filter((t) => t.key === "espelho");
-  const [tab, setTab] = useState<TabbedKey>("espelho");
+  const [tab, setTab] = useState<TabbedKey>(preLinkedLead ? "espelho" : "espelho");
   return (
     <div className="space-y-5">
       {visibleTabs.length > 1 && (
@@ -3982,7 +3990,7 @@ function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role }: {
         {tab === "layout"        && <Step3Layout        dev={dev} onSaved={onSaved} />}
         {tab === "estruturacao"  && <Step4Estruturacao  dev={dev} onSaved={onSaved} />}
         {tab === "precos"        && <Step5Precos        dev={dev} onSaved={onSaved} />}
-        {(tab === "espelho" || !isOwnerOrManager) && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} role={role} />}
+        {(tab === "espelho" || !isOwnerOrManager) && <AbaEspelho dev={dev} onUnitUpdated={onUnitUpdated} role={role} preLinkedLead={preLinkedLead} />}
         {tab === "dashboard" && isOwnerOrManager && (
           dashboard ? <DashboardView dashboard={dashboard} dev={dev} /> :
           <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
@@ -4007,8 +4015,10 @@ export default function EmpreendimentoDetailPage() {
   const searchParams = useSearchParams();
   const stepParam = searchParams.get("step");
   const initialStep = stepParam !== null ? parseInt(stepParam) : undefined;
+  const fromLeadId = searchParams.get("leadId");
 
   const [dev, setDev] = useState<Development | null>(null);
+  const [fromLead, setFromLead] = useState<{ id: string; nome: string; nomeCorreto?: string | null } | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
@@ -4029,6 +4039,13 @@ export default function EmpreendimentoDetailPage() {
   }
 
   useEffect(() => { load(); }, [id]);
+
+  useEffect(() => {
+    if (!fromLeadId) return;
+    apiFetch(`/leads/${fromLeadId}`).then((l: any) => {
+      setFromLead({ id: l.id, nome: l.nome, nomeCorreto: l.nomeCorreto ?? null });
+    }).catch(() => {});
+  }, [fromLeadId]);
 
   function handleUnitUpdated(towerId: string, unit: DevelopmentUnit) {
     setDev((prev) => {
@@ -4137,6 +4154,24 @@ export default function EmpreendimentoDetailPage() {
           )}
         </div>
 
+        {/* Banner de retorno ao lead */}
+        {fromLead && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
+              <span>🔗</span>
+              <span>Vinculando ao lead: <strong>{fromLead.nomeCorreto ?? fromLead.nome}</strong></span>
+              <span className="text-blue-600 dark:text-blue-300 text-xs">— Clique em uma unidade disponível para fazer proposta</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => startTransition(() => router.push(`/leads/${fromLead.id}`))}
+              className="shrink-0 rounded-lg border border-blue-300 bg-white dark:bg-blue-800 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-200 hover:bg-blue-50 transition-colors"
+            >
+              ← Voltar ao lead
+            </button>
+          </div>
+        )}
+
         {!isOwnerOrManager ? (
           // AGENT: só vê o espelho, nunca o wizard
           !dev.publishedAt ? (
@@ -4144,12 +4179,12 @@ export default function EmpreendimentoDetailPage() {
               Este empreendimento ainda não está disponível para a equipe.
             </div>
           ) : (
-            <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "AGENT"} />
+            <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "AGENT"} preLinkedLead={fromLead} />
           )
         ) : !completeness.allComplete ? (
           <Wizard dev={dev} completeness={completeness} onSaved={load} initialStep={initialStep} />
         ) : (
-          <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "OWNER"} />
+          <TabbedView dev={dev} dashboard={dashboard} onSaved={load} onUnitUpdated={handleUnitUpdated} role={role ?? "OWNER"} preLinkedLead={fromLead} />
         )}
       </div>
     </AppShell>
