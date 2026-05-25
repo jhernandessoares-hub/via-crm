@@ -1197,6 +1197,198 @@ function Bubble({
   );
 }
 
+// ─── Espelho Selector Modal ───────────────────────────────────────────────────
+
+const ESPELHO_STATUS_COLOR: Record<string, string> = {
+  DISPONIVEL: "#22c55e", PROPOSTA: "#f97316", RESERVADO: "#f59e0b",
+  VENDIDO: "#ef4444", BLOQUEADO: "#9ca3af",
+};
+const ESPELHO_STATUS_LABEL: Record<string, string> = {
+  DISPONIVEL: "Disponível", PROPOSTA: "Proposta", RESERVADO: "Reservado",
+  VENDIDO: "Vendido", BLOQUEADO: "Bloqueado",
+};
+
+function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, onClose, onDone }: {
+  devId: string; leadId: string;
+  trocandoUnitId?: string; trocandoUnitNome?: string;
+  onClose: () => void; onDone: () => void;
+}) {
+  const [dev, setDev] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<Set<string>>(
+    new Set(["DISPONIVEL", "PROPOSTA", "RESERVADO", "VENDIDO", "BLOQUEADO"])
+  );
+
+  useEffect(() => {
+    apiFetch(`/developments/${devId}`).then(setDev).finally(() => setLoading(false));
+  }, [devId]);
+
+  function toggleStatus(s: string) {
+    const next = new Set(filterStatus);
+    if (next.has(s)) next.delete(s); else next.add(s);
+    setFilterStatus(next);
+  }
+
+  async function confirmSelection() {
+    if (!confirming || saving) return;
+    setSaving(true);
+    try {
+      if (trocandoUnitId) {
+        await apiFetch(`/developments/${devId}/units/${trocandoUnitId}/unlink`, { method: "PATCH" });
+      }
+      await apiFetch(`/developments/${devId}/units/${confirming.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ leadId, status: "PROPOSTA" }),
+      });
+      onDone();
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao vincular unidade");
+      setSaving(false);
+    }
+  }
+
+  const isVertical = dev?.tipo === "VERTICAL";
+  const allDisponivel = (dev?.towers ?? []).flatMap((t: any) => t.units).filter((u: any) => u.status === "DISPONIVEL").length;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+      <div className="w-full max-w-5xl mx-4 rounded-2xl bg-[var(--shell-card-bg)] flex flex-col shadow-2xl" style={{ maxHeight: "88vh" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--shell-card-border)] shrink-0">
+          <div>
+            <h3 className="text-base font-bold text-[var(--shell-text)]">
+              {trocandoUnitId ? `Trocar unidade — DE: ${trocandoUnitNome ?? "unidade anterior"}` : "Espelho de Vendas — Selecionar unidade"}
+            </h3>
+            <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
+              {trocandoUnitId
+                ? "Clique em uma unidade Disponível para selecionar a nova unidade (PARA)"
+                : "Clique em uma unidade Disponível para vincular ao lead"}
+              {" · "}<span className="text-green-600 font-semibold">{allDisponivel} disponíveis</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-2xl leading-none shrink-0">×</button>
+        </div>
+
+        {/* Legenda / filtros */}
+        <div className="flex items-center gap-2 px-6 py-3 border-b border-[var(--shell-card-border)] shrink-0 flex-wrap">
+          {Object.entries(ESPELHO_STATUS_LABEL).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => toggleStatus(k)}
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs border transition-opacity ${filterStatus.has(k) ? "opacity-100 border-[var(--shell-card-border)]" : "opacity-30 border-transparent"}`}>
+              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: ESPELHO_STATUS_COLOR[k] }} />
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* Grade */}
+        <div className="flex-1 overflow-y-auto p-6 min-h-0">
+          {loading && <p className="text-center text-sm text-[var(--shell-subtext)] py-16">Carregando espelho...</p>}
+          {!loading && !dev && <p className="text-center text-sm text-red-500 py-16">Erro ao carregar empreendimento.</p>}
+          {!loading && dev && (
+            <div className="space-y-8">
+              {(dev.towers as any[]).map((tower: any) => {
+                const units = (tower.units as any[]).filter((u: any) => filterStatus.has(u.status));
+                if (units.length === 0) return null;
+
+                if (isVertical) {
+                  const byFloor = new Map<number, any[]>();
+                  for (const u of units) {
+                    const f = u.andar ?? 0;
+                    if (!byFloor.has(f)) byFloor.set(f, []);
+                    byFloor.get(f)!.push(u);
+                  }
+                  const floors = Array.from(byFloor.entries()).sort(([a], [b]) => b - a);
+                  return (
+                    <div key={tower.id}>
+                      <p className="text-sm font-bold text-[var(--shell-text)] mb-3">{tower.nome}</p>
+                      <div className="space-y-1">
+                        {floors.map(([floor, fu]) => (
+                          <div key={floor} className="flex items-center gap-1.5">
+                            <span className="w-8 text-[10px] text-right text-[var(--shell-subtext)] shrink-0">{floor}º</span>
+                            <div className="flex gap-1 flex-wrap">
+                              {(fu as any[]).sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0)).map((u: any) => {
+                                const isDisp = u.status === "DISPONIVEL";
+                                const isConfirming = confirming?.id === u.id;
+                                return (
+                                  <button key={u.id} type="button"
+                                    disabled={!isDisp}
+                                    onClick={() => setConfirming(u)}
+                                    title={`${u.nome} — ${ESPELHO_STATUS_LABEL[u.status] ?? u.status}${u.valorVenda ? ` — R$ ${u.valorVenda.toLocaleString("pt-BR")}` : ""}`}
+                                    style={{ backgroundColor: isConfirming ? "#16a34a" : ESPELHO_STATUS_COLOR[u.status] }}
+                                    className={`h-8 min-w-[40px] px-1 rounded text-[10px] font-bold text-white transition-all ${isDisp ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default opacity-70"} ${isConfirming ? "ring-2 ring-white scale-110" : ""}`}>
+                                    {u.nome.replace(/[^0-9A-Za-z]/g, "") || u.nome}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={tower.id}>
+                    <p className="text-sm font-bold text-[var(--shell-text)] mb-3">{tower.nome}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(units as any[]).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((u: any) => {
+                        const isDisp = u.status === "DISPONIVEL";
+                        const isConfirming = confirming?.id === u.id;
+                        return (
+                          <button key={u.id} type="button"
+                            disabled={!isDisp}
+                            onClick={() => setConfirming(u)}
+                            title={`${u.nome} — ${ESPELHO_STATUS_LABEL[u.status] ?? u.status}${u.valorVenda ? ` — R$ ${u.valorVenda.toLocaleString("pt-BR")}` : ""}`}
+                            style={{ backgroundColor: isConfirming ? "#16a34a" : ESPELHO_STATUS_COLOR[u.status] }}
+                            className={`h-10 min-w-[56px] px-2 rounded text-[10px] font-bold text-white transition-all ${isDisp ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default opacity-70"} ${isConfirming ? "ring-2 ring-white scale-110" : ""}`}>
+                            {u.nome}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Confirmação */}
+        {confirming && (
+          <div className="shrink-0 border-t border-[var(--shell-card-border)] px-6 py-4 flex items-center justify-between gap-4 bg-green-50 dark:bg-green-900/20">
+            <div>
+              <p className="text-sm font-semibold text-green-800 dark:text-green-300">
+                {trocandoUnitId ? `Trocar PARA: ${confirming.nome}` : `Vincular: ${confirming.nome}`}
+              </p>
+              <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                {confirming.valorVenda && confirming.valorVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                {confirming.areaM2 && ` · ${confirming.areaM2} m²`}
+                {confirming.quartos && ` · ${confirming.quartos} quartos`}
+                {confirming.andar && ` · ${confirming.andar}º andar`}
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button type="button" onClick={() => setConfirming(null)}
+                className="rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
+                Cancelar
+              </button>
+              <button type="button" disabled={saving} onClick={confirmSelection}
+                className="rounded-lg bg-green-600 hover:bg-green-700 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50 transition-colors">
+                {saving ? "Salvando..." : trocandoUnitId ? "Confirmar troca" : "Confirmar vínculo"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function LeadDetailChatPage() {
   const params = useParams();
   const id = String((params as any)?.id || "");
@@ -1297,6 +1489,7 @@ export default function LeadDetailChatPage() {
   const [trocandoUnit, setTrocandoUnit] = useState<string | null>(null);
   const [developments, setDevelopments] = useState<Development[]>([]);
   const [selectedDevId, setSelectedDevId] = useState<string>("");
+  const [espelhoModal, setEspelhoModal] = useState<{ devId: string; trocandoUnitId?: string; trocandoUnitNome?: string } | null>(null);
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
   const [devUnitsLoading, setDevUnitsLoading] = useState(false);
   const [propostaModal, setPropostaModal] = useState<{ unit: DevUnit; devId: string } | null>(null);
@@ -3082,7 +3275,7 @@ function discardAiSuggestion() {
                                 const devId = u.developmentId;
                                 if (!devId) return;
                                 const unitLabel = [u.development?.nome, u.tower?.nome, u.nome].filter(Boolean).join(" · ");
-                                window.location.href = `/gestao-empreendimentos/${devId}?tab=espelho&leadId=${id}&trocandoUnitId=${u.id}&trocandoUnitNome=${encodeURIComponent(unitLabel)}`;
+                                setEspelhoModal({ devId, trocandoUnitId: u.id, trocandoUnitNome: unitLabel });
                               }}
                               className="rounded px-1.5 py-0.5 text-[10px] font-medium border hover:bg-[var(--shell-hover)] transition-colors"
                               style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
@@ -3124,7 +3317,7 @@ function discardAiSuggestion() {
                           {u.development?.id && (
                             <button
                               type="button"
-                              onClick={() => { window.location.href = `/gestao-empreendimentos/${u.development!.id}?tab=espelho&leadId=${id}`; }}
+                              onClick={() => { setEspelhoModal({ devId: u.development!.id }); }}
                               className="rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-[var(--shell-hover)] transition-colors"
                               style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
                             >
@@ -3557,7 +3750,7 @@ function discardAiSuggestion() {
                     <button
                       type="button"
                       disabled={!selectedDevId}
-                      onClick={() => { window.location.href = `/gestao-empreendimentos/${selectedDevId}?tab=espelho&leadId=${id}`; }}
+                      onClick={() => { setEspelhoModal({ devId: selectedDevId }); }}
                       className="rounded-md px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ background: "var(--brand-accent)" }}
                     >
@@ -4785,6 +4978,16 @@ function discardAiSuggestion() {
         </div>
       )}
 
+      {espelhoModal && (
+        <EspelhoSelectorModal
+          devId={espelhoModal.devId}
+          leadId={id}
+          trocandoUnitId={espelhoModal.trocandoUnitId}
+          trocandoUnitNome={espelhoModal.trocandoUnitNome}
+          onClose={() => setEspelhoModal(null)}
+          onDone={() => { setEspelhoModal(null); loadLead(); }}
+        />
+      )}
     </AppShell>
   );
 }
