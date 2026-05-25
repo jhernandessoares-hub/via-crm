@@ -25,6 +25,7 @@ import {
   Globe,
   Palette,
   LogOut,
+  GitMerge,
   type LucideIcon,
 } from "lucide-react";
 import { apiLogout } from "@/lib/api";
@@ -214,6 +215,9 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
         <NavItem href="/meus-leads" label="Meus Leads" icon={User} badge={counts?.mine} />
         {(role !== "AGENT" || can("pipeline", "view")) && (
           <NavItem href="/pipeline" label="Todos os Leads" icon={Users} badge={counts?.total} />
+        )}
+        {(role === "OWNER" || role === "MANAGER") && (
+          <NavItem href="/leads/duplicados" label="Duplicados" icon={GitMerge} />
         )}
 
         {/* Funil colapsável */}

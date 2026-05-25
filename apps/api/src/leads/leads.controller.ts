@@ -80,6 +80,11 @@ export class LeadsController {
     return this.leadsService.list(req.user);
   }
 
+  @Get('duplicates')
+  async findDuplicates(@Req() req: any) {
+    return this.leadsService.findDuplicates(req.user.tenantId);
+  }
+
   @Get('export')
   async exportCsv(
     @Req() req: any,
@@ -97,6 +102,21 @@ export class LeadsController {
   // =========================
   // ROTAS COM :id
   // =========================
+
+  @Post(':id/merge')
+  async mergeLeads(
+    @Req() req: any,
+    @Param('id') winnerId: string,
+    @Body() body: { sourceLeadId: string; fieldChoices: any },
+  ) {
+    return this.leadsService.mergeLeads(
+      req.user.tenantId,
+      winnerId,
+      body.sourceLeadId,
+      body.fieldChoices,
+      { id: req.user.sub, nome: req.user.nome },
+    );
+  }
 
   /**
    * ✅ ETAPA 3 — JANELA 24H DO WHATSAPP
