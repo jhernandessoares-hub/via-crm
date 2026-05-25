@@ -2651,31 +2651,44 @@ const aiAssistanceLabel =
       })),
     });
 
-    // ── Grupo CERTA: mesmo telefoneKey ────────────────────────────────────────
+    // ── Grupo CERTA: mesmo telefoneKey OU mesmo CPF ───────────────────────────
     const byPhone = new Map<string, typeof leads>();
+    const byCpf   = new Map<string, typeof leads>();
     for (const lead of leads) {
-      if (!lead.telefoneKey) continue;
-      if (!byPhone.has(lead.telefoneKey)) byPhone.set(lead.telefoneKey, []);
-      byPhone.get(lead.telefoneKey)!.push(lead);
-    }
-
-    const certaPairs = new Set<string>(); // "id1|id2" para evitar duplicar em POSSIVEL
-    const gruposCerta: Array<{ tipo: 'CERTA'; leads: ReturnType<typeof toReturn>[] }> = [];
-
-    for (const grupo of byPhone.values()) {
-      if (grupo.length < 2) continue;
-      gruposCerta.push({ tipo: 'CERTA', leads: grupo.map(toReturn) });
-      // Registrar todos os pares para exclusão do POSSIVEL
-      for (let i = 0; i < grupo.length; i++) {
-        for (let j = i + 1; j < grupo.length; j++) {
-          const key = [grupo[i].id, grupo[j].id].sort().join('|');
-          certaPairs.add(key);
-        }
+      if (lead.telefoneKey) {
+        if (!byPhone.has(lead.telefoneKey)) byPhone.set(lead.telefoneKey, []);
+        byPhone.get(lead.telefoneKey)!.push(lead);
+      }
+      const cpfDigits = lead.cpf ? lead.cpf.replace(/\D/g, '') : null;
+      if (cpfDigits && cpfDigits.length === 11) {
+        if (!byCpf.has(cpfDigits)) byCpf.set(cpfDigits, []);
+        byCpf.get(cpfDigits)!.push(lead);
       }
     }
 
-    // ── Grupo POSSIVEL: Jaro-Winkler >= 0.80 ─────────────────────────────────
-    const gruposPossivel: Array<{ tipo: 'POSSIVEL'; score: number; leads: ReturnType<typeof toReturn>[] }> = [];
+    const certaPairs = new Set<string>();
+    const gruposCerta: Array<{ tipo: 'CERTA'; motivo: string; leads: ReturnType<typeof toReturn>[] }> = [];
+
+    function addCertaGroup(grupo: typeof leads, motivo: string) {
+      if (grupo.length < 2) return;
+      // Deduplicar: não adicionar grupo se todos os pares já foram vistos
+      const newPairs: string[] = [];
+      for (let i = 0; i < grupo.length; i++) {
+        for (let j = i + 1; j < grupo.length; j++) {
+          const key = [grupo[i].id, grupo[j].id].sort().join('|');
+          if (!certaPairs.has(key)) newPairs.push(key);
+        }
+      }
+      if (newPairs.length === 0) return;
+      newPairs.forEach((k) => certaPairs.add(k));
+      gruposCerta.push({ tipo: 'CERTA', motivo, leads: grupo.map(toReturn) });
+    }
+
+    for (const grupo of byPhone.values()) addCertaGroup(grupo, 'Mesmo telefone');
+    for (const grupo of byCpf.values())   addCertaGroup(grupo, 'Mesmo CPF');
+
+    // ── Grupo POSSIVEL: nome similar (Jaro-Winkler) com reforço de CPF/telefone ─
+    const gruposPossivel: Array<{ tipo: 'POSSIVEL'; score: number; motivo: string; leads: ReturnType<typeof toReturn>[] }> = [];
     const possivelPairsSeen = new Set<string>();
 
     for (let i = 0; i < leads.length; i++) {
@@ -2684,19 +2697,35 @@ const aiAssistanceLabel =
         const b = leads[j];
         const pairKey = [a.id, b.id].sort().join('|');
 
-        // Já está em CERTA → pular
         if (certaPairs.has(pairKey)) continue;
-        // Par já visto → pular
         if (possivelPairsSeen.has(pairKey)) continue;
 
         const nomeA = this.normalizeNome(a.nome);
         const nomeB = this.normalizeNome(b.nome);
         if (!nomeA || !nomeB) continue;
 
-        const score = this.jaroWinkler(nomeA, nomeB);
-        if (score >= 0.8) {
+        const nomeScore = this.jaroWinkler(nomeA, nomeB);
+
+        // Verifica reforços: CPF parcial ou telefone parcial
+        const cpfA = a.cpf ? a.cpf.replace(/\D/g, '') : null;
+        const cpfB = b.cpf ? b.cpf.replace(/\D/g, '') : null;
+        const sameCpf = cpfA && cpfB && cpfA === cpfB;
+        const samePhone = a.telefoneKey && b.telefoneKey && a.telefoneKey === b.telefoneKey;
+
+        // Score final: nome é base, CPF ou telefone adicionam bônus
+        let score = nomeScore;
+        const reforcos: string[] = [];
+        if (sameCpf)   { score = Math.min(1, score + 0.1); reforcos.push('CPF igual'); }
+        if (samePhone) { score = Math.min(1, score + 0.1); reforcos.push('telefone igual'); }
+
+        // Threshold: 0.75 com nome puro, ou 0.65 se tiver reforço
+        const threshold = reforcos.length > 0 ? 0.65 : 0.75;
+        if (score >= threshold) {
           possivelPairsSeen.add(pairKey);
-          gruposPossivel.push({ tipo: 'POSSIVEL', score: Math.round(score * 100) / 100, leads: [toReturn(a), toReturn(b)] });
+          const motivo = reforcos.length > 0
+            ? `Nome similar + ${reforcos.join(' e ')}`
+            : 'Nome similar';
+          gruposPossivel.push({ tipo: 'POSSIVEL', score: Math.round(score * 100) / 100, motivo, leads: [toReturn(a), toReturn(b)] });
         }
       }
     }
@@ -2705,7 +2734,10 @@ const aiAssistanceLabel =
     gruposPossivel.sort((a, b) => b.score - a.score);
 
     return {
-      grupos: [...gruposCerta, ...gruposPossivel],
+      grupos: [...gruposCerta, ...gruposPossivel] as Array<
+        { tipo: 'CERTA'; motivo: string; leads: ReturnType<typeof toReturn>[] } |
+        { tipo: 'POSSIVEL'; score: number; motivo: string; leads: ReturnType<typeof toReturn>[] }
+      >,
       totalCerta: gruposCerta.length,
       totalPossivel: gruposPossivel.length,
     };
