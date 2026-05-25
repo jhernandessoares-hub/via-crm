@@ -506,18 +506,21 @@ export class DevelopmentsService {
         const leadIdToUse = updateData.leadId || unit.leadId;
         if (!leadIdToUse) throw new BadRequestException('PROPOSTA requer um lead vinculado.');
 
-        const leadRecord = await this.prisma.lead.findFirst({
-          where: { id: leadIdToUse },
-          select: { stageId: true },
-        });
-        if (leadRecord?.stageId) {
-          const stage = await this.prisma.pipelineStage.findFirst({
-            where: { id: leadRecord.stageId },
-            select: { group: true },
+        // OWNER pode vincular proposta independente do stage do lead (ajustes administrativos)
+        if (actor?.role !== 'OWNER') {
+          const leadRecord = await this.prisma.lead.findFirst({
+            where: { id: leadIdToUse },
+            select: { stageId: true },
           });
-          const ALLOWED = ['NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
-          if (stage && !ALLOWED.includes(stage.group ?? '')) {
-            throw new BadRequestException('O lead precisa estar em Negociações ou etapa posterior para fazer uma proposta.');
+          if (leadRecord?.stageId) {
+            const stage = await this.prisma.pipelineStage.findFirst({
+              where: { id: leadRecord.stageId },
+              select: { group: true },
+            });
+            const ALLOWED = ['NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
+            if (stage && !ALLOWED.includes(stage.group ?? '')) {
+              throw new BadRequestException('O lead precisa estar em Negociações ou etapa posterior para fazer uma proposta.');
+            }
           }
         }
       }
