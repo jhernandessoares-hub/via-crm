@@ -7,6 +7,14 @@ import { formatLeadNumber } from "@/lib/format-lead-number";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type LeadUnit = {
+  id: string;
+  nome: string;
+  status: string;
+  towerNome: string | null;
+  developmentNome: string | null;
+};
+
 type LeadSummary = {
   id: string;
   nome: string;
@@ -19,6 +27,7 @@ type LeadSummary = {
   numero: number | null;
   stage: { nome: string } | null;
   assignedUser: { nome: string } | null;
+  developmentUnits: LeadUnit[];
 };
 
 type DuplicateGroup =
@@ -363,6 +372,19 @@ function LeadCard({ lead }: { lead: LeadSummary }) {
       {lead.assignedUser && (
         <p style={{ color: "var(--text-muted, #6b7280)" }}>Resp.: {lead.assignedUser.nome}</p>
       )}
+      {lead.developmentUnits && lead.developmentUnits.length > 0 && (
+        <div className="mt-1 pt-1 border-t" style={{ borderColor: "var(--border, #e5e7eb)" }}>
+          {lead.developmentUnits.map((u) => (
+            <p key={u.id} className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+              🏢 {u.developmentNome}{u.towerNome ? ` · ${u.towerNome}` : ""} · {u.nome}
+              <span className="ml-1 px-1 rounded text-[10px] font-semibold"
+                style={{ background: u.status === "VENDIDO" ? "#fef2f2" : u.status === "PROPOSTA" ? "#fff7ed" : "#f0fdf4", color: u.status === "VENDIDO" ? "#dc2626" : u.status === "PROPOSTA" ? "#ea580c" : "#16a34a" }}>
+                {u.status}
+              </span>
+            </p>
+          ))}
+        </div>
+      )}
       <p className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
         Criado em {new Date(lead.criadoEm).toLocaleDateString("pt-BR")}
       </p>
@@ -375,14 +397,30 @@ function LeadCard({ lead }: { lead: LeadSummary }) {
 function GroupRow({
   group,
   onMerge,
+  onDeleteLead,
 }: {
   group: DuplicateGroup;
   onMerge: (group: DuplicateGroup) => void;
+  onDeleteLead: (leadId: string, groupLeads: LeadSummary[]) => void;
 }) {
   const scoreLabel =
     group.tipo === "POSSIVEL"
       ? `${Math.round(group.score * 100)}% similar`
       : null;
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDelete(lead: LeadSummary) {
+    if (!confirm(`Excluir "${lead.nomeCorreto ?? lead.nome}"?\n\nEsta ação é irreversível (soft-delete).`)) return;
+    setDeletingId(lead.id);
+    try {
+      await apiFetch(`/leads/${lead.id}?reason=Duplicata+removida+manualmente`, { method: "DELETE" });
+      onDeleteLead(lead.id, group.leads);
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao excluir lead");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div
@@ -391,7 +429,17 @@ function GroupRow({
     >
       <div className="flex flex-wrap gap-3">
         {group.leads.map((lead) => (
-          <LeadCard key={lead.id} lead={lead} />
+          <div key={lead.id} className="flex-1 min-w-[220px] space-y-2">
+            <LeadCard lead={lead} />
+            <button
+              disabled={deletingId === lead.id}
+              onClick={() => handleDelete(lead)}
+              className="w-full px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50"
+              style={{ borderColor: "#fca5a5", color: "#dc2626", background: "transparent" }}
+            >
+              {deletingId === lead.id ? "Excluindo..." : "🗑 Excluir este lead"}
+            </button>
+          </div>
         ))}
       </div>
       <div className="mt-3 flex items-center justify-between">
@@ -406,7 +454,7 @@ function GroupRow({
           className="px-3 py-1.5 rounded-lg text-sm font-medium"
           style={{ background: "var(--brand-accent, #2563eb)", color: "#fff" }}
         >
-          Mesclar
+          ⚡ Mesclar os dois
         </button>
       </div>
     </div>
@@ -447,10 +495,23 @@ export default function DuplicadosPage() {
 
   function handleMergeSuccess() {
     if (!mergeGroup) return;
-    // Remove o grupo da lista
     setGrupos((prev) => prev.filter((g) => g !== mergeGroup));
     setMergeGroup(null);
     setToast("Mesclagem realizada com sucesso!");
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  function handleDeleteLead(leadId: string, groupLeads: LeadSummary[]) {
+    setGrupos((prev) =>
+      prev
+        .map((g) => {
+          const remaining = g.leads.filter((l) => l.id !== leadId);
+          if (remaining.length < 2) return null; // grupo resolvido
+          return { ...g, leads: remaining };
+        })
+        .filter(Boolean) as DuplicateGroup[]
+    );
+    setToast("Lead excluído com sucesso!");
     setTimeout(() => setToast(null), 3500);
   }
 
@@ -518,7 +579,7 @@ export default function DuplicadosPage() {
             {certaOpen && (
               <div className="space-y-3">
                 {certaGroups.map((g, i) => (
-                  <GroupRow key={i} group={g} onMerge={setMergeGroup} />
+                  <GroupRow key={i} group={g} onMerge={setMergeGroup} onDeleteLead={handleDeleteLead} />
                 ))}
               </div>
             )}
@@ -547,7 +608,7 @@ export default function DuplicadosPage() {
             {possivelOpen && (
               <div className="space-y-3">
                 {possivelGroups.map((g, i) => (
-                  <GroupRow key={i} group={g} onMerge={setMergeGroup} />
+                  <GroupRow key={i} group={g} onMerge={setMergeGroup} onDeleteLead={handleDeleteLead} />
                 ))}
               </div>
             )}

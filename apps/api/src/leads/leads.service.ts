@@ -2603,6 +2603,17 @@ const aiAssistanceLabel =
         numero: true,
         stage: { select: { name: true } },
         assignedUserId: true,
+        developmentUnits: {
+          where: { ativo: true },
+          select: {
+            id: true,
+            nome: true,
+            status: true,
+            tower: { select: { nome: true } },
+            development: { select: { id: true, nome: true } },
+          },
+          take: 3,
+        },
       },
       orderBy: { criadoEm: 'asc' },
       take: 2000,
@@ -2631,6 +2642,13 @@ const aiAssistanceLabel =
       numero: l.numero,
       stage: l.stage ? { nome: l.stage.name } : null,
       assignedUser: l.assignedUserId ? { nome: userById[l.assignedUserId] ?? '' } : null,
+      developmentUnits: l.developmentUnits.map((u) => ({
+        id: u.id,
+        nome: u.nome,
+        status: u.status,
+        towerNome: u.tower?.nome ?? null,
+        developmentNome: u.development?.nome ?? null,
+      })),
     });
 
     // ── Grupo CERTA: mesmo telefoneKey ────────────────────────────────────────
