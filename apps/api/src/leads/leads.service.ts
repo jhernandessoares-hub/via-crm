@@ -2700,6 +2700,11 @@ const aiAssistanceLabel =
         if (certaPairs.has(pairKey)) continue;
         if (possivelPairsSeen.has(pairKey)) continue;
 
+        // CPFs preenchidos e diferentes = pessoas distintas (CPF é único por pessoa)
+        const cpfA = a.cpf?.replace(/\D/g, '');
+        const cpfB = b.cpf?.replace(/\D/g, '');
+        if (cpfA && cpfB && cpfA.length === 11 && cpfB.length === 11 && cpfA !== cpfB) continue;
+
         const nomeA = this.normalizeNome(a.nome);
         const nomeB = this.normalizeNome(b.nome);
         if (!nomeA || !nomeB) continue;
