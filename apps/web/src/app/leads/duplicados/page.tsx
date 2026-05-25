@@ -31,8 +31,8 @@ type LeadSummary = {
 };
 
 type DuplicateGroup =
-  | { tipo: "CERTA"; leads: LeadSummary[] }
-  | { tipo: "POSSIVEL"; score: number; leads: LeadSummary[] };
+  | { tipo: "CERTA"; motivo: string; leads: LeadSummary[] }
+  | { tipo: "POSSIVEL"; score: number; motivo: string; leads: LeadSummary[] };
 
 type DuplicatesResult = {
   grupos: DuplicateGroup[];
@@ -405,10 +405,9 @@ function GroupRow({
   onDeleteLead: (leadId: string, groupLeads: LeadSummary[]) => void;
   onIgnore: (group: DuplicateGroup) => void;
 }) {
-  const scoreLabel =
-    group.tipo === "POSSIVEL"
-      ? `${Math.round(group.score * 100)}% similar`
-      : null;
+  const scoreLabel = group.tipo === "POSSIVEL"
+    ? `${Math.round(group.score * 100)}% — ${group.motivo}`
+    : group.motivo;
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleDelete(lead: LeadSummary) {
@@ -445,12 +444,9 @@ function GroupRow({
         ))}
       </div>
       <div className="mt-3 flex items-center justify-between">
-        {scoreLabel && (
-          <span className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
-            Similaridade: {scoreLabel}
-          </span>
-        )}
-        {!scoreLabel && <span />}
+        <span className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+          {scoreLabel}
+        </span>
         <div className="flex items-center gap-2">
           <button
             onClick={() => onIgnore(group)}
