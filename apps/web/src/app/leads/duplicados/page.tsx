@@ -398,10 +398,12 @@ function GroupRow({
   group,
   onMerge,
   onDeleteLead,
+  onIgnore,
 }: {
   group: DuplicateGroup;
   onMerge: (group: DuplicateGroup) => void;
   onDeleteLead: (leadId: string, groupLeads: LeadSummary[]) => void;
+  onIgnore: (group: DuplicateGroup) => void;
 }) {
   const scoreLabel =
     group.tipo === "POSSIVEL"
@@ -449,16 +451,48 @@ function GroupRow({
           </span>
         )}
         {!scoreLabel && <span />}
-        <button
-          onClick={() => onMerge(group)}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium"
-          style={{ background: "var(--brand-accent, #2563eb)", color: "#fff" }}
-        >
-          ⚡ Mesclar os dois
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onIgnore(group)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+            style={{ borderColor: "var(--border, #e5e7eb)", color: "var(--text-muted, #6b7280)" }}
+          >
+            Não são duplicatas
+          </button>
+          <button
+            onClick={() => onMerge(group)}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium"
+            style={{ background: "var(--brand-accent, #2563eb)", color: "#fff" }}
+          >
+            ⚡ Mesclar os dois
+          </button>
+        </div>
       </div>
     </div>
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const LS_KEY = "via_crm_ignored_duplicate_groups";
+
+function groupKey(group: DuplicateGroup): string {
+  return group.leads.map((l) => l.id).sort().join("|");
+}
+
+function loadIgnored(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveIgnored(set: Set<string>) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify([...set]));
+  } catch {}
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -471,9 +505,14 @@ export default function DuplicadosPage() {
   const [possivelOpen, setPossivelOpen] = useState(true);
   const [mergeGroup, setMergeGroup] = useState<DuplicateGroup | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(new Set());
 
-  // Grupos em state local para poder remover após merge
+  // Grupos em state local para poder remover após merge/delete/ignore
   const [grupos, setGrupos] = useState<DuplicateGroup[]>([]);
+
+  useEffect(() => {
+    setIgnoredKeys(loadIgnored());
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -506,7 +545,7 @@ export default function DuplicadosPage() {
       prev
         .map((g) => {
           const remaining = g.leads.filter((l) => l.id !== leadId);
-          if (remaining.length < 2) return null; // grupo resolvido
+          if (remaining.length < 2) return null;
           return { ...g, leads: remaining };
         })
         .filter(Boolean) as DuplicateGroup[]
@@ -515,8 +554,19 @@ export default function DuplicadosPage() {
     setTimeout(() => setToast(null), 3500);
   }
 
-  const certaGroups = grupos.filter((g) => g.tipo === "CERTA");
-  const possivelGroups = grupos.filter((g) => g.tipo === "POSSIVEL");
+  function handleIgnore(group: DuplicateGroup) {
+    const key = groupKey(group);
+    const next = new Set(ignoredKeys);
+    next.add(key);
+    setIgnoredKeys(next);
+    saveIgnored(next);
+    setToast("Grupo descartado — não aparecerá mais.");
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  const visibleGrupos = grupos.filter((g) => !ignoredKeys.has(groupKey(g)));
+  const certaGroups = visibleGrupos.filter((g) => g.tipo === "CERTA");
+  const possivelGroups = visibleGrupos.filter((g) => g.tipo === "POSSIVEL");
 
   return (
     <AppShell title="Leads Duplicados">
@@ -579,7 +629,7 @@ export default function DuplicadosPage() {
             {certaOpen && (
               <div className="space-y-3">
                 {certaGroups.map((g, i) => (
-                  <GroupRow key={i} group={g} onMerge={setMergeGroup} onDeleteLead={handleDeleteLead} />
+                  <GroupRow key={i} group={g} onMerge={setMergeGroup} onDeleteLead={handleDeleteLead} onIgnore={handleIgnore} />
                 ))}
               </div>
             )}
@@ -608,7 +658,7 @@ export default function DuplicadosPage() {
             {possivelOpen && (
               <div className="space-y-3">
                 {possivelGroups.map((g, i) => (
-                  <GroupRow key={i} group={g} onMerge={setMergeGroup} onDeleteLead={handleDeleteLead} />
+                  <GroupRow key={i} group={g} onMerge={setMergeGroup} onDeleteLead={handleDeleteLead} onIgnore={handleIgnore} />
                 ))}
               </div>
             )}
