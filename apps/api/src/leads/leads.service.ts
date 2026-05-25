@@ -2522,4 +2522,280 @@ const aiAssistanceLabel =
     if (!lead) throw new NotFoundException('Lead não encontrado');
   }
 
+  // =========================================
+  // DUPLICATAS
+  // =========================================
+
+  /**
+   * Jaro-Winkler similarity (inline — sem pacote externo)
+   */
+  private jaroWinkler(s1: string, s2: string): number {
+    if (s1 === s2) return 1;
+    const len1 = s1.length;
+    const len2 = s2.length;
+    if (len1 === 0 || len2 === 0) return 0;
+
+    const matchDist = Math.max(Math.floor(Math.max(len1, len2) / 2) - 1, 0);
+    const s1Matches = new Array(len1).fill(false);
+    const s2Matches = new Array(len2).fill(false);
+
+    let matches = 0;
+    let transpositions = 0;
+
+    for (let i = 0; i < len1; i++) {
+      const start = Math.max(0, i - matchDist);
+      const end = Math.min(i + matchDist + 1, len2);
+      for (let j = start; j < end; j++) {
+        if (s2Matches[j] || s1[i] !== s2[j]) continue;
+        s1Matches[i] = true;
+        s2Matches[j] = true;
+        matches++;
+        break;
+      }
+    }
+
+    if (matches === 0) return 0;
+
+    let k = 0;
+    for (let i = 0; i < len1; i++) {
+      if (!s1Matches[i]) continue;
+      while (!s2Matches[k]) k++;
+      if (s1[i] !== s2[k]) transpositions++;
+      k++;
+    }
+
+    const jaro =
+      (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3;
+
+    // Winkler prefix bonus
+    let prefix = 0;
+    for (let i = 0; i < Math.min(4, Math.min(len1, len2)); i++) {
+      if (s1[i] === s2[i]) prefix++;
+      else break;
+    }
+
+    return jaro + prefix * 0.1 * (1 - jaro);
+  }
+
+  private normalizeNome(s: string): string {
+    return s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/\b(de|da|do|dos|das|e)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  async findDuplicates(tenantId: string) {
+    const leads = await this.prisma.lead.findMany({
+      where: { tenantId, deletedAt: null },
+      select: {
+        id: true,
+        nome: true,
+        nomeCorreto: true,
+        telefone: true,
+        telefoneKey: true,
+        email: true,
+        cpf: true,
+        criadoEm: true,
+        origem: true,
+        numero: true,
+        stage: { select: { name: true } },
+        assignedUserId: true,
+      },
+      orderBy: { criadoEm: 'asc' },
+      take: 2000,
+    });
+
+    // Enriquecer com nome do assignedUser em batch
+    const userIds = [...new Set(leads.map((l) => l.assignedUserId).filter(Boolean))] as string[];
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, nome: true },
+        })
+      : [];
+    const userById: Record<string, string> = {};
+    for (const u of users) userById[u.id] = u.nome;
+
+    const toReturn = (l: (typeof leads)[0]) => ({
+      id: l.id,
+      nome: l.nome,
+      nomeCorreto: l.nomeCorreto,
+      telefone: l.telefone,
+      email: l.email,
+      cpf: l.cpf,
+      criadoEm: l.criadoEm,
+      source: l.origem,
+      numero: l.numero,
+      stage: l.stage ? { nome: l.stage.name } : null,
+      assignedUser: l.assignedUserId ? { nome: userById[l.assignedUserId] ?? '' } : null,
+    });
+
+    // ── Grupo CERTA: mesmo telefoneKey ────────────────────────────────────────
+    const byPhone = new Map<string, typeof leads>();
+    for (const lead of leads) {
+      if (!lead.telefoneKey) continue;
+      if (!byPhone.has(lead.telefoneKey)) byPhone.set(lead.telefoneKey, []);
+      byPhone.get(lead.telefoneKey)!.push(lead);
+    }
+
+    const certaPairs = new Set<string>(); // "id1|id2" para evitar duplicar em POSSIVEL
+    const gruposCerta: Array<{ tipo: 'CERTA'; leads: ReturnType<typeof toReturn>[] }> = [];
+
+    for (const grupo of byPhone.values()) {
+      if (grupo.length < 2) continue;
+      gruposCerta.push({ tipo: 'CERTA', leads: grupo.map(toReturn) });
+      // Registrar todos os pares para exclusão do POSSIVEL
+      for (let i = 0; i < grupo.length; i++) {
+        for (let j = i + 1; j < grupo.length; j++) {
+          const key = [grupo[i].id, grupo[j].id].sort().join('|');
+          certaPairs.add(key);
+        }
+      }
+    }
+
+    // ── Grupo POSSIVEL: Jaro-Winkler >= 0.80 ─────────────────────────────────
+    const gruposPossivel: Array<{ tipo: 'POSSIVEL'; score: number; leads: ReturnType<typeof toReturn>[] }> = [];
+    const possivelPairsSeen = new Set<string>();
+
+    for (let i = 0; i < leads.length; i++) {
+      for (let j = i + 1; j < leads.length; j++) {
+        const a = leads[i];
+        const b = leads[j];
+        const pairKey = [a.id, b.id].sort().join('|');
+
+        // Já está em CERTA → pular
+        if (certaPairs.has(pairKey)) continue;
+        // Par já visto → pular
+        if (possivelPairsSeen.has(pairKey)) continue;
+
+        const nomeA = this.normalizeNome(a.nome);
+        const nomeB = this.normalizeNome(b.nome);
+        if (!nomeA || !nomeB) continue;
+
+        const score = this.jaroWinkler(nomeA, nomeB);
+        if (score >= 0.8) {
+          possivelPairsSeen.add(pairKey);
+          gruposPossivel.push({ tipo: 'POSSIVEL', score: Math.round(score * 100) / 100, leads: [toReturn(a), toReturn(b)] });
+        }
+      }
+    }
+
+    // Ordenar POSSIVEL por score desc
+    gruposPossivel.sort((a, b) => b.score - a.score);
+
+    return {
+      grupos: [...gruposCerta, ...gruposPossivel],
+      totalCerta: gruposCerta.length,
+      totalPossivel: gruposPossivel.length,
+    };
+  }
+
+  async mergeLeads(
+    tenantId: string,
+    winnerId: string,
+    sourceId: string,
+    fieldChoices: {
+      nome?: 'winner' | 'source';
+      nomeCorreto?: 'winner' | 'source';
+      telefone?: 'winner' | 'source';
+      email?: 'winner' | 'source';
+      cpf?: 'winner' | 'source';
+      rg?: 'winner' | 'source';
+      profissao?: 'winner' | 'source';
+      empresa?: 'winner' | 'source';
+      endereco?: 'winner' | 'source';
+      cep?: 'winner' | 'source';
+      cidade?: 'winner' | 'source';
+      uf?: 'winner' | 'source';
+      stageId?: 'winner' | 'source';
+      assignedUserId?: 'winner' | 'source';
+      origem?: 'winner' | 'source';
+      observacao?: 'winner' | 'source';
+    },
+    actor?: { id: string; nome: string },
+  ) {
+    if (winnerId === sourceId) throw new BadRequestException('winner e source não podem ser o mesmo lead');
+
+    const [winner, source] = await Promise.all([
+      this.prisma.lead.findFirst({ where: { id: winnerId, tenantId, deletedAt: null } }),
+      this.prisma.lead.findFirst({ where: { id: sourceId, tenantId, deletedAt: null } }),
+    ]);
+
+    if (!winner) throw new NotFoundException('Lead vencedor não encontrado');
+    if (!source) throw new NotFoundException('Lead fonte não encontrado');
+
+    // Monta os campos que vêm do source
+    const updateData: Record<string, any> = {};
+    const mergeable: Array<keyof typeof fieldChoices> = [
+      'nome', 'nomeCorreto', 'telefone', 'email', 'cpf', 'rg',
+      'profissao', 'empresa', 'endereco', 'cep', 'cidade', 'uf',
+      'stageId', 'assignedUserId', 'origem', 'observacao',
+    ];
+
+    for (const field of mergeable) {
+      if (fieldChoices[field] === 'source') {
+        updateData[field] = (source as any)[field] ?? null;
+      }
+    }
+
+    // Recalcular telefoneKey se telefone mudou
+    const newTelefone = updateData['telefone'] !== undefined ? updateData['telefone'] : winner.telefone;
+    if (newTelefone) {
+      const digits = newTelefone.replace(/\D/g, '');
+      updateData['telefoneKey'] = digits.slice(-9);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Transferir LeadEvent
+      await tx.leadEvent.updateMany({ where: { leadId: sourceId, tenantId }, data: { leadId: winnerId } });
+
+      // Transferir LeadDocument
+      await tx.leadDocument.updateMany({ where: { leadId: sourceId, tenantId }, data: { leadId: winnerId } });
+
+      // Transferir LeadParticipante
+      await (tx as any).leadParticipante.updateMany({ where: { leadId: sourceId, tenantId }, data: { leadId: winnerId } });
+
+      // Transferir DevelopmentUnit (leadId nullable FK)
+      await (tx as any).developmentUnit.updateMany({ where: { leadId: sourceId }, data: { leadId: winnerId } });
+
+      // Soft-delete source
+      await tx.lead.update({
+        where: { id: sourceId },
+        data: {
+          deletedAt: new Date(),
+          deletedBy: actor?.id ?? 'system',
+          deletionReason: `Mesclado com lead ${winnerId}`,
+        },
+      });
+
+      // Update winner com campos escolhidos
+      if (Object.keys(updateData).length > 0) {
+        await tx.lead.update({ where: { id: winnerId }, data: updateData });
+      }
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actor?.id,
+      action: 'LEAD_MERGE',
+      resourceType: 'Lead',
+      resourceId: winnerId,
+      metadata: { winnerId, sourceId, fieldChoices, actor: actor?.nome },
+    });
+
+    this.logger.log(`Lead mesclado: source=${sourceId} → winner=${winnerId} por ${actor?.nome ?? 'sistema'}`);
+
+    // Retornar winner atualizado via getById (sem pipeline check, busca simples)
+    const updated = await this.prisma.lead.findFirst({
+      where: { id: winnerId, tenantId },
+      include: {
+        stage: { select: { id: true, name: true, key: true, group: true } },
+      },
+    });
+    return updated;
+  }
+
 }

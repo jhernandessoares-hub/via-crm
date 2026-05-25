@@ -39,7 +39,8 @@ export type AuditAction =
   | 'TENANT_PLAN_CHANGED'
   | 'TENANT_LIMITS_OVERRIDE'
   | 'TENANT_ADDON_ADDED'
-  | 'TENANT_ADDON_REMOVED';
+  | 'TENANT_ADDON_REMOVED'
+  | 'LEAD_MERGE';
 
 @Injectable()
 export class AuditService {

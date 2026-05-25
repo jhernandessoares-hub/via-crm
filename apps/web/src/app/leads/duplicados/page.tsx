@@ -1,0 +1,586 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import AppShell from "@/components/AppShell";
+import { apiFetch } from "@/lib/api";
+import { formatLeadNumber } from "@/lib/format-lead-number";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type LeadSummary = {
+  id: string;
+  nome: string;
+  nomeCorreto: string | null;
+  telefone: string | null;
+  email: string | null;
+  cpf: string | null;
+  criadoEm: string;
+  source: string | null;
+  numero: number | null;
+  stage: { nome: string } | null;
+  assignedUser: { nome: string } | null;
+};
+
+type DuplicateGroup =
+  | { tipo: "CERTA"; leads: LeadSummary[] }
+  | { tipo: "POSSIVEL"; score: number; leads: LeadSummary[] };
+
+type DuplicatesResult = {
+  grupos: DuplicateGroup[];
+  totalCerta: number;
+  totalPossivel: number;
+};
+
+// ─── Field labels ─────────────────────────────────────────────────────────────
+
+const FIELD_LABELS: Record<string, string> = {
+  nome: "Nome",
+  nomeCorreto: "Nome correto",
+  telefone: "Telefone",
+  email: "E-mail",
+  cpf: "CPF",
+  rg: "RG",
+  profissao: "Profissão",
+  empresa: "Empresa",
+  endereco: "Endereço",
+  cep: "CEP",
+  cidade: "Cidade",
+  uf: "UF",
+  stageId: "Etapa",
+  assignedUserId: "Responsável",
+  origem: "Origem",
+  observacao: "Observação",
+};
+
+type FieldKey = keyof typeof FIELD_LABELS;
+
+const MERGE_FIELDS: FieldKey[] = [
+  "nome",
+  "nomeCorreto",
+  "telefone",
+  "email",
+  "cpf",
+  "rg",
+  "profissao",
+  "empresa",
+  "endereco",
+  "cep",
+  "cidade",
+  "uf",
+  "origem",
+  "observacao",
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function countFilledFields(lead: LeadSummary): number {
+  return [
+    lead.nome,
+    lead.nomeCorreto,
+    lead.telefone,
+    lead.email,
+    lead.cpf,
+    lead.stage,
+    lead.assignedUser,
+  ].filter(Boolean).length;
+}
+
+function getFieldValue(lead: LeadSummary, field: FieldKey): string {
+  switch (field) {
+    case "nome":
+      return lead.nome ?? "";
+    case "nomeCorreto":
+      return lead.nomeCorreto ?? "";
+    case "telefone":
+      return lead.telefone ?? "";
+    case "email":
+      return lead.email ?? "";
+    case "cpf":
+      return lead.cpf ?? "";
+    case "origem":
+      return lead.source ?? "";
+    default:
+      return "";
+  }
+}
+
+// ─── MergeModal ───────────────────────────────────────────────────────────────
+
+function MergeModal({
+  group,
+  onClose,
+  onSuccess,
+}: {
+  group: DuplicateGroup;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const leads = group.leads;
+
+  // Determinar winner padrão: mais campos preenchidos, ou menor número sequencial
+  const defaultWinnerIdx =
+    countFilledFields(leads[0]) >= countFilledFields(leads[1])
+      ? 0
+      : 1;
+
+  const [winnerIdx, setWinnerIdx] = useState(defaultWinnerIdx);
+  const [choices, setChoices] = useState<Record<FieldKey, "winner" | "source">>(
+    () => {
+      const initial: Record<string, "winner" | "source"> = {};
+      for (const field of MERGE_FIELDS) {
+        const aVal = getFieldValue(leads[defaultWinnerIdx], field);
+        const bVal = getFieldValue(leads[1 - defaultWinnerIdx], field);
+        // Auto-seleciona o lado que tem valor; se ambos têm, winner
+        if (!aVal && bVal) {
+          initial[field] = "source";
+        } else {
+          initial[field] = "winner";
+        }
+      }
+      return initial as Record<FieldKey, "winner" | "source">;
+    }
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const winner = leads[winnerIdx];
+  const source = leads[1 - winnerIdx];
+
+  function toggleWinner() {
+    const newWinnerIdx = 1 - winnerIdx;
+    setWinnerIdx(newWinnerIdx);
+    // Recalcular choices com o novo winner
+    const newChoices: Record<string, "winner" | "source"> = {};
+    for (const field of MERGE_FIELDS) {
+      const aVal = getFieldValue(leads[newWinnerIdx], field);
+      const bVal = getFieldValue(leads[1 - newWinnerIdx], field);
+      if (!aVal && bVal) {
+        newChoices[field] = "source";
+      } else {
+        newChoices[field] = "winner";
+      }
+    }
+    setChoices(newChoices as Record<FieldKey, "winner" | "source">);
+  }
+
+  function setChoice(field: FieldKey, side: "winner" | "source") {
+    setChoices((prev) => ({ ...prev, [field]: side }));
+  }
+
+  async function handleConfirm() {
+    setLoading(true);
+    setError(null);
+    try {
+      // Converter choices para fieldChoices do backend
+      // winner = leads[winnerIdx], source = leads[1 - winnerIdx]
+      const fieldChoices: Record<string, string> = {};
+      for (const field of MERGE_FIELDS) {
+        fieldChoices[field] = choices[field];
+      }
+      await apiFetch(`/leads/${winner.id}/merge`, {
+        method: "POST",
+        body: JSON.stringify({ sourceLeadId: source.id, fieldChoices }),
+      });
+      onSuccess();
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao mesclar leads");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl"
+        style={{ background: "var(--card-bg, #fff)", border: "1px solid var(--border, #e5e7eb)" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border, #e5e7eb)" }}>
+          <h2 className="text-lg font-semibold" style={{ color: "var(--text, #111)" }}>
+            Mesclar leads duplicados
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-2xl leading-none"
+            style={{ color: "var(--text-muted, #6b7280)" }}
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Winner selector */}
+        <div className="px-6 pt-4 pb-2 flex gap-3">
+          {leads.map((lead, idx) => {
+            const isWinner = idx === winnerIdx;
+            return (
+              <button
+                key={lead.id}
+                onClick={() => { if (!isWinner) toggleWinner(); }}
+                className="flex-1 rounded-lg px-4 py-2 text-sm font-medium border transition-colors text-left"
+                style={{
+                  borderColor: isWinner ? "#16a34a" : "var(--border, #e5e7eb)",
+                  background: isWinner ? "#f0fdf4" : "var(--card-bg, #fff)",
+                  color: isWinner ? "#15803d" : "var(--text, #111)",
+                }}
+              >
+                <span className="font-semibold">{isWinner ? "Vencedor" : "Fonte (sera arquivado)"}</span>
+                <br />
+                <span className="text-xs truncate">{lead.nomeCorreto ?? lead.nome}</span>
+                {lead.numero && (
+                  <span className="ml-2 text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+                    #{formatLeadNumber(lead.numero, 1)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="px-6 pb-2 text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+          Clique em um card acima para trocar o vencedor. Os eventos, documentos e participantes do lead fonte
+          serao transferidos para o vencedor.
+        </p>
+
+        {/* Field picker */}
+        <div className="px-6 pb-4 space-y-2">
+          <p className="text-sm font-medium pt-2" style={{ color: "var(--text, #111)" }}>
+            Escolha qual valor manter em cada campo:
+          </p>
+          {MERGE_FIELDS.map((field) => {
+            const winnerVal = getFieldValue(winner, field);
+            const sourceVal = getFieldValue(source, field);
+
+            // Pula campos onde ambos estão vazios
+            if (!winnerVal && !sourceVal) return null;
+
+            return (
+              <div key={field} className="grid grid-cols-3 gap-2 items-center">
+                <span className="text-xs font-medium" style={{ color: "var(--text-muted, #6b7280)" }}>
+                  {FIELD_LABELS[field]}
+                </span>
+                {/* Winner value */}
+                <button
+                  onClick={() => setChoice(field, "winner")}
+                  className="text-left text-xs rounded-md px-3 py-1.5 border transition-colors truncate"
+                  style={{
+                    borderColor: choices[field] === "winner" ? "#16a34a" : "var(--border, #e5e7eb)",
+                    background: choices[field] === "winner" ? "#f0fdf4" : "transparent",
+                    color: choices[field] === "winner" ? "#15803d" : "var(--text, #111)",
+                  }}
+                  title={winnerVal || "(vazio)"}
+                >
+                  {winnerVal || <em style={{ color: "var(--text-muted, #6b7280)" }}>(vazio)</em>}
+                </button>
+                {/* Source value */}
+                <button
+                  onClick={() => setChoice(field, "source")}
+                  className="text-left text-xs rounded-md px-3 py-1.5 border transition-colors truncate"
+                  style={{
+                    borderColor: choices[field] === "source" ? "#16a34a" : "var(--border, #e5e7eb)",
+                    background: choices[field] === "source" ? "#f0fdf4" : "transparent",
+                    color: choices[field] === "source" ? "#15803d" : "var(--text, #111)",
+                  }}
+                  title={sourceVal || "(vazio)"}
+                >
+                  {sourceVal || <em style={{ color: "var(--text-muted, #6b7280)" }}>(vazio)</em>}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {error && (
+          <div className="mx-6 mb-3 rounded-md px-3 py-2 text-sm" style={{ background: "#fef2f2", color: "#dc2626" }}>
+            {error}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div
+          className="flex items-center justify-between gap-3 px-6 py-4 border-t"
+          style={{ borderColor: "var(--border, #e5e7eb)" }}
+        >
+          <p className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+            <strong>{winner.nomeCorreto ?? winner.nome}</strong> sobrevive.{" "}
+            <strong>{source.nomeCorreto ?? source.nome}</strong> sera arquivado.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="px-4 py-2 rounded-lg text-sm font-medium border"
+              style={{ borderColor: "var(--border, #e5e7eb)", color: "var(--text, #111)" }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={loading}
+              className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ background: "#16a34a", color: "#fff" }}
+            >
+              {loading ? "Mesclando..." : "Confirmar mesclagem"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LeadCard ─────────────────────────────────────────────────────────────────
+
+function LeadCard({ lead }: { lead: LeadSummary }) {
+  return (
+    <div
+      className="flex-1 rounded-lg p-4 text-sm space-y-1"
+      style={{ background: "var(--card-bg-muted, #f9fafb)", border: "1px solid var(--border, #e5e7eb)" }}
+    >
+      <p className="font-semibold truncate" style={{ color: "var(--text, #111)" }}>
+        {lead.nomeCorreto ?? lead.nome}
+        {lead.numero && (
+          <span className="ml-2 text-xs font-normal" style={{ color: "var(--text-muted, #6b7280)" }}>
+            #{formatLeadNumber(lead.numero, 1)}
+          </span>
+        )}
+      </p>
+      {lead.telefone && (
+        <p style={{ color: "var(--text-muted, #6b7280)" }}>{lead.telefone}</p>
+      )}
+      {lead.email && (
+        <p className="truncate" style={{ color: "var(--text-muted, #6b7280)" }}>{lead.email}</p>
+      )}
+      {lead.cpf && (
+        <p style={{ color: "var(--text-muted, #6b7280)" }}>CPF: {lead.cpf}</p>
+      )}
+      {lead.stage && (
+        <p style={{ color: "var(--text-muted, #6b7280)" }}>Etapa: {lead.stage.nome}</p>
+      )}
+      {lead.assignedUser && (
+        <p style={{ color: "var(--text-muted, #6b7280)" }}>Resp.: {lead.assignedUser.nome}</p>
+      )}
+      <p className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+        Criado em {new Date(lead.criadoEm).toLocaleDateString("pt-BR")}
+      </p>
+    </div>
+  );
+}
+
+// ─── GroupRow ─────────────────────────────────────────────────────────────────
+
+function GroupRow({
+  group,
+  onMerge,
+}: {
+  group: DuplicateGroup;
+  onMerge: (group: DuplicateGroup) => void;
+}) {
+  const scoreLabel =
+    group.tipo === "POSSIVEL"
+      ? `${Math.round(group.score * 100)}% similar`
+      : null;
+
+  return (
+    <div
+      className="rounded-lg p-4"
+      style={{ border: "1px solid var(--border, #e5e7eb)", background: "var(--card-bg, #fff)" }}
+    >
+      <div className="flex flex-wrap gap-3">
+        {group.leads.map((lead) => (
+          <LeadCard key={lead.id} lead={lead} />
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between">
+        {scoreLabel && (
+          <span className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+            Similaridade: {scoreLabel}
+          </span>
+        )}
+        {!scoreLabel && <span />}
+        <button
+          onClick={() => onMerge(group)}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium"
+          style={{ background: "var(--brand-accent, #2563eb)", color: "#fff" }}
+        >
+          Mesclar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function DuplicadosPage() {
+  const [data, setData] = useState<DuplicatesResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [certaOpen, setCertaOpen] = useState(true);
+  const [possivelOpen, setPossivelOpen] = useState(true);
+  const [mergeGroup, setMergeGroup] = useState<DuplicateGroup | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Grupos em state local para poder remover após merge
+  const [grupos, setGrupos] = useState<DuplicateGroup[]>([]);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/leads/duplicates");
+      setData(res);
+      setGrupos(res.grupos);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao carregar duplicatas");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  function handleMergeSuccess() {
+    if (!mergeGroup) return;
+    // Remove o grupo da lista
+    setGrupos((prev) => prev.filter((g) => g !== mergeGroup));
+    setMergeGroup(null);
+    setToast("Mesclagem realizada com sucesso!");
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  const certaGroups = grupos.filter((g) => g.tipo === "CERTA");
+  const possivelGroups = grupos.filter((g) => g.tipo === "POSSIVEL");
+
+  return (
+    <AppShell title="Leads Duplicados">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text, #111)" }}>
+              Leads Duplicados
+            </h1>
+            {data && (
+              <p className="text-sm mt-1" style={{ color: "var(--text-muted, #6b7280)" }}>
+                {certaGroups.length} duplicata(s) certa(s) &bull; {possivelGroups.length} possivel(is)
+              </p>
+            )}
+          </div>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg text-sm font-medium border"
+            style={{ borderColor: "var(--border, #e5e7eb)", color: "var(--text, #111)" }}
+          >
+            {loading ? "Verificando..." : "Verificar agora"}
+          </button>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 rounded-md px-4 py-3 text-sm" style={{ background: "#fef2f2", color: "#dc2626" }}>
+            {error}
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <div className="text-center py-12" style={{ color: "var(--text-muted, #6b7280)" }}>
+            Analisando leads...
+          </div>
+        )}
+
+        {/* Grupos CERTA */}
+        {!loading && certaGroups.length > 0 && (
+          <section className="mb-6">
+            <button
+              type="button"
+              onClick={() => setCertaOpen((v) => !v)}
+              className="flex items-center gap-2 mb-3 w-full text-left"
+            >
+              <span
+                className="inline-block w-3 h-3 rounded-full"
+                style={{ background: "#dc2626" }}
+              />
+              <span className="font-semibold text-base" style={{ color: "var(--text, #111)" }}>
+                Duplicata certa ({certaGroups.length})
+              </span>
+              <span className="ml-auto text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+                {certaOpen ? "Ocultar" : "Mostrar"}
+              </span>
+            </button>
+            {certaOpen && (
+              <div className="space-y-3">
+                {certaGroups.map((g, i) => (
+                  <GroupRow key={i} group={g} onMerge={setMergeGroup} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Grupos POSSIVEL */}
+        {!loading && possivelGroups.length > 0 && (
+          <section className="mb-6">
+            <button
+              type="button"
+              onClick={() => setPossivelOpen((v) => !v)}
+              className="flex items-center gap-2 mb-3 w-full text-left"
+            >
+              <span
+                className="inline-block w-3 h-3 rounded-full"
+                style={{ background: "#ca8a04" }}
+              />
+              <span className="font-semibold text-base" style={{ color: "var(--text, #111)" }}>
+                Possivel duplicata ({possivelGroups.length})
+              </span>
+              <span className="ml-auto text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+                {possivelOpen ? "Ocultar" : "Mostrar"}
+              </span>
+            </button>
+            {possivelOpen && (
+              <div className="space-y-3">
+                {possivelGroups.map((g, i) => (
+                  <GroupRow key={i} group={g} onMerge={setMergeGroup} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Empty state */}
+        {!loading && !error && certaGroups.length === 0 && possivelGroups.length === 0 && (
+          <div className="text-center py-16" style={{ color: "var(--text-muted, #6b7280)" }}>
+            <p className="text-lg font-medium mb-1">Nenhuma duplicata encontrada!</p>
+            <p className="text-sm">Sua base de leads esta limpa.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Merge modal */}
+      {mergeGroup && (
+        <MergeModal
+          group={mergeGroup}
+          onClose={() => setMergeGroup(null)}
+          onSuccess={handleMergeSuccess}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className="fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg"
+          style={{ background: "#16a34a", color: "#fff" }}
+        >
+          {toast}
+        </div>
+      )}
+    </AppShell>
+  );
+}
