@@ -322,13 +322,14 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER", preLinkedL
 
 // ─── Popup de detalhes da unidade (view-only + lead search) ──────────────────
 
-function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, role = "OWNER", preLinkedLead, trocandoUnitId }: {
+function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, role = "OWNER", preLinkedLead, trocandoUnitId, towerName }: {
   unit: DevelopmentUnit; devId: string; onClose: () => void;
   onUnitUpdated: (u: DevelopmentUnit) => void;
   onEditUnit: () => void;
   role?: string;
   preLinkedLead?: { id: string; nome: string; nomeCorreto?: string | null } | null;
   trocandoUnitId?: string;
+  towerName?: string;
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState(unit);
@@ -429,7 +430,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
 
   // ── View principal: dados da unidade ────────────────────────────────────────
   return (
-    <Modal open title={current.nome} onClose={onClose}>
+    <Modal open title={towerName ? `${towerName} · ${current.nome}` : current.nome} onClose={onClose}>
       <div className="space-y-4">
         {/* Status badge + PNE */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -1171,6 +1172,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead, trocandoUnitId
           role={role}
           preLinkedLead={preLinkedLead}
           trocandoUnitId={trocandoUnitId}
+          towerName={dev.towers.find((t) => t.id === detailsUnit.towerId)?.nome}
           onClose={() => setDetailsUnit(null)}
           onUnitUpdated={(u) => { onUnitUpdated(detailsUnit.towerId, u); setDetailsUnit(u); }}
           onEditUnit={() => { setEditUnit(detailsUnit); setDetailsUnit(null); }}
