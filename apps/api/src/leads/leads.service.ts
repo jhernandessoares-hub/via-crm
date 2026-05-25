@@ -2687,7 +2687,7 @@ const aiAssistanceLabel =
     for (const grupo of byPhone.values()) addCertaGroup(grupo, 'Mesmo telefone');
     for (const grupo of byCpf.values())   addCertaGroup(grupo, 'Mesmo CPF');
 
-    // ── Grupo POSSIVEL: nome similar (Jaro-Winkler) com reforço de CPF/telefone ─
+    // ── Grupo POSSIVEL: nome similar Jaro-Winkler >= 0.80 ────────────────────
     const gruposPossivel: Array<{ tipo: 'POSSIVEL'; score: number; motivo: string; leads: ReturnType<typeof toReturn>[] }> = [];
     const possivelPairsSeen = new Set<string>();
 
@@ -2704,28 +2704,10 @@ const aiAssistanceLabel =
         const nomeB = this.normalizeNome(b.nome);
         if (!nomeA || !nomeB) continue;
 
-        const nomeScore = this.jaroWinkler(nomeA, nomeB);
-
-        // Verifica reforços: CPF parcial ou telefone parcial
-        const cpfA = a.cpf ? a.cpf.replace(/\D/g, '') : null;
-        const cpfB = b.cpf ? b.cpf.replace(/\D/g, '') : null;
-        const sameCpf = cpfA && cpfB && cpfA === cpfB;
-        const samePhone = a.telefoneKey && b.telefoneKey && a.telefoneKey === b.telefoneKey;
-
-        // Score final: nome é base, CPF ou telefone adicionam bônus
-        let score = nomeScore;
-        const reforcos: string[] = [];
-        if (sameCpf)   { score = Math.min(1, score + 0.1); reforcos.push('CPF igual'); }
-        if (samePhone) { score = Math.min(1, score + 0.1); reforcos.push('telefone igual'); }
-
-        // Threshold: 0.75 com nome puro, ou 0.65 se tiver reforço
-        const threshold = reforcos.length > 0 ? 0.65 : 0.75;
-        if (score >= threshold) {
+        const score = this.jaroWinkler(nomeA, nomeB);
+        if (score >= 0.80) {
           possivelPairsSeen.add(pairKey);
-          const motivo = reforcos.length > 0
-            ? `Nome similar + ${reforcos.join(' e ')}`
-            : 'Nome similar';
-          gruposPossivel.push({ tipo: 'POSSIVEL', score: Math.round(score * 100) / 100, motivo, leads: [toReturn(a), toReturn(b)] });
+          gruposPossivel.push({ tipo: 'POSSIVEL', score: Math.round(score * 100) / 100, motivo: 'Nome similar', leads: [toReturn(a), toReturn(b)] });
         }
       }
     }
