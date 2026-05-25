@@ -44,7 +44,7 @@ via-crm/
 | `admin/` | Platform Admin — CRUD tenants, impersonation, audit, health |
 | `tenants/` | CRUD de tenants, configurações WhatsApp, bot-config e permissões por role (`permissionsConfig`) |
 | `users/` | CRUD de usuários, perfis, configurações de secretária; gestão de equipe (OWNER: POST/PATCH/DELETE /users/team); round-robin config (OWNER: GET/PATCH /users/round-robin) |
-| `leads/` | CRUD de leads, qualificação, SLA, eventos, soft delete, exportação CSV; `GET /leads/my` (assignados ao usuário); `GET /leads/counts` (contagem por role para sidebar) |
+| `leads/` | CRUD de leads, qualificação, SLA, eventos, soft delete, exportação CSV; `GET /leads/my` (assignados ao usuário); `GET /leads/counts` (contagem por role para sidebar); `GET /leads/duplicates` (grupos CERTA/POSSIVEL); `POST /leads/:id/merge` (mesclar dois leads com escolha campo a campo) |
 | `pipeline/` | Funil customizável com etapas e transições |
 | `products/` | Catálogo imobiliário (EMPREENDIMENTO / IMOVEL), extração IA de PDFs |
 | `ingest/` | Normalização e deduplicação de leads de qualquer origem |
@@ -365,6 +365,7 @@ NEXT_PUBLIC_API_URL=
 - `products.service.ts`: `update()` persiste `sectionStatus` no banco
 - `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
 - `/meus-leads` → leads atribuídos ao usuário logado (todos os roles) — usa `GET /leads/my`.
+- `/leads/duplicados` → detecção e resolução de leads duplicados (OWNER/MANAGER). Grupos CERTA: mesmo `telefoneKey` ou mesmo CPF. Grupos POSSIVEL: nome similar via Jaro-Winkler ≥ 0.80, excluindo pares onde ambos têm CPF preenchido e CPFs distintos. Cada grupo permite mesclar (escolha campo a campo), excluir um dos leads individualmente, ou descartar o grupo ("Não são duplicatas" — salvo em `localStorage` para não reaparecer). Merge: transfere eventos/documentos/participantes/unidades para o vencedor e faz soft-delete do fonte com `LEAD_MERGE` no AuditLog.
 - `/settings/permissions` → permissões por role (OWNER only) — toggles ver/criar/editar/excluir por módulo para MANAGER e AGENT. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
 - `/settings/whatsapp` → configuração do número WhatsApp do tenant.
 - `/forgot-password` e `/reset-password` → recuperação de senha.
@@ -372,7 +373,7 @@ NEXT_PUBLIC_API_URL=
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
 - `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
 - `/admin/ia/provedores` → Provedores de IA — configuração de modelo por função do sistema (DEFAULT, FOLLOW_UP, PDF_EXTRACTION, TRANSCRIPTION, DOC_CLASSIFICATION) sem deploy. DOC_CLASSIFICATION e PDF_EXTRACTION restritos a modelos Anthropic (visão).
-- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — 4 abas (Cadastro, Espelho de Vendas, Preços, Dashboard). Backend: `DevelopmentsModule`. **Espelho de Vendas (MVP):** grid visual colorido por status; torre tem `ladoConfig Json?` (`{"1":"Norte","2":"Sul"}`) para filtrar unidades por lado; unidades têm `leadId` FK para vincular comprador ao lead. Clicar na unidade abre `UnitDetailsPopup` (view-only + busca de lead debounced 300ms). 3D/Metaverso removido desta versão — upgrade futuro. Detalhes completos em futuro `squad-empreendimentos.md`.
+- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — 4 abas (Cadastro, Espelho de Vendas, Preços, Dashboard). Backend: `DevelopmentsModule`. **Espelho de Vendas (MVP):** grid visual colorido por status; torre tem `ladoConfig Json?` (`{"1":"Norte","2":"Sul"}`) para filtrar unidades por lado; unidades têm `leadId` FK para vincular comprador ao lead. Clicar na unidade abre `UnitDetailsPopup` (view-only + busca de lead debounced 300ms) — título exibe "NomeTorre · NomeUnidade". **Fluxo Trocar unidade:** da página do lead, botão "Ver no espelho" / "Abrir Espelho" abre `EspelhoSelectorModal` (popup full-screen sobre a página do lead); ao selecionar unidade DISPONIVEL e confirmar, desvincula a unidade anterior (`unlinkUnit`) e vincula a nova (`PATCH /developments/:devId/units/:unitId` com `{ leadId, status: "PROPOSTA" }`). **OWNER bypass de etapa:** `developments.service.ts` pula a validação "lead deve estar em Negociações ou posterior" quando `actor.role === 'OWNER'`. 3D/Metaverso removido desta versão — upgrade futuro. Detalhes completos em futuro `squad-empreendimentos.md`.
 - `/my-site` → Gerenciador de Sites do tenant (OWNER only) — 1 site por tenant, fluxo adaptado com/sem site ativo; Publicar/Tirar do ar ficam em Configurações.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
@@ -429,6 +430,8 @@ NEXT_PUBLIC_API_URL=
 | `router.push/replace` em Next.js 16 + React 19 | Envolto em `startTransition(() => router.replace(...))` para evitar "Router action dispatched before initialization" |
 | Modais não fecham ao clicar fora | Todos os overlays/modais do sistema fecham SOMENTE via botão explícito (X, Cancelar, Fechar). Backdrop sem onClick. Dropdowns de seleção podem fechar ao clicar fora (z-40 overlay transparente), pois não são modais de formulário. Regra aplicada em Modal.tsx (componente global) e todos os modais inline do frontend. |
 | `localStorage` nunca lido durante o render | Sempre em `useEffect` + `useState` — leitura síncrona durante render causa hidratação incorreta e dispara router antes da inicialização |
+| Duplicados — CPF diferente exclui do POSSIVEL | No loop Jaro-Winkler, se ambos os leads têm CPF de 11 dígitos e os CPFs divergem → `continue` (são pessoas distintas). CPF igual já está no grupo CERTA, então o POSSIVEL só recebe pares sem CPF ou com CPF de apenas um dos lados. |
+| Duplicados — localStorage para grupos ignorados | "Não são duplicatas" salva a chave `sorted(ids).join('|')` em `via_crm_ignored_duplicate_groups` no localStorage — sem schema change, apropriado para tarefa de limpeza pontual. |
 
 ---
 
