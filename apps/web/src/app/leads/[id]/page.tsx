@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
+import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
@@ -1410,6 +1411,8 @@ export default function LeadDetailChatPage() {
   const [pipelineErr, setPipelineErr] = useState<string | null>(null);
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
+  const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
+  const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
 
   // (preparação pro futuro) etapa —Sfinal⬝ pode sugerir minimizar chat
 
@@ -2753,15 +2756,51 @@ function discardAiSuggestion() {
               }
             }
 
+            function handleSelectStage(stage: PipelineStage) {
+              if (stage.requiresEvidence) {
+                setPendingStage(stage);
+                setEvidenceModalOpen(true);
+              } else {
+                moveToStage(stage.id);
+              }
+            }
+
+            async function handleEvidenceConfirm(file: File) {
+              if (!pendingStage || !id) return;
+              const docRes = await apiFetch(`/leads/${id}/documents`, {
+                method: "POST",
+                body: JSON.stringify({ tipo: "EVIDENCIA_TRANSICAO", nome: `Evidência — ${pendingStage.name}` }),
+              });
+              if (docRes?.id) {
+                const uploadForm = new FormData();
+                uploadForm.append("file", file);
+                await apiFetch(`/leads/${id}/documents/${docRes.id}/upload`, {
+                  method: "POST",
+                  body: uploadForm,
+                });
+              }
+              setEvidenceModalOpen(false);
+              await moveToStage(pendingStage.id);
+              setPendingStage(null);
+            }
+
             return (
-              <PipelineStepper
-                stages={pipelineStages}
-                currentStageId={currentStageId}
-                currentGroup={currentGroup}
-                allowedStageIds={allowedStages.map((s) => s.id)}
-                disabled={movingStage}
-                onSelectStage={(stage) => moveToStage(stage.id)}
-              />
+              <>
+                <PipelineStepper
+                  stages={pipelineStages}
+                  currentStageId={currentStageId}
+                  currentGroup={currentGroup}
+                  allowedStageIds={allowedStages.map((s) => s.id)}
+                  disabled={movingStage}
+                  onSelectStage={handleSelectStage}
+                />
+                <EvidenceUploadModal
+                  isOpen={evidenceModalOpen}
+                  stageName={pendingStage?.name ?? ""}
+                  onClose={() => { setEvidenceModalOpen(false); setPendingStage(null); }}
+                  onConfirm={handleEvidenceConfirm}
+                />
+              </>
             );
           })() : loadingPipeline ? (
             <div className="text-sm text-[var(--shell-subtext)]">Carregando funil...</div>

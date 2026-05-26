@@ -1673,6 +1673,37 @@ async getById(user: any, id: string) {
       POS_VENDA: [],
     };
 
+    // Pipeline customizado: stages não presentes na matriz padrão têm livre movimento
+    const isCustomStage = fromStageKey !== 'BASE_FRIA' && !Object.prototype.hasOwnProperty.call(allowedTransitions, fromStageKey);
+
+    if (isCustomStage) {
+      const currentStageRecord = await this.prisma.pipelineStage.findFirst({
+        where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
+        select: { pipelineId: true },
+      });
+
+      const allCustomStages = currentStageRecord
+        ? await this.prisma.pipelineStage.findMany({
+            where: {
+              tenantId: user.tenantId,
+              pipelineId: currentStageRecord.pipelineId,
+              isActive: true,
+              NOT: { id: effectiveCurrentStageId ?? undefined },
+              ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
+            },
+            select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, ownerOnly: true },
+            orderBy: { sortOrder: 'asc' },
+          })
+        : [];
+
+      return {
+        leadId,
+        currentStageId: effectiveCurrentStageId,
+        currentStageKey: fromStageKey,
+        allowedStages: allCustomStages,
+      };
+    }
+
     let allowedStageKeys: string[] = [];
 
     if (fromStageKey === 'BASE_FRIA') {
@@ -1780,6 +1811,8 @@ async getById(user: any, id: string) {
               key: true,
               name: true,
               sortOrder: true,
+              requiresEvidence: true,
+              ownerOnly: true,
             },
             orderBy: { sortOrder: 'asc' },
           })
@@ -1918,6 +1951,10 @@ async updateStage(user: any, leadId: string, stageId: string) {
     });
   }
 
+  if (toStage.ownerOnly && user?.role !== 'OWNER') {
+    throw new ForbiddenException('Apenas o OWNER pode mover para esta etapa.');
+  }
+
   const allowedTransitions: Record<string, string[]> = {
     NOVO_LEAD: ['EM_CONTATO'],
 
@@ -1976,6 +2013,30 @@ async updateStage(user: any, leadId: string, stageId: string) {
 
   if (!fromStageKey) {
     throw new BadRequestException('Lead sem stage atual.');
+  }
+
+  // Pipeline customizado: stages fora da matriz padrão têm livre movimento
+  const isCustomTransition =
+    fromStageKey !== 'BASE_FRIA' &&
+    !Object.prototype.hasOwnProperty.call(allowedTransitions, fromStageKey);
+
+  if (isCustomTransition) {
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.lead.update({
+        where: { id: leadId },
+        data: { stageId: toStage.id },
+      }),
+      this.prisma.leadTransitionLog.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          fromStage: fromStageName,
+          toStage: toStage.name,
+          changedBy: user?.id || 'USER',
+        },
+      }),
+    ]);
+    return updated;
   }
 
   let isAllowed = false;
