@@ -169,6 +169,7 @@ export function PipelineStepper({
   onSelectStage,
   disabled,
 }: PipelineStepperProps) {
+  // Apenas stages do grupo atual, em ordem
   const list = (stages || [])
     .filter((s) => !currentGroup || s.group === currentGroup)
     .slice()
@@ -176,29 +177,7 @@ export function PipelineStepper({
 
   const currentStage = list.find((s) => s.id === currentStageId) ?? null;
   const currentOrder = currentStage?.sortOrder ?? -1;
-
-  const allowedSet = new Set(allowedStageIds ?? []);
-
-  const allSorted = (stages || []).slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  const currentGlobalOrder = (stages || []).find((s) => s.id === currentStageId)?.sortOrder ?? -1;
-
-  const pastStages = list.filter((s) => (s.sortOrder ?? 0) < currentOrder && !allowedSet.has(s.id));
-
-  // Busca em TODAS as stages recebidas — transições podem ir para outros grupos
-  const allowedStages = (stages || []).filter(
-    (s) => s.id !== currentStageId && allowedSet.has(s.id)
-  );
-
-  // Stage "voltar": permitida pelo backend E com sortOrder menor que a atual (globalmente)
-  const backStages    = allowedStages.filter((s) => (s.sortOrder ?? 0) < currentGlobalOrder);
-  const forwardStages = allowedStages.filter((s) => (s.sortOrder ?? 0) >= currentGlobalOrder);
-
-  const futureStages  = list.filter(
-    (s) => (s.sortOrder ?? 0) > currentOrder && !allowedSet.has(s.id)
-  );
-
-  const allowedPositive = forwardStages.filter((s) => !NEGATIVE_KEYS.has(s.key));
-  const allowedNegative = forwardStages.filter((s) => NEGATIVE_KEYS.has(s.key));
+  const allowedSet   = new Set(allowedStageIds ?? []);
 
   if (!list.length) return null;
 
@@ -206,68 +185,55 @@ export function PipelineStepper({
     ? (GROUP_LABELS[currentGroup] ?? currentGroup)
     : "Todas as etapas";
 
+  // Classifica cada stage do grupo para exibição linear
+  function classifyStage(s: PipelineStage): {
+    variant: ChipVariant;
+    clickable: boolean;
+  } {
+    if (s.id === currentStageId) return { variant: "current", clickable: false };
+    const order = s.sortOrder ?? 0;
+    const inAllowed = allowedSet.has(s.id);
+    if (order < currentOrder) {
+      return inAllowed
+        ? { variant: "past-prev", clickable: true }
+        : { variant: "past",      clickable: false };
+    }
+    // order > currentOrder
+    if (inAllowed) {
+      return NEGATIVE_KEYS.has(s.key)
+        ? { variant: "next-negative", clickable: true }
+        : { variant: "next-positive", clickable: true };
+    }
+    return { variant: "future", clickable: false };
+  }
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <p className="mb-3 text-xs text-slate-500">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900">
+      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
         Você está em:{" "}
-        <span className="font-semibold text-slate-700">{groupLabel}</span>
+        <span className="font-semibold text-slate-700 dark:text-slate-200">{groupLabel}</span>
       </p>
 
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+        {list.map((s, i) => {
+          const { variant, clickable } = classifyStage(s);
+          const showArrow = i > 0 && variant !== "past" && variant !== "past-prev" &&
+            list[i - 1] && classifyStage(list[i - 1]).variant !== "next-positive" &&
+            classifyStage(list[i - 1]).variant !== "next-negative" &&
+            classifyStage(list[i - 1]).variant !== "future";
 
-        {/* Etapas passadas bloqueadas — cinza, sem clique */}
-        {pastStages.map((s) => (
-          <StageChip key={s.id} name={s.name} variant="past" />
-        ))}
-
-        {/* Etapa anterior permitida — cinza + texto azul, clicável (voltar) */}
-        {backStages.map((s) => (
-          <StageChip
-            key={s.id}
-            name={s.name}
-            variant="past-prev"
-            disabled={disabled}
-            onClick={() => onSelectStage?.(s)}
-          />
-        ))}
-
-        {/* Etapa atual */}
-        {currentStage && (
-          <StageChip name={currentStage.name} variant="current" />
-        )}
-
-        {/* Seta + transições permitidas */}
-        {allowedStages.length > 0 && (
-          <div className="flex items-center gap-2">
-            <ArrowRightIcon />
-            <div className="flex flex-col gap-1.5">
-              {allowedPositive.map((s) => (
-                <StageChip
-                  key={s.id}
-                  name={s.name}
-                  variant="next-positive"
-                  disabled={disabled}
-                  onClick={() => onSelectStage?.(s)}
-                />
-              ))}
-              {allowedNegative.map((s) => (
-                <StageChip
-                  key={s.id}
-                  name={s.name}
-                  variant="next-negative"
-                  disabled={disabled}
-                  onClick={() => onSelectStage?.(s)}
-                />
-              ))}
+          return (
+            <div key={s.id} className="flex items-center gap-1.5">
+              {i > 0 && <ArrowRightIcon />}
+              <StageChip
+                name={s.name}
+                variant={variant}
+                disabled={disabled || !clickable}
+                onClick={clickable ? () => onSelectStage?.(s) : undefined}
+              />
             </div>
-          </div>
-        )}
-
-        {/* Etapas futuras bloqueadas — cinza claro */}
-        {futureStages.map((s) => (
-          <StageChip key={s.id} name={s.name} variant="future" />
-        ))}
-
+          );
+        })}
       </div>
     </div>
   );
