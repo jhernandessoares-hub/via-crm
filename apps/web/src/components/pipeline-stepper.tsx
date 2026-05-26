@@ -93,6 +93,10 @@ const GROUP_LABELS: Record<string, string> = {
   CREDITO_IMOBILIARIO: "Crédito Imobiliário",
   NEGOCIO_FECHADO:     "Negócio Fechado",
   POS_VENDA:           "Pós Venda",
+  DOCUMENTACAO:        "Documentação",
+  ESCOLHA_UNIDADE:     "Escolha da Unidade",
+  CONTRATO:            "Contrato",
+  REGISTRO:            "Registro",
 };
 
 // ─── Chip ─────────────────────────────────────────────────────────────────────

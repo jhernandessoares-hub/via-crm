@@ -46,6 +46,10 @@ const SP9_STAGES: Array<{
   { key: 'SP9_EXCLUSAO_DOC',        name: 'Exclusão do Inscrito',    group: 'DOCUMENTACAO', sortOrder: 130, requiresEvidence: true },
   { key: 'SP9_DESISTENCIA_DOC',     name: 'Desistência do Inscrito', group: 'DOCUMENTACAO', sortOrder: 140, requiresEvidence: true },
 
+  // ── Escolha da Unidade ───────────────────────────────────────────────────────
+  { key: 'SP9_AGUARD_UNIDADE',     name: 'Aguard. Unidade',    group: 'ESCOLHA_UNIDADE', sortOrder: 150 },
+  { key: 'SP9_UNIDADE_VINCULADA',  name: 'Unidade Vinculada',  group: 'ESCOLHA_UNIDADE', sortOrder: 160 },
+
   // ── Contrato ─────────────────────────────────────────────────────────────────
   { key: 'SP9_AGUARD_EMISSAO',      name: 'Aguard. Emissão de Contrato',    group: 'CONTRATO', sortOrder: 200 },
   { key: 'SP9_AGUARD_ASSINATURA',   name: 'Aguard. Assinatura de Contrato', group: 'CONTRATO', sortOrder: 210 },

@@ -54,14 +54,18 @@ interface SidebarProps {
   plan?: string;
 }
 
-const FUNNEL_GROUPS = [
-  { label: "Pré-atendimento", group: "PRE_ATENDIMENTO" },
-  { label: "Agendamento", group: "AGENDAMENTO" },
-  { label: "Negociações", group: "NEGOCIACOES" },
-  { label: "Crédito Imobiliário", group: "CREDITO_IMOBILIARIO" },
-  { label: "Negócio Fechado", group: "NEGOCIO_FECHADO" },
-  { label: "Pós Venda", group: "POS_VENDA" },
-];
+const GROUP_LABEL_MAP: Record<string, string> = {
+  PRE_ATENDIMENTO:    "Pré-atendimento",
+  AGENDAMENTO:        "Agendamento",
+  NEGOCIACOES:        "Negociações",
+  CREDITO_IMOBILIARIO:"Crédito Imobiliário",
+  NEGOCIO_FECHADO:    "Negócio Fechado",
+  POS_VENDA:          "Pós Venda",
+  DOCUMENTACAO:       "Documentação",
+  ESCOLHA_UNIDADE:    "Escolha da Unidade",
+  CONTRATO:           "Contrato",
+  REGISTRO:           "Registro",
+};
 
 export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan = '' }: SidebarProps) {
   const hasDevelopments = addons.includes('DEVELOPMENTS');
@@ -245,7 +249,8 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
                 className="mt-1 ml-3 space-y-0.5 border-l pl-3"
                 style={{ borderColor: "var(--sidebar-funnel-border)" }}
               >
-                {FUNNEL_GROUPS.map(({ label, group }) => {
+                {Object.keys(counts?.groups ?? {}).map((group) => {
+                  const label = GROUP_LABEL_MAP[group] ?? group;
                   const active = pathname === "/leads" && currentGroup === group;
                   const n = counts?.groups[group];
                   return (

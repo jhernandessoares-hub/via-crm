@@ -53,6 +53,7 @@ const GROUP_LABEL_MAP: Record<string, string> = {
   NEGOCIO_FECHADO: "Negócio Fechado",
   POS_VENDA:       "Pós Venda",
   DOCUMENTACAO:    "Documentação",
+  ESCOLHA_UNIDADE: "Escolha da Unidade",
   CONTRATO:        "Contrato",
   REGISTRO:        "Registro",
 };
@@ -64,6 +65,7 @@ const GROUP_COLOR_MAP: Record<string, string> = {
   NEGOCIO_FECHADO: "bg-emerald-50 text-emerald-700 border-emerald-200",
   POS_VENDA:       "bg-purple-50 text-purple-700 border-purple-200",
   DOCUMENTACAO:    "bg-sky-50 text-sky-700 border-sky-200",
+  ESCOLHA_UNIDADE: "bg-violet-50 text-violet-700 border-violet-200",
   CONTRATO:        "bg-indigo-50 text-indigo-700 border-indigo-200",
   REGISTRO:        "bg-green-50 text-green-700 border-green-200",
 };
@@ -75,6 +77,7 @@ const GROUP_BADGE_MAP: Record<string, string> = {
   NEGOCIO_FECHADO: "bg-emerald-100 text-emerald-700",
   POS_VENDA:       "bg-purple-100 text-purple-700",
   DOCUMENTACAO:    "bg-sky-100 text-sky-700",
+  ESCOLHA_UNIDADE: "bg-violet-100 text-violet-700",
   CONTRATO:        "bg-indigo-100 text-indigo-700",
   REGISTRO:        "bg-green-100 text-green-700",
 };
