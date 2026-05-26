@@ -66,6 +66,8 @@ export type PipelineStage = {
   name: string;
   group?: string | null;
   sortOrder?: number;
+  requiresEvidence?: boolean;
+  ownerOnly?: boolean;
 };
 
 // ─── Etapas negativas → âmbar ─────────────────────────────────────────────────

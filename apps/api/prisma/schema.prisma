@@ -25,20 +25,22 @@ model Pipeline {
 }
 
 model PipelineStage {
-  id         String    @id @default(uuid())
-  tenantId   String
-  pipelineId String
-  key        String
-  name       String
-  sortOrder  Int
-  group      String?
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  leads      Lead[]
-  pipeline   Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  slaRules   SlaRule[]
+  id               String    @id @default(uuid())
+  tenantId         String
+  pipelineId       String
+  key              String
+  name             String
+  sortOrder        Int
+  group            String?
+  isActive         Boolean   @default(true)
+  requiresEvidence Boolean   @default(false)
+  ownerOnly        Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  leads            Lead[]
+  pipeline         Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slaRules         SlaRule[]
 
   @@unique([tenantId, pipelineId, key], name: "tenantId_pipelineId_key")
   @@index([tenantId, pipelineId, isActive, sortOrder])
