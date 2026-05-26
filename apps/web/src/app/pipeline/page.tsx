@@ -45,20 +45,38 @@ function displayName(l: Lead): string {
   return l.nomeCorreto || l.nome || "Sem nome";
 }
 
-const GROUPS: { key: string; label: string; color: string }[] = [
-  { key: "PRE_ATENDIMENTO", label: "Pré-Atendimento",  color: "bg-slate-100 text-slate-700 border-slate-200" },
-  { key: "AGENDAMENTO",     label: "Agendamento",       color: "bg-blue-50 text-blue-700 border-blue-200" },
-  { key: "NEGOCIACOES",     label: "Negociações",        color: "bg-amber-50 text-amber-700 border-amber-200" },
-  { key: "NEGOCIO_FECHADO", label: "Negócio Fechado",   color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { key: "POS_VENDA",       label: "Pós Venda",         color: "bg-purple-50 text-purple-700 border-purple-200" },
-];
+// Labels e cores por group key — extensível sem mexer no código
+const GROUP_LABEL_MAP: Record<string, string> = {
+  PRE_ATENDIMENTO: "Pré-Atendimento",
+  AGENDAMENTO:     "Agendamento",
+  NEGOCIACOES:     "Negociações",
+  NEGOCIO_FECHADO: "Negócio Fechado",
+  POS_VENDA:       "Pós Venda",
+  DOCUMENTACAO:    "Documentação",
+  CONTRATO:        "Contrato",
+  REGISTRO:        "Registro",
+};
 
-const BADGE_COLOR: Record<string, string> = {
+const GROUP_COLOR_MAP: Record<string, string> = {
+  PRE_ATENDIMENTO: "bg-slate-100 text-slate-700 border-slate-200",
+  AGENDAMENTO:     "bg-blue-50 text-blue-700 border-blue-200",
+  NEGOCIACOES:     "bg-amber-50 text-amber-700 border-amber-200",
+  NEGOCIO_FECHADO: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  POS_VENDA:       "bg-purple-50 text-purple-700 border-purple-200",
+  DOCUMENTACAO:    "bg-sky-50 text-sky-700 border-sky-200",
+  CONTRATO:        "bg-indigo-50 text-indigo-700 border-indigo-200",
+  REGISTRO:        "bg-green-50 text-green-700 border-green-200",
+};
+
+const GROUP_BADGE_MAP: Record<string, string> = {
   PRE_ATENDIMENTO: "bg-slate-100 text-slate-600",
   AGENDAMENTO:     "bg-blue-100 text-blue-700",
   NEGOCIACOES:     "bg-amber-100 text-amber-700",
   NEGOCIO_FECHADO: "bg-emerald-100 text-emerald-700",
   POS_VENDA:       "bg-purple-100 text-purple-700",
+  DOCUMENTACAO:    "bg-sky-100 text-sky-700",
+  CONTRATO:        "bg-indigo-100 text-indigo-700",
+  REGISTRO:        "bg-green-100 text-green-700",
 };
 
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr";
@@ -160,16 +178,34 @@ export default function PipelinePage() {
     });
   }, [leads, q, stageMap, colFilters, numRange, rendaRange]);
 
+  // Grupos derivados das stages ativas — ordem de aparição no array de stages
+  const groups = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { key: string; label: string; color: string }[] = [];
+    for (const s of stages) {
+      if (s.group && !seen.has(s.group)) {
+        seen.add(s.group);
+        result.push({
+          key:   s.group,
+          label: GROUP_LABEL_MAP[s.group] ?? s.group,
+          color: GROUP_COLOR_MAP[s.group] ?? "bg-slate-100 text-slate-700 border-slate-200",
+        });
+      }
+    }
+    return result;
+  }, [stages]);
+
   const groupedLeads = useMemo(() => {
     const map: Record<string, Lead[]> = {};
-    for (const g of GROUPS) map[g.key] = [];
+    for (const g of groups) map[g.key] = [];
+    const firstGroup = groups[0]?.key;
     for (const l of filtered) {
       const group = l.stageId ? stageMap[l.stageId]?.group : null;
-      if (group && map[group]) map[group].push(l);
-      else map["PRE_ATENDIMENTO"].push(l);
+      if (group && map[group] !== undefined) map[group].push(l);
+      else if (firstGroup) map[firstGroup].push(l);
     }
     return map;
-  }, [filtered, stageMap]);
+  }, [filtered, stageMap, groups]);
 
   useEffect(() => { setVisibleCount(loadMoreN); }, [q, leads, colFilters, numRange, rendaRange]);
 
@@ -333,7 +369,7 @@ export default function PipelinePage() {
       {view === "KANBAN" && (
         <div className="mt-5 overflow-x-auto pb-4">
           <div className="flex min-w-max items-start gap-4">
-            {GROUPS.map((g) => {
+            {groups.map((g) => {
               const items = groupedLeads[g.key] ?? [];
               return (
                 <div
@@ -366,7 +402,7 @@ export default function PipelinePage() {
                             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
                               <span className="truncate">{l.telefone || l.whatsapp || "—"}</span>
                               <span className="opacity-50">·</span>
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${BADGE_COLOR[g.key]}`}>{stageName}</span>
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${GROUP_BADGE_MAP[g.key]}`}>{stageName}</span>
                             </div>
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
@@ -465,7 +501,7 @@ export default function PipelinePage() {
                       <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                       <div className="min-w-0">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE_COLOR[groupKey]} truncate max-w-full`} title={stageName}>{stageName}</span>
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey]} truncate max-w-full`} title={stageName}>{stageName}</span>
                       </div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate">{l.status || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
