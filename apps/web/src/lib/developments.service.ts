@@ -350,6 +350,7 @@ export interface DevObraUpdate {
   dataAtualizacao: string;
   titulo: string | null;
   observacoes: string | null;
+  percentualAvanco: number | null;
   createdAt: string;
   updatedAt: string;
   fotos: DevObraFoto[];
@@ -359,11 +360,11 @@ export async function listObraUpdates(devId: string): Promise<DevObraUpdate[]> {
   return apiFetch(`/developments/${devId}/obra-updates`);
 }
 
-export async function createObraUpdate(devId: string, data: { dataAtualizacao: string; titulo?: string; observacoes?: string }): Promise<DevObraUpdate> {
+export async function createObraUpdate(devId: string, data: { dataAtualizacao: string; titulo?: string; observacoes?: string; percentualAvanco?: number }): Promise<DevObraUpdate> {
   return apiFetch(`/developments/${devId}/obra-updates`, { method: "POST", body: JSON.stringify(data) });
 }
 
-export async function updateObraUpdate(devId: string, updateId: string, data: { dataAtualizacao?: string; titulo?: string; observacoes?: string }): Promise<DevObraUpdate> {
+export async function updateObraUpdate(devId: string, updateId: string, data: { dataAtualizacao?: string; titulo?: string; observacoes?: string; percentualAvanco?: number }): Promise<DevObraUpdate> {
   return apiFetch(`/developments/${devId}/obra-updates/${updateId}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 

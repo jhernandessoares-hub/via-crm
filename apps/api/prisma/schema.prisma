@@ -1680,10 +1680,11 @@ model DevelopmentObraUpdate {
   developmentId   String
   tenantId        String
   dataAtualizacao DateTime
-  titulo          String?
-  observacoes     String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  titulo            String?
+  observacoes       String?
+  percentualAvanco  Int?      // 0–100
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   development Development           @relation(fields: [developmentId], references: [id], onDelete: Cascade)
   tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -761,7 +761,7 @@ export class DevelopmentsService {
     });
   }
 
-  async createObraUpdate(tenantId: string, devId: string, data: { dataAtualizacao: string; titulo?: string; observacoes?: string }) {
+  async createObraUpdate(tenantId: string, devId: string, data: { dataAtualizacao: string; titulo?: string; observacoes?: string; percentualAvanco?: number }) {
     const dev = await this.prisma.development.findFirst({ where: { id: devId, tenantId } });
     if (!dev) throw new NotFoundException('Empreendimento não encontrado');
     if (!data.dataAtualizacao) throw new BadRequestException('Data obrigatória');
@@ -772,18 +772,20 @@ export class DevelopmentsService {
         dataAtualizacao: new Date(data.dataAtualizacao),
         titulo: data.titulo || null,
         observacoes: data.observacoes || null,
+        percentualAvanco: data.percentualAvanco != null ? Math.min(100, Math.max(0, Number(data.percentualAvanco))) : null,
       },
       include: { fotos: true },
     });
   }
 
-  async updateObraUpdate(tenantId: string, devId: string, updateId: string, data: { dataAtualizacao?: string; titulo?: string; observacoes?: string }) {
+  async updateObraUpdate(tenantId: string, devId: string, updateId: string, data: { dataAtualizacao?: string; titulo?: string; observacoes?: string; percentualAvanco?: number }) {
     const existing = await (this.prisma as any).developmentObraUpdate.findFirst({ where: { id: updateId, developmentId: devId, tenantId } });
     if (!existing) throw new NotFoundException('Atualização não encontrada');
     const payload: any = {};
     if (data.dataAtualizacao !== undefined) payload.dataAtualizacao = new Date(data.dataAtualizacao);
     if (data.titulo !== undefined) payload.titulo = data.titulo || null;
     if (data.observacoes !== undefined) payload.observacoes = data.observacoes || null;
+    if (data.percentualAvanco !== undefined) payload.percentualAvanco = data.percentualAvanco != null ? Math.min(100, Math.max(0, Number(data.percentualAvanco))) : null;
     return (this.prisma as any).developmentObraUpdate.update({
       where: { id: updateId },
       data: payload,
