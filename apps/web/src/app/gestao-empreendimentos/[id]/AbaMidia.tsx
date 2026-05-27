@@ -22,7 +22,7 @@ const MEDIA_TABS: { key: MediaTab; label: string; accept: string; hint: string }
 function MediaGallery({ devId, categoria, accept, hint }: { devId: string; categoria: DevMediaCategoria; accept: string; hint: string }) {
   const [items, setItems] = useState<DevMedia[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [tituloMap, setTituloMap] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
@@ -33,18 +33,19 @@ function MediaGallery({ devId, categoria, accept, hint }: { devId: string; categ
   }, [devId, categoria]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const titulo = tituloMap[categoria] || "";
-      const created = await uploadMedia(devId, file, categoria, titulo || undefined);
-      setItems((prev) => [...prev, created]);
-      setTituloMap((prev) => ({ ...prev, [categoria]: "" }));
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const titulo = tituloMap[categoria] || "";
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress(files.length > 1 ? `Enviando ${i + 1}/${files.length}…` : "Enviando…");
+      try {
+        const created = await uploadMedia(devId, files[i], categoria, titulo || undefined);
+        setItems((prev) => [...prev, created]);
+      } catch { /* continua para o próximo */ }
     }
+    setUploadProgress(null);
+    if (titulo) setTituloMap((prev) => ({ ...prev, [categoria]: "" }));
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   async function handleDelete(id: string) {
@@ -73,16 +74,16 @@ function MediaGallery({ devId, categoria, accept, hint }: { devId: string; categ
         <div>
           <label className="block text-xs text-[var(--shell-subtext)] mb-1">Arquivo ({hint})</label>
           <div className="flex gap-2 items-center">
-            <input ref={fileRef} type="file" accept={accept} className="hidden" id={`upload-${categoria}`} onChange={handleUpload} disabled={uploading} />
+            <input ref={fileRef} type="file" accept={accept} multiple className="hidden" id={`upload-${categoria}`} onChange={handleUpload} disabled={!!uploadProgress} />
             <label
               htmlFor={`upload-${categoria}`}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
-                uploading
+                uploadProgress
                   ? "opacity-50 cursor-not-allowed border-[var(--shell-card-border)] text-[var(--shell-subtext)]"
                   : "border-[var(--brand-accent)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-white"
               }`}
             >
-              {uploading ? "Enviando…" : "＋ Adicionar"}
+              {uploadProgress ?? "＋ Adicionar"}
             </label>
           </div>
         </div>
@@ -151,7 +152,7 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
   onUpdated: (u: DevObraUpdate) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [confirmDeleteUpdate, setConfirmDeleteUpdate] = useState(false);
   const [confirmDeleteFoto, setConfirmDeleteFoto] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -160,16 +161,19 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleUploadFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const foto = await uploadObraFoto(devId, update.id, file);
-      onUpdated({ ...update, fotos: [...update.fotos, foto] });
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    let fotos = [...update.fotos];
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress(files.length > 1 ? `Enviando ${i + 1}/${files.length}…` : "Enviando…");
+      try {
+        const foto = await uploadObraFoto(devId, update.id, files[i]);
+        fotos = [...fotos, foto];
+        onUpdated({ ...update, fotos });
+      } catch { /* continua */ }
     }
+    setUploadProgress(null);
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   async function handleDeleteFoto(fotoId: string) {
@@ -312,17 +316,17 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
 
             {/* Botão adicionar foto inline */}
             <div className="flex items-center justify-center rounded-xl border border-dashed border-[var(--shell-card-border)] h-28">
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" id={`obra-foto-${update.id}`} onChange={handleUploadFoto} disabled={uploading} />
+              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" id={`obra-foto-${update.id}`} onChange={handleUploadFoto} disabled={!!uploadProgress} />
               <label htmlFor={`obra-foto-${update.id}`}
-                className={`flex flex-col items-center gap-1 cursor-pointer text-[var(--shell-subtext)] hover:text-[var(--brand-accent)] transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
-                {uploading ? (
-                  <span className="text-xs">Enviando…</span>
+                className={`flex flex-col items-center gap-1 cursor-pointer text-[var(--shell-subtext)] hover:text-[var(--brand-accent)] transition-colors ${uploadProgress ? "opacity-50 pointer-events-none" : ""}`}>
+                {uploadProgress ? (
+                  <span className="text-xs text-center px-1">{uploadProgress}</span>
                 ) : (
                   <>
                     <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
                     </svg>
-                    <span className="text-xs">Foto</span>
+                    <span className="text-xs">Fotos</span>
                   </>
                 )}
               </label>
