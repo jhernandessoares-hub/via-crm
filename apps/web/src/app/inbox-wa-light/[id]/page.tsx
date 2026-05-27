@@ -741,6 +741,7 @@ export default function InboxWALightPage() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1285,11 +1286,18 @@ export default function InboxWALightPage() {
           {activeConversation && conversationDetail ? (
             <>
               <header className="flex h-16 shrink-0 items-center gap-3 border-b px-4" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
-                <ConversationAvatar
-                  name={conversationDetail.nome}
-                  avatarUrl={conversationDetail.avatarUrl}
-                  tracked={isTrackedConversation(activeConversation)}
-                />
+                <button
+                  type="button"
+                  onClick={() => conversationDetail.avatarUrl && setShowPhotoModal(true)}
+                  className="shrink-0 rounded-full"
+                  style={{ cursor: conversationDetail.avatarUrl ? "pointer" : "default" }}
+                >
+                  <ConversationAvatar
+                    name={conversationDetail.nome}
+                    avatarUrl={conversationDetail.avatarUrl}
+                    tracked={isTrackedConversation(activeConversation)}
+                  />
+                </button>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{conversationDetail.nome}</p>
                   <p className="truncate text-xs" style={{ color: "var(--text-muted)" }}>
@@ -1615,6 +1623,40 @@ export default function InboxWALightPage() {
           O número será desconectado desta sessão. Para voltar a usar, será necessário escanear um novo QR Code.
         </p>
       </Modal>
+
+      {showPhotoModal && conversationDetail?.avatarUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
+          onClick={() => setShowPhotoModal(false)}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={conversationDetail.avatarUrl}
+              alt={conversationDetail.nome}
+              className="rounded-2xl object-cover shadow-2xl"
+              style={{ maxWidth: "min(360px, 90vw)", maxHeight: "min(360px, 90vh)" }}
+            />
+            <div
+              className="absolute bottom-0 left-0 right-0 rounded-b-2xl px-4 py-3"
+              style={{ background: "rgba(0,0,0,0.6)" }}
+            >
+              <p className="text-sm font-semibold text-white">{conversationDetail.nome}</p>
+              {conversationDetail.telefone && (
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>{conversationDetail.telefone}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPhotoModal(false)}
+              className="absolute right-2 top-2 rounded-full p-1.5"
+              style={{ background: "rgba(0,0,0,0.5)", color: "#fff" }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </AppShell>

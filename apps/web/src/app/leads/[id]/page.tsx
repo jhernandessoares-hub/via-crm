@@ -1543,6 +1543,7 @@ export default function LeadDetailChatPage() {
   const [creditForm,        setCreditForm]        = useState({ correspondentId: "", valorImovel: "", valorCredito: "", rendaMensal: "", tipoFinanciamento: "SBPE", observacoes: "" });
   const [savingCredit,      setSavingCredit]      = useState(false);
   const [slaLoading, setSlaLoading] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -4060,7 +4061,12 @@ function discardAiSuggestion() {
           <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden lg:col-span-2 flex flex-col h-full lg:sticky lg:top-4">
             <div className="border-b bg-[var(--shell-bg)] px-4 py-3 flex items-center justify-between gap-3">
               <div className="min-w-0 flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full border bg-[var(--shell-card-bg)] flex items-center justify-center overflow-hidden shrink-0">
+                <button
+                  type="button"
+                  onClick={() => lead?.avatarUrl && setShowAvatarModal(true)}
+                  className="h-9 w-9 rounded-full border bg-[var(--shell-card-bg)] flex items-center justify-center overflow-hidden shrink-0"
+                  style={{ cursor: lead?.avatarUrl ? "pointer" : "default" }}
+                >
                   {lead?.avatarUrl ? (
                     <img src={lead.avatarUrl} alt="avatar" className="h-9 w-9 object-cover" />
                   ) : (
@@ -4073,7 +4079,7 @@ function discardAiSuggestion() {
                         .toUpperCase()}
                     </span>
                   )}
-                </div>
+                </button>
 
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-[var(--shell-text)] truncate flex items-center gap-2">
@@ -5026,6 +5032,42 @@ function discardAiSuggestion() {
           onClose={() => setEspelhoModal(null)}
           onDone={() => { setEspelhoModal(null); loadLead(); }}
         />
+      )}
+
+      {showAvatarModal && lead?.avatarUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
+          onClick={() => setShowAvatarModal(false)}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={lead.avatarUrl}
+              alt={lead.nomeCorreto ?? lead.nome ?? "avatar"}
+              className="rounded-2xl object-cover shadow-2xl"
+              style={{ maxWidth: "min(360px, 90vw)", maxHeight: "min(360px, 90vh)" }}
+            />
+            <div
+              className="absolute bottom-0 left-0 right-0 rounded-b-2xl px-4 py-3"
+              style={{ background: "rgba(0,0,0,0.6)" }}
+            >
+              <p className="text-sm font-semibold text-white">{lead.nomeCorreto ?? lead.nome}</p>
+              {lead.telefone && (
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>{lead.telefone}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAvatarModal(false)}
+              className="absolute right-2 top-2 rounded-full p-1.5"
+              style={{ background: "rgba(0,0,0,0.5)", color: "#fff" }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
     </AppShell>
   );
