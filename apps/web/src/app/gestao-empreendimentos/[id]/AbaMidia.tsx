@@ -5,7 +5,7 @@ import {
   updateDevelopment,
   listObraUpdates, createObraUpdate, updateObraUpdate, deleteObraUpdate,
   uploadObraFoto, deleteObraFoto,
-  type DevMedia, type DevMediaCategoria, type DevObraUpdate,
+  type DevMedia, type DevMediaCategoria, type DevObraUpdate, type DevObraFoto,
 } from "@/lib/developments.service";
 
 const inp = "w-full rounded-lg border border-[var(--shell-card-border)] bg-[var(--shell-input-bg)] px-3 py-2 text-sm text-[var(--shell-text)] outline-none focus:border-[var(--brand-accent)] transition-colors";
@@ -18,7 +18,192 @@ const MEDIA_TABS: { key: MediaTab; label: string; accept: string; hint: string }
   { key: "BOOK",           label: "Book",             accept: "image/*,application/pdf", hint: "JPG, PNG, PDF" },
 ];
 
-// ─── Seção de galeria por categoria ──────────────────────────────────────────
+const isPdf = (url: string) =>
+  url.includes("/raw/") || url.toLowerCase().endsWith(".pdf") || url.includes("application/pdf");
+
+// ─── Lightbox ─────────────────────────────────────────────────────────────────
+
+type LightboxItem = { id: string; url: string; name?: string | null };
+
+function LightboxModal({
+  items,
+  startIndex,
+  onClose,
+  onDelete,
+}: {
+  items: LightboxItem[];
+  startIndex: number;
+  onClose: () => void;
+  onDelete?: (id: string) => Promise<void>;
+}) {
+  const [idx, setIdx] = useState(startIndex);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const item = items[idx];
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") setIdx((i) => Math.max(0, i - 1));
+      else if (e.key === "ArrowRight") setIdx((i) => Math.min(items.length - 1, i + 1));
+      else if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [items.length, onClose]);
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const res = await fetch(item.url);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = item.name || "arquivo";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open(item.url, "_blank");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete(item.id);
+      if (items.length <= 1) { onClose(); return; }
+      setIdx((i) => Math.min(i, items.length - 2));
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (!item) return null;
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.93)" }}
+      className="flex flex-col"
+    >
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
+        <span className="text-sm text-white/80 truncate max-w-[50vw]">{item.name || `Arquivo ${idx + 1}`}</span>
+        <div className="flex items-center gap-2 ml-4 shrink-0">
+          {/* Contador */}
+          {items.length > 1 && (
+            <span className="text-xs text-white/50">{idx + 1} / {items.length}</span>
+          )}
+
+          {/* Download */}
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {downloading ? "…" : "Baixar"}
+          </button>
+
+          {/* Excluir */}
+          {onDelete && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-red-400">Confirmar?</span>
+                <button type="button" onClick={handleDelete} disabled={deleting}
+                  className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs disabled:opacity-50">
+                  {deleting ? "…" : "Sim"}
+                </button>
+                <button type="button" onClick={() => setConfirmDelete(false)}
+                  className="px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs">
+                  Não
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-red-600/80 text-white text-sm transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Excluir
+              </button>
+            )
+          )}
+
+          {/* Fechar */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Área principal */}
+      <div className="flex-1 flex items-center justify-center min-h-0 relative px-12">
+        {/* Seta anterior */}
+        {idx > 0 && (
+          <button type="button" onClick={() => setIdx((i) => i - 1)}
+            className="absolute left-2 flex items-center justify-center w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-white text-xl transition-colors">
+            ‹
+          </button>
+        )}
+
+        {isPdf(item.url) ? (
+          <div className="flex flex-col items-center gap-4 text-white text-center p-8">
+            <svg className="w-20 h-20 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="text-lg font-medium">{item.name || "Documento PDF"}</p>
+            <a href={item.url} target="_blank" rel="noreferrer"
+              className="px-5 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-white text-sm transition-colors">
+              Abrir PDF em nova aba
+            </a>
+          </div>
+        ) : (
+          <img
+            src={item.url}
+            alt={item.name || ""}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            style={{ maxHeight: "calc(100vh - 130px)" }}
+          />
+        )}
+
+        {/* Seta próxima */}
+        {idx < items.length - 1 && (
+          <button type="button" onClick={() => setIdx((i) => i + 1)}
+            className="absolute right-2 flex items-center justify-center w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-white text-xl transition-colors">
+            ›
+          </button>
+        )}
+      </div>
+
+      {/* Nome embaixo */}
+      {item.name && (
+        <div className="text-center text-white/60 text-xs py-3 px-4 truncate shrink-0">
+          {item.name}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Galeria de mídia ─────────────────────────────────────────────────────────
 
 function MediaGallery({
   devId, categoria, accept, hint,
@@ -34,11 +219,10 @@ function MediaGallery({
   const [items, setItems] = useState<DevMedia[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [tituloMap, setTituloMap] = useState<Record<string, string>>({});
-  // Inline title editing
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
+  const [lightbox, setLightbox] = useState<{ index: number } | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -60,7 +244,7 @@ function MediaGallery({
       try {
         const created = await uploadMedia(devId, files[i], categoria, titulo || undefined);
         setItems((prev) => [...prev, created]);
-      } catch { /* continua para o próximo */ }
+      } catch { /* continua */ }
     }
     setUploadProgress(null);
     if (titulo) setTituloMap((prev) => ({ ...prev, [categoria]: "" }));
@@ -71,8 +255,6 @@ function MediaGallery({
     const item = items.find((m) => m.id === id);
     await deleteMedia(devId, id);
     setItems((prev) => prev.filter((m) => m.id !== id));
-    setConfirmDelete(null);
-    // Se a foto deletada era a capa, limpa
     if (item && capaUrl === item.url && onCapaChange) onCapaChange(null);
   }
 
@@ -96,7 +278,7 @@ function MediaGallery({
 
   function handleTitleKeyDown(e: React.KeyboardEvent, id: string) {
     if (e.key === "Enter") { e.preventDefault(); commitTitle(id); }
-    if (e.key === "Escape") { setEditingTitleId(null); }
+    if (e.key === "Escape") setEditingTitleId(null);
   }
 
   async function toggleCapa(item: DevMedia) {
@@ -106,13 +288,13 @@ function MediaGallery({
     await updateDevelopment(devId, { capaUrl: newCapa });
   }
 
-  const isPdf = (url: string) => url.includes("/raw/") || url.toLowerCase().endsWith(".pdf") || url.includes("application/pdf");
+  const lightboxItems: LightboxItem[] = items.map((m) => ({ id: m.id, url: m.url, name: m.titulo }));
 
   if (loading) return <div className="py-8 text-center text-sm text-[var(--shell-subtext)]">Carregando…</div>;
 
   return (
     <div className="space-y-4">
-      {/* Formulário de upload */}
+      {/* Upload */}
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[180px]">
           <label className="block text-xs text-[var(--shell-subtext)] mb-1">Título (opcional)</label>
@@ -125,55 +307,55 @@ function MediaGallery({
         </div>
         <div>
           <label className="block text-xs text-[var(--shell-subtext)] mb-1">Arquivo ({hint})</label>
-          <div className="flex gap-2 items-center">
-            <input ref={fileRef} type="file" accept={accept} multiple className="hidden" id={`upload-${categoria}`} onChange={handleUpload} disabled={!!uploadProgress} />
-            <label
-              htmlFor={`upload-${categoria}`}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
-                uploadProgress
-                  ? "opacity-50 cursor-not-allowed border-[var(--shell-card-border)] text-[var(--shell-subtext)]"
-                  : "border-[var(--brand-accent)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-white"
-              }`}
-            >
-              {uploadProgress ?? "＋ Adicionar"}
-            </label>
-          </div>
+          <input ref={fileRef} type="file" accept={accept} multiple className="hidden" id={`upload-${categoria}`} onChange={handleUpload} disabled={!!uploadProgress} />
+          <label
+            htmlFor={`upload-${categoria}`}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${
+              uploadProgress
+                ? "opacity-50 cursor-not-allowed border-[var(--shell-card-border)] text-[var(--shell-subtext)]"
+                : "border-[var(--brand-accent)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-white"
+            }`}
+          >
+            {uploadProgress ?? "＋ Adicionar"}
+          </label>
         </div>
       </div>
 
-      {/* Legenda para FOTO_COMERCIAL */}
       {categoria === "FOTO_COMERCIAL" && items.length > 0 && (
         <p className="text-[11px] text-[var(--shell-subtext)]">
-          ☆ Clique na estrela para definir a foto de capa do card. Clique no nome abaixo da foto para renomear.
+          Clique na imagem para ampliar · ☆ define a capa do card · clique no nome para renomear
         </p>
       )}
 
-      {/* Grid de itens */}
       {items.length === 0 ? (
         <div className="py-10 text-center rounded-xl border border-dashed border-[var(--shell-card-border)] text-sm text-[var(--shell-subtext)]">
           Nenhum arquivo ainda. Clique em "Adicionar" para fazer upload.
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {items.map((item) => {
+          {items.map((item, i) => {
             const isCapa = categoria === "FOTO_COMERCIAL" && !isPdf(item.url) && capaUrl === item.url;
             return (
               <div key={item.id} className="group relative rounded-xl overflow-hidden border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]">
-                {isPdf(item.url) ? (
-                  <a href={item.url} target="_blank" rel="noreferrer"
-                    className="flex flex-col items-center justify-center h-32 gap-2 text-[var(--shell-subtext)] hover:text-[var(--brand-accent)] transition-colors p-3">
-                    <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span className="text-xs text-center leading-tight">{item.titulo || "PDF"}</span>
-                  </a>
-                ) : (
-                  <a href={item.url} target="_blank" rel="noreferrer" className="block">
+                {/* Thumbnail clicável */}
+                <button
+                  type="button"
+                  onClick={() => setLightbox({ index: i })}
+                  className="block w-full"
+                >
+                  {isPdf(item.url) ? (
+                    <div className="flex flex-col items-center justify-center h-32 gap-2 text-[var(--shell-subtext)] hover:text-[var(--brand-accent)] transition-colors p-3">
+                      <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="text-xs text-center leading-tight">{item.titulo || "PDF"}</span>
+                    </div>
+                  ) : (
                     <img src={item.url} alt={item.titulo || ""} className="w-full h-32 object-cover" />
-                  </a>
-                )}
+                  )}
+                </button>
 
-                {/* Título editável inline */}
+                {/* Título editável */}
                 <div className="px-2 py-1 border-t border-[var(--shell-card-border)]">
                   {editingTitleId === item.id ? (
                     <input
@@ -197,7 +379,7 @@ function MediaGallery({
                   )}
                 </div>
 
-                {/* Botão capa (estrela) — só para fotos comerciais não-PDF */}
+                {/* Estrela de capa (só Fotos Comerciais, não PDF) */}
                 {categoria === "FOTO_COMERCIAL" && !isPdf(item.url) && onCapaChange && (
                   <button
                     type="button"
@@ -214,36 +396,32 @@ function MediaGallery({
                     </svg>
                   </button>
                 )}
-
-                {/* Botão excluir */}
-                {confirmDelete === item.id ? (
-                  <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2 p-2">
-                    <span className="text-white text-xs text-center">Excluir?</span>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => handleDelete(item.id)}
-                        className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">Sim</button>
-                      <button type="button" onClick={() => setConfirmDelete(null)}
-                        className="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Não</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => setConfirmDelete(item.id)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <LightboxModal
+          items={lightboxItems}
+          startIndex={lightbox.index}
+          onClose={() => setLightbox(null)}
+          onDelete={async (id) => {
+            await handleDelete(id);
+            setItems((prev) => {
+              // lightbox index atualizado via re-render
+              return prev;
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Seção de Evolução de Obra ────────────────────────────────────────────────
+// ─── Card de atualização de obra ──────────────────────────────────────────────
 
 function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
   devId: string;
@@ -254,9 +432,14 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
   const [expanded, setExpanded] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [confirmDeleteUpdate, setConfirmDeleteUpdate] = useState(false);
-  const [confirmDeleteFoto, setConfirmDeleteFoto] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ index: number } | null>(null);
   const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({ dataAtualizacao: update.dataAtualizacao.slice(0, 10), titulo: update.titulo || "", observacoes: update.observacoes || "", percentualAvanco: update.percentualAvanco ?? 0 });
+  const [editData, setEditData] = useState({
+    dataAtualizacao: update.dataAtualizacao.slice(0, 10),
+    titulo: update.titulo || "",
+    observacoes: update.observacoes || "",
+    percentualAvanco: update.percentualAvanco ?? 0,
+  });
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -279,7 +462,6 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
   async function handleDeleteFoto(fotoId: string) {
     await deleteObraFoto(devId, update.id, fotoId);
     onUpdated({ ...update, fotos: update.fotos.filter((f) => f.id !== fotoId) });
-    setConfirmDeleteFoto(null);
   }
 
   async function handleDeleteUpdate() {
@@ -307,6 +489,8 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
     const dt = new Date(d);
     return dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   };
+
+  const fotoLightboxItems: LightboxItem[] = update.fotos.map((f) => ({ id: f.id, url: f.url, name: f.legenda }));
 
   return (
     <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
@@ -357,7 +541,9 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
                     🏗️ {update.percentualAvanco}%
                   </span>
                 )}
-                <span className="text-xs text-[var(--shell-subtext)] ml-auto">{update.fotos.length} foto{update.fotos.length !== 1 ? "s" : ""}</span>
+                <span className="text-xs text-[var(--shell-subtext)] ml-auto">
+                  {update.fotos.length} foto{update.fotos.length !== 1 ? "s" : ""}
+                </span>
               </div>
               {update.observacoes && (
                 <p className="text-xs text-[var(--shell-subtext)] mt-0.5 line-clamp-2">{update.observacoes}</p>
@@ -400,40 +586,24 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
         )}
       </div>
 
-      {/* Fotos expandidas */}
+      {/* Fotos */}
       {expanded && (
         <div className="border-t border-[var(--shell-card-border)] px-4 py-3 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {update.fotos.map((foto) => (
+            {update.fotos.map((foto, i) => (
               <div key={foto.id} className="group relative rounded-xl overflow-hidden border border-[var(--shell-card-border)]">
-                <a href={foto.url} target="_blank" rel="noreferrer">
+                <button type="button" onClick={() => setLightbox({ index: i })} className="block w-full">
                   <img src={foto.url} alt={foto.legenda || ""} className="w-full h-28 object-cover" />
-                </a>
+                </button>
                 {foto.legenda && (
-                  <div className="px-2 py-1 text-xs text-[var(--shell-subtext)] truncate border-t border-[var(--shell-card-border)]">{foto.legenda}</div>
-                )}
-                {confirmDeleteFoto === foto.id ? (
-                  <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2 p-2">
-                    <span className="text-white text-xs">Excluir?</span>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => handleDeleteFoto(foto.id)}
-                        className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">Sim</button>
-                      <button type="button" onClick={() => setConfirmDeleteFoto(null)}
-                        className="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Não</button>
-                    </div>
+                  <div className="px-2 py-1 text-xs text-[var(--shell-subtext)] truncate border-t border-[var(--shell-card-border)]">
+                    {foto.legenda}
                   </div>
-                ) : (
-                  <button type="button" onClick={() => setConfirmDeleteFoto(foto.id)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
                 )}
               </div>
             ))}
 
-            {/* Botão adicionar foto inline */}
+            {/* Botão adicionar */}
             <div className="flex items-center justify-center rounded-xl border border-dashed border-[var(--shell-card-border)] h-28">
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" id={`obra-foto-${update.id}`} onChange={handleUploadFoto} disabled={!!uploadProgress} />
               <label htmlFor={`obra-foto-${update.id}`}
@@ -453,11 +623,23 @@ function ObraUpdateCard({ devId, update, onDeleted, onUpdated }: {
           </div>
         </div>
       )}
+
+      {/* Lightbox de fotos da obra */}
+      {lightbox && (
+        <LightboxModal
+          items={fotoLightboxItems}
+          startIndex={lightbox.index}
+          onClose={() => setLightbox(null)}
+          onDelete={async (id) => {
+            await handleDeleteFoto(id);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Seção principal Evolução de Obra ─────────────────────────────────────────
+// ─── Evolução de Obra ─────────────────────────────────────────────────────────
 
 function ObraEvolution({ devId }: { devId: string }) {
   const [updates, setUpdates] = useState<DevObraUpdate[]>([]);
@@ -560,7 +742,7 @@ function ObraEvolution({ devId }: { devId: string }) {
   );
 }
 
-// ─── AbaMidia (componente principal exportado) ────────────────────────────────
+// ─── AbaMidia ─────────────────────────────────────────────────────────────────
 
 export default function AbaMidia({ devId, capaUrl: initialCapaUrl }: { devId: string; capaUrl?: string | null }) {
   const [mediaTab, setMediaTab] = useState<MediaTab>("FOTO_COMERCIAL");
@@ -568,13 +750,11 @@ export default function AbaMidia({ devId, capaUrl: initialCapaUrl }: { devId: st
 
   return (
     <div className="space-y-8">
-      {/* Seção de Mídia Comercial */}
       <section className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--shell-card-border)]">
           <h2 className="text-base font-semibold text-[var(--shell-text)]">🖼️ Mídia Comercial</h2>
           <p className="text-xs text-[var(--shell-subtext)] mt-0.5">Fotos comerciais, panfletos e book do empreendimento.</p>
         </div>
-        {/* Sub-tabs */}
         <div className="border-b border-[var(--shell-card-border)] flex">
           {MEDIA_TABS.map(({ key, label }) => (
             <button key={key} type="button" onClick={() => setMediaTab(key)}
@@ -604,7 +784,6 @@ export default function AbaMidia({ devId, capaUrl: initialCapaUrl }: { devId: st
         </div>
       </section>
 
-      {/* Seção de Evolução de Obra */}
       <section className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--shell-card-border)]">
           <h2 className="text-base font-semibold text-[var(--shell-text)]">🏗️ Evolução de Obra</h2>
