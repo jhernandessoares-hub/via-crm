@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback, useRef, useMemo, forwardRef, useImperativeHandle, startTransition, type ForwardedRef } from "react";
 import type { FaseConfig } from "@/lib/developments.service";
+import AbaMidia from "./AbaMidia";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { computeCompleteness, STEP_LABELS, type Completeness } from "@/lib/empreendimento-completeness";
@@ -3996,7 +3997,7 @@ function Wizard({ dev, completeness, onSaved, initialStep }: {
 
 // ─── TabbedView (modo abas após cadastro 100% completo) ──────────────────────
 
-type TabbedKey = "identificacao" | "localizacao" | "layout" | "estruturacao" | "precos" | "espelho" | "dashboard";
+type TabbedKey = "identificacao" | "localizacao" | "layout" | "estruturacao" | "precos" | "espelho" | "dashboard" | "midia";
 
 const TABBED_TABS: { key: TabbedKey; label: string }[] = [
   { key: "identificacao", label: "📋 Identificação" },
@@ -4006,6 +4007,7 @@ const TABBED_TABS: { key: TabbedKey; label: string }[] = [
   { key: "precos",        label: "💰 Preços"        },
   { key: "espelho",       label: "🏢 Espelho"       },
   { key: "dashboard",     label: "📊 Dashboard"     },
+  { key: "midia",         label: "🖼️ Mídia"         },
 ];
 
 function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role, preLinkedLead, trocandoUnitId }: {
@@ -4047,6 +4049,7 @@ function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role, preLinkedLea
           dashboard ? <DashboardView dashboard={dashboard} dev={dev} /> :
           <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
         )}
+        {tab === "midia" && isOwnerOrManager && <AbaMidia devId={dev.id} />}
       </div>
     </div>
   );

@@ -115,6 +115,8 @@ model Tenant {
   tenantSites            TenantSite[]
   users                  User[]
   developments           Development[]
+  developmentMedia       DevelopmentMedia[]
+  developmentObraUpdates DevelopmentObraUpdate[]
   creditRequests                CreditRequest[]
   whatsappUnofficialSessions    WhatsappUnofficialSession[]
   campanhaModelos               CampanhaModelo[]
@@ -1476,6 +1478,8 @@ model Development {
   towers           Tower[]
   units            DevelopmentUnit[]
   paymentCondition DevelopmentPaymentCondition?
+  mediaItems       DevelopmentMedia[]
+  obraUpdates      DevelopmentObraUpdate[]
 
   @@index([tenantId])
   @@map("developments")
@@ -1644,6 +1648,65 @@ model DevelopmentPaymentCondition {
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("development_payment_conditions")
+}
+
+enum DevelopmentMediaCategoria {
+  FOTO_COMERCIAL
+  PANFLETO
+  BOOK
+}
+
+model DevelopmentMedia {
+  id            String                    @id @default(uuid())
+  developmentId String
+  tenantId      String
+  url           String
+  publicId      String
+  categoria     DevelopmentMediaCategoria
+  titulo        String?
+  ordem         Int                       @default(0)
+  createdAt     DateTime                  @default(now())
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([developmentId])
+  @@index([tenantId])
+  @@map("development_media")
+}
+
+model DevelopmentObraUpdate {
+  id              String    @id @default(uuid())
+  developmentId   String
+  tenantId        String
+  dataAtualizacao DateTime
+  titulo          String?
+  observacoes     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  development Development           @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fotos       DevelopmentObraFoto[]
+
+  @@index([developmentId])
+  @@index([tenantId])
+  @@map("development_obra_updates")
+}
+
+model DevelopmentObraFoto {
+  id        String   @id @default(uuid())
+  updateId  String
+  url       String
+  publicId  String
+  legenda   String?
+  ordem     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  obraUpdate DevelopmentObraUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
+
+  @@index([updateId])
+  @@map("development_obra_fotos")
 }
 
 model Correspondent {
