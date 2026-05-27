@@ -4049,7 +4049,7 @@ function TabbedView({ dev, dashboard, onSaved, onUnitUpdated, role, preLinkedLea
           dashboard ? <DashboardView dashboard={dashboard} dev={dev} /> :
           <div className="py-12 text-center text-sm text-[var(--shell-subtext)]">Nenhum dado disponível ainda</div>
         )}
-        {tab === "midia" && isOwnerOrManager && <AbaMidia devId={dev.id} />}
+        {tab === "midia" && isOwnerOrManager && <AbaMidia devId={dev.id} capaUrl={(dev as any).capaUrl ?? null} />}
       </div>
     </div>
   );

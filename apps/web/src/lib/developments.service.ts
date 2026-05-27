@@ -163,6 +163,7 @@ export type Development = {
   terrainDesign?: TerrainDesign | null;
   modelUrl?: string | null;
   modelPublicId?: string | null;
+  capaUrl?: string | null;
   areasComuns?: {
     piscina?: boolean;
     academia?: boolean;
@@ -325,6 +326,10 @@ export async function uploadMedia(devId: string, file: File, categoria: DevMedia
   form.append("categoria", categoria);
   if (titulo) form.append("titulo", titulo);
   return apiFetch(`/developments/${devId}/media`, { method: "POST", body: form });
+}
+
+export async function patchMedia(devId: string, mediaId: string, data: { titulo?: string | null }): Promise<DevMedia> {
+  return apiFetch(`/developments/${devId}/media/${mediaId}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
 export async function deleteMedia(devId: string, mediaId: string): Promise<void> {

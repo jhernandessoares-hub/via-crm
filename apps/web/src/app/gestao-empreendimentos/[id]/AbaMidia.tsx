@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import {
-  listMedia, uploadMedia, deleteMedia,
+  listMedia, uploadMedia, patchMedia, deleteMedia,
+  updateDevelopment,
   listObraUpdates, createObraUpdate, updateObraUpdate, deleteObraUpdate,
   uploadObraFoto, deleteObraFoto,
   type DevMedia, type DevMediaCategoria, type DevObraUpdate,
@@ -19,18 +20,36 @@ const MEDIA_TABS: { key: MediaTab; label: string; accept: string; hint: string }
 
 // ─── Seção de galeria por categoria ──────────────────────────────────────────
 
-function MediaGallery({ devId, categoria, accept, hint }: { devId: string; categoria: DevMediaCategoria; accept: string; hint: string }) {
+function MediaGallery({
+  devId, categoria, accept, hint,
+  capaUrl, onCapaChange,
+}: {
+  devId: string;
+  categoria: DevMediaCategoria;
+  accept: string;
+  hint: string;
+  capaUrl?: string | null;
+  onCapaChange?: (url: string | null) => void;
+}) {
   const [items, setItems] = useState<DevMedia[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [tituloMap, setTituloMap] = useState<Record<string, string>>({});
+  // Inline title editing
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLoading(true);
     listMedia(devId, categoria).then(setItems).finally(() => setLoading(false));
   }, [devId, categoria]);
+
+  useEffect(() => {
+    if (editingTitleId) titleInputRef.current?.focus();
+  }, [editingTitleId]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -49,9 +68,42 @@ function MediaGallery({ devId, categoria, accept, hint }: { devId: string; categ
   }
 
   async function handleDelete(id: string) {
+    const item = items.find((m) => m.id === id);
     await deleteMedia(devId, id);
     setItems((prev) => prev.filter((m) => m.id !== id));
     setConfirmDelete(null);
+    // Se a foto deletada era a capa, limpa
+    if (item && capaUrl === item.url && onCapaChange) onCapaChange(null);
+  }
+
+  function startEditTitle(item: DevMedia) {
+    setEditingTitleId(item.id);
+    setTitleDraft(item.titulo || "");
+  }
+
+  async function commitTitle(id: string) {
+    const item = items.find((m) => m.id === id);
+    if (!item) return;
+    const newTitle = titleDraft.trim() || null;
+    if (newTitle === (item.titulo ?? null)) { setEditingTitleId(null); return; }
+    try {
+      const updated = await patchMedia(devId, id, { titulo: newTitle });
+      setItems((prev) => prev.map((m) => m.id === id ? { ...m, titulo: updated.titulo } : m));
+    } finally {
+      setEditingTitleId(null);
+    }
+  }
+
+  function handleTitleKeyDown(e: React.KeyboardEvent, id: string) {
+    if (e.key === "Enter") { e.preventDefault(); commitTitle(id); }
+    if (e.key === "Escape") { setEditingTitleId(null); }
+  }
+
+  async function toggleCapa(item: DevMedia) {
+    if (!onCapaChange) return;
+    const newCapa = capaUrl === item.url ? null : item.url;
+    onCapaChange(newCapa);
+    await updateDevelopment(devId, { capaUrl: newCapa });
   }
 
   const isPdf = (url: string) => url.includes("/raw/") || url.toLowerCase().endsWith(".pdf") || url.includes("application/pdf");
@@ -89,6 +141,13 @@ function MediaGallery({ devId, categoria, accept, hint }: { devId: string; categ
         </div>
       </div>
 
+      {/* Legenda para FOTO_COMERCIAL */}
+      {categoria === "FOTO_COMERCIAL" && items.length > 0 && (
+        <p className="text-[11px] text-[var(--shell-subtext)]">
+          ☆ Clique na estrela para definir a foto de capa do card. Clique no nome abaixo da foto para renomear.
+        </p>
+      )}
+
       {/* Grid de itens */}
       {items.length === 0 ? (
         <div className="py-10 text-center rounded-xl border border-dashed border-[var(--shell-card-border)] text-sm text-[var(--shell-subtext)]">
@@ -96,47 +155,88 @@ function MediaGallery({ devId, categoria, accept, hint }: { devId: string; categ
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {items.map((item) => (
-            <div key={item.id} className="group relative rounded-xl overflow-hidden border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]">
-              {isPdf(item.url) ? (
-                <a href={item.url} target="_blank" rel="noreferrer"
-                  className="flex flex-col items-center justify-center h-32 gap-2 text-[var(--shell-subtext)] hover:text-[var(--brand-accent)] transition-colors p-3">
-                  <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <span className="text-xs text-center leading-tight">{item.titulo || "PDF"}</span>
-                </a>
-              ) : (
-                <a href={item.url} target="_blank" rel="noreferrer" className="block">
-                  <img src={item.url} alt={item.titulo || ""} className="w-full h-32 object-cover" />
-                </a>
-              )}
-              {item.titulo && (
-                <div className="px-2 py-1 text-xs text-[var(--shell-subtext)] truncate border-t border-[var(--shell-card-border)]">
-                  {item.titulo}
+          {items.map((item) => {
+            const isCapa = categoria === "FOTO_COMERCIAL" && !isPdf(item.url) && capaUrl === item.url;
+            return (
+              <div key={item.id} className="group relative rounded-xl overflow-hidden border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]">
+                {isPdf(item.url) ? (
+                  <a href={item.url} target="_blank" rel="noreferrer"
+                    className="flex flex-col items-center justify-center h-32 gap-2 text-[var(--shell-subtext)] hover:text-[var(--brand-accent)] transition-colors p-3">
+                    <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="text-xs text-center leading-tight">{item.titulo || "PDF"}</span>
+                  </a>
+                ) : (
+                  <a href={item.url} target="_blank" rel="noreferrer" className="block">
+                    <img src={item.url} alt={item.titulo || ""} className="w-full h-32 object-cover" />
+                  </a>
+                )}
+
+                {/* Título editável inline */}
+                <div className="px-2 py-1 border-t border-[var(--shell-card-border)]">
+                  {editingTitleId === item.id ? (
+                    <input
+                      ref={titleInputRef}
+                      className="w-full text-xs bg-transparent outline-none border-b border-[var(--brand-accent)] text-[var(--shell-text)] py-0.5"
+                      value={titleDraft}
+                      onChange={(e) => setTitleDraft(e.target.value)}
+                      onBlur={() => commitTitle(item.id)}
+                      onKeyDown={(e) => handleTitleKeyDown(e, item.id)}
+                      placeholder="Adicionar nome…"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startEditTitle(item)}
+                      className="w-full text-left text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)] truncate transition-colors"
+                      title="Clique para renomear"
+                    >
+                      {item.titulo || <span className="opacity-40">Adicionar nome…</span>}
+                    </button>
+                  )}
                 </div>
-              )}
-              {/* Botão excluir */}
-              {confirmDelete === item.id ? (
-                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2 p-2">
-                  <span className="text-white text-xs text-center">Excluir?</span>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => handleDelete(item.id)}
-                      className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">Sim</button>
-                    <button type="button" onClick={() => setConfirmDelete(null)}
-                      className="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Não</button>
+
+                {/* Botão capa (estrela) — só para fotos comerciais não-PDF */}
+                {categoria === "FOTO_COMERCIAL" && !isPdf(item.url) && onCapaChange && (
+                  <button
+                    type="button"
+                    onClick={() => toggleCapa(item)}
+                    title={isCapa ? "Remover capa" : "Definir como capa"}
+                    className={`absolute top-1 left-1 p-1 rounded-full transition-all ${
+                      isCapa
+                        ? "bg-yellow-400/90 text-yellow-900"
+                        : "bg-black/40 text-white opacity-0 group-hover:opacity-100 hover:bg-yellow-400/90 hover:text-yellow-900"
+                    }`}
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={isCapa ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                    </svg>
+                  </button>
+                )}
+
+                {/* Botão excluir */}
+                {confirmDelete === item.id ? (
+                  <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2 p-2">
+                    <span className="text-white text-xs text-center">Excluir?</span>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => handleDelete(item.id)}
+                        className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">Sim</button>
+                      <button type="button" onClick={() => setConfirmDelete(null)}
+                        className="px-3 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700">Não</button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setConfirmDelete(item.id)}
-                  className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          ))}
+                ) : (
+                  <button type="button" onClick={() => setConfirmDelete(item.id)}
+                    className="absolute top-1 right-1 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -462,8 +562,9 @@ function ObraEvolution({ devId }: { devId: string }) {
 
 // ─── AbaMidia (componente principal exportado) ────────────────────────────────
 
-export default function AbaMidia({ devId }: { devId: string }) {
+export default function AbaMidia({ devId, capaUrl: initialCapaUrl }: { devId: string; capaUrl?: string | null }) {
   const [mediaTab, setMediaTab] = useState<MediaTab>("FOTO_COMERCIAL");
+  const [capaUrl, setCapaUrl] = useState<string | null>(initialCapaUrl ?? null);
 
   return (
     <div className="space-y-8">
@@ -489,7 +590,15 @@ export default function AbaMidia({ devId }: { devId: string }) {
         <div className="p-5">
           {MEDIA_TABS.map(({ key, accept, hint }) =>
             mediaTab === key ? (
-              <MediaGallery key={key} devId={devId} categoria={key} accept={accept} hint={hint} />
+              <MediaGallery
+                key={key}
+                devId={devId}
+                categoria={key}
+                accept={accept}
+                hint={hint}
+                capaUrl={key === "FOTO_COMERCIAL" ? capaUrl : undefined}
+                onCapaChange={key === "FOTO_COMERCIAL" ? setCapaUrl : undefined}
+              />
             ) : null
           )}
         </div>

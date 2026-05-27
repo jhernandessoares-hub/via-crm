@@ -1466,6 +1466,7 @@ model Development {
   implantacaoUrl      String?   // URL Cloudinary da planta de implantação
   implantacaoPublicId String?   // Cloudinary public ID para delete
   implantacaoMode     String?   // SATELITE | IMAGEM — modo de posicionamento das torres
+  capaUrl             String?   // URL da foto de capa do card na listagem
   terrainDesign       Json?     // Desenho do terreno: { version, shapes: [{id, type, points, ...}] }
   modelUrl            String?   // URL Cloudinary do modelo 3D do arquiteto (.glb/.gltf)
   modelPublicId       String?   // Cloudinary public ID do modelo 3D para delete
