@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import { formatLeadNumber } from "@/lib/format-lead-number";
@@ -111,6 +111,232 @@ function getFieldValue(lead: LeadSummary, field: FieldKey): string {
     default:
       return "";
   }
+}
+
+// ─── LeadSearchInput ─────────────────────────────────────────────────────────
+
+function LeadSearchInput({
+  label,
+  excluded,
+  value,
+  onChange,
+}: {
+  label: string;
+  excluded: LeadSummary | null;
+  value: LeadSummary | null;
+  onChange: (lead: LeadSummary | null) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<LeadSummary[]>([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function handleInput(val: string) {
+    setQ(val);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (!val.trim() || val.trim().length < 2) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
+    timerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const data: LeadSummary[] = await apiFetch(`/leads/search?q=${encodeURIComponent(val.trim())}`);
+        setResults(data.filter((l) => l.id !== excluded?.id));
+        setOpen(true);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }
+
+  function select(lead: LeadSummary) {
+    onChange(lead);
+    setQ("");
+    setResults([]);
+    setOpen(false);
+  }
+
+  function clear() {
+    onChange(null);
+    setQ("");
+    setResults([]);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={containerRef} className="flex-1 min-w-[220px] space-y-2">
+      <p className="text-xs font-semibold" style={{ color: "var(--text-muted, #6b7280)" }}>{label}</p>
+
+      {value ? (
+        <div
+          className="rounded-lg p-3 relative"
+          style={{ border: "2px solid #2563eb", background: "#eff6ff" }}
+        >
+          <button
+            onClick={clear}
+            className="absolute top-2 right-2 text-xs px-1.5 py-0.5 rounded"
+            style={{ background: "#dbeafe", color: "#1d4ed8" }}
+          >
+            Trocar
+          </button>
+          <p className="font-semibold text-sm pr-12 truncate" style={{ color: "#1e40af" }}>
+            {value.nomeCorreto ?? value.nome}
+            {value.numero && (
+              <span className="ml-2 text-xs font-normal" style={{ color: "#3b82f6" }}>
+                #{formatLeadNumber(value.numero, 1)}
+              </span>
+            )}
+          </p>
+          {value.telefone && <p className="text-xs" style={{ color: "#3b82f6" }}>{value.telefone}</p>}
+          {value.cpf && <p className="text-xs" style={{ color: "#3b82f6" }}>CPF: {value.cpf}</p>}
+          {value.stage && <p className="text-xs" style={{ color: "#3b82f6" }}>Etapa: {value.stage.nome}</p>}
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => handleInput(e.target.value)}
+            placeholder="Buscar por nome, telefone ou CPF..."
+            className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+            style={{
+              border: "1px solid var(--border, #e5e7eb)",
+              background: "var(--card-bg, #fff)",
+              color: "var(--text, #111)",
+            }}
+          />
+          {searching && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+              ...
+            </span>
+          )}
+          {open && results.length > 0 && (
+            <div
+              className="absolute z-30 w-full mt-1 rounded-lg shadow-lg overflow-hidden"
+              style={{ border: "1px solid var(--border, #e5e7eb)", background: "var(--card-bg, #fff)" }}
+            >
+              {results.map((lead) => (
+                <button
+                  key={lead.id}
+                  onClick={() => select(lead)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors"
+                  style={{ borderBottom: "1px solid var(--border, #e5e7eb)" }}
+                >
+                  <span className="font-medium truncate block" style={{ color: "var(--text, #111)" }}>
+                    {lead.nomeCorreto ?? lead.nome}
+                    {lead.numero && (
+                      <span className="ml-2 text-xs font-normal" style={{ color: "var(--text-muted, #6b7280)" }}>
+                        #{formatLeadNumber(lead.numero, 1)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+                    {[lead.telefone, lead.cpf, lead.stage?.nome].filter(Boolean).join(" · ")}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {open && !searching && results.length === 0 && q.trim().length >= 2 && (
+            <div
+              className="absolute z-30 w-full mt-1 rounded-lg px-3 py-2 text-sm shadow-lg"
+              style={{ border: "1px solid var(--border, #e5e7eb)", background: "var(--card-bg, #fff)", color: "var(--text-muted, #6b7280)" }}
+            >
+              Nenhum lead encontrado.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ManualMergeSection ───────────────────────────────────────────────────────
+
+function ManualMergeSection({ onMerge }: { onMerge: (group: DuplicateGroup) => void }) {
+  const [open, setOpen] = useState(false);
+  const [leadA, setLeadA] = useState<LeadSummary | null>(null);
+  const [leadB, setLeadB] = useState<LeadSummary | null>(null);
+
+  function handleMerge() {
+    if (!leadA || !leadB) return;
+    const group: DuplicateGroup = {
+      tipo: "CERTA",
+      motivo: "Mesclagem manual",
+      leads: [leadA, leadB],
+    };
+    onMerge(group);
+  }
+
+  return (
+    <div
+      className="rounded-lg mb-6"
+      style={{ border: "1px solid var(--border, #e5e7eb)", background: "var(--card-bg, #fff)" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 w-full px-4 py-3 text-left"
+      >
+        <span className="text-base">🔀</span>
+        <span className="font-semibold text-sm" style={{ color: "var(--text, #111)" }}>
+          Mesclar manualmente
+        </span>
+        <span className="ml-auto text-xs" style={{ color: "var(--text-muted, #6b7280)" }}>
+          {open ? "Ocultar" : "Selecionar dois leads para unificar"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t" style={{ borderColor: "var(--border, #e5e7eb)" }}>
+          <p className="text-xs mt-3 mb-3" style={{ color: "var(--text-muted, #6b7280)" }}>
+            Busque e selecione dois leads quaisquer para mesclá-los, independente de serem detectados como duplicatas.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <LeadSearchInput
+              label="Lead A (vencedor por padrão)"
+              excluded={leadB}
+              value={leadA}
+              onChange={setLeadA}
+            />
+            <LeadSearchInput
+              label="Lead B"
+              excluded={leadA}
+              value={leadB}
+              onChange={setLeadB}
+            />
+          </div>
+          {leadA && leadB && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleMerge}
+                className="px-5 py-2 rounded-lg text-sm font-medium"
+                style={{ background: "#2563eb", color: "#fff" }}
+              >
+                ⚡ Mesclar estes dois leads
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── MergeModal ───────────────────────────────────────────────────────────────
@@ -502,6 +728,7 @@ export default function DuplicadosPage() {
   const [mergeGroup, setMergeGroup] = useState<DuplicateGroup | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [ignoredKeys, setIgnoredKeys] = useState<Set<string>>(new Set());
+  const [manualMergeKey, setManualMergeKey] = useState(0);
 
   // Grupos em state local para poder remover após merge/delete/ignore
   const [grupos, setGrupos] = useState<DuplicateGroup[]>([]);
@@ -530,8 +757,10 @@ export default function DuplicadosPage() {
 
   function handleMergeSuccess() {
     if (!mergeGroup) return;
+    const isManual = mergeGroup.motivo === "Mesclagem manual";
     setGrupos((prev) => prev.filter((g) => g !== mergeGroup));
     setMergeGroup(null);
+    if (isManual) setManualMergeKey((k) => k + 1);
     setToast("Mesclagem realizada com sucesso!");
     setTimeout(() => setToast(null), 3500);
   }
@@ -588,6 +817,9 @@ export default function DuplicadosPage() {
             {loading ? "Verificando..." : "Verificar agora"}
           </button>
         </div>
+
+        {/* Manual merge */}
+        <ManualMergeSection key={manualMergeKey} onMerge={setMergeGroup} />
 
         {/* Error */}
         {error && (

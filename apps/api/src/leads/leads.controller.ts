@@ -85,6 +85,11 @@ export class LeadsController {
     return this.leadsService.findDuplicates(req.user.tenantId);
   }
 
+  @Get('search')
+  async search(@Req() req: any, @Query('q') q?: string) {
+    return this.leadsService.search(req.user, q ?? '');
+  }
+
   @Get('export')
   async exportCsv(
     @Req() req: any,
