@@ -2738,6 +2738,8 @@ function discardAiSuggestion() {
 
           {pipelineStages.length ? (() => {
             const currentStageId = (lead as any)?.stageId || null;
+            // Se não veio ?group= na URL, usa o grupo da etapa atual do lead
+            const effectiveGroup = currentGroup || (lead as any)?.stageGroup || null;
 
             async function moveToStage(stageId: string) {
               try {
@@ -2749,7 +2751,7 @@ function discardAiSuggestion() {
                 await loadLead();
 
                 const newStage = pipelineStages.find((s) => s.id === stageId);
-                if (newStage?.group && newStage.group !== currentGroup) {
+                if (newStage?.group && newStage.group !== effectiveGroup) {
                   router.replace(`/leads/${id}?group=${newStage.group}`);
                 }
               } catch (e: any) {
@@ -2792,7 +2794,7 @@ function discardAiSuggestion() {
                 <PipelineStepper
                   stages={pipelineStages}
                   currentStageId={currentStageId}
-                  currentGroup={currentGroup}
+                  currentGroup={effectiveGroup}
                   allowedStageIds={allowedStages.map((s) => s.id)}
                   disabled={movingStage}
                   onSelectStage={handleSelectStage}
