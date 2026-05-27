@@ -108,6 +108,8 @@ const GROUP_BADGE_MAP: Record<string, string> = {
 };
 
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
+const STAGE_BADGE = "bg-slate-100 text-slate-700";
+const SP9_GROUPS = new Set(["DOCUMENTACAO", "ESCOLHA_UNIDADE", "CONTRATO", "REGISTRO"]);
 
 const SEL_STYLE: React.CSSProperties = {
   width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4,
@@ -158,6 +160,11 @@ export default function MeusLeadsPage() {
     return m;
   }, [stages]);
 
+  const isGroupedPipeline = useMemo(
+    () => leads.some((l) => SP9_GROUPS.has(l.stage?.group ?? "")),
+    [leads]
+  );
+
   function getStageName(l: Lead): string {
     return l.stage?.name ?? l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null) ?? "—";
   }
@@ -171,8 +178,14 @@ export default function MeusLeadsPage() {
     const interesse = new Set<string>(), indicacao = new Set<string>();
     for (const l of leads) {
       const sn = l.stage?.name ?? l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null);
-      if (sn) etapa.add(sn);
-      if (l.status) status.add(l.status);
+      if (isGroupedPipeline) {
+        const g = l.stage?.group;
+        if (g) etapa.add(GROUP_LABEL_MAP[g] ?? g);
+        if (sn) status.add(sn);
+      } else {
+        if (sn) etapa.add(sn);
+        if (l.status) status.add(l.status);
+      }
       if (l.origem) origem.add(l.origem);
       if (l.perfilImovel) interesse.add(l.perfilImovel);
       const ind = (l.cadastroOrigem as any)?.indicacao;
@@ -185,7 +198,7 @@ export default function MeusLeadsPage() {
       interesse: [...interesse].sort(),
       indicacao: [...indicacao].sort(),
     };
-  }, [leads, stageMap]);
+  }, [leads, stageMap, isGroupedPipeline]);
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -198,8 +211,14 @@ export default function MeusLeadsPage() {
           .join(" ").toLowerCase().includes(qq)) return false;
       }
       const sn = getStageName(l);
-      if (colFilters.etapa && sn !== colFilters.etapa) return false;
-      if (colFilters.status && l.status !== colFilters.status) return false;
+      if (isGroupedPipeline) {
+        const gl = GROUP_LABEL_MAP[l.stage?.group ?? ""] ?? l.stage?.group ?? "";
+        if (colFilters.etapa && gl !== colFilters.etapa) return false;
+        if (colFilters.status && sn !== colFilters.status) return false;
+      } else {
+        if (colFilters.etapa && sn !== colFilters.etapa) return false;
+        if (colFilters.status && l.status !== colFilters.status) return false;
+      }
       if (colFilters.origem && l.origem !== colFilters.origem) return false;
       if (colFilters.interesse && l.perfilImovel !== colFilters.interesse) return false;
       if (colFilters.indicacao && (l.cadastroOrigem as any)?.indicacao !== colFilters.indicacao) return false;
@@ -207,7 +226,7 @@ export default function MeusLeadsPage() {
       if (numRange.max && (l.numero ?? 0) > parseInt(numRange.max)) return false;
       return true;
     });
-  }, [leads, q, stageMap, colFilters, numRange]);
+  }, [leads, q, stageMap, colFilters, numRange, isGroupedPipeline]);
 
   const groups = useMemo(() => {
     const seen = new Set<string>();
@@ -402,7 +421,7 @@ export default function MeusLeadsPage() {
                           </div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
-                            {st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
+                            {!isGroupedPipeline && st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
                             {l.perfilImovel && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>{l.perfilImovel}</span>}
                             {l.assignedUserName && <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span>}
                           </div>
@@ -447,7 +466,7 @@ export default function MeusLeadsPage() {
               </select>
               <select style={SEL_STYLE} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}>
                 <option value="">Todos</option>
-                {uniqueValues.status.map((v) => <option key={v} value={v}>{STATUS_LABEL[v] ?? v}</option>)}
+                {uniqueValues.status.map((v) => <option key={v} value={v}>{isGroupedPipeline ? v : (STATUS_LABEL[v] ?? v)}</option>)}
               </select>
               <select style={SEL_STYLE} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}>
                 <option value="">Todos</option>
@@ -469,7 +488,8 @@ export default function MeusLeadsPage() {
                 const stageName = getStageName(l);
                 const groupKey = getStageGroup(l);
                 const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                const st = formatStatus(l.status);
+                const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
+                const st = isGroupedPipeline ? null : formatStatus(l.status);
                 return (
                   <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
                     style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
@@ -478,10 +498,12 @@ export default function MeusLeadsPage() {
                     <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                     <div className="min-w-0">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={stageName}>{stageName}</span>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
                     </div>
                     <div className="min-w-0">
-                      {st ? (
+                      {isGroupedPipeline ? (
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                      ) : st ? (
                         <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
                       ) : (
                         <span className="text-sm text-[var(--shell-subtext)]">—</span>

@@ -91,6 +91,7 @@ function displayName(l: Lead): string {
 }
 
 const STAGE_BADGE = "bg-slate-100 text-slate-700";
+const SP9_GROUPS = new Set(["DOCUMENTACAO", "ESCOLHA_UNIDADE", "CONTRATO", "REGISTRO"]);
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
 
 export default function LeadsPage() {
@@ -273,20 +274,31 @@ export default function LeadsPage() {
     [visibleStages]
   );
 
+  const isGroupedPipeline = useMemo(
+    () => leads.some((l) => SP9_GROUPS.has(l.stage?.group ?? "")),
+    [leads]
+  );
+
   const uniqueValues = useMemo(() => {
     const etapa = new Set<string>(), status = new Set<string>(), origem = new Set<string>();
     const interesse = new Set<string>(), indicacao = new Set<string>();
     for (const l of leads) {
       const sn = l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name;
-      if (sn) etapa.add(sn);
-      if (l.status) status.add(l.status);
+      if (isGroupedPipeline) {
+        const g = l.stage?.group;
+        if (g) etapa.add(GROUP_LABEL[g] ?? g);
+        if (sn) status.add(sn);
+      } else {
+        if (sn) etapa.add(sn);
+        if (l.status) status.add(l.status);
+      }
       if (l.origem) origem.add(l.origem);
       if (l.perfilImovel) interesse.add(l.perfilImovel);
       const ind = (l.cadastroOrigem as any)?.indicacao;
       if (ind) indicacao.add(ind);
     }
     return { etapa: [...etapa].sort(), status: [...status].sort(), origem: [...origem].sort(), interesse: [...interesse].sort(), indicacao: [...indicacao].sort() };
-  }, [leads, pipelineStages]);
+  }, [leads, pipelineStages, isGroupedPipeline]);
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -300,8 +312,14 @@ export default function LeadsPage() {
           .join(" ").toLowerCase().includes(qq)) return false;
       }
       const sn = l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name ?? "";
-      if (colFilters.etapa && sn !== colFilters.etapa) return false;
-      if (colFilters.status && l.status !== colFilters.status) return false;
+      if (isGroupedPipeline) {
+        const gl = GROUP_LABEL[l.stage?.group ?? ""] ?? l.stage?.group ?? "";
+        if (colFilters.etapa && gl !== colFilters.etapa) return false;
+        if (colFilters.status && sn !== colFilters.status) return false;
+      } else {
+        if (colFilters.etapa && sn !== colFilters.etapa) return false;
+        if (colFilters.status && l.status !== colFilters.status) return false;
+      }
       if (colFilters.origem && l.origem !== colFilters.origem) return false;
       if (colFilters.interesse && l.perfilImovel !== colFilters.interesse) return false;
       if (colFilters.indicacao && (l.cadastroOrigem as any)?.indicacao !== colFilters.indicacao) return false;
@@ -309,7 +327,7 @@ export default function LeadsPage() {
       if (numRange.max && (l.numero ?? 0) > parseInt(numRange.max)) return false;
       return true;
     });
-  }, [leads, q, activeGroup, visibleStageIds, pipelineStages, colFilters, numRange]);
+  }, [leads, q, activeGroup, visibleStageIds, pipelineStages, colFilters, numRange, isGroupedPipeline]);
 
   useEffect(() => { setVisibleCount(loadMoreN); }, [q, activeGroup, leads, colFilters, numRange]);
 
@@ -482,7 +500,7 @@ export default function LeadsPage() {
               <div /><div />
               <select style={S} value={colFilters.origem} onChange={(e) => setCF("origem", e.target.value)}><option value="">Todas</option>{uniqueValues.origem.map((v) => <option key={v} value={v}>{v}</option>)}</select>
               <select style={S} value={colFilters.etapa} onChange={(e) => setCF("etapa", e.target.value)}><option value="">Todas</option>{uniqueValues.etapa.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-              <select style={S} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}><option value="">Todos</option>{uniqueValues.status.map((v) => <option key={v} value={v}>{STATUS_LABEL[v] ?? v}</option>)}</select>
+              <select style={S} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}><option value="">Todos</option>{uniqueValues.status.map((v) => <option key={v} value={v}>{isGroupedPipeline ? v : (STATUS_LABEL[v] ?? v)}</option>)}</select>
               <select style={S} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}><option value="">Todos</option>{uniqueValues.interesse.map((v) => <option key={v} value={v}>{v}</option>)}</select>
               <select style={S} value={colFilters.indicacao} onChange={(e) => setCF("indicacao", e.target.value)}><option value="">Todas</option>{uniqueValues.indicacao.map((v) => <option key={v} value={v}>{v}</option>)}</select>
               <div /><div />
@@ -496,7 +514,10 @@ export default function LeadsPage() {
               {filtered.slice(0, visibleCount).map((l) => {
                 const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
                 const stageName = getStageName(l);
-                const st = formatStatus(l.status);
+                const etapaText = isGroupedPipeline
+                  ? (GROUP_LABEL[l.stage?.group ?? ""] ?? l.stage?.group ?? "—")
+                  : stageName;
+                const st = isGroupedPipeline ? null : formatStatus(l.status);
                 return (
                   <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
                     style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
@@ -507,10 +528,12 @@ export default function LeadsPage() {
                     <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                     <div className="min-w-0">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE} truncate max-w-full`} title={stageName}>{stageName}</span>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE} truncate max-w-full`} title={etapaText}>{etapaText}</span>
                     </div>
                     <div className="min-w-0">
-                      {st ? (
+                      {isGroupedPipeline ? (
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                      ) : st ? (
                         <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
                       ) : (
                         <span className="text-sm text-[var(--shell-subtext)]">—</span>
@@ -548,7 +571,8 @@ export default function LeadsPage() {
                     ) : (
                       items.map((l) => {
                         const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                        const st = formatStatus(l.status);
+                        const st = isGroupedPipeline ? null : formatStatus(l.status);
+                        const stageName = getStageName(l);
                         return (
                           <div key={l.id} className="rounded-lg border p-2"
                             style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}>
@@ -561,7 +585,9 @@ export default function LeadsPage() {
                               {l.origem && (
                                 <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>
                               )}
-                              {st && (
+                              {isGroupedPipeline ? (
+                                <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${STAGE_BADGE}`}>{stageName}</span>
+                              ) : st && (
                                 <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>
                               )}
                               {l.perfilImovel && (
