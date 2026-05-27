@@ -796,6 +796,7 @@ async function handleInboundAiJob(
         select: {
           stageId: true,
           nomeCorreto: true,
+          nomeCorretoOrigem: true,
           rendaBrutaFamiliar: true,
           fgts: true,
           valorEntrada: true,
@@ -848,7 +849,7 @@ async function handleInboundAiJob(
     // Aplica campos de qualificação
     const u = analysis.updates ?? {};
     const updateData: any = {};
-    if (u.nomeCorreto !== undefined) {
+    if (u.nomeCorreto !== undefined && leadWithQual?.nomeCorretoOrigem !== 'MANUAL') {
       updateData.nomeCorreto = u.nomeCorreto;
       updateData.nomeCorretoOrigem = u.nomeCorreto ? 'IA' : null;
     }

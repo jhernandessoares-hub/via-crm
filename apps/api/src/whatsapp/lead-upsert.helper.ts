@@ -107,7 +107,7 @@ export async function upsertLeadFromWhatsapp(
   const existingLead = telefoneKey
     ? await prisma.lead.findFirst({
         where: { tenantId, telefoneKey, deletedAt: null },
-        select: { id: true, lastEntryChannel: true },
+        select: { id: true, lastEntryChannel: true, nomeCorretoOrigem: true },
         orderBy: { criadoEm: 'desc' },
       })
     : null;
@@ -126,17 +126,16 @@ export async function upsertLeadFromWhatsapp(
         // Mensagens de sistema não reiniciam o timer de inbound nem alteram canal
         ...(!isSystemMessage ? { lastInboundAt: now, conversaCanal: canal } : {}),
         ...(sessionId && !isSystemMessage ? { conversaSessionId: sessionId } : {}),
-        ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
+        ...(contactName && existingLead.nomeCorretoOrigem !== 'MANUAL' ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
         ...(avatarUrl ? { avatarUrl } : {}),
         // Reentrada: incrementa contador somente quando o canal muda (não em toda mensagem)
         ...(!isSystemMessage && canal !== existingLead.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: canal } : {}),
       },
     });
   } else {
-    const [firstStageId, assignment] = await Promise.all([
+    const [firstStage, assignment] = await Promise.all([
       prisma.pipelineStage
-        .findFirst({ where: { tenantId, key: 'NOVO_LEAD' }, select: { id: true } })
-        .then((s) => s?.id ?? null),
+        .findFirst({ where: { tenantId, isActive: true }, orderBy: { sortOrder: 'asc' }, select: { id: true, pipelineId: true } }),
       resolveAssignment(prisma, tenantId),
     ]);
 
@@ -152,7 +151,8 @@ export async function upsertLeadFromWhatsapp(
           origem: sessionId ? 'WhatsApp Light' : 'WhatsApp',
           status: 'NOVO',
           lastInboundAt: now,
-          stageId: firstStageId,
+          stageId: firstStage?.id ?? null,
+          pipelineId: firstStage?.pipelineId ?? null,
           conversaCanal: canal,
           lastEntryChannel: canal,
           branchId: assignment.branchId,
