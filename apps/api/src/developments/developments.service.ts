@@ -130,6 +130,7 @@ export class DevelopmentsService {
       }
       if (data.terrainDesign !== undefined) updateData.terrainDesign = data.terrainDesign;
       if (data.areasComuns !== undefined) updateData.areasComuns = data.areasComuns;
+      if (data.capaUrl !== undefined) updateData.capaUrl = data.capaUrl || null;
     }
 
     try {
@@ -737,6 +738,15 @@ export class DevelopmentsService {
         titulo: titulo || null,
         ordem: count,
       },
+    });
+  }
+
+  async patchMedia(tenantId: string, devId: string, mediaId: string, data: { titulo?: string }) {
+    const media = await (this.prisma as any).developmentMedia.findFirst({ where: { id: mediaId, developmentId: devId, tenantId } });
+    if (!media) throw new NotFoundException('Mídia não encontrada');
+    return (this.prisma as any).developmentMedia.update({
+      where: { id: mediaId },
+      data: { titulo: data.titulo !== undefined ? (data.titulo || null) : undefined },
     });
   }
 

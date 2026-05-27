@@ -140,6 +140,11 @@ export class DevelopmentsController {
     return this.svc.uploadMedia(req.user.tenantId, id, file, categoria, titulo);
   }
 
+  @Patch(':id/media/:mediaId')
+  patchMedia(@Request() req: any, @Param('id') id: string, @Param('mediaId') mediaId: string, @Body() body: any) {
+    return this.svc.patchMedia(req.user.tenantId, id, mediaId, body);
+  }
+
   @Delete(':id/media/:mediaId')
   deleteMedia(@Request() req: any, @Param('id') id: string, @Param('mediaId') mediaId: string) {
     return this.svc.deleteMedia(req.user.tenantId, id, mediaId);
