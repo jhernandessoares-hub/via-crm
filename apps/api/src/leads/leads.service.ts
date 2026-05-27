@@ -928,10 +928,11 @@ export class LeadsService {
       telefoneKey = this.telefoneKeyFrom(telefoneDigits);
     }
 
-    // ✅ garante pipeline/stages e define stage inicial (Novo Lead)
+    // ✅ garante pipeline/stages e define stage inicial (primeiro ativo por sortOrder)
     const pipelineId = await this.pipelineService.ensureDefaultPipeline(tenantId);
     const firstStage = await this.prisma.pipelineStage.findFirst({
-      where: { tenantId, pipelineId, key: 'NOVO_LEAD' },
+      where: { tenantId, pipelineId, isActive: true },
+      orderBy: { sortOrder: 'asc' },
       select: { id: true, name: true },
     });
 
@@ -1332,7 +1333,6 @@ async getById(user: any, id: string) {
     const firstStage = await this.prisma.pipelineStage.findFirst({
       where: {
         tenantId: user.tenantId,
-        key: 'NOVO_LEAD',
         isActive: true,
       },
       orderBy: { sortOrder: 'asc' },
@@ -1616,7 +1616,6 @@ async getById(user: any, id: string) {
       const defaultStage = await this.prisma.pipelineStage.findFirst({
         where: {
           tenantId: user.tenantId,
-          key: 'NOVO_LEAD',
           isActive: true,
         },
         orderBy: { sortOrder: 'asc' },
@@ -1949,7 +1948,6 @@ async updateStage(user: any, leadId: string, stageId: string) {
     const defaultStage = await this.prisma.pipelineStage.findFirst({
       where: {
         tenantId: user.tenantId,
-        key: 'NOVO_LEAD',
         isActive: true,
       },
       orderBy: { sortOrder: 'asc' },

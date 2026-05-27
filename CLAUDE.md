@@ -1,4 +1,4 @@
-# VIA CRM — Guia para Claude
+﻿# VIA CRM — Guia para Claude
 
 Sistema CRM SaaS multi-tenant para imobiliárias brasileiras. Gerencia leads, funil de vendas, atendimento via WhatsApp com IA, catálogo de imóveis e secretária pessoal por voz/texto.
 
@@ -42,7 +42,7 @@ via-crm/
 |--------|-----------------|
 | `auth/` | Login, registro de master, refresh token, JWT Strategy, recuperação de senha |
 | `admin/` | Platform Admin — CRUD tenants, impersonation, audit, health |
-| `tenants/` | CRUD de tenants, configurações WhatsApp, bot-config e permissões por role (`permissionsConfig`) |
+| `tenants/` | CRUD de tenants, configurações WhatsApp, bot-config e permissões por role (`permissionsConfig`); `GET /tenants/ai-status` (todos os roles — retorna `{ autopilotEnabled }` para uso na UI) |
 | `users/` | CRUD de usuários, perfis, configurações de secretária; gestão de equipe (OWNER: POST/PATCH/DELETE /users/team); round-robin config (OWNER: GET/PATCH /users/round-robin) |
 | `leads/` | CRUD de leads, qualificação, SLA, eventos, soft delete, exportação CSV; `GET /leads/my` (assignados ao usuário); `GET /leads/counts` (contagem por role para sidebar); `GET /leads/duplicates` (grupos CERTA/POSSIVEL); `GET /leads/search?q=` (autocomplete — busca por nome/telefone/CPF/número, retorna até 10 resultados, respeita isolamento por role); `POST /leads/:id/merge` (mesclar dois leads com escolha campo a campo) |
 | `pipeline/` | Funil customizável com etapas e transições |
@@ -426,6 +426,7 @@ NEXT_PUBLIC_API_URL=
 | Campanha — mensagens silenciosas pré-resposta | `SILENT_INBOUND_TYPES = ['sticker', 'poll', 'system', 'unknown', 'edited']`: quando contato de campanha envia tipo silencioso, **não cria lead, não muda tag para RESPONDEU**, salva em `CampanhaContato.previewMessages`. Visíveis no inbox. Quando chega a primeira mensagem real, os previews são replayed como LeadEvents com timestamps originais **antes** do evento real — IA recebe contexto completo. Para leads já existentes (não-campanha), os mesmos tipos silenciosos: LeadEvent é criado mas IA **não é acionada** (`AI_SILENT_TYPES` em `lead-upsert.helper.ts`). |
 | Lead page — canais unofficial | `isOutgoing()` reconhece `whatsapp.unofficial.out` como enviado (direita) e `whatsapp.unofficial.in` como recebido (esquerda) |
 | Inbox WA Light — conversas por sessão | `GET /inbox?sessionId=X` filtra conversas pelo inbox específico; sem filtro retorna todas as conversas WHATSAPP_LIGHT do tenant |
+| Painel da IA oculto quando IA desligada | `GET /tenants/ai-status` (todos os roles) expõe `autopilotEnabled`; lead page busca no `loadAll()` e condiciona `{tenantAiEnabled && <PainelIA>}`. `GET /tenants/bot-config` continua restrito a OWNER pois expõe detalhes operacionais. |
 | Avatar clicável no inbox e no lead | Clicar na foto de perfil abre modal fullscreen (`showPhotoModal` em `inbox-wa-light/[id]/page.tsx`, `showAvatarModal` em `leads/[id]/page.tsx`) — só abre se `avatarUrl` existir. Feature perdida no refactor do inbox (`f58c725`) e restaurada em 2026-05-27. Preservar em futuros refatores. |
 | Tailwind v4 sem opacidade em bg-black/40 | Modificador de opacidade não funciona de forma confiável — usar `style={{ backgroundColor: "rgba(...)" }}` para overlays e valores hex para fundos de modal |
 | `router.push/replace` em Next.js 16 + React 19 | Envolto em `startTransition(() => router.replace(...))` para evitar "Router action dispatched before initialization" |

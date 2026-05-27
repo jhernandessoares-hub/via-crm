@@ -245,10 +245,11 @@ export class ChannelsWebhookController {
       const telefone = normalized.telefone?.replace(/\D/g, '') || null;
       const telefoneKey = telefone ? telefone.slice(-9) : null;
 
-      // Busca stage inicial do funil (Pré-atendimento)
+      // Busca stage inicial do funil — primeiro stage ativo por sortOrder (suporta pipelines customizados)
       const pipelineId = await this.pipeline.ensureDefaultPipeline(tenant.id);
       const firstStage = await this.prisma.pipelineStage.findFirst({
-        where: { tenantId: tenant.id, pipelineId, key: 'NOVO_LEAD' },
+        where: { tenantId: tenant.id, pipelineId, isActive: true },
+        orderBy: { sortOrder: 'asc' },
         select: { id: true },
       });
 
