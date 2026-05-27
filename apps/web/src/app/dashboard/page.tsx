@@ -40,9 +40,6 @@ const EVENT_LABEL: Record<string, string> = {
 const FUNNEL_COLORS = ["#38BDF8","#818CF8","#F59E0B","#FB923C","#1D9E75"];
 const ORIGIN_COLORS = ["#1D9E75","#2563EB","#7C3AED","#BE123C","#F59E0B","#38BDF8","#F87171","#A3E635"];
 
-// Etapas do funil sem Pós-venda
-const FUNIL_KEYS = ["PRE_ATENDIMENTO","AGENDAMENTO","NEGOCIACOES","CREDITO_IMOBILIARIO","NEGOCIO_FECHADO"];
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
@@ -54,7 +51,7 @@ function formatDateTime(iso: string) {
 
 // Funil visual
 function FunnelChart({ data }: { data: { key: string; label: string; count: number }[] }) {
-  const filtered = data.filter((d) => FUNIL_KEYS.includes(d.key));
+  const filtered = data; // todos os grupos retornados pelo backend
   const total = filtered[0]?.count ?? 0; // topo = entrada total
   const max = Math.max(...filtered.map((d) => d.count), 1);
 

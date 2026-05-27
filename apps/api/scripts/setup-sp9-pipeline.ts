@@ -3,8 +3,9 @@
  *
  * O que faz:
  *   1. Desativa todos os stages atuais do tenant SP9
- *   2. Cria os 20 novos stages com group, requiresEvidence e ownerOnly corretos
- *   3. Move todos os leads do SP9 para SP9_NOVO_LEAD (altera apenas stageId e pipelineId)
+ *   2. Cria/atualiza os stages com group, requiresEvidence e ownerOnly corretos
+ *   3. Move para SP9_NOVO_LEAD SOMENTE leads que não estão em uma stage SP9 válida
+ *      — leads já posicionados em stages SP9 não são tocados
  *      — nenhum outro campo de lead é alterado
  *      — DevelopmentUnit.status (espelho) não é tocado
  *
@@ -36,6 +37,7 @@ const SP9_STAGES: Array<{
   { key: 'SP9_LEAD_APTO',           name: 'Lead Apto',               group: 'PRE_ATENDIMENTO', sortOrder: 40 },
   { key: 'SP9_LEAD_NAO_APTO',       name: 'Lead Não Apto',           group: 'PRE_ATENDIMENTO', sortOrder: 50 },
   { key: 'SP9_PAROU_RESPONDER',     name: 'Parou de Responder',      group: 'PRE_ATENDIMENTO', sortOrder: 60, requiresEvidence: true },
+  { key: 'SP9_SUSPENSAO_PRE',       name: 'Suspensão',               group: 'PRE_ATENDIMENTO', sortOrder: 65, requiresEvidence: true },
   { key: 'SP9_EXCLUSAO_PRE',        name: 'Exclusão do Inscrito',    group: 'PRE_ATENDIMENTO', sortOrder: 70, requiresEvidence: true },
   { key: 'SP9_DESISTENCIA_PRE',     name: 'Desistência do Inscrito', group: 'PRE_ATENDIMENTO', sortOrder: 80, requiresEvidence: true },
 
@@ -43,13 +45,23 @@ const SP9_STAGES: Array<{
   { key: 'SP9_DOCS_PENDENTE',       name: 'Docs Pendente',           group: 'DOCUMENTACAO', sortOrder: 100 },
   { key: 'SP9_DOCS_ANALISE_CDHU',   name: 'Docs em Análise CDHU',   group: 'DOCUMENTACAO', sortOrder: 110 },
   { key: 'SP9_DOCS_APROVADOS',      name: 'Docs Aprovados',          group: 'DOCUMENTACAO', sortOrder: 120 },
+  { key: 'SP9_DOCS_REPROVADO',      name: 'Docs Reprovado',          group: 'DOCUMENTACAO', sortOrder: 125, requiresEvidence: true },
+  { key: 'SP9_SUSPENSAO_DOC',       name: 'Suspensão',               group: 'DOCUMENTACAO', sortOrder: 127, requiresEvidence: true },
   { key: 'SP9_EXCLUSAO_DOC',        name: 'Exclusão do Inscrito',    group: 'DOCUMENTACAO', sortOrder: 130, requiresEvidence: true },
   { key: 'SP9_DESISTENCIA_DOC',     name: 'Desistência do Inscrito', group: 'DOCUMENTACAO', sortOrder: 140, requiresEvidence: true },
+
+  // ── Escolha da Unidade ───────────────────────────────────────────────────────
+  { key: 'SP9_AGUARD_UNIDADE',      name: 'Aguard. Unidade',         group: 'ESCOLHA_UNIDADE', sortOrder: 150 },
+  { key: 'SP9_UNIDADE_VINCULADA',   name: 'Unidade Vinculada',       group: 'ESCOLHA_UNIDADE', sortOrder: 160 },
+  { key: 'SP9_SUSPENSAO_UNIDADE',   name: 'Suspensão',               group: 'ESCOLHA_UNIDADE', sortOrder: 170, requiresEvidence: true },
+  { key: 'SP9_EXCLUSAO_UNIDADE',    name: 'Exclusão do Inscrito',    group: 'ESCOLHA_UNIDADE', sortOrder: 180, requiresEvidence: true },
+  { key: 'SP9_DESISTENCIA_UNIDADE', name: 'Desistência do Inscrito', group: 'ESCOLHA_UNIDADE', sortOrder: 190, requiresEvidence: true },
 
   // ── Contrato ─────────────────────────────────────────────────────────────────
   { key: 'SP9_AGUARD_EMISSAO',      name: 'Aguard. Emissão de Contrato',    group: 'CONTRATO', sortOrder: 200 },
   { key: 'SP9_AGUARD_ASSINATURA',   name: 'Aguard. Assinatura de Contrato', group: 'CONTRATO', sortOrder: 210 },
   { key: 'SP9_CONTRATO_ASSINADO',   name: 'Contrato Assinado',              group: 'CONTRATO', sortOrder: 220, requiresEvidence: true },
+  { key: 'SP9_SUSPENSAO_CONT',      name: 'Suspensão',                      group: 'CONTRATO', sortOrder: 225, requiresEvidence: true },
   { key: 'SP9_EXCLUSAO_CONT',       name: 'Exclusão do Inscrito',           group: 'CONTRATO', sortOrder: 230, requiresEvidence: true },
   { key: 'SP9_DESISTENCIA_CONT',    name: 'Desistência do Inscrito',        group: 'CONTRATO', sortOrder: 240, requiresEvidence: true },
 
@@ -127,36 +139,47 @@ async function main() {
 
   console.log(`\n✅ ${criados} stage(s) criada(s), ${reaproveitados} reaproveitada(s).\n`);
 
-  // ── 4. Buscar stage SP9_NOVO_LEAD para migração ───────────────────────────
-  const novoLeadStage = await prisma.pipelineStage.findFirst({
-    where: { tenantId: TENANT_ID, pipelineId: pipeline.id, key: 'SP9_NOVO_LEAD', isActive: true },
-    select: { id: true },
+  // ── 4. Coletar IDs de todas as stages SP9 válidas ────────────────────────
+  const allSp9Stages = await prisma.pipelineStage.findMany({
+    where: { tenantId: TENANT_ID, pipelineId: pipeline.id, isActive: true },
+    select: { id: true, key: true },
   });
+  const validSp9StageIds = allSp9Stages.map((s) => s.id);
+
+  // ── 5. Buscar stage SP9_NOVO_LEAD para migração ───────────────────────────
+  const novoLeadStage = allSp9Stages.find((s) => s.key === 'SP9_NOVO_LEAD');
 
   if (!novoLeadStage) {
     console.error('❌ Stage SP9_NOVO_LEAD não encontrada após criação.');
     process.exit(1);
   }
 
-  // ── 5. Migrar todos os leads para SP9_NOVO_LEAD ───────────────────────────
-  // Altera SOMENTE stageId e pipelineId — nenhum outro campo é tocado.
+  // ── 6. Migrar apenas leads que NÃO estão em uma stage SP9 válida ──────────
+  // Leads já posicionados em stages SP9 não são tocados.
+  // Altera SOMENTE stageId e pipelineId — nenhum outro campo é alterado.
   const migrated = await prisma.lead.updateMany({
-    where: { tenantId: TENANT_ID, deletedAt: null },
+    where: {
+      tenantId: TENANT_ID,
+      deletedAt: null,
+      OR: [
+        { stageId: null },
+        { stageId: { notIn: validSp9StageIds } },
+      ],
+    },
     data: {
       pipelineId: pipeline.id,
       stageId: novoLeadStage.id,
     },
   });
 
-  console.log(`✅ ${migrated.count} lead(s) migrado(s) para "Novo Lead".\n`);
+  console.log(`✅ ${migrated.count} lead(s) sem stage SP9 migrado(s) para "Novo Lead".\n`);
 
-  // ── 6. Resumo final ───────────────────────────────────────────────────────
+  // ── 7. Resumo final ───────────────────────────────────────────────────────
   console.log('═'.repeat(60));
   console.log('📊 RESUMO');
   console.log('═'.repeat(60));
   console.log(`  Stages criadas/atualizadas: ${SP9_STAGES.length}`);
-  console.log(`  Leads migrados:             ${migrated.count}`);
-  console.log(`  Stage destino:              Novo Lead (SP9_NOVO_LEAD)`);
+  console.log(`  Leads migrados p/ Novo Lead: ${migrated.count}`);
   console.log('═'.repeat(60));
   console.log('\n✅ Setup concluído com sucesso!');
 }

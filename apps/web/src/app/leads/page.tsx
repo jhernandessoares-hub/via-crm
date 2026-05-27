@@ -21,13 +21,17 @@ type PipelineStage = {
 };
 
 const GROUP_LABEL: Record<string, string> = {
-  PRE_ATENDIMENTO:    "Pré-atendimento",
-  AGENDAMENTO:        "Agendamento",
-  PROPOSTAS:          "Propostas",
-  NEGOCIACOES:        "Negociações",
-  CREDITO_IMOBILIARIO:"Crédito Imobiliário",
-  NEGOCIO_FECHADO:    "Negócio Fechado",
-  POS_VENDA:          "Pós Venda",
+  PRE_ATENDIMENTO:     "Pré-atendimento",
+  AGENDAMENTO:         "Agendamento",
+  PROPOSTAS:           "Propostas",
+  NEGOCIACOES:         "Negociações",
+  CREDITO_IMOBILIARIO: "Crédito Imobiliário",
+  NEGOCIO_FECHADO:     "Negócio Fechado",
+  POS_VENDA:           "Pós Venda",
+  DOCUMENTACAO:        "Documentação",
+  ESCOLHA_UNIDADE:     "Escolha da Unidade",
+  CONTRATO:            "Contrato",
+  REGISTRO:            "Registro",
 };
 
 type Lead = {

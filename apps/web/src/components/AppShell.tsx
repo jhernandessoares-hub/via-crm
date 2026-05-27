@@ -89,7 +89,6 @@ function AppShellInner({
         const t = p?.preferences?.theme ?? "light";
         setTheme(t);
         applyTheme(t);
-        // Aplica paleta e favicon do tenant
         const b: TenantBranding = {
           brandPalette: (p as any)?.tenant?.brandPalette,
           logoUrl: (p as any)?.tenant?.logoUrl,
