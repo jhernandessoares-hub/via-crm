@@ -36,6 +36,12 @@ export class TenantsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('ai-status')
+  async getAiStatus(@Req() req: any) {
+    return this.tenantsService.getAiStatus(req.user.tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('bot-config')
   async getBotConfig(@Req() req: any) {
     requireOwner(req);

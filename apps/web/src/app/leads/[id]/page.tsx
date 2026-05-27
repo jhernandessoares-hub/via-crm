@@ -1420,6 +1420,7 @@ export default function LeadDetailChatPage() {
   const [sending, setSending] = useState(false);
   const [dismissedAiSuggestionIds, setDismissedAiSuggestionIds] = useState<string[]>([]);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+  const [tenantAiEnabled, setTenantAiEnabled] = useState(true);
   const [aiTeachNotice, setAiTeachNotice] = useState<string | null>(null);
   const [manualAiSuggestionText, setManualAiSuggestionText] = useState("");
   const [manualAiResponseFormat, setManualAiResponseFormat] = useState<string | null>(null);
@@ -1776,7 +1777,8 @@ export default function LeadDetailChatPage() {
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels()]);
+      const [,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
+      if (aiStatus) setTenantAiEnabled((aiStatus as any).autopilotEnabled ?? true);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -4216,7 +4218,7 @@ function discardAiSuggestion() {
 
             <div className="border-t bg-[var(--shell-card-bg)] p-3 space-y-3">
               {/* PAINEL DA IA */}
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
+              {tenantAiEnabled && <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="text-sm font-semibold text-amber-900">Painel da IA</div>
@@ -4441,7 +4443,7 @@ function discardAiSuggestion() {
                     Nenhuma sugestão de IA pendente para este lead no momento.
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* PREVIEW DO ANEXO */}
               {attachFile ? (
