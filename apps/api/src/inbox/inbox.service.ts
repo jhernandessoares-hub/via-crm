@@ -396,15 +396,27 @@ function extractMedia(payloadRaw: any): { mediaUrl: string | null; mediaType: st
 
   // Imagens/vídeos enviados pela IA: { type: 'image'|'video', media: { url, mimeType, filename }, caption }
   if (p.media?.url) {
-    const kind = String(p.type || p.media.mimeType || '').toLowerCase();
-    const mediaType = kind.includes('video') ? 'video' : kind.includes('audio') ? 'audio' : 'image';
+    const kind = String(p.type || p.media?.kind || p.media.mimeType || '').toLowerCase();
+    const mediaType = kind.includes('video')
+      ? 'video'
+      : kind.includes('audio')
+        ? 'audio'
+        : kind === 'document' || kind.includes('pdf') || kind.includes('application')
+          ? 'document'
+          : 'image';
     return { mediaUrl: p.media.url, mediaType, mimeType: p.media.mimeType ?? null, filename: p.media.filename ?? null };
   }
 
   // Campo direto mediaUrl: áudio inbound (Baileys), mídia de campanha, etc.
   if (p.mediaUrl) {
     const kind = String(p.type || p.mediaType || '').toLowerCase();
-    const mediaType = kind.includes('audio') ? 'audio' : kind.includes('video') ? 'video' : 'image';
+    const mediaType = kind.includes('audio')
+      ? 'audio'
+      : kind.includes('video')
+        ? 'video'
+        : kind === 'document' || kind.includes('pdf') || kind.includes('application')
+          ? 'document'
+          : 'image';
     return { mediaUrl: p.mediaUrl, mediaType, mimeType: p.mimeType ?? null, filename: null };
   }
 

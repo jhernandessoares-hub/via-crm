@@ -90,6 +90,7 @@ interface UpsertLeadParams {
   mediaUrl?: string | null;
   mimeType?: string | null;
   transcription?: string | null;
+  media?: { url: string; mimeType: string; filename: string | null; kind: string } | null;
 }
 
 export async function upsertLeadFromWhatsapp(
@@ -97,7 +98,7 @@ export async function upsertLeadFromWhatsapp(
   queue: QueueService,
   params: UpsertLeadParams,
 ) {
-  const { tenantId, from, text, type, sessionId, rawMsg, contactName, avatarUrl, mediaUrl, mimeType, transcription } = params;
+  const { tenantId, from, text, type, sessionId, rawMsg, contactName, avatarUrl, mediaUrl, mimeType, transcription, media } = params;
   const now = new Date();
   const telefoneKey = telefoneKeyFrom(from);
   const canal = sessionId ? 'WHATSAPP_LIGHT' : 'WHATSAPP_OFICIAL';
@@ -184,6 +185,7 @@ export async function upsertLeadFromWhatsapp(
         ...(mediaUrl ? { mediaUrl } : {}),
         ...(mimeType ? { mimeType } : {}),
         ...(transcription ? { transcription } : {}),
+        ...(media ? { media } : {}),
       },
     },
   });
