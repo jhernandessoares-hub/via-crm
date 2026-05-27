@@ -262,6 +262,7 @@ export class ChannelsWebhookController {
               id: true,
               nome: true,
               stageId: true,
+              lastEntryChannel: true,
               stage: { select: { key: true } },
             },
           })
@@ -279,10 +280,12 @@ export class ChannelsWebhookController {
         // ── Lead ativo: registra retorno, não duplica ──
         leadId = existing.id;
 
-        // Reentrada: incrementa contador (não gera novo número)
+        // Reentrada: incrementa contador somente quando o canal muda
         await this.prisma.lead.update({
           where: { id: leadId },
-          data: { reentradaCount: { increment: 1 } },
+          data: {
+            ...(channel.type !== existing.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: channel.type } : {}),
+          },
         });
 
         const retornoMsg =
@@ -327,6 +330,7 @@ export class ChannelsWebhookController {
               origem: normalized.origem,
               status: 'NOVO',
               stageId: firstStage?.id ?? null,
+              lastEntryChannel: channel.type,
             },
             select: { id: true },
           });

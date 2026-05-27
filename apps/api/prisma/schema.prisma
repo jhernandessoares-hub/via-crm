@@ -223,6 +223,7 @@ model Lead {
   tenantId                String
   numero                  Int?
   reentradaCount          Int                  @default(1)
+  lastEntryChannel        String?
   nome                    String
   telefone                String?
   email                   String?

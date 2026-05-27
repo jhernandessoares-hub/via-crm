@@ -107,7 +107,7 @@ export async function upsertLeadFromWhatsapp(
   const existingLead = telefoneKey
     ? await prisma.lead.findFirst({
         where: { tenantId, telefoneKey, deletedAt: null },
-        select: { id: true },
+        select: { id: true, lastEntryChannel: true },
         orderBy: { criadoEm: 'desc' },
       })
     : null;
@@ -128,9 +128,8 @@ export async function upsertLeadFromWhatsapp(
         ...(sessionId && !isSystemMessage ? { conversaSessionId: sessionId } : {}),
         ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
         ...(avatarUrl ? { avatarUrl } : {}),
-        // Reentrada: incrementa contador (não gera novo número)
-        // Mensagens de sistema não contam como reentrada real
-        ...(!isSystemMessage ? { reentradaCount: { increment: 1 } } : {}),
+        // Reentrada: incrementa contador somente quando o canal muda (não em toda mensagem)
+        ...(!isSystemMessage && canal !== existingLead.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: canal } : {}),
       },
     });
   } else {
@@ -155,6 +154,7 @@ export async function upsertLeadFromWhatsapp(
           lastInboundAt: now,
           stageId: firstStageId,
           conversaCanal: canal,
+          lastEntryChannel: canal,
           branchId: assignment.branchId,
           assignedUserId: assignment.assignedUserId,
           ...(sessionId ? { conversaSessionId: sessionId } : {}),

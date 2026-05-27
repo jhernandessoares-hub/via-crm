@@ -137,8 +137,8 @@ export class IngestService {
             // branch: só define se ainda estiver vazio
             branchId: existingLead.branchId ?? branchId,
 
-            // Reentrada: incrementa contador (não gera novo número)
-            reentradaCount: { increment: 1 },
+            // Reentrada: incrementa contador somente quando o canal muda
+            ...(channel !== existingLead.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: channel } : {}),
           },
         })
       : await (async () => {
@@ -155,6 +155,7 @@ export class IngestService {
                 telefoneKey,
                 email,
                 origem: channel,
+                lastEntryChannel: channel,
                 ...(assignedUserId ? { assignedUserId } : {}),
               },
             });
