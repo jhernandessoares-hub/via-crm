@@ -117,6 +117,7 @@ LeadDocument      → documentos do lead (RG/CNH/CPF/COMP_RENDA/...) com classif
 LeadParticipante  → cônjuge/sócio/fiador do lead com dados pessoais e origem (IA|MANUAL). Detalhes em squad-atendimento.md
 Lead              → campos de cadastro pessoal: cpf, rg, profissao, empresa, naturalidade, endereco, cep, cidade, uf + cadastroOrigem Json?
                     nomeCorreto String? — nome real confirmado (IA ou humano); nomeCorretoOrigem String? ("IA"|"MANUAL")
+                    Regra: quando nomeCorretoOrigem='MANUAL', nenhuma atualização automática (inbound WA ou Assistente Operacional) pode sobrescrever o nomeCorreto
                     Prioridade de exibição: nomeCorreto ?? nome em toda a UI e notificações
                     com soft delete (deletedAt/deletedBy/deletionReason)
                     numero Int? — sequencial por tenant (formatado 6 dígitos na UI via `formatLeadNumber`); reentradaCount Int @default(1) incrementa em reentradas. Ver "Numeração sequencial de leads"
