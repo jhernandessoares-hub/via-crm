@@ -2809,6 +2809,90 @@ const aiAssistanceLabel =
     };
   }
 
+  async search(user: any, q: string) {
+    const { tenantId, role, id: userId, branchId } = user;
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+
+    let extraFilter: Record<string, unknown> = {};
+    if (role === 'AGENT') {
+      const canViewAll = await this.agentCanViewPipeline(tenantId);
+      if (!canViewAll) extraFilter = { assignedUserId: userId };
+    } else if (role === 'MANAGER' && branchId) {
+      extraFilter = { branchId };
+    }
+
+    const isNumeric = /^\d+$/.test(trimmed);
+    const leads = await this.prisma.lead.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...extraFilter,
+        OR: [
+          { nome: { contains: trimmed, mode: 'insensitive' } },
+          { nomeCorreto: { contains: trimmed, mode: 'insensitive' } },
+          { telefone: { contains: trimmed } },
+          { cpf: { contains: trimmed } },
+          ...(isNumeric ? [{ numero: { equals: parseInt(trimmed, 10) } }] : []),
+        ],
+      },
+      take: 10,
+      orderBy: { criadoEm: 'desc' },
+      select: {
+        id: true,
+        nome: true,
+        nomeCorreto: true,
+        telefone: true,
+        email: true,
+        cpf: true,
+        criadoEm: true,
+        origem: true,
+        numero: true,
+        assignedUserId: true,
+        stage: { select: { name: true } },
+        developmentUnits: {
+          where: { ativo: true },
+          select: {
+            id: true,
+            nome: true,
+            status: true,
+            tower: { select: { nome: true } },
+            development: { select: { nome: true } },
+          },
+          take: 3,
+        },
+      },
+    });
+
+    const userIds = [...new Set(leads.map((l) => l.assignedUserId).filter(Boolean))] as string[];
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } })
+      : [];
+    const userById: Record<string, string> = {};
+    for (const u of users) userById[u.id] = u.nome;
+
+    return leads.map((l) => ({
+      id: l.id,
+      nome: l.nome,
+      nomeCorreto: l.nomeCorreto,
+      telefone: l.telefone,
+      email: l.email,
+      cpf: l.cpf,
+      criadoEm: l.criadoEm,
+      source: l.origem,
+      numero: l.numero,
+      stage: l.stage ? { nome: l.stage.name } : null,
+      assignedUser: l.assignedUserId ? { nome: userById[l.assignedUserId] ?? '' } : null,
+      developmentUnits: l.developmentUnits.map((u) => ({
+        id: u.id,
+        nome: u.nome,
+        status: u.status,
+        towerNome: u.tower?.nome ?? null,
+        developmentNome: u.development?.nome ?? null,
+      })),
+    }));
+  }
+
   async mergeLeads(
     tenantId: string,
     winnerId: string,
