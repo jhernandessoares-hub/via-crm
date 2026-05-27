@@ -282,4 +282,12 @@ export class AdminController {
   clearAiModelConfig(@Param('function') fn: string) {
     return this.aiProvidersService.clearModelConfig(fn);
   }
+
+  // ── Ferramentas de manutenção ─────────────────────────────────────────────
+
+  @UseGuards(PlatformAdminGuard)
+  @Post('tools/backfill-light-media')
+  backfillLightMedia(@Query('since') since: string) {
+    return this.adminService.backfillWhatsappLightMedia(since || '2026-05-26T00:00:00.000Z');
+  }
 }
