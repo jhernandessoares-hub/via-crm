@@ -31,14 +31,40 @@ type Lead = {
   perfilImovel?: string | null;
   stageId?: string | null;
   stageName?: string | null;
-  rendaBrutaFamiliar?: number | null;
+  stage?: { name: string; key?: string | null; group?: string | null } | null;
+  assignedUserName?: string | null;
   cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
 };
 
-function formatRenda(v: number | null | undefined): string {
-  if (!v) return "—";
-  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+const STATUS_LABEL: Record<string, string> = {
+  NOVO: "Novo",
+  EM_CONTATO: "Em Contato",
+  QUALIFICADO: "Qualificado",
+  PROPOSTA: "Proposta",
+  FECHADO: "Fechado",
+};
+const STATUS_COLOR: Record<string, string> = {
+  NOVO: "bg-slate-100 text-slate-600",
+  EM_CONTATO: "bg-blue-100 text-blue-700",
+  QUALIFICADO: "bg-green-100 text-green-700",
+  PROPOSTA: "bg-amber-100 text-amber-700",
+  FECHADO: "bg-emerald-100 text-emerald-700",
+};
+
+function formatStatus(s: string | null | undefined) {
+  if (!s) return null;
+  return { label: STATUS_LABEL[s] ?? s, color: STATUS_COLOR[s] ?? "bg-slate-100 text-slate-600" };
+}
+
+function formatDateTime(s: string | undefined) {
+  if (!s) return "—";
+  const d = new Date(s);
+  return (
+    d.toLocaleDateString("pt-BR") +
+    " " +
+    d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+  );
 }
 
 function displayName(l: Lead): string {
@@ -81,7 +107,7 @@ const GROUP_BADGE_MAP: Record<string, string> = {
   REGISTRO:           "bg-green-100 text-green-700",
 };
 
-const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr";
+const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
 
 const SEL_STYLE: React.CSSProperties = {
   width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4,
@@ -104,7 +130,6 @@ export default function MeusLeadsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [colFilters, setColFilters] = useState({ etapa: "", status: "", origem: "", interesse: "", indicacao: "" });
   const [numRange, setNumRange] = useState({ min: "", max: "" });
-  const [rendaRange, setRendaRange] = useState({ min: "", max: "" });
 
   const [visibleCount, setVisibleCount] = useState(10);
   const [loadMoreN, setLoadMoreN] = useState(10);
@@ -133,11 +158,19 @@ export default function MeusLeadsPage() {
     return m;
   }, [stages]);
 
+  function getStageName(l: Lead): string {
+    return l.stage?.name ?? l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null) ?? "—";
+  }
+
+  function getStageGroup(l: Lead): string {
+    return l.stage?.group ?? (l.stageId ? stageMap[l.stageId]?.group : null) ?? "PRE_ATENDIMENTO";
+  }
+
   const uniqueValues = useMemo(() => {
     const etapa = new Set<string>(), status = new Set<string>(), origem = new Set<string>();
     const interesse = new Set<string>(), indicacao = new Set<string>();
     for (const l of leads) {
-      const sn = l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null);
+      const sn = l.stage?.name ?? l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null);
       if (sn) etapa.add(sn);
       if (l.status) status.add(l.status);
       if (l.origem) origem.add(l.origem);
@@ -160,10 +193,11 @@ export default function MeusLeadsPage() {
       if (qq) {
         const ind = (l.cadastroOrigem as any)?.indicacao ?? "";
         const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "";
-        if (![l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.origem, l.status, l.perfilImovel, l.stageName, ind, String(l.rendaBrutaFamiliar ?? ""), num]
+        const sn = l.stage?.name ?? l.stageName ?? "";
+        if (![l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.origem, l.status, l.perfilImovel, sn, ind, num, l.assignedUserName]
           .join(" ").toLowerCase().includes(qq)) return false;
       }
-      const sn = l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null) ?? "";
+      const sn = getStageName(l);
       if (colFilters.etapa && sn !== colFilters.etapa) return false;
       if (colFilters.status && l.status !== colFilters.status) return false;
       if (colFilters.origem && l.origem !== colFilters.origem) return false;
@@ -171,11 +205,9 @@ export default function MeusLeadsPage() {
       if (colFilters.indicacao && (l.cadastroOrigem as any)?.indicacao !== colFilters.indicacao) return false;
       if (numRange.min && (l.numero ?? 0) < parseInt(numRange.min)) return false;
       if (numRange.max && (l.numero ?? 0) > parseInt(numRange.max)) return false;
-      if (rendaRange.min && (l.rendaBrutaFamiliar ?? 0) < parseFloat(rendaRange.min.replace(",", "."))) return false;
-      if (rendaRange.max && (l.rendaBrutaFamiliar ?? 0) > parseFloat(rendaRange.max.replace(",", "."))) return false;
       return true;
     });
-  }, [leads, q, stageMap, colFilters, numRange, rendaRange]);
+  }, [leads, q, stageMap, colFilters, numRange]);
 
   const groups = useMemo(() => {
     const seen = new Set<string>();
@@ -198,24 +230,23 @@ export default function MeusLeadsPage() {
     for (const g of groups) map[g.key] = [];
     const firstGroup = groups[0]?.key;
     for (const l of filtered) {
-      const group = l.stageId ? stageMap[l.stageId]?.group : null;
+      const group = l.stage?.group ?? (l.stageId ? stageMap[l.stageId]?.group : null);
       if (group && map[group] !== undefined) map[group].push(l);
       else if (firstGroup) map[firstGroup].push(l);
     }
     return map;
   }, [filtered, stageMap, groups]);
 
-  useEffect(() => { setVisibleCount(loadMoreN); }, [q, leads, colFilters, numRange, rendaRange]);
+  useEffect(() => { setVisibleCount(loadMoreN); }, [q, leads, colFilters, numRange]);
 
   const activeFilterCount =
     (colFilters.etapa ? 1 : 0) + (colFilters.status ? 1 : 0) + (colFilters.origem ? 1 : 0) +
     (colFilters.interesse ? 1 : 0) + (colFilters.indicacao ? 1 : 0) +
-    (numRange.min || numRange.max ? 1 : 0) + (rendaRange.min || rendaRange.max ? 1 : 0);
+    (numRange.min || numRange.max ? 1 : 0);
 
   function clearFilters() {
     setColFilters({ etapa: "", status: "", origem: "", interesse: "", indicacao: "" });
     setNumRange({ min: "", max: "" });
-    setRendaRange({ min: "", max: "" });
   }
 
   function setCF(k: keyof typeof colFilters, v: string) {
@@ -223,14 +254,14 @@ export default function MeusLeadsPage() {
   }
 
   function exportCSV() {
-    const headers = ["Número", "Nome", "Telefone", "Origem", "Etapa", "Status", "Interesse", "Indicação", "Renda"];
+    const headers = ["Número", "Nome", "Telefone", "Origem", "Etapa", "Status", "Interesse", "Indicação", "Responsável", "Criado em"];
     const rows = filtered.map((l) => {
-      const stageInfo = l.stageId ? stageMap[l.stageId] : null;
-      const sn = l.stageName ?? stageInfo?.name ?? "—";
       const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "—";
-      return [num, displayName(l), l.telefone || l.whatsapp || "—", l.origem || "—", sn,
-        l.status || "—", l.perfilImovel || "—", (l.cadastroOrigem as any)?.indicacao || "—",
-        l.rendaBrutaFamiliar ? String(l.rendaBrutaFamiliar) : "—",
+      return [
+        num, displayName(l), l.telefone || l.whatsapp || "—", l.origem || "—",
+        getStageName(l), STATUS_LABEL[l.status ?? ""] || l.status || "—",
+        l.perfilImovel || "—", (l.cadastroOrigem as any)?.indicacao || "—",
+        l.assignedUserName || "—", formatDateTime(l.criadoEm),
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",");
     });
     const csv = [headers.join(","), ...rows].join("\n");
@@ -245,13 +276,12 @@ export default function MeusLeadsPage() {
 
   function exportPDF() {
     const tableRows = filtered.map((l) => {
-      const stageInfo = l.stageId ? stageMap[l.stageId] : null;
-      const sn = l.stageName ?? stageInfo?.name ?? "—";
       const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "—";
       return `<tr><td>${num}</td><td>${displayName(l)}</td><td>${l.telefone || l.whatsapp || "—"}</td>
-        <td>${l.origem || "—"}</td><td>${sn}</td><td>${l.status || "—"}</td>
+        <td>${l.origem || "—"}</td><td>${getStageName(l)}</td>
+        <td>${STATUS_LABEL[l.status ?? ""] || l.status || "—"}</td>
         <td>${l.perfilImovel || "—"}</td><td>${(l.cadastroOrigem as any)?.indicacao || "—"}</td>
-        <td>${l.rendaBrutaFamiliar ? formatRenda(l.rendaBrutaFamiliar) : "—"}</td></tr>`;
+        <td>${l.assignedUserName || "—"}</td><td>${formatDateTime(l.criadoEm)}</td></tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Meus Leads</title>
       <style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}
@@ -265,7 +295,7 @@ export default function MeusLeadsPage() {
       <p>${new Date().toLocaleDateString("pt-BR")} · ${filtered.length} leads${activeFilterCount ? ` · ${activeFilterCount} filtro(s)` : ""}</p>
       <table><thead><tr>
         <th>Número</th><th>Nome</th><th>Telefone</th><th>Origem</th><th>Etapa</th>
-        <th>Status</th><th>Interesse</th><th>Indicação</th><th>Renda</th>
+        <th>Status</th><th>Interesse</th><th>Indicação</th><th>Responsável</th><th>Criado em</th>
       </tr></thead><tbody>${tableRows}</tbody></table>
     </body></html>`;
     const w = window.open("", "_blank");
@@ -355,8 +385,9 @@ export default function MeusLeadsPage() {
                     {items.length === 0 ? (
                       <p className="p-2 text-xs text-[var(--shell-subtext)]">Nenhum lead</p>
                     ) : items.map((l) => {
-                      const stageName = l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null) ?? "—";
+                      const stageName = getStageName(l);
                       const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                      const st = formatStatus(l.status);
                       return (
                         <Link key={l.id} href={`/leads/${l.id}`} className="block rounded-lg border p-3 transition-colors"
                           style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
@@ -371,10 +402,9 @@ export default function MeusLeadsPage() {
                           </div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
-                            {l.status && <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">{l.status}</span>}
+                            {st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
                             {l.perfilImovel && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>{l.perfilImovel}</span>}
-                            {(l.cadastroOrigem as any)?.indicacao && <span className="inline-block rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] text-teal-700 truncate max-w-[120px]" title={(l.cadastroOrigem as any).indicacao}>{(l.cadastroOrigem as any).indicacao}</span>}
-                            {l.rendaBrutaFamiliar && <span className="inline-block rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">{formatRenda(l.rendaBrutaFamiliar)}</span>}
+                            {l.assignedUserName && <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span>}
                           </div>
                         </Link>
                       );
@@ -390,12 +420,15 @@ export default function MeusLeadsPage() {
       {/* LISTA */}
       {view === "LISTA" && (
         <div className="mt-5 overflow-hidden rounded-xl border" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
+          {/* Cabeçalho */}
           <div className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
             style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: COL }}>
             <div>Número</div><div>Nome</div><div>Telefone</div><div>Origem</div>
-            <div>Etapa</div><div>Status</div><div>Interesse</div><div>Indicação</div><div>Renda</div>
+            <div>Etapa</div><div>Status</div><div>Interesse</div><div>Indicação</div>
+            <div>Responsável</div><div>Criado em</div>
           </div>
 
+          {/* Filtros */}
           {showFilters && (
             <div className="grid gap-2 border-b px-4 py-2 items-center"
               style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)", gridTemplateColumns: COL }}>
@@ -414,7 +447,7 @@ export default function MeusLeadsPage() {
               </select>
               <select style={SEL_STYLE} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}>
                 <option value="">Todos</option>
-                {uniqueValues.status.map((v) => <option key={v} value={v}>{v}</option>)}
+                {uniqueValues.status.map((v) => <option key={v} value={v}>{STATUS_LABEL[v] ?? v}</option>)}
               </select>
               <select style={SEL_STYLE} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}>
                 <option value="">Todos</option>
@@ -424,43 +457,45 @@ export default function MeusLeadsPage() {
                 <option value="">Todas</option>
                 {uniqueValues.indicacao.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
-              <div className="flex gap-1">
-                <input style={INPUT_STYLE} placeholder="De" value={rendaRange.min} onChange={(e) => setRendaRange((r) => ({ ...r, min: e.target.value }))} />
-                <input style={INPUT_STYLE} placeholder="Até" value={rendaRange.max} onChange={(e) => setRendaRange((r) => ({ ...r, max: e.target.value }))} />
-              </div>
+              <div /><div />
             </div>
           )}
 
           {filtered.length === 0 ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead atribuído a você.</div>
-          ) : (() => {
-            const shown = filtered.slice(0, visibleCount);
-            const hasMore = shown.length < filtered.length;
-            return (
-              <>
-                {shown.map((l) => {
-                  const stageInfo = l.stageId ? stageMap[l.stageId] : null;
-                  const stageName = l.stageName ?? stageInfo?.name ?? "—";
-                  const groupKey = stageInfo?.group ?? "PRE_ATENDIMENTO";
-                  const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                  return (
-                    <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
-                      style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
-                      <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                      <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
-                      <div className="min-w-0"><span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey]} truncate max-w-full`} title={stageName}>{stageName}</span></div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.status || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate">{formatRenda(l.rendaBrutaFamiliar)}</div>
+          ) : (
+            <>
+              {filtered.slice(0, visibleCount).map((l) => {
+                const stageName = getStageName(l);
+                const groupKey = getStageGroup(l);
+                const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                const st = formatStatus(l.status);
+                return (
+                  <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
+                    style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
+                    <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
+                    <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
+                    <div className="min-w-0">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={stageName}>{stageName}</span>
                     </div>
-                  );
-                })}
-              </>
-            );
-          })()}
+                    <div className="min-w-0">
+                      {st ? (
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                      ) : (
+                        <span className="text-sm text-[var(--shell-subtext)]">—</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
+                    <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
       <ReportModal

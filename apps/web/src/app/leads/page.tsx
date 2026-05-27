@@ -49,14 +49,41 @@ type Lead = {
   stageId?: string | null;
   stageKey?: string | null;
   stageName?: string | null;
+  stage?: { name: string; key?: string | null; group?: string | null } | null;
+  assignedUserName?: string | null;
   rendaBrutaFamiliar?: number | null;
   cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
 };
 
-function formatRenda(v: number | null | undefined): string {
-  if (!v) return "—";
-  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+const STATUS_LABEL: Record<string, string> = {
+  NOVO: "Novo",
+  EM_CONTATO: "Em Contato",
+  QUALIFICADO: "Qualificado",
+  PROPOSTA: "Proposta",
+  FECHADO: "Fechado",
+};
+const STATUS_COLOR: Record<string, string> = {
+  NOVO: "bg-slate-100 text-slate-600",
+  EM_CONTATO: "bg-blue-100 text-blue-700",
+  QUALIFICADO: "bg-green-100 text-green-700",
+  PROPOSTA: "bg-amber-100 text-amber-700",
+  FECHADO: "bg-emerald-100 text-emerald-700",
+};
+
+function formatStatus(s: string | null | undefined) {
+  if (!s) return null;
+  return { label: STATUS_LABEL[s] ?? s, color: STATUS_COLOR[s] ?? "bg-slate-100 text-slate-600" };
+}
+
+function formatDateTime(s: string | undefined) {
+  if (!s) return "—";
+  const d = new Date(s);
+  return (
+    d.toLocaleDateString("pt-BR") +
+    " " +
+    d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+  );
 }
 
 function displayName(l: Lead): string {
@@ -64,6 +91,7 @@ function displayName(l: Lead): string {
 }
 
 const STAGE_BADGE = "bg-slate-100 text-slate-700";
+const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
 
 export default function LeadsPage() {
   const searchParams = useSearchParams();
@@ -80,7 +108,6 @@ export default function LeadsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [colFilters, setColFilters] = useState({ etapa: "", status: "", origem: "", interesse: "", indicacao: "" });
   const [numRange, setNumRange] = useState({ min: "", max: "" });
-  const [rendaRange, setRendaRange] = useState({ min: "", max: "" });
   const [visibleCount, setVisibleCount] = useState(10);
   const [loadMoreN, setLoadMoreN] = useState(10);
   const [reportOpen, setReportOpen] = useState(false);
@@ -156,26 +183,36 @@ export default function LeadsPage() {
   const activeFilterCount =
     (colFilters.etapa ? 1 : 0) + (colFilters.status ? 1 : 0) + (colFilters.origem ? 1 : 0) +
     (colFilters.interesse ? 1 : 0) + (colFilters.indicacao ? 1 : 0) +
-    (numRange.min || numRange.max ? 1 : 0) + (rendaRange.min || rendaRange.max ? 1 : 0);
+    (numRange.min || numRange.max ? 1 : 0);
 
   function clearFilters() {
     setColFilters({ etapa: "", status: "", origem: "", interesse: "", indicacao: "" });
     setNumRange({ min: "", max: "" });
-    setRendaRange({ min: "", max: "" });
   }
 
   function setCF(k: keyof typeof colFilters, v: string) {
     setColFilters((f) => ({ ...f, [k]: v }));
   }
 
+  function getStageName(l: Lead): string {
+    return l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name ?? "—";
+  }
+
   function exportCSVFiltered() {
-    const headers = ["Número", "Nome", "Telefone", "Origem", "Etapa", "Status", "Interesse", "Indicação", "Renda"];
+    const headers = ["Número", "Nome", "Telefone", "Origem", "Etapa", "Status", "Interesse", "Indicação", "Responsável", "Criado em"];
     const rows = filtered.map((l) => {
-      const sn = l.stageName || pipelineStages.find((s) => s.id === l.stageId)?.name || "—";
       const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "—";
-      return [num, (l.nomeCorreto || l.nome || "Sem nome"), l.telefone || l.whatsapp || "—", l.origem || "—", sn,
-        l.status || "—", l.perfilImovel || "—", (l.cadastroOrigem as any)?.indicacao || "—",
-        l.rendaBrutaFamiliar ? String(l.rendaBrutaFamiliar) : "—",
+      return [
+        num,
+        displayName(l),
+        l.telefone || l.whatsapp || "—",
+        l.origem || "—",
+        getStageName(l),
+        STATUS_LABEL[l.status ?? ""] || l.status || "—",
+        l.perfilImovel || "—",
+        (l.cadastroOrigem as any)?.indicacao || "—",
+        l.assignedUserName || "—",
+        formatDateTime(l.criadoEm),
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",");
     });
     const csv = [headers.join(","), ...rows].join("\n");
@@ -190,12 +227,12 @@ export default function LeadsPage() {
 
   function exportPDF() {
     const tableRows = filtered.map((l) => {
-      const sn = l.stageName || pipelineStages.find((s) => s.id === l.stageId)?.name || "—";
       const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "—";
-      return `<tr><td>${num}</td><td>${l.nomeCorreto || l.nome || "Sem nome"}</td><td>${l.telefone || l.whatsapp || "—"}</td>
-        <td>${l.origem || "—"}</td><td>${sn}</td><td>${l.status || "—"}</td>
+      return `<tr><td>${num}</td><td>${displayName(l)}</td><td>${l.telefone || l.whatsapp || "—"}</td>
+        <td>${l.origem || "—"}</td><td>${getStageName(l)}</td>
+        <td>${STATUS_LABEL[l.status ?? ""] || l.status || "—"}</td>
         <td>${l.perfilImovel || "—"}</td><td>${(l.cadastroOrigem as any)?.indicacao || "—"}</td>
-        <td>${l.rendaBrutaFamiliar ? `R$ ${l.rendaBrutaFamiliar.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td></tr>`;
+        <td>${l.assignedUserName || "—"}</td><td>${formatDateTime(l.criadoEm)}</td></tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório de Leads</title>
       <style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}h2{margin-bottom:8px}p{margin-bottom:12px;color:#666}
@@ -205,7 +242,7 @@ export default function LeadsPage() {
       <h2>Relatório de Leads${activeGroup ? ` — ${pageTitle}` : ""}</h2>
       <p>${new Date().toLocaleDateString("pt-BR")} · ${filtered.length} leads${activeFilterCount ? ` · ${activeFilterCount} filtro(s)` : ""}</p>
       <table><thead><tr><th>Número</th><th>Nome</th><th>Telefone</th><th>Origem</th><th>Etapa</th>
-        <th>Status</th><th>Interesse</th><th>Indicação</th><th>Renda</th></tr></thead>
+        <th>Status</th><th>Interesse</th><th>Indicação</th><th>Responsável</th><th>Criado em</th></tr></thead>
       <tbody>${tableRows}</tbody></table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
@@ -240,7 +277,7 @@ export default function LeadsPage() {
     const etapa = new Set<string>(), status = new Set<string>(), origem = new Set<string>();
     const interesse = new Set<string>(), indicacao = new Set<string>();
     for (const l of leads) {
-      const sn = l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name;
+      const sn = l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name;
       if (sn) etapa.add(sn);
       if (l.status) status.add(l.status);
       if (l.origem) origem.add(l.origem);
@@ -258,10 +295,11 @@ export default function LeadsPage() {
       if (qq) {
         const ind = (l.cadastroOrigem as any)?.indicacao ?? "";
         const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "";
-        if (![l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.origem, l.status, l.perfilImovel, l.stageName, ind, String(l.rendaBrutaFamiliar ?? ""), num]
+        const sn = l.stage?.name ?? l.stageName ?? "";
+        if (![l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.origem, l.status, l.perfilImovel, sn, ind, num, l.assignedUserName]
           .join(" ").toLowerCase().includes(qq)) return false;
       }
-      const sn = l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name ?? "";
+      const sn = l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name ?? "";
       if (colFilters.etapa && sn !== colFilters.etapa) return false;
       if (colFilters.status && l.status !== colFilters.status) return false;
       if (colFilters.origem && l.origem !== colFilters.origem) return false;
@@ -269,13 +307,11 @@ export default function LeadsPage() {
       if (colFilters.indicacao && (l.cadastroOrigem as any)?.indicacao !== colFilters.indicacao) return false;
       if (numRange.min && (l.numero ?? 0) < parseInt(numRange.min)) return false;
       if (numRange.max && (l.numero ?? 0) > parseInt(numRange.max)) return false;
-      if (rendaRange.min && (l.rendaBrutaFamiliar ?? 0) < parseFloat(rendaRange.min.replace(",", "."))) return false;
-      if (rendaRange.max && (l.rendaBrutaFamiliar ?? 0) > parseFloat(rendaRange.max.replace(",", "."))) return false;
       return true;
     });
-  }, [leads, q, activeGroup, visibleStageIds, pipelineStages, colFilters, numRange, rendaRange]);
+  }, [leads, q, activeGroup, visibleStageIds, pipelineStages, colFilters, numRange]);
 
-  useEffect(() => { setVisibleCount(loadMoreN); }, [q, activeGroup, leads, colFilters, numRange, rendaRange]);
+  useEffect(() => { setVisibleCount(loadMoreN); }, [q, activeGroup, leads, colFilters, numRange]);
 
   const groupedKanban = useMemo(() => {
     const map: Record<string, Lead[]> = {};
@@ -287,6 +323,12 @@ export default function LeadsPage() {
     }
     return map;
   }, [filtered, visibleStages]);
+
+  const S: React.CSSProperties = {
+    width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4,
+    border: "1px solid var(--shell-card-border)",
+    background: "var(--shell-bg)", color: "var(--shell-text)",
+  };
 
   return (
     <AppShell title={pageTitle}>
@@ -402,29 +444,13 @@ export default function LeadsPage() {
         }
       >
         <div className="grid gap-4">
-          <Input
-            label="Nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="Ex: João Silva"
-          />
-          <Input
-            label="Telefone / WhatsApp"
-            value={telefone}
-            onChange={(e) => setTelefone(e.target.value)}
-            placeholder="Ex: (11) 99999-9999"
-          />
+          <Input label="Nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: João Silva" />
+          <Input label="Telefone / WhatsApp" value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="Ex: (11) 99999-9999" />
           <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-[var(--shell-subtext)]">
-              Observação (opcional)
-            </label>
+            <label className="block text-xs font-medium text-[var(--shell-subtext)]">Observação (opcional)</label>
             <textarea
               className="w-full rounded-lg border px-3 py-2 text-sm resize-none"
-              style={{
-                background: "var(--shell-input-bg)",
-                color: "var(--shell-input-text)",
-                borderColor: "var(--shell-input-border)",
-              }}
+              style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
               rows={3}
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
@@ -436,69 +462,69 @@ export default function LeadsPage() {
 
       {/* LISTA */}
       {view === "LISTA" && (
-        <div
-          className="mt-4 overflow-hidden rounded-xl border"
-          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
-        >
+        <div className="mt-4 overflow-hidden rounded-xl border" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
+          {/* Cabeçalho */}
           <div className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
-            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr" }}>
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: COL }}>
             <div>Número</div><div>Nome</div><div>Telefone</div><div>Origem</div>
-            <div>Etapa</div><div>Status</div><div>Interesse</div><div>Indicação</div><div>Renda</div>
+            <div>Etapa</div><div>Status</div><div>Interesse</div><div>Indicação</div>
+            <div>Responsável</div><div>Criado em</div>
           </div>
 
-          {showFilters && (() => {
-            const S: React.CSSProperties = { width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4, border: "1px solid var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" };
-            return (
-              <div className="grid gap-2 border-b px-4 py-2 items-center"
-                style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)", gridTemplateColumns: "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr" }}>
-                <div className="flex gap-1">
-                  <input style={S} placeholder="De" value={numRange.min} onChange={(e) => setNumRange((r) => ({ ...r, min: e.target.value }))} />
-                  <input style={S} placeholder="Até" value={numRange.max} onChange={(e) => setNumRange((r) => ({ ...r, max: e.target.value }))} />
-                </div>
-                <div /><div />
-                <select style={S} value={colFilters.origem} onChange={(e) => setCF("origem", e.target.value)}><option value="">Todas</option>{uniqueValues.origem.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-                <select style={S} value={colFilters.etapa} onChange={(e) => setCF("etapa", e.target.value)}><option value="">Todas</option>{uniqueValues.etapa.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-                <select style={S} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}><option value="">Todos</option>{uniqueValues.status.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-                <select style={S} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}><option value="">Todos</option>{uniqueValues.interesse.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-                <select style={S} value={colFilters.indicacao} onChange={(e) => setCF("indicacao", e.target.value)}><option value="">Todas</option>{uniqueValues.indicacao.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-                <div className="flex gap-1">
-                  <input style={S} placeholder="De" value={rendaRange.min} onChange={(e) => setRendaRange((r) => ({ ...r, min: e.target.value }))} />
-                  <input style={S} placeholder="Até" value={rendaRange.max} onChange={(e) => setRendaRange((r) => ({ ...r, max: e.target.value }))} />
-                </div>
+          {/* Filtros */}
+          {showFilters && (
+            <div className="grid gap-2 border-b px-4 py-2 items-center"
+              style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)", gridTemplateColumns: COL }}>
+              <div className="flex gap-1">
+                <input style={S} placeholder="De" value={numRange.min} onChange={(e) => setNumRange((r) => ({ ...r, min: e.target.value }))} />
+                <input style={S} placeholder="Até" value={numRange.max} onChange={(e) => setNumRange((r) => ({ ...r, max: e.target.value }))} />
               </div>
-            );
-          })()}
+              <div /><div />
+              <select style={S} value={colFilters.origem} onChange={(e) => setCF("origem", e.target.value)}><option value="">Todas</option>{uniqueValues.origem.map((v) => <option key={v} value={v}>{v}</option>)}</select>
+              <select style={S} value={colFilters.etapa} onChange={(e) => setCF("etapa", e.target.value)}><option value="">Todas</option>{uniqueValues.etapa.map((v) => <option key={v} value={v}>{v}</option>)}</select>
+              <select style={S} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}><option value="">Todos</option>{uniqueValues.status.map((v) => <option key={v} value={v}>{STATUS_LABEL[v] ?? v}</option>)}</select>
+              <select style={S} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}><option value="">Todos</option>{uniqueValues.interesse.map((v) => <option key={v} value={v}>{v}</option>)}</select>
+              <select style={S} value={colFilters.indicacao} onChange={(e) => setCF("indicacao", e.target.value)}><option value="">Todas</option>{uniqueValues.indicacao.map((v) => <option key={v} value={v}>{v}</option>)}</select>
+              <div /><div />
+            </div>
+          )}
 
           {filtered.length === 0 ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead.</div>
-          ) : (() => {
-            const shown = filtered.slice(0, visibleCount);
-            const hasMore = shown.length < filtered.length;
-            return (
-              <>
-                {shown.map((l) => {
-                  const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                  const stageName = l.stageName || pipelineStages.find((s) => s.id === l.stageId)?.name || "—";
-                  return (
-                    <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
-                      style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr" }}>
-                      <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                      <div className="min-w-0">
-                        <Link className="font-medium text-[var(--shell-text)] hover:underline truncate block" href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}>{displayName(l)}</Link>
-                      </div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
-                      <div className="min-w-0"><span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE} truncate max-w-full`} title={stageName}>{stageName}</span></div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.status || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate">{formatRenda(l.rendaBrutaFamiliar)}</div>
+          ) : (
+            <>
+              {filtered.slice(0, visibleCount).map((l) => {
+                const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                const stageName = getStageName(l);
+                const st = formatStatus(l.status);
+                return (
+                  <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
+                    style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
+                    <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
+                    <div className="min-w-0">
+                      <Link className="font-medium text-[var(--shell-text)] hover:underline truncate block" href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}>{displayName(l)}</Link>
                     </div>
-                  );
-                })}
-              </>
-            );
-          })()}
+                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
+                    <div className="min-w-0">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE} truncate max-w-full`} title={stageName}>{stageName}</span>
+                    </div>
+                    <div className="min-w-0">
+                      {st ? (
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                      ) : (
+                        <span className="text-sm text-[var(--shell-subtext)]">—</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
+                    <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
 
@@ -509,19 +535,12 @@ export default function LeadsPage() {
             {visibleStages.map((stage) => {
               const items = groupedKanban[stage.id] ?? [];
               return (
-                <div
-                  key={stage.id}
-                  className="w-[280px] shrink-0 rounded-xl border overflow-hidden"
-                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
-                >
-                  <div
-                    className="border-b px-3 py-2 text-sm font-semibold"
-                    style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
-                  >
+                <div key={stage.id} className="w-[280px] shrink-0 rounded-xl border overflow-hidden"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
+                  <div className="border-b px-3 py-2 text-sm font-semibold"
+                    style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}>
                     {stage.name}
-                    <span className="ml-2 text-xs font-normal text-[var(--shell-subtext)]">
-                      ({items.length})
-                    </span>
+                    <span className="ml-2 text-xs font-normal text-[var(--shell-subtext)]">({items.length})</span>
                   </div>
                   <div className="max-h-[70vh] space-y-2 overflow-y-auto p-2">
                     {items.length === 0 ? (
@@ -529,57 +548,27 @@ export default function LeadsPage() {
                     ) : (
                       items.map((l) => {
                         const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                        const st = formatStatus(l.status);
                         return (
-                          <div
-                            key={l.id}
-                            className="rounded-lg border p-2"
-                            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
-                          >
-                            {numero && (
-                              <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">
-                                {numero}
-                              </div>
-                            )}
+                          <div key={l.id} className="rounded-lg border p-2"
+                            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}>
+                            {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
                             <div className="text-sm font-medium text-[var(--shell-text)] truncate">
-                              <Link
-                                className="hover:underline"
-                                href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}
-                              >
-                                {displayName(l)}
-                              </Link>
+                              <Link className="hover:underline" href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}>{displayName(l)}</Link>
                             </div>
-                            <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
-                              <span className="truncate">{l.telefone || l.whatsapp || "—"}</span>
-                              <span className="opacity-50">·</span>
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${STAGE_BADGE} truncate max-w-[100px]`} title={l.stageName || stage.name}>
-                                {l.stageName || stage.name}
-                              </span>
-                            </div>
+                            <div className="mt-1 text-xs text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               {l.origem && (
-                                <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>
-                                  {l.origem}
-                                </span>
+                                <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>
                               )}
-                              {l.status && (
-                                <span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
-                                  {l.status}
-                                </span>
+                              {st && (
+                                <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>
                               )}
                               {l.perfilImovel && (
-                                <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>
-                                  {l.perfilImovel}
-                                </span>
+                                <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>{l.perfilImovel}</span>
                               )}
-                              {(l.cadastroOrigem as any)?.indicacao && (
-                                <span className="inline-block rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] text-teal-700 truncate max-w-[120px]" title={(l.cadastroOrigem as any).indicacao}>
-                                  {(l.cadastroOrigem as any).indicacao}
-                                </span>
-                              )}
-                              {l.rendaBrutaFamiliar && (
-                                <span className="inline-block rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
-                                  {formatRenda(l.rendaBrutaFamiliar)}
-                                </span>
+                              {l.assignedUserName && (
+                                <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]" title={l.assignedUserName}>👤 {l.assignedUserName}</span>
                               )}
                             </div>
                           </div>

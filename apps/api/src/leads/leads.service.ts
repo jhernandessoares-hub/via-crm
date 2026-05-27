@@ -1291,6 +1291,7 @@ export class LeadsService {
       where: { tenantId, ...extraFilter, deletedAt: null },
       orderBy: { criadoEm: 'desc' },
       include: {
+        stage: { select: { id: true, name: true, key: true, group: true } },
         developmentUnits: {
           select: {
             id: true,
@@ -1306,7 +1307,17 @@ export class LeadsService {
       },
     });
 
-    return this.attachLastInboundPreview(tenantId, leads);
+    const assignedIds = [...new Set(leads.map((l) => l.assignedUserId).filter(Boolean))] as string[];
+    const assignedUsers = assignedIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: assignedIds } }, select: { id: true, nome: true, apelido: true } })
+      : [];
+    const assignedMap = Object.fromEntries(assignedUsers.map((u) => [u.id, u.apelido || u.nome]));
+    const enriched = leads.map((l) => ({
+      ...l,
+      assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
+    }));
+
+    return this.attachLastInboundPreview(tenantId, enriched);
   }
 
 async getById(user: any, id: string) {
@@ -2189,9 +2200,19 @@ async updateStage(user: any, leadId: string, stageId: string) {
         deletedAt: null,
       },
       orderBy: { criadoEm: 'desc' },
+      include: {
+        stage: { select: { id: true, name: true, key: true, group: true } },
+      },
     });
 
-    return this.attachLastInboundPreview(user.tenantId, leads);
+    const userInfo = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { nome: true, apelido: true },
+    });
+    const myName = userInfo?.apelido || userInfo?.nome || null;
+    const enriched = leads.map((l) => ({ ...l, assignedUserName: myName }));
+
+    return this.attachLastInboundPreview(user.tenantId, enriched);
   }
 
   async getBranchLeads(user: any, branchId?: string) {
