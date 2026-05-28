@@ -561,6 +561,11 @@ export default function LeadsPage() {
                 </div>
               )}
 
+              {/* Separador entre seções */}
+              {pendingLeads.length > 0 && (
+                <div className="h-3 border-b-2" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-sidebar-bg, #f3f4f6)" }} />
+              )}
+
               {/* Seção: Leads normais */}
               <div>
                 <div className="px-4 py-2 text-xs font-semibold border-b"
