@@ -282,8 +282,13 @@ export class LeadsService {
 
     const expiresAt = Math.floor(Date.now() / 1000) + 120; // 2 minutos
 
+    const hasKnownExt = input.ext && input.ext !== 'bin';
+
     if (input.resourceType === 'raw') {
-      return cloudinary.url(`${input.publicId}.${input.ext}`, {
+      const publicIdFull = hasKnownExt
+        ? `${input.publicId}.${input.ext}`
+        : input.publicId;
+      return cloudinary.url(publicIdFull, {
         resource_type: 'raw',
         type: 'authenticated',
         secure: true,
@@ -297,7 +302,7 @@ export class LeadsService {
       type: 'authenticated',
       secure: true,
       sign_url: true,
-      format: input.ext,
+      ...(hasKnownExt ? { format: input.ext } : {}),
       expires_at: expiresAt,
     } as any);
   }
