@@ -336,55 +336,58 @@ export class LeadsService {
       String(media?.mimeType || '').trim() || 'application/octet-stream';
     const filenameRaw = String(media?.filename || '').trim();
 
-    if (!url || !url.includes('cloudinary.com')) {
-      throw new BadRequestException(
-        'Este evento não tem mídia em Cloudinary (url ausente).',
-      );
-    }
-
-    const parsed = this.parseCloudinaryUrl(url);
-    if (!parsed?.publicId) {
-      throw new BadRequestException(
-        'Não consegui extrair publicId da URL do Cloudinary.',
-      );
-    }
-
-    // Ajuste: pdf deve ser raw (mesmo se a URL atual veio como image/upload)
-    let resourceType: 'image' | 'video' | 'raw' = parsed.resourceType;
-    if (parsed.ext === 'pdf') resourceType = 'raw';
-
     const candidateUrls: string[] = [];
 
-    // (A) 1º: URL original do evento
-    candidateUrls.push(url);
+    // (A) URL do Cloudinary, se disponível
+    if (url && url.includes('cloudinary.com')) {
+      candidateUrls.push(url);
 
-    // (B) 2º: URL assinada (fallback)
-    try {
-      const signedUrl = this.buildSignedCloudinaryDownloadUrl({
-        publicId: parsed.publicId,
-        ext: parsed.ext,
-        resourceType,
-      });
-      if (signedUrl && signedUrl !== url) candidateUrls.push(signedUrl);
-    } catch {}
+      const parsed = this.parseCloudinaryUrl(url);
+      if (parsed?.publicId) {
+        // Ajuste: pdf deve ser raw (mesmo se a URL atual veio como image/upload)
+        let resourceType: 'image' | 'video' | 'raw' = parsed.resourceType;
+        if (parsed.ext === 'pdf') resourceType = 'raw';
 
-    // (C) 3º: fallback extra — tenta resource_type alternativo
-    const altResourceTypes: Array<'image' | 'video' | 'raw'> = [
-      'image',
-      'video',
-      'raw',
-    ].filter((x) => x !== resourceType) as any;
+        // URL assinada (fallback)
+        try {
+          const signedUrl = this.buildSignedCloudinaryDownloadUrl({
+            publicId: parsed.publicId,
+            ext: parsed.ext,
+            resourceType,
+          });
+          if (signedUrl && signedUrl !== url) candidateUrls.push(signedUrl);
+        } catch {}
 
-    for (const rt of altResourceTypes) {
-      try {
-        const altSigned = this.buildSignedCloudinaryDownloadUrl({
-          publicId: parsed.publicId,
-          ext: parsed.ext,
-          resourceType: rt,
-        });
-        if (altSigned && !candidateUrls.includes(altSigned))
-          candidateUrls.push(altSigned);
-      } catch {}
+        // Fallback extra — tenta resource_type alternativo
+        const altResourceTypes: Array<'image' | 'video' | 'raw'> = (['image', 'video', 'raw'] as const).filter((x) => x !== resourceType);
+        for (const rt of altResourceTypes) {
+          try {
+            const altSigned = this.buildSignedCloudinaryDownloadUrl({
+              publicId: parsed.publicId,
+              ext: parsed.ext,
+              resourceType: rt,
+            });
+            if (altSigned && !candidateUrls.includes(altSigned)) candidateUrls.push(altSigned);
+          } catch {}
+        }
+      }
+    } else if (url && url.startsWith('http')) {
+      // URL direta (não-Cloudinary): tenta servir diretamente
+      candidateUrls.push(url);
+    }
+
+    let parsedExt = '';
+    let parsedFilenameBase = 'arquivo';
+    if (url && url.includes('cloudinary.com')) {
+      const tmp = this.parseCloudinaryUrl(url);
+      if (tmp?.publicId) {
+        parsedExt = tmp.ext || '';
+        parsedFilenameBase = tmp.publicId.split('/').pop() || 'arquivo';
+      }
+    } else if (filenameRaw) {
+      const dot = filenameRaw.lastIndexOf('.');
+      parsedExt = dot >= 0 ? filenameRaw.slice(dot + 1) : '';
+      parsedFilenameBase = filenameRaw;
     }
 
     let lastErrorText = '';
@@ -455,8 +458,13 @@ export class LeadsService {
         // se fallback falhar, cai no throw original abaixo
       }
 
+      if (candidateUrls.length === 0) {
+        throw new BadRequestException(
+          'Este arquivo não possui URL de download disponível. Pode ser um arquivo antigo enviado antes do armazenamento ser configurado.',
+        );
+      }
       throw new BadRequestException(
-        `Falha ao baixar do Cloudinary via backend. ${
+        `Falha ao baixar arquivo. ${
           lastErrorText || (res ? `status=${res.status}` : 'sem response')
         }`,
       );
@@ -468,10 +476,10 @@ export class LeadsService {
     const contentLength = len ? Number(len) : undefined;
 
     const g = this.guessFromMime(contentType);
+    const extFinal = parsedExt || g.ext;
     const filename = this.safeFilename(
-      filenameRaw ||
-        `${parsed.publicId.split('/').pop() || 'arquivo'}.${parsed.ext || g.ext}`,
-      parsed.ext || g.ext,
+      filenameRaw || `${parsedFilenameBase}.${extFinal}`,
+      extFinal,
     );
 
     // Node 18: converte WebStream -> Node Readable

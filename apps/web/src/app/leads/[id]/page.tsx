@@ -1871,6 +1871,8 @@ export default function LeadDetailChatPage() {
   const filePickerRef = useRef<HTMLInputElement | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachQueue, setAttachQueue] = useState<File[]>([]);
+  const [attachFiles, setAttachFiles] = useState<Array<{ file: File; previewUrl: string }>>([]);
+  const [attachSendProgress, setAttachSendProgress] = useState<{ current: number; total: number } | null>(null);
   const [attachSending, setAttachSending] = useState(false);
   const [attachErr, setAttachErr] = useState<string | null>(null);
   const [attachPreviewUrl, setAttachPreviewUrl] = useState<string | null>(null);
@@ -3013,22 +3015,43 @@ function discardAiSuggestion() {
   async function queueMediaSend(urls: string[], kind: "image" | "document") {
     const ext = kind === "image" ? "jpg" : "pdf";
     const mime = kind === "image" ? "image/jpeg" : "application/pdf";
-    const files: File[] = [];
+    const items: Array<{ file: File; previewUrl: string }> = [];
     for (const url of urls) {
       try {
         const res = await fetch(url);
         const blob = await res.blob();
-        files.push(new File([blob], `midia-${files.length + 1}.${ext}`, { type: blob.type || mime }));
+        const file = new File([blob], `midia-${items.length + 1}.${ext}`, { type: blob.type || mime });
+        items.push({ file, previewUrl: url });
       } catch { /* skip */ }
     }
-    if (files.length === 0) return;
+    if (items.length === 0) return;
     setDevMediaModal(null);
-    setAttachFile(files[0]);
-    setAttachQueue(files.slice(1));
-    const n = files.length;
-    setProductsNotice(n === 1 ? "Foto pronta. Clique em \"Enviar anexo\" no chat." : `${n} fotos prontas. Clique em "Enviar anexo" para enviar uma por uma.`);
-    setTimeout(() => setProductsNotice(null), 4000);
+    setAttachFile(null);
+    setAttachQueue([]);
+    setAttachFiles(items);
+    setAttachSendProgress(null);
+    setAttachErr(null);
     requestAnimationFrame(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); });
+  }
+
+  async function sendAllAttachFiles() {
+    const items = attachFiles;
+    if (items.length === 0) return;
+    setAttachErr(null);
+    for (let i = 0; i < items.length; i++) {
+      setAttachSendProgress({ current: i + 1, total: items.length });
+      const r = await sendAttachmentFile(items[i].file);
+      if (!r.ok) {
+        setAttachErr(r.error);
+        setAttachSendProgress(null);
+        return;
+      }
+      setHasNewInbound(false);
+      await loadEvents({ silent: true });
+    }
+    setAttachFiles([]);
+    setAttachSendProgress(null);
+    setAttachErr(null);
   }
 
   function pushOptimisticOutgoingMedia(_file: File) {
@@ -4872,6 +4895,70 @@ function discardAiSuggestion() {
                   </div>
                 )}
               </div>}
+
+              {/* MULTI-FILE PREVIEW (de empreendimento) */}
+              {attachFiles.length > 0 && (
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-semibold text-[var(--shell-text)]">
+                      📎 {attachFiles.length} arquivo(s) pronto(s) para enviar
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs text-[var(--shell-subtext)] hover:text-red-500"
+                      disabled={!!attachSendProgress}
+                      onClick={() => { setAttachFiles([]); setAttachSendProgress(null); setAttachErr(null); }}
+                    >
+                      Cancelar tudo
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    {attachFiles.map((item, idx) => (
+                      <div key={idx} className="relative group">
+                        {item.file.type.startsWith("image/") ? (
+                          <img
+                            src={item.previewUrl}
+                            alt={item.file.name}
+                            className="w-full h-14 object-cover rounded border bg-[var(--shell-card-bg)]"
+                          />
+                        ) : (
+                          <div className="w-full h-14 flex flex-col items-center justify-center rounded border bg-[var(--shell-card-bg)] gap-0.5">
+                            <span className="text-lg">📄</span>
+                            <span className="text-[9px] text-[var(--shell-subtext)] truncate w-full text-center px-1">{item.file.name}</span>
+                          </div>
+                        )}
+                        {!attachSendProgress && (
+                          <button
+                            type="button"
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setAttachFiles(prev => prev.filter((_, i) => i !== idx))}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {attachErr && (
+                    <div className="mb-2 rounded border border-red-200 bg-red-50 p-1.5 text-xs text-red-700">{attachErr}</div>
+                  )}
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="rounded-md bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:opacity-60"
+                      disabled={!!attachSendProgress || attachFiles.length === 0}
+                      onClick={sendAllAttachFiles}
+                    >
+                      {attachSendProgress
+                        ? `Enviando ${attachSendProgress.current} de ${attachSendProgress.total}...`
+                        : `Enviar ${attachFiles.length} arquivo(s)`}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* PREVIEW DO ANEXO */}
               {attachFile ? (
