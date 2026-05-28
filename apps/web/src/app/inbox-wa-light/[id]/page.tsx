@@ -726,7 +726,7 @@ export default function InboxWALightPage() {
   const [conversationDetail, setConversationDetail] = useState<WaLightConversationDetail | null>(null);
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "unread" | "tracked" | "leads">("all");
+  const [filter, setFilter] = useState<"all" | "unread" | "unanswered" | "tracked" | "leads">("all");
   const [rightOpen, setRightOpen] = useState(true);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
@@ -917,6 +917,7 @@ export default function InboxWALightPage() {
     const q = search.trim().toLowerCase();
     return conversations.filter((conversation) => {
       if (filter === "unread" && conversation.naoLidos <= 0) return false;
+      if (filter === "unanswered" && conversation.ultimaMensagemDirecao !== "in") return false;
       if (filter === "tracked" && !isTrackedConversation(conversation)) return false;
       if (filter === "leads" && !conversation.leadId) return false;
       if (!q) return true;
@@ -928,6 +929,11 @@ export default function InboxWALightPage() {
 
   const unreadTotal = useMemo(
     () => conversations.reduce((total, conversation) => total + Number(conversation.naoLidos || 0), 0),
+    [conversations],
+  );
+
+  const unansweredTotal = useMemo(
+    () => conversations.filter((c) => c.ultimaMensagemDirecao === "in").length,
     [conversations],
   );
 
@@ -1161,6 +1167,7 @@ export default function InboxWALightPage() {
               {[
                 ["all", "Todas"],
                 ["unread", `Não lidas${unreadTotal ? ` ${unreadTotal}` : ""}`],
+                ["unanswered", `Não respondidas${unansweredTotal ? ` ${unansweredTotal}` : ""}`],
                 ["tracked", "Acompanhadas"],
                 ["leads", "Leads"],
               ].map(([value, label]) => (
