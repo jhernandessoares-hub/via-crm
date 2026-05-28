@@ -753,20 +753,23 @@ export class LeadsService {
       mimeType: mimetype || 'application/octet-stream',
     });
 
+    if (!cloudUrl) {
+      throw new BadRequestException('Falha ao armazenar mídia (URL Cloudinary vazia). Tente novamente.');
+    }
+
     const mediaKind = isImage ? 'image' : isVideo ? 'video' : 'document';
 
     // Rota pelo canal ativo do lead
     if (lead.conversaCanal === 'WHATSAPP_LIGHT' && lead.conversaSessionId) {
       const sessionId = lead.conversaSessionId;
       const to = lead.telefone!;
-      const lightUrl = cloudUrl ?? '';
       try {
         if (isImage) {
-          await this.unofficialService.sendImage(sessionId, to, lightUrl);
+          await this.unofficialService.sendImage(sessionId, to, cloudUrl);
         } else if (isVideo) {
-          await this.unofficialService.sendVideo(sessionId, to, lightUrl);
+          await this.unofficialService.sendVideo(sessionId, to, cloudUrl);
         } else {
-          await this.unofficialService.sendDocument(sessionId, to, lightUrl, originalname, mimetype || 'application/octet-stream');
+          await this.unofficialService.sendDocument(sessionId, to, cloudUrl, originalname, mimetype || 'application/octet-stream');
         }
       } catch (err: any) {
         await this.prisma.leadEvent.create({
@@ -777,7 +780,7 @@ export class LeadsService {
             payloadRaw: { type: mediaKind, error: err?.message || String(err) },
           },
         });
-        throw err;
+        throw new BadRequestException(err?.message || 'Falha ao enviar via WhatsApp Light.');
       }
 
       await this.prisma.leadEvent.create({
@@ -802,11 +805,16 @@ export class LeadsService {
     }
 
     // 1) upload para Meta -> mediaId
-    const upload = await this.messaging.uploadMetaMedia({
-      buffer,
-      filename: originalname,
-      mimeType: mimetype || 'application/octet-stream',
-    }, user.tenantId);
+    let upload: Awaited<ReturnType<MessagingService['uploadMetaMedia']>>;
+    try {
+      upload = await this.messaging.uploadMetaMedia({
+        buffer,
+        filename: originalname,
+        mimeType: mimetype || 'application/octet-stream',
+      }, user.tenantId);
+    } catch (err: any) {
+      throw new BadRequestException(err?.message || 'Falha ao enviar mídia para o WhatsApp (upload Meta).');
+    }
 
     let send: Awaited<ReturnType<MessagingService['sendMetaImageMessage']>>;
     try {
@@ -833,7 +841,7 @@ export class LeadsService {
           },
         },
       });
-      throw err;
+      throw new BadRequestException(err?.message || 'Falha ao enviar mensagem via WhatsApp (Meta).');
     }
 
     // 3) salva evento
