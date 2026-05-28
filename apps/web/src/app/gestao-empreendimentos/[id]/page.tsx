@@ -1053,6 +1053,7 @@ function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead, trocandoUnitId
   const proposta = activeUnits.filter((u) => u.status === "PROPOSTA").length;
   const reservado = activeUnits.filter((u) => u.status === "RESERVADO").length;
   const disponivel = activeUnits.filter((u) => u.status === "DISPONIVEL").length;
+  const bloqueado = activeUnits.filter((u) => u.status === "BLOQUEADO").length;
 
   const allFloors = isVertical
     ? Array.from(new Set(activeUnits.map((u) => u.andar ?? 0))).filter((n) => n > 0).sort((a, b) => a - b)
@@ -1103,13 +1104,14 @@ function EspelhoVendas({ dev, onUnitUpdated, role, preLinkedLead, trocandoUnitId
   return (
     <div className="space-y-5">
       {/* Resumo */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-6 gap-3">
         {[
           { label: "Total",      value: total,      color: "text-[var(--shell-text)]",   bg: "bg-[var(--shell-bg)]" },
           { label: "Disponível", value: disponivel, color: "text-green-600",              bg: "bg-green-50 dark:bg-green-900/20" },
           { label: "Proposta",   value: proposta,   color: "text-orange-600",             bg: "bg-orange-50 dark:bg-orange-900/20" },
           { label: "Reservado",  value: reservado,  color: "text-amber-600",              bg: "bg-amber-50 dark:bg-amber-900/20" },
           { label: "Vendido",    value: vendido,    color: "text-red-600",                bg: "bg-red-50 dark:bg-red-900/20" },
+          { label: "Bloqueado",  value: bloqueado,  color: "text-gray-500",               bg: "bg-gray-50 dark:bg-gray-900/20" },
         ].map((c) => (
           <div key={c.label} className={`rounded-xl border border-[var(--shell-card-border)] ${c.bg} px-4 py-3 text-center`}>
             <p className={`text-2xl font-bold ${c.color}`}>{c.value}</p>
