@@ -510,8 +510,8 @@ export default function MeusLeadsPage() {
                     const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
                     const st = isGroupedPipeline ? null : formatStatus(l.status);
                     return (
-                      <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50 border-l-4 border-l-amber-400"
-                        style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
+                      <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
+                        style={{ borderBottomColor: "var(--shell-card-border)", borderLeftColor: "#f59e0b", gridTemplateColumns: COL }}>
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
                         <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
@@ -540,7 +540,11 @@ export default function MeusLeadsPage() {
 
               {/* Separador entre seções */}
               {pendingLeads.length > 0 && (
-                <div className="h-3 border-b-2" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-sidebar-bg, #f3f4f6)" }} />
+                <div className="flex items-center gap-3 px-4 py-2" style={{ background: "var(--shell-sidebar-bg, #f1f5f9)", borderTop: "2px solid #fcd34d", borderBottom: "2px solid var(--shell-card-border)" }}>
+                  <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
+                  <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--shell-subtext)" }}>Outros leads</span>
+                  <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
+                </div>
               )}
 
               {/* Seção: Leads normais */}
