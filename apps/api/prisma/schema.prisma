@@ -252,8 +252,9 @@ model Lead {
   conversouComCorretor    Boolean?
   qualCorretorImobiliaria String?
   perfilImovel            String?
-  produtoInteresseId      String?
-  resumoLead              String?
+  produtoInteresseId           String?
+  empreendimentoInteresseId    String?
+  resumoLead                   String?
   pendingRouting          Boolean              @default(false)
   pendingRoutingScope     PendingRoutingScope?
   pipelineId              String?
@@ -287,7 +288,8 @@ model Lead {
   stage                   PipelineStage?             @relation(fields: [stageId], references: [id])
   tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews                 ManagerReview[]
-  conversaSession         WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
+  conversaSession              WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
+  empreendimentoInteresse      Development?               @relation("LeadEmpreendimentoInteresse", fields: [empreendimentoInteresseId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, telefoneKey])
   @@index([tenantId, status])
@@ -1481,6 +1483,7 @@ model Development {
   paymentCondition DevelopmentPaymentCondition?
   mediaItems       DevelopmentMedia[]
   obraUpdates      DevelopmentObraUpdate[]
+  leadInteresses   Lead[]                        @relation("LeadEmpreendimentoInteresse")
 
   @@index([tenantId])
   @@map("developments")

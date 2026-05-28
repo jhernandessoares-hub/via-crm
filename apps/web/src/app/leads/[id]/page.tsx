@@ -12,7 +12,7 @@ import {
   type Correspondent, type CreditRequest,
 } from "@/lib/correspondente.service";
 import { formatLeadNumber } from "@/lib/format-lead-number";
-import { unlinkUnit } from "@/lib/developments.service";
+import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -113,6 +113,8 @@ type Lead = {
   qualCorretorImobiliaria?: string | null;
   perfilImovel?: string | null;
   produtoInteresseId?: string | null;
+  empreendimentoInteresseId?: string | null;
+  empreendimentoInteresse?: { id: string; nome: string; capaUrl?: string | null } | null;
   resumoLead?: string | null;
   cadastroOrigem?: {
     codigoOcorrencia?: string | null;
@@ -1388,6 +1390,257 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
   );
 }
 
+function DevMediaModal({
+  devId, devNome, onClose,
+  prepareAttachmentFromUrl, insertIntoChat, handleCopyLink,
+}: {
+  devId: string; devNome: string; onClose: () => void;
+  prepareAttachmentFromUrl: (kind: "image" | "video" | "document", url: string, name: string) => Promise<void>;
+  insertIntoChat: (s: string) => void;
+  handleCopyLink: (url: string) => Promise<void>;
+}) {
+  type Tab = "FOTO_COMERCIAL" | "PANFLETO" | "BOOK" | "OBRA";
+  const [tab, setTab] = useState<Tab>("FOTO_COMERCIAL");
+  const [media, setMedia] = useState<DevMedia[]>([]);
+  const [obra, setObra] = useState<DevObraUpdate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState<{ items: string[]; idx: number } | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    if (tab === "OBRA") {
+      listObraUpdates(devId).then(r => { setObra(r); setLoading(false); }).catch(() => setLoading(false));
+    } else {
+      listMedia(devId, tab).then(r => { setMedia(r); setLoading(false); }).catch(() => setLoading(false));
+    }
+  }, [devId, tab]);
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "FOTO_COMERCIAL", label: "Fotos" },
+    { key: "PANFLETO", label: "Panfletos" },
+    { key: "BOOK", label: "Book" },
+    { key: "OBRA", label: "Evolução de Obra" },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+    >
+      <div className="relative w-full max-w-3xl rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--shell-card-border)] px-6 py-4">
+          <div>
+            <div className="text-xs text-[var(--shell-subtext)] uppercase tracking-wide font-semibold">Mídia do Empreendimento</div>
+            <div className="text-base font-bold text-[var(--shell-text)]">{devNome}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)] transition-colors"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-0 border-b border-[var(--shell-card-border)] px-6">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className="px-4 py-3 text-sm font-medium transition-colors border-b-2"
+              style={{
+                borderColor: tab === t.key ? "var(--brand-accent)" : "transparent",
+                color: tab === t.key ? "var(--brand-accent)" : "var(--shell-subtext)",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="p-6 min-h-[300px]">
+          {loading && (
+            <div className="flex items-center justify-center py-16 text-[var(--shell-subtext)] text-sm">Carregando...</div>
+          )}
+
+          {!loading && tab !== "OBRA" && (
+            <>
+              {media.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-[var(--shell-subtext)] text-sm">
+                  Nenhum arquivo nesta categoria.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {media.map((item, idx) => {
+                    const isImage = tab === "FOTO_COMERCIAL";
+                    const allUrls = media.map(m => m.url);
+                    return (
+                      <div key={item.id} className="group relative rounded-xl border border-[var(--shell-card-border)] overflow-hidden bg-[var(--shell-bg)]">
+                        {isImage ? (
+                          <button type="button" className="w-full" onClick={() => setLightbox({ items: allUrls, idx })}>
+                            <img src={item.url} alt={item.titulo ?? ""} className="w-full h-36 object-cover hover:opacity-90 transition-opacity" />
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-center h-36 text-4xl">📄</div>
+                        )}
+                        {item.titulo && (
+                          <div className="px-2 py-1 text-[11px] text-[var(--shell-text)] truncate">{item.titulo}</div>
+                        )}
+                        <div className="flex gap-1 p-2 border-t border-[var(--shell-card-border)]">
+                          <button
+                            type="button"
+                            onClick={() => prepareAttachmentFromUrl(isImage ? "image" : "document", item.url, item.titulo || "arquivo")}
+                            className="flex-1 rounded px-2 py-1 text-[10px] font-semibold text-white transition-colors"
+                            style={{ background: "var(--brand-accent)" }}
+                            title="Preparar para envio ao lead"
+                          >
+                            Enviar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => insertIntoChat(item.url)}
+                            className="flex-1 rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
+                            title="Inserir link no chat"
+                          >
+                            Link
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyLink(item.url)}
+                            className="rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
+                            title="Copiar link"
+                          >
+                            📋
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {!loading && tab === "OBRA" && (
+            <>
+              {obra.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-[var(--shell-subtext)] text-sm">
+                  Nenhuma atualização de obra cadastrada.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {obra.map(update => {
+                    const allFotoUrls = update.fotos.map(f => f.url);
+                    return (
+                      <div key={update.id} className="rounded-xl border border-[var(--shell-card-border)] p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <div className="text-sm font-semibold text-[var(--shell-text)]">
+                              {update.titulo ?? new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
+                            </div>
+                            <div className="text-xs text-[var(--shell-subtext)]">
+                              {new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
+                            </div>
+                            {update.observacoes && (
+                              <div className="mt-1 text-xs text-[var(--shell-text)] leading-relaxed">{update.observacoes}</div>
+                            )}
+                          </div>
+                          {update.percentualAvanco != null && (
+                            <div className="flex flex-col items-center gap-1 ml-4">
+                              <div className="text-lg font-bold text-[var(--brand-accent)]">{update.percentualAvanco}%</div>
+                              <div className="text-[10px] text-[var(--shell-subtext)]">avanco</div>
+                            </div>
+                          )}
+                        </div>
+                        {update.fotos.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2">
+                            {update.fotos.map((foto, fIdx) => (
+                              <div key={foto.id} className="rounded-lg overflow-hidden border border-[var(--shell-card-border)] group">
+                                <button type="button" className="w-full" onClick={() => setLightbox({ items: allFotoUrls, idx: fIdx })}>
+                                  <img src={foto.url} alt={foto.legenda ?? ""} className="w-full h-24 object-cover hover:opacity-90 transition-opacity" />
+                                </button>
+                                <div className="flex gap-1 p-1 bg-[var(--shell-bg)]">
+                                  <button
+                                    type="button"
+                                    onClick={() => prepareAttachmentFromUrl("image", foto.url, foto.legenda || "foto-obra")}
+                                    className="flex-1 rounded px-1 py-0.5 text-[10px] font-semibold text-white"
+                                    style={{ background: "var(--brand-accent)" }}
+                                  >
+                                    Enviar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyLink(foto.url)}
+                                    className="rounded px-1 py-0.5 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)]"
+                                  >
+                                    📋
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.92)" }}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 text-white text-2xl font-bold z-[61] rounded-full w-10 h-10 flex items-center justify-center hover:bg-white/10 transition-colors"
+          >
+            ✕
+          </button>
+          {lightbox.idx > 0 && (
+            <button
+              type="button"
+              onClick={() => setLightbox(l => l ? { ...l, idx: l.idx - 1 } : null)}
+              className="absolute left-4 text-white text-3xl font-bold z-[61] rounded-full w-12 h-12 flex items-center justify-center hover:bg-white/10 transition-colors"
+            >
+              ‹
+            </button>
+          )}
+          <img
+            src={lightbox.items[lightbox.idx]}
+            alt=""
+            className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain"
+          />
+          {lightbox.idx < lightbox.items.length - 1 && (
+            <button
+              type="button"
+              onClick={() => setLightbox(l => l ? { ...l, idx: l.idx + 1 } : null)}
+              className="absolute right-4 text-white text-3xl font-bold z-[61] rounded-full w-12 h-12 flex items-center justify-center hover:bg-white/10 transition-colors"
+            >
+              ›
+            </button>
+          )}
+          <div className="absolute bottom-4 text-white text-sm opacity-70">
+            {lightbox.idx + 1} / {lightbox.items.length}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LeadDetailChatPage() {
@@ -1494,6 +1747,9 @@ export default function LeadDetailChatPage() {
   const [developments, setDevelopments] = useState<Development[]>([]);
   const [selectedDevId, setSelectedDevId] = useState<string>("");
   const [espelhoModal, setEspelhoModal] = useState<{ devId: string; trocandoUnitId?: string; trocandoUnitNome?: string } | null>(null);
+  const [devInteresseConfirm, setDevInteresseConfirm] = useState<{ devId: string; devNome: string; action: "espelho" | "midia" } | null>(null);
+  const [devInteresseSaving, setDevInteresseSaving] = useState(false);
+  const [devMediaModal, setDevMediaModal] = useState<{ devId: string; devNome: string } | null>(null);
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
   const [devUnitsLoading, setDevUnitsLoading] = useState(false);
   const [propostaModal, setPropostaModal] = useState<{ unit: DevUnit; devId: string } | null>(null);
@@ -3253,6 +3509,18 @@ function discardAiSuggestion() {
                         </div>
                       )}
 
+                      {lead.empreendimentoInteresse && (
+                        <div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Empreendimento de interesse</div>
+                          <div className="flex items-center gap-2">
+                            {lead.empreendimentoInteresse.capaUrl && (
+                              <img src={lead.empreendimentoInteresse.capaUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
+                            )}
+                            <span className="text-[var(--shell-text)] text-sm font-medium">{lead.empreendimentoInteresse.nome}</span>
+                          </div>
+                        </div>
+                      )}
+
                       {lead.resumoLead && (
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">Resumo</div>
@@ -3780,27 +4048,41 @@ function discardAiSuggestion() {
               {/* Aba Gestão de Empreendimento */}
               {prodTab === "empreendimentos" && (
                 <div className="mt-3 space-y-3">
-                  {/* Selecionar empreendimento e abrir espelho */}
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Abrir espelho de vendas</div>
-                  <div className="flex gap-2">
-                    <select
-                      className="flex-1 rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
-                      value={selectedDevId}
-                      onChange={(e) => setSelectedDevId(e.target.value)}
-                    >
-                      <option value="">(Selecione um empreendimento)</option>
-                      {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={!selectedDevId}
-                      onClick={() => { setEspelhoModal({ devId: selectedDevId }); }}
-                      className="rounded-md px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ background: "var(--brand-accent)" }}
-                    >
-                      Abrir Espelho
-                    </button>
-                  </div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Selecionar empreendimento</div>
+                  <select
+                    className="w-full rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
+                    value={selectedDevId}
+                    onChange={(e) => setSelectedDevId(e.target.value)}
+                  >
+                    <option value="">(Selecione um empreendimento)</option>
+                    {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                  </select>
+                  {selectedDevId && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const dev = developments.find(d => d.id === selectedDevId);
+                          setDevInteresseConfirm({ devId: selectedDevId, devNome: dev?.nome ?? "Empreendimento", action: "espelho" });
+                        }}
+                        className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors"
+                        style={{ background: "var(--brand-accent)" }}
+                      >
+                        🏗️ Abrir Espelho
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const dev = developments.find(d => d.id === selectedDevId);
+                          setDevInteresseConfirm({ devId: selectedDevId, devNome: dev?.nome ?? "Empreendimento", action: "midia" });
+                        }}
+                        className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors"
+                        style={{ background: "#6366f1" }}
+                      >
+                        🖼️ Ver Mídia
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               </>}
@@ -5035,6 +5317,69 @@ function discardAiSuggestion() {
           trocandoUnitNome={espelhoModal.trocandoUnitNome}
           onClose={() => setEspelhoModal(null)}
           onDone={() => { setEspelhoModal(null); loadLead(); }}
+        />
+      )}
+
+      {/* Popup de confirmação: registrar empreendimento como interesse antes de abrir espelho/mídia */}
+      {devInteresseConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-2xl">
+            <div className="mb-1 text-base font-bold text-[var(--shell-text)]">Definir como produto de interesse</div>
+            <p className="mb-5 text-sm text-[var(--shell-subtext)] leading-relaxed">
+              <span className="font-semibold text-[var(--shell-text)]">{devInteresseConfirm.devNome}</span> será registrado
+              como empreendimento de interesse deste lead. Para alterar, basta selecionar outro empreendimento ou
+              produto do catálogo.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={devInteresseSaving}
+                onClick={async () => {
+                  setDevInteresseSaving(true);
+                  try {
+                    await apiFetch(`/leads/${id}/qualification`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ empreendimentoInteresseId: devInteresseConfirm.devId, produtoInteresseId: null }),
+                    });
+                    await loadLead();
+                    const { devId, devNome, action } = devInteresseConfirm;
+                    setDevInteresseConfirm(null);
+                    if (action === "espelho") setEspelhoModal({ devId });
+                    else setDevMediaModal({ devId, devNome });
+                  } catch {
+                    setDevInteresseSaving(false);
+                  }
+                }}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                style={{ background: "var(--brand-accent)" }}
+              >
+                {devInteresseSaving ? "Salvando..." : "Confirmar"}
+              </button>
+              <button
+                type="button"
+                disabled={devInteresseSaving}
+                onClick={() => setDevInteresseConfirm(null)}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de mídia do empreendimento */}
+      {devMediaModal && (
+        <DevMediaModal
+          devId={devMediaModal.devId}
+          devNome={devMediaModal.devNome}
+          onClose={() => setDevMediaModal(null)}
+          prepareAttachmentFromUrl={prepareAttachmentFromUrl}
+          insertIntoChat={insertIntoChat}
+          handleCopyLink={handleCopyLink}
         />
       )}
 

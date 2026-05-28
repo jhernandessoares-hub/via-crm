@@ -215,6 +215,7 @@ export class LeadsController {
       qualCorretorImobiliaria?: string | null;
       perfilImovel?: string | null;
       produtoInteresseId?: string | null;
+      empreendimentoInteresseId?: string | null;
       resumoLead?: string | null;
     },
   ) {

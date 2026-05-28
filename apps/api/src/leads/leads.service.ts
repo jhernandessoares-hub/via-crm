@@ -1431,6 +1431,14 @@ async getById(user: any, id: string) {
     },
   });
 
+  let empreendimentoInteresse: { id: string; nome: string; capaUrl: string | null } | null = null;
+  if ((lead as any).empreendimentoInteresseId) {
+    empreendimentoInteresse = await this.prisma.development.findFirst({
+      where: { id: (lead as any).empreendimentoInteresseId, tenantId: user.tenantId },
+      select: { id: true, nome: true, capaUrl: true },
+    }) ?? null;
+  }
+
   return {
     ...lead,
     stageId: effectiveStageId,
@@ -1440,6 +1448,7 @@ async getById(user: any, id: string) {
     previousStageName,
     previousStageKey,
     developmentUnits: linkedUnits,
+    empreendimentoInteresse,
   };
 }
 
@@ -1878,6 +1887,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
   qualCorretorImobiliaria?: string | null;
   perfilImovel?: string | null;
   produtoInteresseId?: string | null;
+  empreendimentoInteresseId?: string | null;
   resumoLead?: string | null;
   // Cadastro pessoal
   cpf?: string | null;
@@ -1905,6 +1915,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
   if (data.qualCorretorImobiliaria !== undefined) updateData.qualCorretorImobiliaria = data.qualCorretorImobiliaria;
   if (data.perfilImovel !== undefined) updateData.perfilImovel = data.perfilImovel;
   if (data.produtoInteresseId !== undefined) updateData.produtoInteresseId = data.produtoInteresseId;
+  if (data.empreendimentoInteresseId !== undefined) updateData.empreendimentoInteresseId = data.empreendimentoInteresseId;
   if (data.resumoLead !== undefined) updateData.resumoLead = data.resumoLead;
   // Cadastro pessoal
   const pessoalFields = ['cpf', 'rg', 'profissao', 'empresa', 'naturalidade', 'endereco', 'cep', 'cidade', 'uf'] as const;
@@ -1921,7 +1932,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
       fgts: true, valorEntrada: true, estadoCivil: true, dataNascimento: true,
       tempoProcurandoImovel: true, conversouComCorretor: true,
       qualCorretorImobiliaria: true, perfilImovel: true,
-      produtoInteresseId: true, resumoLead: true,
+      produtoInteresseId: true, empreendimentoInteresseId: true, resumoLead: true,
     },
   });
 }
