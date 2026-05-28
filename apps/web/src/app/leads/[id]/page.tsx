@@ -890,30 +890,16 @@ function MediaBlock({
       if (!effectiveSrc && needsAuthBlob) await ensureBlob();
       onOpenModal(kind, filename, publicUrl || blobUrl || effectiveSrc, m?.mimeType || undefined);
     } catch (e: any) {
-      // fallback: tenta abrir do jeito que der
-      onOpenModal(kind, filename, publicUrl || blobUrl || effectiveSrc, m?.mimeType || undefined);
+      setLoadErr(e?.message || "Falha ao carregar arquivo.");
     }
   };
 
   const onDownload = async () => {
-    if (publicUrl) {
-      try {
-        const res = await fetch(publicUrl);
-        if (res.ok) {
-          const blob = await res.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = objectUrl;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
-          return;
-        }
-      } catch {}
+    try {
+      await downloadWithAuth(downloadUrl, filename);
+    } catch (e: any) {
+      setLoadErr(e?.message || "Falha ao baixar arquivo.");
     }
-    await downloadWithAuth(downloadUrl, filename);
   };
 
   const PreviewControl = () => {
