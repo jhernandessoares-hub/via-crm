@@ -437,6 +437,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     });
   }
 
+  async sendDocument(sessionId: string, to: string, docUrl: string, filename: string, mimetype?: string): Promise<void> {
+    const socket = this.sockets.get(sessionId);
+    if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
+    const jid = await this.resolveJid(socket, to);
+    await socket.sendMessage(jid, {
+      document: { url: docUrl },
+      fileName: filename,
+      mimetype: mimetype ?? 'application/octet-stream',
+    });
+  }
+
   // ── Processamento de áudio inbound (download + Cloudinary + Whisper) ───────
 
   private async processAudioInbound(msg: any, rawMime: string): Promise<{ mediaUrl: string | null; mimeType: string | null; transcription: string | null }> {

@@ -745,6 +745,54 @@ export class LeadsService {
       mimeType: mimetype || 'application/octet-stream',
     });
 
+    const mediaKind = isImage ? 'image' : isVideo ? 'video' : 'document';
+
+    // Rota pelo canal ativo do lead
+    if (lead.conversaCanal === 'WHATSAPP_LIGHT' && lead.conversaSessionId) {
+      const sessionId = lead.conversaSessionId;
+      const to = lead.telefone!;
+      const lightUrl = cloudUrl ?? '';
+      try {
+        if (isImage) {
+          await this.unofficialService.sendImage(sessionId, to, lightUrl);
+        } else if (isVideo) {
+          await this.unofficialService.sendVideo(sessionId, to, lightUrl);
+        } else {
+          await this.unofficialService.sendDocument(sessionId, to, lightUrl, originalname, mimetype || 'application/octet-stream');
+        }
+      } catch (err: any) {
+        await this.prisma.leadEvent.create({
+          data: {
+            tenantId: user.tenantId,
+            leadId,
+            channel: 'whatsapp.out.failed',
+            payloadRaw: { type: mediaKind, error: err?.message || String(err) },
+          },
+        });
+        throw err;
+      }
+
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.unofficial.out',
+          payloadRaw: {
+            to,
+            type: mediaKind,
+            media: {
+              kind: mediaKind,
+              mimeType: mimetype,
+              filename: originalname,
+              url: cloudUrl,
+            },
+          },
+        },
+      });
+
+      return { ok: true };
+    }
+
     // 1) upload para Meta -> mediaId
     const upload = await this.messaging.uploadMetaMedia({
       buffer,
@@ -771,7 +819,7 @@ export class LeadsService {
           leadId,
           channel: 'whatsapp.out.failed',
           payloadRaw: {
-            type: isImage ? 'image' : isVideo ? 'video' : 'document',
+            type: mediaKind,
             mediaId: upload.mediaId,
             error: err?.message || String(err),
           },
@@ -788,9 +836,9 @@ export class LeadsService {
         channel: 'whatsapp.out',
         payloadRaw: {
           to: send.to,
-          type: isImage ? 'image' : isVideo ? 'video' : 'document',
+          type: mediaKind,
           media: {
-            kind: isImage ? 'image' : isVideo ? 'video' : 'document',
+            kind: mediaKind,
             id: upload.mediaId,
             mimeType: mimetype,
             filename: originalname,
