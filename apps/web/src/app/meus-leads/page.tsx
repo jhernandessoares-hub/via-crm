@@ -498,10 +498,10 @@ export default function MeusLeadsPage() {
           ) : (
             <>
               {/* Seção: Conversas Abertas */}
-              {pendingLeads.length > 0 ? (
+              {pendingLeads.length > 0 && (
                 <div>
                   <div className="px-4 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
-                    <span>Conversas abertas ({pendingLeads.length})</span>
+                    <span>💬 Conversas abertas ({pendingLeads.length})</span>
                   </div>
                   {pendingLeads.map((l) => {
                     const stageName = getStageName(l);
@@ -535,10 +535,6 @@ export default function MeusLeadsPage() {
                       </div>
                     );
                   })}
-                </div>
-              ) : (
-                <div className="px-4 py-3 text-xs text-amber-600 bg-amber-50 border-b border-amber-200">
-                  Nenhuma conversa aberta
                 </div>
               )}
 
