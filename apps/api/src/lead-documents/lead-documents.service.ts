@@ -175,8 +175,12 @@ export class LeadDocumentsService {
       throw new NotFoundException('Documento não encontrado ou sem arquivo');
     }
 
+    this.logger.log(`viewDocument fetch: ${fetchUrl.substring(0, 120)}`);
     const response = await fetch(fetchUrl);
-    if (!response.ok) throw new NotFoundException('Arquivo não disponível no storage');
+    if (!response.ok) {
+      this.logger.error(`viewDocument Cloudinary error: status=${response.status} url=${fetchUrl.substring(0, 120)}`);
+      throw new NotFoundException(`Arquivo não disponível no storage (${response.status})`);
+    }
 
     const contentLength = response.headers.get('content-length');
 
