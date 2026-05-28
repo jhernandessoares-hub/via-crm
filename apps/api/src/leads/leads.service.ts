@@ -246,13 +246,16 @@ export class LeadsService {
             ? 'raw'
             : 'image';
 
-      // depois de upload vem "v123" e depois o caminho do publicId + ext
-      // então pegamos tudo depois do vNNN
+      // depois de upload vem opcionalmente "s--sig--", depois "v123", depois o publicId + ext
       const afterUpload = parts.slice(uploadIdx + 1);
-      const withoutVersion =
-        afterUpload[0] && /^v\d+$/.test(afterUpload[0])
+      const afterSig =
+        afterUpload.length > 0 && /^s--[A-Za-z0-9_-]+--$/.test(afterUpload[0])
           ? afterUpload.slice(1)
           : afterUpload;
+      const withoutVersion =
+        afterSig.length > 0 && /^v\d+$/.test(afterSig[0])
+          ? afterSig.slice(1)
+          : afterSig;
 
       if (withoutVersion.length === 0) return null;
 
@@ -272,39 +275,24 @@ export class LeadsService {
   }
 
   /**
-   * ✅ Gera uma URL assinada (curta, expira) para Cloudinary,
-   * mas o usuário NUNCA vê essa URL — o backend usa pra baixar e streamar.
+   * Gera URL de download privada via credenciais admin do Cloudinary.
+   * Funciona para qualquer asset (upload ou authenticated), expira em 5min.
+   * O backend usa pra baixar — o frontend nunca vê essa URL.
    */
-  private buildSignedCloudinaryDownloadUrl(input: {
+  private buildPrivateDownloadUrl(input: {
     publicId: string;
     ext: string;
     resourceType: 'image' | 'video' | 'raw';
   }): string {
     this.ensureCloudinaryConfigured();
-
-    const expiresAt = Math.floor(Date.now() / 1000) + 120; // 2 minutos
-
-    const hasKnownExt = input.ext && input.ext !== 'bin';
-
-    if (input.resourceType === 'raw') {
-      const publicIdFull = hasKnownExt
-        ? `${input.publicId}.${input.ext}`
-        : input.publicId;
-      return cloudinary.url(publicIdFull, {
-        resource_type: 'raw',
-        type: 'upload',
-        secure: true,
-        sign_url: true,
-      } as any);
-    }
-
-    return cloudinary.url(input.publicId, {
+    const expiresAt = Math.floor(Date.now() / 1000) + 300; // 5 minutos
+    const format = input.ext && input.ext !== 'bin' ? input.ext : '';
+    return (cloudinary.utils as any).private_download_url(input.publicId, format, {
       resource_type: input.resourceType,
       type: 'upload',
-      secure: true,
-      sign_url: true,
-      ...(hasKnownExt ? { format: input.ext } : {}),
-    } as any);
+      expires_at: expiresAt,
+      attachment: false,
+    });
   }
 
   async downloadEventMedia(
@@ -354,7 +342,7 @@ export class LeadsService {
 
         // URL assinada (fallback)
         try {
-          const signedUrl = this.buildSignedCloudinaryDownloadUrl({
+          const signedUrl = this.buildPrivateDownloadUrl({
             publicId: parsed.publicId,
             ext: parsed.ext,
             resourceType,
@@ -366,7 +354,7 @@ export class LeadsService {
         const altResourceTypes: Array<'image' | 'video' | 'raw'> = (['image', 'video', 'raw'] as const).filter((x) => x !== resourceType);
         for (const rt of altResourceTypes) {
           try {
-            const altSigned = this.buildSignedCloudinaryDownloadUrl({
+            const altSigned = this.buildPrivateDownloadUrl({
               publicId: parsed.publicId,
               ext: parsed.ext,
               resourceType: rt,
@@ -397,7 +385,7 @@ export class LeadsService {
     let lastErrorText = '';
     let res: any = null;
 
-    this.logger.debug(`downloadEventMedia: ${candidateUrls.length} candidatos para evento ${eventId}, media.url=${url?.slice(0, 80)}`);
+    this.logger.warn(`downloadEventMedia: ${candidateUrls.length} candidatos para evento ${eventId}, media.url=${url?.slice(0, 80)}`);
 
     for (const u of candidateUrls) {
       try {
