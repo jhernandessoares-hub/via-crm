@@ -31,7 +31,7 @@ import {
 import { apiLogout } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
 type Counts = {
   total: number;
@@ -217,10 +217,10 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
         <NavItem href="/dashboard" label="Dashboard" icon={LayoutDashboard} />
         <NavItem href="/meus-leads" label="Meus Leads" icon={User} badge={counts?.mine} />
-        {(role !== "AGENT" || can("pipeline", "view")) && (
+        {(role !== "AGENT" && role !== "PARTNER" || can("pipeline", "view")) && (
           <NavItem href="/pipeline" label="Todos os Leads" icon={Users} badge={counts?.total} />
         )}
-        {(role === "OWNER" || role === "MANAGER") && (
+        {(role === "OWNER" || role === "MANAGER" || can("duplicados", "view")) && (
           <NavItem href="/leads/duplicados" label="Duplicados" icon={GitMerge} />
         )}
 
@@ -308,8 +308,12 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
         {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
         <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
         <NavItem href="/calendar" label="Agenda" icon={Calendar} />
-        <NavItem href="/inbox-wa-light" label="Inbox WA Light" icon={MessageSquare} mode="prefix" />
-        {role === "OWNER" && <NavItem href="/campanhas" label="Campanhas" icon={Send} mode="prefix" />}
+        {(role !== "PARTNER" || can("inbox", "view")) && (
+          <NavItem href="/inbox-wa-light" label="Inbox WA Light" icon={MessageSquare} mode="prefix" />
+        )}
+        {(role === "OWNER" || can("campanhas", "view")) && (
+          <NavItem href="/campanhas" label="Campanhas" icon={Send} mode="prefix" />
+        )}
         {role === "OWNER" && <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />}
 
         {role === "OWNER" && (

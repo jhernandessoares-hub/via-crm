@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
 export type FullProfile = {
   id: string;

@@ -1170,6 +1170,7 @@ enum UserRole {
   OWNER
   MANAGER
   AGENT
+  PARTNER
 }
 
 enum LeadStatus {

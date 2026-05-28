@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { Bell, Sun, Moon, ChevronDown } from "lucide-react";
 import { apiLogout } from "@/lib/api";
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 const ROLE_LABEL: Record<Role, string> = {
   OWNER: "Proprietário",
   MANAGER: "Gerente",
   AGENT: "Corretor",
+  PARTNER: "Parceiro",
 };
 
 interface HeaderProps {

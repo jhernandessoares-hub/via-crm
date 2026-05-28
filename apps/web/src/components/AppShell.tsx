@@ -17,7 +17,7 @@ const WelcomeModal = dynamic(
   { ssr: false }
 );
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
 type TenantBranding = {
   brandPalette?: string | null;

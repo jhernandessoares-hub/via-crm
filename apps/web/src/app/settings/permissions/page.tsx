@@ -10,9 +10,10 @@ import { PERMISSION_MODULES, PermissionsConfig, PermissionRole } from "@/lib/per
 const ROLE_LABELS: Record<PermissionRole, string> = {
   manager: "Gerente",
   agent: "Corretor",
+  partner: "Parceiro",
 };
 
-const ROLES: PermissionRole[] = ["manager", "agent"];
+const ROLES: PermissionRole[] = ["manager", "agent", "partner"];
 
 export default function PermissionsPage() {
   const [config, setConfig] = useState<PermissionsConfig | null>(null);
@@ -85,7 +86,7 @@ export default function PermissionsPage() {
         {loading ? (
           <div className="text-sm text-[var(--shell-subtext)]">Carregando...</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {ROLES.map((role) => (
               <Card key={role} className="overflow-hidden">
                 <CardHeader>

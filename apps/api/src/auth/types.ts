@@ -13,7 +13,7 @@ export interface AuthenticatedUser {
   sub?: string;
   tenantId: string;
   email: string;
-  role: 'OWNER' | 'MANAGER' | 'AGENT';
+  role: 'OWNER' | 'MANAGER' | 'AGENT' | 'PARTNER';
   branchId?: string | null;
   nome?: string;
 }

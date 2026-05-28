@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
 type TeamMember = {
   id: string;
@@ -28,12 +28,14 @@ const ROLE_LABELS: Record<Role, string> = {
   OWNER: "Proprietário",
   MANAGER: "Gerente",
   AGENT: "Corretor",
+  PARTNER: "Parceiro",
 };
 
 const ROLE_COLORS: Record<Role, string> = {
   OWNER: "bg-purple-100 text-purple-700",
   MANAGER: "bg-blue-100 text-blue-700",
   AGENT: "bg-[var(--shell-hover)] text-[var(--shell-subtext)]",
+  PARTNER: "bg-amber-100 text-amber-700",
 };
 
 export default function EquipePage() {
@@ -399,6 +401,7 @@ export default function EquipePage() {
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}>
                     <option value="AGENT">Corretor</option>
                     <option value="MANAGER">Gerente</option>
+                    <option value="PARTNER">Parceiro</option>
                   </select>
                 </div>
                 <div>
@@ -457,6 +460,7 @@ export default function EquipePage() {
                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
                     <option value="AGENT">Corretor</option>
                     <option value="MANAGER">Gerente</option>
+                    <option value="PARTNER">Parceiro</option>
                   </select>
                 </div>
                 <div>

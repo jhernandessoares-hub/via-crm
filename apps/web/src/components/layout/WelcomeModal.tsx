@@ -19,12 +19,13 @@ import {
 import { apiFetch } from "@/lib/api";
 import type { FullProfile } from "@/components/layout/MeusDadosModal";
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
 const ROLE_LABEL: Record<Role, string> = {
   OWNER: "Proprietário",
   MANAGER: "Gerente",
   AGENT: "Corretor",
+  PARTNER: "Parceiro",
 };
 
 const ROLE_COLOR: Record<Role, string> = {
@@ -32,6 +33,7 @@ const ROLE_COLOR: Record<Role, string> = {
     "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   MANAGER: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   AGENT: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  PARTNER: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
 };
 
 type Card = { icon: React.ReactNode; title: string; description: string };
@@ -98,8 +100,22 @@ function getCards(role: Role): Card[] {
     },
   ];
 
+  const partner: Card[] = [
+    {
+      icon: <ClipboardList className="w-6 h-6 text-blue-600" />,
+      title: "Meus Leads",
+      description: "Acompanhe os contatos que você indicou",
+    },
+    {
+      icon: <Home className="w-6 h-6 text-orange-600" />,
+      title: "Catálogo de Imóveis",
+      description: "Consulte o portfólio completo de produtos",
+    },
+  ];
+
   if (role === "AGENT") return agent;
   if (role === "MANAGER") return manager;
+  if (role === "PARTNER") return partner;
   return owner;
 }
 

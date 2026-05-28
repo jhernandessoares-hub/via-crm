@@ -82,7 +82,7 @@ export class LeadsController {
 
   @Get('duplicates')
   async findDuplicates(@Req() req: any) {
-    return this.leadsService.findDuplicates(req.user.tenantId);
+    return this.leadsService.findDuplicates(req.user);
   }
 
   @Get('search')

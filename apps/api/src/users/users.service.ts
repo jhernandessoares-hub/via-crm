@@ -75,7 +75,7 @@ export class UsersService {
       throw new LimitExceededException('maxUsers', activeUsers, maxUsers);
     }
 
-    const validRoles = ['MANAGER', 'AGENT'];
+    const validRoles = ['MANAGER', 'AGENT', 'PARTNER'];
     const role = (data.role && validRoles.includes(data.role)) ? data.role : 'AGENT';
 
     const senhaHash = await bcrypt.hash(data.senha, 10);
@@ -118,10 +118,10 @@ export class UsersService {
       throw new ForbiddenException('Não é permitido alterar seu próprio papel ou status por esta rota.');
     }
 
-    // OWNER não pode virar OWNER via esta rota — role se limita a MANAGER/AGENT
-    const validRoles = ['MANAGER', 'AGENT'];
+    // OWNER não pode virar OWNER via esta rota — role se limita a MANAGER/AGENT/PARTNER
+    const validRoles = ['MANAGER', 'AGENT', 'PARTNER'];
     if (data.role && !validRoles.includes(data.role)) {
-      throw new BadRequestException('Role inválido. Use MANAGER ou AGENT.');
+      throw new BadRequestException('Role inválido. Use MANAGER, AGENT ou PARTNER.');
     }
 
     const updateData: any = {};
