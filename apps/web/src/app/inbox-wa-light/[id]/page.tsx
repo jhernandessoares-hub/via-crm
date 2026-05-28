@@ -917,7 +917,7 @@ export default function InboxWALightPage() {
     const q = search.trim().toLowerCase();
     return conversations.filter((conversation) => {
       if (filter === "unread" && conversation.naoLidos <= 0) return false;
-      if (filter === "unanswered" && conversation.ultimaMensagemDirecao !== "in") return false;
+      if (filter === "unanswered" && !(isTrackedConversation(conversation) && !conversation.leadId)) return false;
       if (filter === "tracked" && !isTrackedConversation(conversation)) return false;
       if (filter === "leads" && !conversation.leadId) return false;
       if (!q) return true;
@@ -933,7 +933,7 @@ export default function InboxWALightPage() {
   );
 
   const unansweredTotal = useMemo(
-    () => conversations.filter((c) => c.ultimaMensagemDirecao === "in").length,
+    () => conversations.filter((c) => isTrackedConversation(c) && !c.leadId).length,
     [conversations],
   );
 
