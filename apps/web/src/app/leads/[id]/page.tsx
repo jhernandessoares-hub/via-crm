@@ -1392,10 +1392,11 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
 
 function DevMediaModal({
   devId, devNome, onClose,
-  prepareAttachmentFromUrl, insertIntoChat, handleCopyLink,
+  prepareAttachmentFromUrl, sendAttachmentFile, insertIntoChat, handleCopyLink,
 }: {
   devId: string; devNome: string; onClose: () => void;
   prepareAttachmentFromUrl: (kind: "image" | "video" | "document", url: string, name: string) => Promise<void>;
+  sendAttachmentFile: (file: File) => Promise<{ ok: true; data: any } | { ok: false; error: string }>;
   insertIntoChat: (s: string) => void;
   handleCopyLink: (url: string) => Promise<void>;
 }) {
@@ -1405,9 +1406,43 @@ function DevMediaModal({
   const [obra, setObra] = useState<DevObraUpdate[]>([]);
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState<{ items: string[]; idx: number } | null>(null);
+  const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+
+  function toggleSelect(url: string) {
+    setSelectedUrls(prev => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url); else next.add(url);
+      return next;
+    });
+  }
+
+  async function sendSelected() {
+    if (selectedUrls.size === 0 || bulkSending) return;
+    setBulkSending(true);
+    let sent = 0, failed = 0;
+    for (const url of selectedUrls) {
+      try {
+        const ext = url.match(/\.(pdf|png|gif|webp)$/i)?.[1] ?? "jpg";
+        const mime = ext === "pdf" ? "application/pdf" : `image/${ext === "jpg" ? "jpeg" : ext}`;
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const file = new File([blob], `midia-${++sent}.${ext}`, { type: blob.type || mime });
+        const r = await sendAttachmentFile(file);
+        if (!r.ok) failed++;
+      } catch { failed++; }
+    }
+    setBulkSending(false);
+    setSelectedUrls(new Set());
+    const msg = failed > 0 ? `${sent - failed} enviada(s), ${failed} falhou` : `${sent} foto(s) enviada(s)!`;
+    setBulkNotice(msg);
+    setTimeout(() => setBulkNotice(null), 3000);
+  }
 
   useEffect(() => {
     setLoading(true);
+    setSelectedUrls(new Set());
     if (tab === "OBRA") {
       listObraUpdates(devId).then(r => { setObra(r); setLoading(false); }).catch(() => setLoading(false));
     } else {
@@ -1476,53 +1511,89 @@ function DevMediaModal({
                   Nenhum arquivo nesta categoria.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {media.map((item, idx) => {
-                    const isImage = tab === "FOTO_COMERCIAL";
-                    const allUrls = media.map(m => m.url);
-                    return (
-                      <div key={item.id} className="group relative rounded-xl border border-[var(--shell-card-border)] overflow-hidden bg-[var(--shell-bg)]">
-                        {isImage ? (
-                          <button type="button" className="w-full" onClick={() => setLightbox({ items: allUrls, idx })}>
-                            <img src={item.url} alt={item.titulo ?? ""} className="w-full h-36 object-cover hover:opacity-90 transition-opacity" />
-                          </button>
-                        ) : (
-                          <div className="flex items-center justify-center h-36 text-4xl">📄</div>
-                        )}
-                        {item.titulo && (
-                          <div className="px-2 py-1 text-[11px] text-[var(--shell-text)] truncate">{item.titulo}</div>
-                        )}
-                        <div className="flex gap-1 p-2 border-t border-[var(--shell-card-border)]">
+                <>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-xs text-[var(--shell-subtext)]">
+                      Clique na caixa para selecionar · Clique na foto para ampliar
+                    </span>
+                    {selectedUrls.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUrls(new Set())}
+                        className="text-xs text-[var(--shell-subtext)] underline"
+                      >
+                        Limpar seleção
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {media.map((item, idx) => {
+                      const isImage = tab === "FOTO_COMERCIAL";
+                      const allUrls = media.map(m => m.url);
+                      const isSelected = selectedUrls.has(item.url);
+                      return (
+                        <div
+                          key={item.id}
+                          className={`relative rounded-xl border overflow-hidden bg-[var(--shell-bg)] transition-all ${isSelected ? "border-[var(--brand-accent)] ring-2 ring-[var(--brand-accent)]/30" : "border-[var(--shell-card-border)]"}`}
+                        >
+                          {/* Checkbox */}
                           <button
                             type="button"
-                            onClick={() => prepareAttachmentFromUrl(isImage ? "image" : "document", item.url, item.titulo || "arquivo")}
-                            className="flex-1 rounded px-2 py-1 text-[10px] font-semibold text-white transition-colors"
-                            style={{ background: "var(--brand-accent)" }}
-                            title="Preparar para envio ao lead"
+                            onClick={() => toggleSelect(item.url)}
+                            className="absolute top-2 left-2 z-10 flex h-5 w-5 items-center justify-center rounded border-2 transition-colors shadow-sm"
+                            style={{
+                              backgroundColor: isSelected ? "var(--brand-accent)" : "rgba(255,255,255,0.9)",
+                              borderColor: isSelected ? "var(--brand-accent)" : "#d1d5db",
+                            }}
                           >
-                            Enviar
+                            {isSelected && <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="currentColor"><path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => insertIntoChat(item.url)}
-                            className="flex-1 rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
-                            title="Inserir link no chat"
-                          >
-                            Link
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyLink(item.url)}
-                            className="rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
-                            title="Copiar link"
-                          >
-                            📋
-                          </button>
+
+                          {isImage ? (
+                            <button type="button" className="w-full" onClick={() => setLightbox({ items: allUrls, idx })}>
+                              <img src={item.url} alt={item.titulo ?? ""} className="w-full h-36 object-cover hover:opacity-90 transition-opacity" />
+                            </button>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-36 gap-2">
+                              <span className="text-4xl">📄</span>
+                              <a href={item.url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 underline">Abrir</a>
+                            </div>
+                          )}
+                          {item.titulo && (
+                            <div className="px-2 py-1 text-[11px] text-[var(--shell-text)] truncate">{item.titulo}</div>
+                          )}
+                          <div className="flex gap-1 p-2 border-t border-[var(--shell-card-border)]">
+                            <button
+                              type="button"
+                              onClick={() => prepareAttachmentFromUrl(isImage ? "image" : "document", item.url, item.titulo || "arquivo")}
+                              className="flex-1 rounded px-2 py-1 text-[10px] font-semibold text-white transition-colors"
+                              style={{ background: "var(--brand-accent)" }}
+                              title="Preparar 1 arquivo para envio"
+                            >
+                              Enviar 1
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => insertIntoChat(item.url)}
+                              className="flex-1 rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
+                              title="Inserir link no chat"
+                            >
+                              Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLink(item.url)}
+                              className="rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
+                              title="Copiar link"
+                            >
+                              📋
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </>
           )}
@@ -1534,66 +1605,120 @@ function DevMediaModal({
                   Nenhuma atualização de obra cadastrada.
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {obra.map(update => {
-                    const allFotoUrls = update.fotos.map(f => f.url);
-                    return (
-                      <div key={update.id} className="rounded-xl border border-[var(--shell-card-border)] p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <div className="text-sm font-semibold text-[var(--shell-text)]">
-                              {update.titulo ?? new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
+                <>
+                  {selectedUrls.size > 0 && (
+                    <div className="mb-3 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUrls(new Set())}
+                        className="text-xs text-[var(--shell-subtext)] underline"
+                      >
+                        Limpar seleção
+                      </button>
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    {obra.map(update => {
+                      const allFotoUrls = update.fotos.map(f => f.url);
+                      return (
+                        <div key={update.id} className="rounded-xl border border-[var(--shell-card-border)] p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <div className="text-sm font-semibold text-[var(--shell-text)]">
+                                {update.titulo ?? new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
+                              </div>
+                              <div className="text-xs text-[var(--shell-subtext)]">
+                                {new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
+                              </div>
+                              {update.observacoes && (
+                                <div className="mt-1 text-xs text-[var(--shell-text)] leading-relaxed">{update.observacoes}</div>
+                              )}
                             </div>
-                            <div className="text-xs text-[var(--shell-subtext)]">
-                              {new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
-                            </div>
-                            {update.observacoes && (
-                              <div className="mt-1 text-xs text-[var(--shell-text)] leading-relaxed">{update.observacoes}</div>
+                            {update.percentualAvanco != null && (
+                              <div className="flex flex-col items-center gap-1 ml-4">
+                                <div className="text-lg font-bold text-[var(--brand-accent)]">{update.percentualAvanco}%</div>
+                                <div className="text-[10px] text-[var(--shell-subtext)]">avanço</div>
+                              </div>
                             )}
                           </div>
-                          {update.percentualAvanco != null && (
-                            <div className="flex flex-col items-center gap-1 ml-4">
-                              <div className="text-lg font-bold text-[var(--brand-accent)]">{update.percentualAvanco}%</div>
-                              <div className="text-[10px] text-[var(--shell-subtext)]">avanco</div>
+                          {update.fotos.length > 0 && (
+                            <div className="grid grid-cols-3 gap-2">
+                              {update.fotos.map((foto, fIdx) => {
+                                const isSelected = selectedUrls.has(foto.url);
+                                return (
+                                  <div
+                                    key={foto.id}
+                                    className={`relative rounded-lg overflow-hidden border transition-all ${isSelected ? "border-[var(--brand-accent)] ring-2 ring-[var(--brand-accent)]/30" : "border-[var(--shell-card-border)]"}`}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleSelect(foto.url)}
+                                      className="absolute top-1.5 left-1.5 z-10 flex h-5 w-5 items-center justify-center rounded border-2 shadow-sm transition-colors"
+                                      style={{
+                                        backgroundColor: isSelected ? "var(--brand-accent)" : "rgba(255,255,255,0.9)",
+                                        borderColor: isSelected ? "var(--brand-accent)" : "#d1d5db",
+                                      }}
+                                    >
+                                      {isSelected && <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="currentColor"><path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>}
+                                    </button>
+                                    <button type="button" className="w-full" onClick={() => setLightbox({ items: allFotoUrls, idx: fIdx })}>
+                                      <img src={foto.url} alt={foto.legenda ?? ""} className="w-full h-24 object-cover hover:opacity-90 transition-opacity" />
+                                    </button>
+                                    <div className="flex gap-1 p-1 bg-[var(--shell-bg)]">
+                                      <button
+                                        type="button"
+                                        onClick={() => prepareAttachmentFromUrl("image", foto.url, foto.legenda || "foto-obra")}
+                                        className="flex-1 rounded px-1 py-0.5 text-[10px] font-semibold text-white"
+                                        style={{ background: "var(--brand-accent)" }}
+                                      >
+                                        Enviar 1
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyLink(foto.url)}
+                                        className="rounded px-1 py-0.5 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)]"
+                                      >
+                                        📋
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
-                        {update.fotos.length > 0 && (
-                          <div className="grid grid-cols-3 gap-2">
-                            {update.fotos.map((foto, fIdx) => (
-                              <div key={foto.id} className="rounded-lg overflow-hidden border border-[var(--shell-card-border)] group">
-                                <button type="button" className="w-full" onClick={() => setLightbox({ items: allFotoUrls, idx: fIdx })}>
-                                  <img src={foto.url} alt={foto.legenda ?? ""} className="w-full h-24 object-cover hover:opacity-90 transition-opacity" />
-                                </button>
-                                <div className="flex gap-1 p-1 bg-[var(--shell-bg)]">
-                                  <button
-                                    type="button"
-                                    onClick={() => prepareAttachmentFromUrl("image", foto.url, foto.legenda || "foto-obra")}
-                                    className="flex-1 rounded px-1 py-0.5 text-[10px] font-semibold text-white"
-                                    style={{ background: "var(--brand-accent)" }}
-                                  >
-                                    Enviar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopyLink(foto.url)}
-                                    className="rounded px-1 py-0.5 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)]"
-                                  >
-                                    📋
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </>
           )}
         </div>
+
+        {/* Footer de envio em lote */}
+        {(selectedUrls.size > 0 || bulkNotice) && (
+          <div className="sticky bottom-0 border-t border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-6 py-4 flex items-center gap-3 rounded-b-2xl">
+            {bulkNotice ? (
+              <span className="flex-1 text-sm font-semibold text-green-600">{bulkNotice}</span>
+            ) : (
+              <>
+                <span className="flex-1 text-sm text-[var(--shell-text)]">
+                  <span className="font-bold">{selectedUrls.size}</span> arquivo(s) selecionado(s)
+                </span>
+                <button
+                  type="button"
+                  disabled={bulkSending}
+                  onClick={sendSelected}
+                  className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                  style={{ background: "var(--brand-accent)" }}
+                >
+                  {bulkSending ? "Enviando..." : `Enviar ${selectedUrls.size} selecionada(s)`}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Lightbox */}
@@ -4061,10 +4186,7 @@ function discardAiSuggestion() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          const dev = developments.find(d => d.id === selectedDevId);
-                          setDevInteresseConfirm({ devId: selectedDevId, devNome: dev?.nome ?? "Empreendimento", action: "espelho" });
-                        }}
+                        onClick={() => setEspelhoModal({ devId: selectedDevId })}
                         className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors"
                         style={{ background: "var(--brand-accent)" }}
                       >
@@ -4074,7 +4196,13 @@ function discardAiSuggestion() {
                         type="button"
                         onClick={() => {
                           const dev = developments.find(d => d.id === selectedDevId);
-                          setDevInteresseConfirm({ devId: selectedDevId, devNome: dev?.nome ?? "Empreendimento", action: "midia" });
+                          const devNome = dev?.nome ?? "Empreendimento";
+                          // Só pede confirmação se for um empreendimento diferente do já salvo
+                          if (lead?.empreendimentoInteresseId === selectedDevId) {
+                            setDevMediaModal({ devId: selectedDevId, devNome });
+                          } else {
+                            setDevInteresseConfirm({ devId: selectedDevId, devNome, action: "midia" });
+                          }
                         }}
                         className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors"
                         style={{ background: "#6366f1" }}
@@ -5378,6 +5506,7 @@ function discardAiSuggestion() {
           devNome={devMediaModal.devNome}
           onClose={() => setDevMediaModal(null)}
           prepareAttachmentFromUrl={prepareAttachmentFromUrl}
+          sendAttachmentFile={sendAttachmentFile}
           insertIntoChat={insertIntoChat}
           handleCopyLink={handleCopyLink}
         />
