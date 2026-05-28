@@ -1392,11 +1392,11 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
 
 function DevMediaModal({
   devId, devNome, onClose,
-  prepareAttachmentFromUrl, sendAttachmentFile, insertIntoChat, handleCopyLink,
+  prepareAttachmentFromUrl, onSendMultiple, insertIntoChat, handleCopyLink,
 }: {
   devId: string; devNome: string; onClose: () => void;
   prepareAttachmentFromUrl: (kind: "image" | "video" | "document", url: string, name: string) => Promise<void>;
-  sendAttachmentFile: (file: File) => Promise<{ ok: true; data: any } | { ok: false; error: string }>;
+  onSendMultiple: (urls: string[], kind: "image" | "document") => Promise<void>;
   insertIntoChat: (s: string) => void;
   handleCopyLink: (url: string) => Promise<void>;
 }) {
@@ -1408,7 +1408,7 @@ function DevMediaModal({
   const [lightbox, setLightbox] = useState<{ items: string[]; idx: number } | null>(null);
   const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
   const [bulkSending, setBulkSending] = useState(false);
-  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+  const [bulkNotice] = useState<string | null>(null);
 
   function toggleSelect(url: string) {
     setSelectedUrls(prev => {
@@ -1421,23 +1421,10 @@ function DevMediaModal({
   async function sendSelected() {
     if (selectedUrls.size === 0 || bulkSending) return;
     setBulkSending(true);
-    let sent = 0, failed = 0;
-    for (const url of selectedUrls) {
-      try {
-        const ext = url.match(/\.(pdf|png|gif|webp)$/i)?.[1] ?? "jpg";
-        const mime = ext === "pdf" ? "application/pdf" : `image/${ext === "jpg" ? "jpeg" : ext}`;
-        const res = await fetch(url);
-        const blob = await res.blob();
-        const file = new File([blob], `midia-${++sent}.${ext}`, { type: blob.type || mime });
-        const r = await sendAttachmentFile(file);
-        if (!r.ok) failed++;
-      } catch { failed++; }
-    }
+    const kind: "image" | "document" = (tab === "FOTO_COMERCIAL" || tab === "OBRA") ? "image" : "document";
+    await onSendMultiple(Array.from(selectedUrls), kind);
+    // onSendMultiple fecha o modal (setDevMediaModal(null)) — não precisa de mais ação aqui
     setBulkSending(false);
-    setSelectedUrls(new Set());
-    const msg = failed > 0 ? `${sent - failed} enviada(s), ${failed} falhou` : `${sent} foto(s) enviada(s)!`;
-    setBulkNotice(msg);
-    setTimeout(() => setBulkNotice(null), 3000);
   }
 
   useEffect(() => {
@@ -1883,6 +1870,7 @@ export default function LeadDetailChatPage() {
 
   const filePickerRef = useRef<HTMLInputElement | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [attachQueue, setAttachQueue] = useState<File[]>([]);
   const [attachSending, setAttachSending] = useState(false);
   const [attachErr, setAttachErr] = useState<string | null>(null);
   const [attachPreviewUrl, setAttachPreviewUrl] = useState<string | null>(null);
@@ -3020,6 +3008,27 @@ function discardAiSuggestion() {
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
+  }
+
+  async function queueMediaSend(urls: string[], kind: "image" | "document") {
+    const ext = kind === "image" ? "jpg" : "pdf";
+    const mime = kind === "image" ? "image/jpeg" : "application/pdf";
+    const files: File[] = [];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        files.push(new File([blob], `midia-${files.length + 1}.${ext}`, { type: blob.type || mime }));
+      } catch { /* skip */ }
+    }
+    if (files.length === 0) return;
+    setDevMediaModal(null);
+    setAttachFile(files[0]);
+    setAttachQueue(files.slice(1));
+    const n = files.length;
+    setProductsNotice(n === 1 ? "Foto pronta. Clique em \"Enviar anexo\" no chat." : `${n} fotos prontas. Clique em "Enviar anexo" para enviar uma por uma.`);
+    setTimeout(() => setProductsNotice(null), 4000);
+    requestAnimationFrame(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); });
   }
 
   function pushOptimisticOutgoingMedia(_file: File) {
@@ -4184,14 +4193,21 @@ function discardAiSuggestion() {
                   </select>
                   {selectedDevId && (
                     <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEspelhoModal({ devId: selectedDevId })}
-                        className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors"
-                        style={{ background: "var(--brand-accent)" }}
-                      >
-                        🏗️ Abrir Espelho
-                      </button>
+                      {(() => {
+                        const canOpenEspelho = lead?.stageGroup === "ESCOLHA_UNIDADE" || user?.role === "OWNER";
+                        return (
+                          <button
+                            type="button"
+                            disabled={!canOpenEspelho}
+                            onClick={() => setEspelhoModal({ devId: selectedDevId })}
+                            title={canOpenEspelho ? undefined : "Disponível apenas na etapa Escolha da Unidade"}
+                            className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ background: "var(--brand-accent)" }}
+                          >
+                            🏗️ Abrir Espelho
+                          </button>
+                        );
+                      })()}
                       <button
                         type="button"
                         onClick={() => {
@@ -4926,6 +4942,18 @@ function discardAiSuggestion() {
                           } catch {}
                           setHasNewInbound(false);
                           await loadEvents({ silent: true });
+                          // Drena fila de multi-envio
+                          setAttachQueue(prev => {
+                            if (prev.length === 0) return prev;
+                            const [next, ...rest] = prev;
+                            setAttachFile(next);
+                            const notice = rest.length === 0
+                              ? "Último arquivo pronto. Clique em \"Enviar anexo\"."
+                              : `Mais ${rest.length + 1} arquivo(s). Próximo pronto para enviar.`;
+                            setProductsNotice(notice);
+                            setTimeout(() => setProductsNotice(null), 3000);
+                            return rest;
+                          });
                         }
 
                         setAttachSending(false);
@@ -5506,7 +5534,7 @@ function discardAiSuggestion() {
           devNome={devMediaModal.devNome}
           onClose={() => setDevMediaModal(null)}
           prepareAttachmentFromUrl={prepareAttachmentFromUrl}
-          sendAttachmentFile={sendAttachmentFile}
+          onSendMultiple={queueMediaSend}
           insertIntoChat={insertIntoChat}
           handleCopyLink={handleCopyLink}
         />
