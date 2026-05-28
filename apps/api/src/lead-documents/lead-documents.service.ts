@@ -164,7 +164,6 @@ export class LeadDocumentsService {
     let fetchUrl: string;
 
     if (doc.publicId) {
-      // 🔒 Documento privado (authenticated) — URL assinada válida por 2 minutos
       const isImage = mimeType.startsWith('image/');
       const resourceType = isImage ? 'image' : 'raw';
       const ext = rawName.includes('.') ? rawName.split('.').pop()! : (mimeType.split('/')[1] || 'bin');
@@ -839,17 +838,16 @@ Objetivo:
 
     const expiresAt = Math.floor(Date.now() / 1000) + 120; // 2 minutos
 
-    // ✅ Para PDFs e outros RAW protegidos
     if (input.resourceType === 'raw') {
-      // @ts-ignore
-      return cloudinary.utils.private_download_url(input.publicId, input.ext, {
+      return cloudinary.url(`${input.publicId}.${input.ext}`, {
         resource_type: 'raw',
         type: 'authenticated',
+        secure: true,
+        sign_url: true,
         expires_at: expiresAt,
-      });
+      } as any);
     }
 
-    // ✅ Para image e video
     return cloudinary.url(input.publicId, {
       resource_type: input.resourceType,
       type: 'authenticated',
