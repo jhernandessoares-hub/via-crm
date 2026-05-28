@@ -876,19 +876,11 @@ function MediaBlock({
         kind === "document";
 
       if (looksPdf) {
-        try {
-          const blob0 = await authFetchBlob(downloadUrl);
-          const isPdfBlob = String((blob0 as any)?.type || "").toLowerCase().indexOf("pdf") >= 0;
-          const blob = isPdfBlob ? blob0 : new Blob([blob0], { type: "application/pdf" });
-          const objectUrl = URL.createObjectURL(blob);
-          onOpenModal("document", filename, objectUrl, "application/pdf");
-        } catch (fetchErr: any) {
-          setLoadErr(fetchErr?.message || "Falha ao baixar arquivo.");
-          // Fallback: abre o modal com a URL pública direta
-          if (publicUrl) {
-            onOpenModal("document", filename, publicUrl, m?.mimeType || "application/pdf");
-          }
-        }
+        const blob0 = await authFetchBlob(downloadUrl);
+        const isPdfBlob = String((blob0 as any)?.type || "").toLowerCase().indexOf("pdf") >= 0;
+        const blob = isPdfBlob ? blob0 : new Blob([blob0], { type: "application/pdf" });
+        const objectUrl = URL.createObjectURL(blob);
+        onOpenModal("document", filename, objectUrl, "application/pdf");
         return;
       }
 

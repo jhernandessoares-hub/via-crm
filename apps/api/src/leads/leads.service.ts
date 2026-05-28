@@ -282,21 +282,19 @@ export class LeadsService {
 
     const expiresAt = Math.floor(Date.now() / 1000) + 120; // 2 minutos
 
-    // Para raw (PDFs, docs): recurso é público (type='upload'), gera URL assinada public
     if (input.resourceType === 'raw') {
       return cloudinary.url(`${input.publicId}.${input.ext}`, {
         resource_type: 'raw',
-        type: 'upload',
+        type: 'authenticated',
         secure: true,
         sign_url: true,
         expires_at: expiresAt,
       } as any);
     }
 
-    // Para image e video
     return cloudinary.url(input.publicId, {
       resource_type: input.resourceType,
-      type: 'upload',
+      type: 'authenticated',
       secure: true,
       sign_url: true,
       format: input.ext,
