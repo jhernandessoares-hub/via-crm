@@ -727,6 +727,10 @@ export class LeadsService {
 
     const buffer = await this.getFileBuffer(file);
 
+    if (buffer.length > 50 * 1024 * 1024) {
+      throw new BadRequestException('Arquivo muito grande. O tamanho máximo permitido é 50 MB.');
+    }
+
     // 2) decide tipo de mensagem (para saber se é "document")
     const isImage = mimetypeRaw.startsWith('image/');
     const isVideo = mimetypeRaw.startsWith('video/');
@@ -764,12 +768,13 @@ export class LeadsService {
       const sessionId = lead.conversaSessionId;
       const to = lead.telefone!;
       try {
+        // Passa o buffer diretamente — Baileys não precisa baixar do Cloudinary
         if (isImage) {
-          await this.unofficialService.sendImage(sessionId, to, cloudUrl);
+          await this.unofficialService.sendImage(sessionId, to, buffer);
         } else if (isVideo) {
-          await this.unofficialService.sendVideo(sessionId, to, cloudUrl);
+          await this.unofficialService.sendVideo(sessionId, to, buffer);
         } else {
-          await this.unofficialService.sendDocument(sessionId, to, cloudUrl, originalname, mimetype || 'application/octet-stream');
+          await this.unofficialService.sendDocument(sessionId, to, buffer, originalname, mimetype || 'application/octet-stream');
         }
       } catch (err: any) {
         await this.prisma.leadEvent.create({

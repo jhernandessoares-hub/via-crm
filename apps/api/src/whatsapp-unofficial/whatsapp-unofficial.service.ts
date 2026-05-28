@@ -417,32 +417,35 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     await socket.sendMessage(jid, { text });
   }
 
-  async sendImage(sessionId: string, to: string, imageUrl: string, caption?: string): Promise<void> {
+  async sendImage(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveJid(socket, to);
+    const image: any = Buffer.isBuffer(content) ? content : { url: content };
     await socket.sendMessage(jid, {
-      image: { url: imageUrl },
+      image,
       caption: caption ?? undefined,
     });
   }
 
-  async sendVideo(sessionId: string, to: string, videoUrl: string, caption?: string): Promise<void> {
+  async sendVideo(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = this.toJid(to);
+    const video: any = Buffer.isBuffer(content) ? content : { url: content };
     await socket.sendMessage(jid, {
-      video: { url: videoUrl },
+      video,
       caption: caption ?? undefined,
     });
   }
 
-  async sendDocument(sessionId: string, to: string, docUrl: string, filename: string, mimetype?: string): Promise<void> {
+  async sendDocument(sessionId: string, to: string, content: string | Buffer, filename: string, mimetype?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveJid(socket, to);
+    const document: any = Buffer.isBuffer(content) ? content : { url: content };
     await socket.sendMessage(jid, {
-      document: { url: docUrl },
+      document,
       fileName: filename,
       mimetype: mimetype ?? 'application/octet-stream',
     });

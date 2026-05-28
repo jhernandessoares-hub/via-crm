@@ -371,7 +371,7 @@ export class LeadsController {
    * multipart/form-data (field: file)
    */
   @Post(':id/send-whatsapp-attachment')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
   async sendWhatsappAttachment(
     @Req() req: any,
     @Param('id') id: string,
