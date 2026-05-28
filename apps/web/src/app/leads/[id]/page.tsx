@@ -876,14 +876,19 @@ function MediaBlock({
         kind === "document";
 
       if (looksPdf) {
-        const blob0 = await authFetchBlob(downloadUrl);
-
-        // —S& Se o backend não manda Content-Type correto, o iframe fica branco.
-        const isPdfBlob = String((blob0 as any)?.type || "").toLowerCase().indexOf("pdf") >= 0;
-        const blob = isPdfBlob ? blob0 : new Blob([blob0], { type: "application/pdf" });
-
-        const objectUrl = URL.createObjectURL(blob);
-        onOpenModal("document", filename, objectUrl, "application/pdf");
+        try {
+          const blob0 = await authFetchBlob(downloadUrl);
+          const isPdfBlob = String((blob0 as any)?.type || "").toLowerCase().indexOf("pdf") >= 0;
+          const blob = isPdfBlob ? blob0 : new Blob([blob0], { type: "application/pdf" });
+          const objectUrl = URL.createObjectURL(blob);
+          onOpenModal("document", filename, objectUrl, "application/pdf");
+        } catch (fetchErr: any) {
+          setLoadErr(fetchErr?.message || "Falha ao baixar arquivo.");
+          // Fallback: abre o modal com a URL pública direta
+          if (publicUrl) {
+            onOpenModal("document", filename, publicUrl, m?.mimeType || "application/pdf");
+          }
+        }
         return;
       }
 
@@ -900,6 +905,16 @@ function MediaBlock({
       await downloadWithAuth(downloadUrl, filename);
     } catch (e: any) {
       setLoadErr(e?.message || "Falha ao baixar arquivo.");
+      // Fallback: download direto via URL pública
+      if (publicUrl) {
+        const a = document.createElement("a");
+        a.href = publicUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setLoadErr(null);
+      }
     }
   };
 
@@ -1093,6 +1108,9 @@ function MediaBlock({
         </button>
       </div>
 
+      {loadErr && (
+        <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{loadErr}</div>
+      )}
       <PreviewControl />
     </div>
   );
