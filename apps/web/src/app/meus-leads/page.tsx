@@ -35,6 +35,7 @@ type Lead = {
   assignedUserName?: string | null;
   cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
+  conversaAberta?: boolean;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -152,7 +153,11 @@ export default function MeusLeadsPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const interval = setInterval(() => load(), 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const stageMap = useMemo(() => {
     const m: Record<string, { name: string; group: string | null }> = {};
@@ -257,6 +262,9 @@ export default function MeusLeadsPage() {
   }, [filtered, stageMap, groups]);
 
   useEffect(() => { setVisibleCount(loadMoreN); }, [q, leads, colFilters, numRange]);
+
+  const pendingLeads = useMemo(() => filtered.filter((l) => l.conversaAberta), [filtered]);
+  const normalLeads  = useMemo(() => filtered.filter((l) => !l.conversaAberta), [filtered]);
 
   const activeFilterCount =
     (colFilters.etapa ? 1 : 0) + (colFilters.status ? 1 : 0) + (colFilters.origem ? 1 : 0) +
@@ -403,31 +411,36 @@ export default function MeusLeadsPage() {
                   <div className="max-h-[72vh] overflow-y-auto space-y-2 p-2">
                     {items.length === 0 ? (
                       <p className="p-2 text-xs text-[var(--shell-subtext)]">Nenhum lead</p>
-                    ) : items.map((l) => {
-                      const stageName = getStageName(l);
-                      const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                      const st = formatStatus(l.status);
-                      return (
-                        <Link key={l.id} href={`/leads/${l.id}`} className="block rounded-lg border p-3 transition-colors"
-                          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--shell-hover)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--shell-bg)")}>
-                          {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
-                          <div className="text-sm font-medium text-[var(--shell-text)] truncate">{displayName(l)}</div>
-                          <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
-                            <span className="truncate">{l.telefone || l.whatsapp || "—"}</span>
-                            <span className="opacity-50">·</span>
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${GROUP_BADGE_MAP[g.key]}`}>{stageName}</span>
-                          </div>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
-                            {!isGroupedPipeline && st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
-                            {l.perfilImovel && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>{l.perfilImovel}</span>}
-                            {l.assignedUserName && <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span>}
-                          </div>
-                        </Link>
-                      );
-                    })}
+                    ) : (() => {
+                      const pendingInStage = items.filter((l) => l.conversaAberta);
+                      const normalInStage  = items.filter((l) => !l.conversaAberta);
+                      return [...pendingInStage, ...normalInStage].map((l) => {
+                        const stageName = getStageName(l);
+                        const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                        const st = formatStatus(l.status);
+                        return (
+                          <Link key={l.id} href={`/leads/${l.id}`}
+                            className={`block rounded-lg border p-3 transition-colors ${l.conversaAberta ? "border-l-4 border-l-amber-400 bg-amber-50" : ""}`}
+                            style={{ borderColor: l.conversaAberta ? undefined : "var(--shell-card-border)", background: l.conversaAberta ? undefined : "var(--shell-bg)" }}
+                            onMouseEnter={(e) => { if (!l.conversaAberta) e.currentTarget.style.background = "var(--shell-hover)"; }}
+                            onMouseLeave={(e) => { if (!l.conversaAberta) e.currentTarget.style.background = "var(--shell-bg)"; }}>
+                            {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
+                            <div className="text-sm font-medium text-[var(--shell-text)] truncate">{displayName(l)}</div>
+                            <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
+                              <span className="truncate">{l.telefone || l.whatsapp || "—"}</span>
+                              <span className="opacity-50">·</span>
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${GROUP_BADGE_MAP[g.key]}`}>{stageName}</span>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
+                              {!isGroupedPipeline && st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
+                              {l.perfilImovel && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>{l.perfilImovel}</span>}
+                              {l.assignedUserName && <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span>}
+                            </div>
+                          </Link>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               );
@@ -484,38 +497,90 @@ export default function MeusLeadsPage() {
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead atribuído a você.</div>
           ) : (
             <>
-              {filtered.slice(0, visibleCount).map((l) => {
-                const stageName = getStageName(l);
-                const groupKey = getStageGroup(l);
-                const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
-                const st = isGroupedPipeline ? null : formatStatus(l.status);
-                return (
-                  <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
-                    style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
-                    <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                    <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
-                    <div className="min-w-0">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
-                    </div>
-                    <div className="min-w-0">
-                      {isGroupedPipeline ? (
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
-                      ) : st ? (
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
-                      ) : (
-                        <span className="text-sm text-[var(--shell-subtext)]">—</span>
-                      )}
-                    </div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
-                    <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+              {/* Seção: Conversas Abertas */}
+              {pendingLeads.length > 0 ? (
+                <div>
+                  <div className="px-4 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                    <span>Conversas abertas ({pendingLeads.length})</span>
                   </div>
-                );
-              })}
+                  {pendingLeads.map((l) => {
+                    const stageName = getStageName(l);
+                    const groupKey = getStageGroup(l);
+                    const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                    const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
+                    const st = isGroupedPipeline ? null : formatStatus(l.status);
+                    return (
+                      <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50 border-l-4 border-l-amber-400"
+                        style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
+                        <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
+                        <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
+                        <div className="min-w-0">
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
+                        </div>
+                        <div className="min-w-0">
+                          {isGroupedPipeline ? (
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                          ) : st ? (
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                          ) : (
+                            <span className="text-sm text-[var(--shell-subtext)]">—</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
+                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="px-4 py-3 text-xs text-amber-600 bg-amber-50 border-b border-amber-200">
+                  Nenhuma conversa aberta
+                </div>
+              )}
+
+              {/* Seção: Leads normais */}
+              <div>
+                <div className="px-4 py-2 text-xs font-semibold border-b"
+                  style={{ color: "var(--shell-subtext)", borderColor: "var(--shell-card-border)" }}>
+                  Leads ({normalLeads.length})
+                </div>
+                {normalLeads.slice(0, Math.max(0, visibleCount - pendingLeads.length)).map((l) => {
+                  const stageName = getStageName(l);
+                  const groupKey = getStageGroup(l);
+                  const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                  const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
+                  const st = isGroupedPipeline ? null : formatStatus(l.status);
+                  return (
+                    <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
+                      style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
+                      <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
+                      <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
+                      <div className="min-w-0">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
+                      </div>
+                      <div className="min-w-0">
+                        {isGroupedPipeline ? (
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                        ) : st ? (
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                        ) : (
+                          <span className="text-sm text-[var(--shell-subtext)]">—</span>
+                        )}
+                      </div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
+                      <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           )}
         </div>

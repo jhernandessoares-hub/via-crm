@@ -108,6 +108,12 @@ export class LeadsController {
   // ROTAS COM :id
   // =========================
 
+  @Post(':id/end-conversation')
+  async endConversation(@Req() req: any, @Param('id') id: string) {
+    const { tenantId } = req.user;
+    return this.leadsService.endConversation(tenantId, id);
+  }
+
   @Post(':id/merge')
   async mergeLeads(
     @Req() req: any,

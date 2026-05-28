@@ -1387,6 +1387,18 @@ export class LeadsService {
       assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
     }));
 
+    // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
+    enriched.sort((a, b) => {
+      if (a.conversaAberta && !b.conversaAberta) return -1;
+      if (!a.conversaAberta && b.conversaAberta) return 1;
+      if (a.conversaAberta && b.conversaAberta) {
+        const ta = a.lastInboundAt ? new Date(a.lastInboundAt as any).getTime() : 0;
+        const tb = b.lastInboundAt ? new Date(b.lastInboundAt as any).getTime() : 0;
+        return tb - ta;
+      }
+      return new Date(b.criadoEm as any).getTime() - new Date(a.criadoEm as any).getTime();
+    });
+
     return this.attachLastInboundPreview(tenantId, enriched);
   }
 
@@ -2293,6 +2305,18 @@ async updateStage(user: any, leadId: string, stageId: string) {
     const myName = userInfo?.apelido || userInfo?.nome || null;
     const enriched = leads.map((l) => ({ ...l, assignedUserName: myName }));
 
+    // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
+    enriched.sort((a, b) => {
+      if (a.conversaAberta && !b.conversaAberta) return -1;
+      if (!a.conversaAberta && b.conversaAberta) return 1;
+      if (a.conversaAberta && b.conversaAberta) {
+        const ta = a.lastInboundAt ? new Date(a.lastInboundAt as any).getTime() : 0;
+        const tb = b.lastInboundAt ? new Date(b.lastInboundAt as any).getTime() : 0;
+        return tb - ta;
+      }
+      return new Date(b.criadoEm as any).getTime() - new Date(a.criadoEm as any).getTime();
+    });
+
     return this.attachLastInboundPreview(user.tenantId, enriched);
   }
 
@@ -2423,13 +2447,14 @@ const aiAssistanceLabel =
         },
       });
 
-      // Fixa o canal no lead na primeira mensagem outbound
-      if (!lead.conversaCanal) {
-        await this.prisma.lead.update({
-          where: { id: leadId },
-          data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: activeSessionId },
-        });
-      }
+      // Fixa o canal no lead na primeira mensagem outbound e marca conversa aberta
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          conversaAberta: true,
+          ...(!lead.conversaCanal ? { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: activeSessionId } : {}),
+        },
+      });
 
       return { ok: true };
     }
@@ -2481,14 +2506,23 @@ const aiAssistanceLabel =
       },
     });
 
-    // Fixa o canal no lead na primeira mensagem outbound
-    if (!lead.conversaCanal) {
-      await this.prisma.lead.update({
-        where: { id: leadId },
-        data: { conversaCanal: 'WHATSAPP_OFICIAL' },
-      });
-    }
+    // Fixa o canal no lead na primeira mensagem outbound e marca conversa aberta
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        conversaAberta: true,
+        ...(!lead.conversaCanal ? { conversaCanal: 'WHATSAPP_OFICIAL' } : {}),
+      },
+    });
 
+    return { ok: true };
+  }
+
+  async endConversation(tenantId: string, leadId: string): Promise<{ ok: boolean }> {
+    await this.prisma.lead.update({
+      where: { id: leadId, tenantId },
+      data: { conversaAberta: false, lastReadAt: new Date() },
+    });
     return { ok: true };
   }
 

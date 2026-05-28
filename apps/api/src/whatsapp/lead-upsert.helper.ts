@@ -120,6 +120,8 @@ export async function upsertLeadFromWhatsapp(
   if (existingLead) {
     leadId = existingLead.id;
     isReentry = true;
+    const AI_SILENT_TYPES_SET = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
+    const isConversaAberta = !AI_SILENT_TYPES_SET.has(type);
     await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -130,6 +132,8 @@ export async function upsertLeadFromWhatsapp(
         ...(avatarUrl ? { avatarUrl } : {}),
         // Reentrada: incrementa contador somente quando o canal muda (não em toda mensagem)
         ...(!isSystemMessage && canal !== existingLead.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: canal } : {}),
+        // Marca conversa aberta para mensagens reais (não silenciosas)
+        ...(isConversaAberta ? { conversaAberta: true } : {}),
       },
     });
   } else {
@@ -139,6 +143,7 @@ export async function upsertLeadFromWhatsapp(
       resolveAssignment(prisma, tenantId),
     ]);
 
+    const AI_SILENT_TYPES_NEW = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
     const created = await prisma.$transaction(async (tx) => {
       const numero = await getNextLeadNumber(tx, tenantId);
       const c = await tx.lead.create({
@@ -157,6 +162,7 @@ export async function upsertLeadFromWhatsapp(
           lastEntryChannel: canal,
           branchId: assignment.branchId,
           assignedUserId: assignment.assignedUserId,
+          conversaAberta: !AI_SILENT_TYPES_NEW.has(type),
           ...(sessionId ? { conversaSessionId: sessionId } : {}),
           ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
           ...(avatarUrl ? { avatarUrl } : {}),

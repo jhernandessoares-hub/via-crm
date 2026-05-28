@@ -274,6 +274,7 @@ model Lead {
   conversaSessionId       String?
   avatarUrl               String?
   lastReadAt              DateTime?
+  conversaAberta          Boolean              @default(false)
   aiExecutionLogs         AiExecutionLog[]
   baseFria                BaseFria?
   kbTeachings             KbTeaching[]

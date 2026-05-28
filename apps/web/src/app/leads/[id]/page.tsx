@@ -99,6 +99,7 @@ type Lead = {
   developmentUnits?: DevUnit[];
   conversaCanal?: string | null;
   conversaSessionId?: string | null;
+  conversaAberta?: boolean;
   // Qualificação IA
   nomeCorreto?: string | null;
   nomeCorretoOrigem?: string | null; // "IA" | "MANUAL"
@@ -1902,6 +1903,8 @@ export default function LeadDetailChatPage() {
   const [savingCredit,      setSavingCredit]      = useState(false);
   const [slaLoading, setSlaLoading] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showExitDialog, setShowExitDialog] = useState(false);
+  const pendingNavRef = useRef<string | null>(null);
 
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -2193,6 +2196,27 @@ export default function LeadDetailChatPage() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Interceptor de navegação: pergunta se quer encerrar conversa aberta
+  useEffect(() => {
+    if (!lead?.conversaAberta) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement).closest('a');
+      if (!link) return;
+      try {
+        const url = new URL(link.href);
+        if (url.pathname.startsWith(`/leads/${id}`)) return;
+      } catch { return; }
+      e.preventDefault();
+      e.stopPropagation();
+      pendingNavRef.current = link.href;
+      setShowExitDialog(true);
+    };
+
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, [lead?.conversaAberta, id]);
 
 const orderedEvents = useMemo(() => {
   return [...events].sort((a, b) => {
@@ -3123,6 +3147,24 @@ function discardAiSuggestion() {
   return (
     <AppShell title="Lead">
       <div className="h-screen flex flex-col overflow-hidden">
+        {/* Banner: Conversa Aberta */}
+        {lead?.conversaAberta && (
+          <div className="flex items-center justify-between px-4 py-2 bg-amber-50 border-b border-amber-200 text-sm mb-2 rounded-xl">
+            <span className="text-amber-800 font-medium flex items-center gap-2">
+              Conversa aberta
+            </span>
+            <button
+              onClick={async () => {
+                await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+                setLead((prev) => prev ? { ...prev, conversaAberta: false } : prev);
+              }}
+              className="text-xs text-amber-700 underline hover:text-amber-900"
+            >
+              Encerrar conversa
+            </button>
+          </div>
+        )}
+
             {/* STEPPER DO FUNIL (ETAPA 4) */}
         <div className="mb-4 rounded-xl border bg-[var(--shell-card-bg)] p-3">
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -5611,6 +5653,41 @@ function discardAiSuggestion() {
           insertIntoChat={insertIntoChat}
           handleCopyLink={handleCopyLink}
         />
+      )}
+
+      {/* Modal: Encerrou essa conversa? */}
+      {showExitDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+        >
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Encerrou essa conversa?</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Esta conversa ainda está aberta. O lead continuará como pendente até ser encerrado.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowExitDialog(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Não, manter aberta
+              </button>
+              <button
+                onClick={async () => {
+                  await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+                  setShowExitDialog(false);
+                  if (pendingNavRef.current) {
+                    startTransition(() => router.push(pendingNavRef.current!));
+                  }
+                }}
+                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+              >
+                Sim, encerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showAvatarModal && lead?.avatarUrl && (
