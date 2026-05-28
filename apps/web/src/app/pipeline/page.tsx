@@ -35,6 +35,7 @@ type Lead = {
   assignedUserName?: string | null;
   cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
+  conversaAberta?: boolean | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -152,7 +153,11 @@ export default function PipelinePage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const interval = setInterval(() => load(), 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const stageMap = useMemo(() => {
     const m: Record<string, { name: string; group: string | null }> = {};
@@ -256,6 +261,9 @@ export default function PipelinePage() {
     }
     return map;
   }, [filtered, stageMap, groups]);
+
+  const pendingLeads = useMemo(() => filtered.filter((l) => l.conversaAberta === true), [filtered]);
+  const normalLeads  = useMemo(() => filtered.filter((l) => l.conversaAberta !== true), [filtered]);
 
   useEffect(() => { setVisibleCount(loadMoreN); }, [q, leads, colFilters, numRange]);
 
@@ -407,11 +415,12 @@ export default function PipelinePage() {
                         const stageName = getStageName(l);
                         const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
                         const st = formatStatus(l.status);
+                        const isPending = l.conversaAberta === true;
                         return (
-                          <Link key={l.id} href={`/leads/${l.id}`} className="block rounded-lg border p-3 transition-colors"
-                            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--shell-hover)")}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--shell-bg)")}>
+                          <Link key={l.id} href={`/leads/${l.id}`} className={`block rounded-lg border p-3 transition-colors ${isPending ? "border-l-4" : ""}`}
+                            style={{ borderColor: isPending ? undefined : "var(--shell-card-border)", borderLeftColor: isPending ? "#f59e0b" : undefined, borderTopColor: isPending ? "#fcd34d" : undefined, borderRightColor: isPending ? "#fcd34d" : undefined, borderBottomColor: isPending ? "#fcd34d" : undefined, background: isPending ? "#fffbeb" : "var(--shell-bg)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = isPending ? "#fef3c7" : "var(--shell-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = isPending ? "#fffbeb" : "var(--shell-bg)")}>
                             {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
                             <div className="text-sm font-medium text-[var(--shell-text)] truncate">{displayName(l)}</div>
                             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
@@ -485,7 +494,60 @@ export default function PipelinePage() {
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead encontrado.</div>
           ) : (
             <>
-              {filtered.slice(0, visibleCount).map((l) => {
+              {/* Seção: Conversas Abertas */}
+              {pendingLeads.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                    💬 Conversas abertas ({pendingLeads.length})
+                  </div>
+                  {pendingLeads.map((l) => {
+                    const stageName = getStageName(l);
+                    const groupKey = getStageGroup(l);
+                    const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
+                    const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
+                    const st = isGroupedPipeline ? null : formatStatus(l.status);
+                    return (
+                      <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
+                        style={{ borderBottomColor: "var(--shell-card-border)", borderLeftColor: "#f59e0b", gridTemplateColumns: COL }}>
+                        <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
+                        <div className="min-w-0">
+                          <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
+                        </div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
+                        <div className="min-w-0">
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
+                        </div>
+                        <div className="min-w-0">
+                          {isGroupedPipeline ? (
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                          ) : st ? (
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                          ) : (
+                            <span className="text-sm text-[var(--shell-subtext)]">—</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
+                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Separador */}
+              {pendingLeads.length > 0 && (
+                <div className="flex items-center gap-3 px-4 py-2" style={{ background: "var(--shell-sidebar-bg, #f1f5f9)", borderTop: "2px solid #fcd34d", borderBottom: "2px solid var(--shell-card-border)" }}>
+                  <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
+                  <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--shell-subtext)" }}>Outros leads</span>
+                  <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
+                </div>
+              )}
+
+              {/* Seção: Leads normais */}
+              {normalLeads.slice(0, Math.max(0, visibleCount - pendingLeads.length)).map((l) => {
                 const stageName = getStageName(l);
                 const groupKey = getStageGroup(l);
                 const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
