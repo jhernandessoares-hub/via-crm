@@ -189,6 +189,8 @@ export class LeadsService {
             resource_type: resourceType,
             public_id: publicId,
             overwrite: false,
+            type: 'upload',
+            access_mode: 'public',
           },
           (err: any, res: any) => {
             if (err) return reject(err);
@@ -293,7 +295,6 @@ export class LeadsService {
         type: 'upload',
         secure: true,
         sign_url: true,
-        expires_at: expiresAt,
       } as any);
     }
 
@@ -303,7 +304,6 @@ export class LeadsService {
       secure: true,
       sign_url: true,
       ...(hasKnownExt ? { format: input.ext } : {}),
-      expires_at: expiresAt,
     } as any);
   }
 

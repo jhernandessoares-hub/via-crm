@@ -2215,6 +2215,8 @@ export default function LeadDetailChatPage() {
     const handleClick = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest('a');
       if (!link) return;
+      // blob: URLs são downloads programáticos — nunca são navegação para fora do lead
+      if (link.href.startsWith('blob:')) return;
       try {
         const url = new URL(link.href);
         if (url.pathname.startsWith(`/leads/${id}`)) return;
