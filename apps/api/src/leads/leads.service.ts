@@ -290,7 +290,7 @@ export class LeadsService {
         : input.publicId;
       return cloudinary.url(publicIdFull, {
         resource_type: 'raw',
-        type: 'authenticated',
+        type: 'upload',
         secure: true,
         sign_url: true,
         expires_at: expiresAt,
@@ -299,7 +299,7 @@ export class LeadsService {
 
     return cloudinary.url(input.publicId, {
       resource_type: input.resourceType,
-      type: 'authenticated',
+      type: 'upload',
       secure: true,
       sign_url: true,
       ...(hasKnownExt ? { format: input.ext } : {}),
@@ -397,6 +397,8 @@ export class LeadsService {
     let lastErrorText = '';
     let res: any = null;
 
+    this.logger.debug(`downloadEventMedia: ${candidateUrls.length} candidatos para evento ${eventId}, media.url=${url?.slice(0, 80)}`);
+
     for (const u of candidateUrls) {
       try {
         const r = await fetch(u, { method: 'GET' });
@@ -405,9 +407,11 @@ export class LeadsService {
           break;
         }
         const txt = await r.text().catch(() => '');
-        lastErrorText = `url=${u} status=${r.status} ${txt || ''}`.trim();
+        lastErrorText = `url=${u.slice(0, 100)} status=${r.status} body=${txt.slice(0, 200)}`;
+        this.logger.warn(`downloadEventMedia: falha → ${lastErrorText}`);
       } catch (e: any) {
-        lastErrorText = `url=${u} error=${e?.message || String(e)}`;
+        lastErrorText = `url=${u.slice(0, 100)} error=${e?.message || String(e)}`;
+        this.logger.warn(`downloadEventMedia: exceção → ${lastErrorText}`);
       }
     }
 
@@ -1064,8 +1068,8 @@ export class LeadsService {
     const { id, tenantId, role, branchId } = user;
 
     let extraFilter: Record<string, unknown> = {};
-    if (role === 'AGENT') {
-      const canViewAll = await this.agentCanViewPipeline(tenantId);
+    if (role === 'AGENT' || role === 'PARTNER') {
+      const canViewAll = await this.canViewPipeline(tenantId, role);
       if (!canViewAll) extraFilter = { assignedUserId: id };
     } else if (role === 'MANAGER' && branchId) {
       extraFilter = { branchId };
@@ -1135,7 +1139,7 @@ export class LeadsService {
     const { id, tenantId, role, branchId } = user;
 
     let roleFilter: Record<string, unknown> = {};
-    if (role === 'AGENT') roleFilter = { assignedUserId: id };
+    if (role === 'AGENT' || role === 'PARTNER') roleFilter = { assignedUserId: id };
     else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
 
     const baseWhere = { tenantId, ...roleFilter, deletedAt: null };
@@ -1285,7 +1289,7 @@ export class LeadsService {
       startAt: { gte: now },
       status: { in: ['AGENDADO', 'CONFIRMADO'] },
     };
-    if (role === 'AGENT') agendaWhere.userId = id;
+    if (role === 'AGENT' || role === 'PARTNER') agendaWhere.userId = id;
     else if (role === 'MANAGER' && branchId) {
       const teamIds = await this.prisma.user.findMany({ where: { tenantId, branchId }, select: { id: true } });
       agendaWhere.userId = { in: teamIds.map((u) => u.id) };
@@ -1339,13 +1343,14 @@ export class LeadsService {
     };
   }
 
-  private async agentCanViewPipeline(tenantId: string): Promise<boolean> {
+  private async canViewPipeline(tenantId: string, role: string): Promise<boolean> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { permissionsConfig: true },
     });
     const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
-    return perms.agent.pipeline?.view ?? false;
+    const roleKey = role.toLowerCase() as 'agent' | 'partner';
+    return perms[roleKey]?.pipeline?.view ?? false;
   }
 
   async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
@@ -1353,8 +1358,8 @@ export class LeadsService {
 
     let extraFilter: Record<string, unknown> = {};
 
-    if (role === 'AGENT') {
-      const canViewAll = await this.agentCanViewPipeline(tenantId);
+    if (role === 'AGENT' || role === 'PARTNER') {
+      const canViewAll = await this.canViewPipeline(tenantId, role);
       if (!canViewAll) extraFilter = { assignedUserId: id };
     } else if (role === 'MANAGER' && branchId) {
       extraFilter = { branchId };
@@ -1665,7 +1670,7 @@ async getById(user: any, id: string) {
 
 
   async assignLead(id: string, assignedUserId: string, user: any) {
-    if (user.role === 'AGENT') {
+    if (user.role === 'AGENT' || user.role === 'PARTNER') {
       throw new ForbiddenException('Sem permissão');
     }
 
@@ -2324,7 +2329,7 @@ async updateStage(user: any, leadId: string, stageId: string) {
   }
 
   async getBranchLeads(user: any, branchId?: string) {
-    if (user.role === 'AGENT') {
+    if (user.role === 'AGENT' || user.role === 'PARTNER') {
       throw new ForbiddenException('Sem permissão');
     }
 
@@ -2597,10 +2602,16 @@ const aiAssistanceLabel =
   }
 
   async exportCsv(user: { tenantId: string; role: string; branchId?: string; id?: string; sub?: string }, filters: { from?: string; to?: string; stageId?: string }): Promise<string> {
+    if (user.role !== 'OWNER' && user.role !== 'MANAGER') {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { permissionsConfig: true } });
+      const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+      const roleKey = user.role.toLowerCase() as 'agent' | 'partner';
+      if (!perms[roleKey]?.exportacao?.export) throw new ForbiddenException('Sem permissão para exportar');
+    }
+
     const where: any = { tenantId: user.tenantId, deletedAt: null };
-    if (user.role === 'AGENT') {
-      if (user.branchId) where.branchId = user.branchId;
-      else where.assignedUserId = user.id ?? user.sub;
+    if (user.role === 'AGENT' || user.role === 'PARTNER') {
+      where.assignedUserId = user.id ?? user.sub;
     }
     if (filters.from) where.criadoEm = { ...(where.criadoEm || {}), gte: new Date(filters.from) };
     if (filters.to) where.criadoEm = { ...(where.criadoEm || {}), lte: new Date(filters.to) };
@@ -2803,7 +2814,16 @@ const aiAssistanceLabel =
       .trim();
   }
 
-  async findDuplicates(tenantId: string) {
+  async findDuplicates(user: { tenantId: string; role: string }) {
+    const { tenantId, role } = user;
+
+    if (role !== 'OWNER' && role !== 'MANAGER') {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { permissionsConfig: true } });
+      const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+      const roleKey = role.toLowerCase() as 'agent' | 'partner';
+      if (!perms[roleKey]?.duplicados?.view) throw new ForbiddenException('Sem permissão para ver duplicados');
+    }
+
     const leads = await this.prisma.lead.findMany({
       where: { tenantId, deletedAt: null },
       select: {
@@ -2952,8 +2972,8 @@ const aiAssistanceLabel =
     if (trimmed.length < 2) return [];
 
     let extraFilter: Record<string, unknown> = {};
-    if (role === 'AGENT') {
-      const canViewAll = await this.agentCanViewPipeline(tenantId);
+    if (role === 'AGENT' || role === 'PARTNER') {
+      const canViewAll = await this.canViewPipeline(tenantId, role);
       if (!canViewAll) extraFilter = { assignedUserId: userId };
     } else if (role === 'MANAGER' && branchId) {
       extraFilter = { branchId };

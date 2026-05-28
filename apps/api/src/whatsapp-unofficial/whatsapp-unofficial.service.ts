@@ -463,7 +463,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
       const mediaUrl = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: 'via-crm/whatsapp-light/audio', resource_type: 'video', format: ext },
+          { folder: 'via-crm/whatsapp-light/audio', resource_type: 'video', format: ext, type: 'upload', access_mode: 'public' },
           (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
         );
         Readable.from(buffer).pipe(stream);
@@ -519,7 +519,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
       const mediaUrl = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: 'via-crm/whatsapp-light/files', resource_type: resourceType },
+          { folder: 'via-crm/whatsapp-light/files', resource_type: resourceType, type: 'upload', access_mode: 'public' },
           (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
         );
         Readable.from(buffer).pipe(stream);
