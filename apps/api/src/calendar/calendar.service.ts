@@ -12,8 +12,17 @@ export class CalendarService {
     end?: string,
     eventType?: string,
     status?: string,
+    leadId?: string,
   ) {
-    const where: any = { tenantId, userId };
+    // Vê evento se for dele (qualquer visibilidade) OU se for PUBLIC do tenant
+    const where: any = {
+      tenantId,
+      OR: [{ userId }, { visibility: 'PUBLIC' }],
+    };
+
+    if (leadId) {
+      where.leadId = leadId;
+    }
 
     if (start || end) {
       where.startAt = {};
@@ -37,7 +46,7 @@ export class CalendarService {
     return this.prisma.calendarEvent.findMany({
       where: {
         tenantId,
-        userId,
+        OR: [{ userId }, { visibility: 'PUBLIC' }],
         startAt: { gte: startOfDay, lte: endOfDay },
       },
       orderBy: { startAt: 'asc' },
@@ -57,6 +66,7 @@ export class CalendarService {
       leadId?: string;
       eventType?: string;
       status?: string;
+      visibility?: string;
       productId?: string;
       location?: string;
     },
@@ -74,6 +84,7 @@ export class CalendarService {
         leadId: body.leadId || null,
         eventType: (body.eventType as any) || 'TAREFA',
         status: (body.status as any) || 'AGENDADO',
+        visibility: (body.visibility as any) || 'PUBLIC',
         productId: body.productId || null,
         location: body.location?.trim() || null,
       },
@@ -94,6 +105,7 @@ export class CalendarService {
       leadId?: string | null;
       eventType?: string;
       status?: string;
+      visibility?: string;
       productId?: string | null;
       location?: string | null;
     },
@@ -117,6 +129,7 @@ export class CalendarService {
     if (body.leadId !== undefined) data.leadId = body.leadId || null;
     if (body.eventType !== undefined) data.eventType = body.eventType;
     if (body.status !== undefined) data.status = body.status;
+    if (body.visibility !== undefined) data.visibility = body.visibility;
     if (body.productId !== undefined) data.productId = body.productId || null;
     if (body.location !== undefined) data.location = body.location?.trim() || null;
 

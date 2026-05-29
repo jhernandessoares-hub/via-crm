@@ -277,6 +277,7 @@ model Lead {
   conversaAberta          Boolean              @default(false)
   aiExecutionLogs         AiExecutionLog[]
   baseFria                BaseFria?
+  calendarEvents          CalendarEvent[]
   kbTeachings             KbTeaching[]
   documents               LeadDocument[]
   events                  LeadEvent[]
@@ -997,27 +998,31 @@ model AuditLog {
 }
 
 model CalendarEvent {
-  id             String      @id @default(uuid())
+  id             String          @id @default(uuid())
   tenantId       String
   userId         String
   title          String
   description    String?
   startAt        DateTime
   endAt          DateTime
-  allDay         Boolean     @default(false)
-  color          String      @default("blue")
+  allDay         Boolean         @default(false)
+  color          String          @default("blue")
   leadId         String?
-  eventType      EventType   @default(TAREFA)
-  status         EventStatus @default(AGENDADO)
+  eventType      EventType       @default(TAREFA)
+  status         EventStatus     @default(AGENDADO)
+  visibility     EventVisibility @default(PUBLIC)
   productId      String?
   location       String?
   reminderSentAt DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, userId])
   @@index([tenantId, userId, status])
   @@index([tenantId, userId, eventType])
+  @@index([tenantId, leadId])
 }
 
 model PersonalNote {
@@ -1387,6 +1392,11 @@ enum EventStatus {
   REALIZADO
   NO_SHOW
   CANCELADO
+}
+
+enum EventVisibility {
+  PUBLIC
+  PRIVATE
 }
 
 enum LearningSourceType {

@@ -31,6 +31,7 @@ export class CalendarController {
     @Query('end') end?: string,
     @Query('eventType') eventType?: string,
     @Query('status') status?: string,
+    @Query('leadId') leadId?: string,
   ) {
     return this.service.findMany(
       req.user.tenantId,
@@ -39,6 +40,7 @@ export class CalendarController {
       end,
       eventType,
       status,
+      leadId,
     );
   }
 
@@ -56,6 +58,7 @@ export class CalendarController {
       leadId?: string;
       eventType?: string;
       status?: string;
+      visibility?: string;
       productId?: string;
       location?: string;
     },
@@ -86,6 +89,7 @@ export class CalendarController {
       leadId?: string | null;
       eventType?: string;
       status?: string;
+      visibility?: string;
       productId?: string | null;
       location?: string | null;
     },

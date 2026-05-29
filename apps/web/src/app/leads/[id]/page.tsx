@@ -158,6 +158,16 @@ type LeadEvent = {
   payloadRaw?: any;
 };
 
+type LeadCalendarEvent = {
+  id: string;
+  title: string;
+  startAt: string;
+  eventType: string;
+  status: string;
+  color: string;
+  visibility: string;
+};
+
 type AiSuggestedAttachment = {
   kind?: "image" | "video" | "document" | "audio";
   url?: string;
@@ -1220,6 +1230,22 @@ function Bubble({
 
 // ─── Espelho Selector Modal ───────────────────────────────────────────────────
 
+const AGENDA_TYPE_LABEL: Record<string, string> = {
+  VISITA: "Visita", TAREFA: "Tarefa", CAPTACAO: "Captação",
+  REUNIAO: "Reunião", FOLLOW_UP: "Follow-up",
+};
+const AGENDA_TYPE_COLOR: Record<string, string> = {
+  VISITA: "bg-emerald-100 text-emerald-700",
+  TAREFA: "bg-blue-100 text-blue-700",
+  CAPTACAO: "bg-amber-100 text-amber-700",
+  REUNIAO: "bg-purple-100 text-purple-700",
+  FOLLOW_UP: "bg-gray-100 text-gray-600",
+};
+const AGENDA_STATUS_LABEL: Record<string, string> = {
+  AGENDADO: "Agendado", CONFIRMADO: "Confirmado", REALIZADO: "Realizado",
+  NO_SHOW: "No-show", CANCELADO: "Cancelado",
+};
+
 const ESPELHO_STATUS_COLOR: Record<string, string> = {
   DISPONIVEL: "#22c55e", PROPOSTA: "#f97316", RESERVADO: "#f59e0b",
   VENDIDO: "#ef4444", BLOQUEADO: "#9ca3af",
@@ -1886,6 +1912,9 @@ export default function LeadDetailChatPage() {
   const [propostaForm, setPropostaForm] = useState({ valor: "", pagamento: "FINANCIAMENTO", obs: "" });
   const [propostaSaving, setPropostaSaving] = useState(false);
 
+  const [agendaEvents, setAgendaEvents] = useState<LeadCalendarEvent[]>([]);
+  const [agendaOpen, setAgendaOpen] = useState(true);
+
   const filePickerRef = useRef<HTMLInputElement | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachQueue, setAttachQueue] = useState<File[]>([]);
@@ -2164,6 +2193,16 @@ export default function LeadDetailChatPage() {
     } catch {}
   }
 
+  async function loadAgendaEvents() {
+    if (!id) return;
+    try {
+      const data = await apiFetch(`/calendar/events?leadId=${id}`);
+      setAgendaEvents(Array.isArray(data) ? data : []);
+    } catch {
+      setAgendaEvents([]);
+    }
+  }
+
   async function loadAll() {
     setErr(null);
     setLoadingLead(true);
@@ -2171,6 +2210,7 @@ export default function LeadDetailChatPage() {
     try {
       const [,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
       if (aiStatus) setTenantAiEnabled((aiStatus as any).autopilotEnabled ?? true);
+      loadAgendaEvents();
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -4552,6 +4592,83 @@ function discardAiSuggestion() {
                 )}
               </div>
             )}
+
+            {/* Agenda */}
+            <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <button
+                type="button"
+                onClick={() => setAgendaOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-2"
+              >
+                <span className="text-sm font-semibold text-[var(--shell-text)]">Agenda</span>
+                <div className="flex items-center gap-2">
+                  {agendaEvents.length > 0 && (
+                    <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                      {agendaEvents.length}
+                    </span>
+                  )}
+                  <svg
+                    className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${agendaOpen ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {agendaOpen && (
+                <div className="mt-3 space-y-2">
+                  {agendaEvents.length === 0 ? (
+                    <p className="text-xs text-[var(--shell-subtext)]">Nenhum evento agendado.</p>
+                  ) : (
+                    agendaEvents.slice(0, 5).map((ev) => (
+                      <div
+                        key={ev.id}
+                        className="rounded-lg border p-2.5 text-xs space-y-0.5"
+                        style={{ borderColor: "var(--shell-card-border)" }}
+                      >
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${AGENDA_TYPE_COLOR[ev.eventType] ?? "bg-gray-100 text-gray-600"}`}>
+                            {AGENDA_TYPE_LABEL[ev.eventType] ?? ev.eventType}
+                          </span>
+                          {ev.visibility === "PRIVATE" && (
+                            <span className="text-[10px] text-[var(--shell-subtext)]">🔒</span>
+                          )}
+                          <span className="font-medium text-[var(--shell-text)] truncate flex-1">{ev.title}</span>
+                        </div>
+                        <div className="text-[var(--shell-subtext)]">
+                          {new Date(ev.startAt).toLocaleString("pt-BR", {
+                            day: "2-digit", month: "2-digit", year: "numeric",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                        </div>
+                        <div className="text-[var(--shell-subtext)]">
+                          {AGENDA_STATUS_LABEL[ev.status] ?? ev.status}
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <a
+                      href={`/calendar?leadId=${id}&leadName=${encodeURIComponent(lead?.nomeCorreto ?? lead?.nome ?? "")}`}
+                      className="flex-1 rounded-md border py-1.5 text-center text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition"
+                      style={{ borderColor: "var(--shell-card-border)" }}
+                    >
+                      + Novo evento
+                    </a>
+                    {agendaEvents.length > 5 && (
+                      <a
+                        href={`/calendar?leadId=${id}&leadName=${encodeURIComponent(lead?.nomeCorreto ?? lead?.nome ?? "")}`}
+                        className="text-xs text-[var(--shell-subtext)] underline hover:text-[var(--shell-text)]"
+                      >
+                        Ver tudo
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
           </div>
 
