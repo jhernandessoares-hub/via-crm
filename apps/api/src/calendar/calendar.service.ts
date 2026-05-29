@@ -35,6 +35,7 @@ export class CalendarService {
     return this.prisma.calendarEvent.findMany({
       where,
       orderBy: { startAt: 'asc' },
+      include: { user: { select: { id: true, nome: true, apelido: true } } },
     });
   }
 
@@ -50,6 +51,7 @@ export class CalendarService {
         startAt: { gte: startOfDay, lte: endOfDay },
       },
       orderBy: { startAt: 'asc' },
+      include: { user: { select: { id: true, nome: true, apelido: true } } },
     });
   }
 

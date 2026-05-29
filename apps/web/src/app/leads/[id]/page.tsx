@@ -166,6 +166,8 @@ type LeadCalendarEvent = {
   status: string;
   color: string;
   visibility: string;
+  userId: string;
+  user: { id: string; nome: string; apelido?: string | null };
 };
 
 type AiSuggestedAttachment = {
@@ -4635,6 +4637,9 @@ function discardAiSuggestion() {
                             <span className="text-[10px] text-[var(--shell-subtext)]">🔒</span>
                           )}
                           <span className="font-medium text-[var(--shell-text)] truncate flex-1">{ev.title}</span>
+                          <span className="text-[10px] text-[var(--shell-subtext)] shrink-0">
+                            {ev.user?.apelido || ev.user?.nome?.split(" ")[0] || "—"}
+                          </span>
                         </div>
                         <div className="text-[var(--shell-subtext)]">
                           {new Date(ev.startAt).toLocaleString("pt-BR", {

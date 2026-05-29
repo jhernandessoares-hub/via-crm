@@ -27,6 +27,7 @@ type CalendarEvent = {
   location?: string | null;
   productId?: string | null;
   userId: string;
+  user: { id: string; nome: string; apelido?: string | null };
   createdAt: string;
 };
 
@@ -162,6 +163,11 @@ function formatShortTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function creatorName(ev: CalendarEvent, currentUserId: string): string {
+  if (ev.userId === currentUserId) return "Você";
+  return ev.user?.apelido || ev.user?.nome?.split(" ")[0] || "—";
+}
+
 // ──────────────────────────────────────────────
 // Empty form
 // ──────────────────────────────────────────────
@@ -221,6 +227,15 @@ export default function CalendarPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Usuário atual (para diferenciar "Você" de outros criadores)
+  const [currentUserId, setCurrentUserId] = useState("");
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      setCurrentUserId(u.id || u.sub || "");
+    } catch {}
+  }, []);
 
   // Lead autocomplete
   const [leadQuery, setLeadQuery] = useState("");
@@ -567,6 +582,9 @@ export default function CalendarPage() {
                           {ev.allDay ? "" : `${formatShortTime(ev.startAt)} `}
                           {ev.visibility === "PRIVATE" && "🔒 "}
                           {ev.title}
+                          {ev.userId !== currentUserId && (
+                            <span className="ml-1 opacity-70">· {creatorName(ev, currentUserId)}</span>
+                          )}
                         </button>
                       ))}
                       {dayEvents.length > 3 && (
@@ -634,6 +652,7 @@ export default function CalendarPage() {
                         {!ev.allDay && (
                           <div className="opacity-80">{formatShortTime(ev.startAt)}</div>
                         )}
+                        <div className="opacity-70 truncate">{creatorName(ev, currentUserId)}</div>
                       </button>
                     ))}
                   </div>
@@ -677,6 +696,7 @@ export default function CalendarPage() {
                           {ev.visibility === "PRIVATE" && <span className="mr-1">🔒</span>}
                           {ev.title}
                         </div>
+                        <div className="text-xs opacity-70 mt-0.5">{creatorName(ev, currentUserId)}</div>
                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[ev.status] || STATUS_BADGE_CLASS.AGENDADO}`}>
                           {EVENT_STATUS_OPTIONS.find((s) => s.value === ev.status)?.label || ev.status}
                         </span>
@@ -713,9 +733,16 @@ export default function CalendarPage() {
           <div className="w-full max-w-md rounded-xl shadow-xl bg-[var(--shell-card-bg)]">
             {/* Modal header */}
             <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
-              <h2 className="text-base font-semibold text-[var(--shell-text)]">
-                {editingEvent ? "Editar evento" : "Novo evento"}
-              </h2>
+              <div>
+                <h2 className="text-base font-semibold text-[var(--shell-text)]">
+                  {editingEvent ? "Editar evento" : "Novo evento"}
+                </h2>
+                {editingEvent && (
+                  <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
+                    Criado por {creatorName(editingEvent, currentUserId)}
+                  </p>
+                )}
+              </div>
               <button
                 onClick={closeModal}
                 className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none"

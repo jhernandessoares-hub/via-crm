@@ -200,6 +200,7 @@ model User {
   tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   campanhaModelos          CampanhaModelo[]
   campanhaDisparos         CampanhaDisparo[]
+  calendarEvents           CalendarEvent[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -1018,6 +1019,7 @@ model CalendarEvent {
   updatedAt      DateTime        @updatedAt
 
   lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  user User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
   @@index([tenantId, userId, status])
