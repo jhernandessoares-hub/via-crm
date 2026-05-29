@@ -4637,8 +4637,8 @@ function discardAiSuggestion() {
                             <span className="text-[10px] text-[var(--shell-subtext)]">🔒</span>
                           )}
                           <span className="font-medium text-[var(--shell-text)] truncate flex-1">{ev.title}</span>
-                          <span className="text-[10px] text-[var(--shell-subtext)] shrink-0">
-                            {ev.user?.apelido || ev.user?.nome?.split(" ")[0] || "—"}
+                          <span className="text-[10px] font-medium text-[var(--shell-subtext)] shrink-0">
+                            👤 {ev.user?.apelido || (ev.user?.nome?.trim().split(" ")[0]) || "—"}
                           </span>
                         </div>
                         <div className="text-[var(--shell-subtext)]">

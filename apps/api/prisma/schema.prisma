@@ -32,6 +32,8 @@ model PipelineStage {
   name             String
   sortOrder        Int
   group            String?
+  advancesToGroup  String?
+  returnsToGroup   String?
   isActive         Boolean   @default(true)
   requiresEvidence Boolean   @default(false)
   ownerOnly        Boolean   @default(false)

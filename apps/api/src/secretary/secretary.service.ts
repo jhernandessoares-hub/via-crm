@@ -528,11 +528,13 @@ export class SecretaryService {
         return `Evento criado com sucesso. ID: ${evento.id}`;
       }
       if (name === 'excluir_evento') {
-        await this.calendar.remove(tenantId, userId, args.eventId);
+        const caller = await this.prisma.user.findFirst({ where: { id: userId }, select: { role: true } });
+        await this.calendar.remove(tenantId, userId, caller?.role ?? 'AGENT', args.eventId);
         return 'Evento excluído com sucesso.';
       }
       if (name === 'remarcar_evento') {
-        await this.calendar.update(tenantId, userId, args.eventId, {
+        const caller = await this.prisma.user.findFirst({ where: { id: userId }, select: { role: true } });
+        await this.calendar.update(tenantId, userId, caller?.role ?? 'AGENT', args.eventId, {
           title: args.title, startAt: args.startAt, endAt: args.endAt, location: args.location,
         });
         return 'Evento remarcado com sucesso.';

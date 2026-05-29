@@ -97,6 +97,7 @@ export class CalendarController {
     return this.service.update(
       req.user.tenantId,
       req.user.sub || req.user.id,
+      req.user.role,
       id,
       body,
     );
@@ -107,6 +108,7 @@ export class CalendarController {
     return this.service.remove(
       req.user.tenantId,
       req.user.sub || req.user.id,
+      req.user.role,
       id,
     );
   }

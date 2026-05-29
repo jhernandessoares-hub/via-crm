@@ -27,7 +27,7 @@ type CalendarEvent = {
   location?: string | null;
   productId?: string | null;
   userId: string;
-  user: { id: string; nome: string; apelido?: string | null };
+  user: { id: string; nome: string; apelido?: string | null; role: string };
   createdAt: string;
 };
 
@@ -163,9 +163,20 @@ function formatShortTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function creatorName(ev: CalendarEvent, currentUserId: string): string {
+const ROLE_LEVEL: Record<string, number> = { OWNER: 4, MANAGER: 3, AGENT: 2, PARTNER: 1 };
+
+function canEditEvent(ev: CalendarEvent, currentUserId: string, currentUserRole: string): boolean {
+  if (ev.userId === currentUserId) return true;
+  return (ROLE_LEVEL[currentUserRole] ?? 0) > (ROLE_LEVEL[ev.user?.role] ?? 0);
+}
+
+function creatorDisplayName(ev: CalendarEvent, currentUserId: string): string {
   if (ev.userId === currentUserId) return "Você";
-  return ev.user?.apelido || ev.user?.nome?.split(" ")[0] || "—";
+  const u = ev.user;
+  if (!u) return "—";
+  if (u.apelido) return u.apelido;
+  const parts = u.nome.trim().split(" ");
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
 }
 
 // ──────────────────────────────────────────────
@@ -228,12 +239,14 @@ export default function CalendarPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Usuário atual (para diferenciar "Você" de outros criadores)
+  // Usuário atual (para diferenciar "Você" de outros e checar permissão de edição)
   const [currentUserId, setCurrentUserId] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState("");
   useEffect(() => {
     try {
       const u = JSON.parse(localStorage.getItem("user") || "{}");
       setCurrentUserId(u.id || u.sub || "");
+      setCurrentUserRole(u.role || "AGENT");
     } catch {}
   }, []);
 
@@ -583,7 +596,7 @@ export default function CalendarPage() {
                           {ev.visibility === "PRIVATE" && "🔒 "}
                           {ev.title}
                           {ev.userId !== currentUserId && (
-                            <span className="ml-1 opacity-70">· {creatorName(ev, currentUserId)}</span>
+                            <span className="ml-1 font-normal opacity-80">· {creatorDisplayName(ev, currentUserId)}</span>
                           )}
                         </button>
                       ))}
@@ -652,7 +665,9 @@ export default function CalendarPage() {
                         {!ev.allDay && (
                           <div className="opacity-80">{formatShortTime(ev.startAt)}</div>
                         )}
-                        <div className="opacity-70 truncate">{creatorName(ev, currentUserId)}</div>
+                        <div className="text-[10px] font-medium text-[var(--shell-subtext)] truncate mt-0.5">
+                          👤 {creatorDisplayName(ev, currentUserId)}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -696,7 +711,9 @@ export default function CalendarPage() {
                           {ev.visibility === "PRIVATE" && <span className="mr-1">🔒</span>}
                           {ev.title}
                         </div>
-                        <div className="text-xs opacity-70 mt-0.5">{creatorName(ev, currentUserId)}</div>
+                        <div className="text-xs font-medium text-[var(--shell-subtext)] mt-1">
+                          👤 {creatorDisplayName(ev, currentUserId)}
+                        </div>
                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[ev.status] || STATUS_BADGE_CLASS.AGENDADO}`}>
                           {EVENT_STATUS_OPTIONS.find((s) => s.value === ev.status)?.label || ev.status}
                         </span>
@@ -738,9 +755,14 @@ export default function CalendarPage() {
                   {editingEvent ? "Editar evento" : "Novo evento"}
                 </h2>
                 {editingEvent && (
-                  <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
-                    Criado por {creatorName(editingEvent, currentUserId)}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <p className="text-xs text-[var(--shell-subtext)]">
+                      Criado por <span className="font-medium text-[var(--shell-text)]">{creatorDisplayName(editingEvent, currentUserId)}</span>
+                    </p>
+                    {!canEditEvent(editingEvent, currentUserId, currentUserRole) && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">somente leitura</span>
+                    )}
+                  </div>
                 )}
               </div>
               <button
@@ -752,7 +774,9 @@ export default function CalendarPage() {
             </div>
 
             {/* Modal body */}
-            <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            {/* readonly = editando evento de outra pessoa sem permissão */}
+            {(() => { const readonly = !!(editingEvent && !canEditEvent(editingEvent, currentUserId, currentUserRole)); return (
+            <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto" style={readonly ? { pointerEvents: "none", opacity: 0.75 } : undefined}>
               {/* Type selector */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-[var(--shell-subtext)]">Tipo</label>
@@ -1042,11 +1066,12 @@ export default function CalendarPage() {
                 </div>
               )}
             </div>
+            ); })()}
 
             {/* Modal footer */}
             <div className="flex items-center justify-between border-t px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
               <div>
-                {editingEvent && !confirmDelete && (
+                {editingEvent && !confirmDelete && canEditEvent(editingEvent, currentUserId, currentUserRole) && (
                   <button
                     onClick={() => setConfirmDelete(true)}
                     className="text-xs text-red-500 hover:text-red-700"
@@ -1061,15 +1086,17 @@ export default function CalendarPage() {
                   className="rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
                   style={{ borderColor: "var(--shell-card-border)" }}
                 >
-                  Cancelar
+                  {editingEvent && !canEditEvent(editingEvent, currentUserId, currentUserRole) ? "Fechar" : "Cancelar"}
                 </button>
-                <button
-                  onClick={saveEvent}
-                  disabled={saving}
-                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {saving ? "Salvando..." : editingEvent ? "Salvar" : "Criar"}
-                </button>
+                {(!editingEvent || canEditEvent(editingEvent, currentUserId, currentUserRole)) && (
+                  <button
+                    onClick={saveEvent}
+                    disabled={saving}
+                    className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {saving ? "Salvando..." : editingEvent ? "Salvar" : "Criar"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
