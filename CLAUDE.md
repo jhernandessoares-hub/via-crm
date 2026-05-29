@@ -107,7 +107,8 @@ campaign-queue         → campaign-send (encadeado, um por campanha)
 PlatformAdmin     → administrador da plataforma SaaS (acima dos tenants)
 Tenant            → raiz multi-tenant (plan: STARTER | PREMIUM)
                     whatsappPhoneNumberId, whatsappToken, whatsappVerifyToken (por tenant)
-User              → role: OWNER | MANAGER | AGENT
+User              → role: OWNER | MANAGER | AGENT | PARTNER
+                    PARTNER = Parceiro Externo — acesso restrito e totalmente configurável pelo OWNER via /settings/permissions. Defaults: vê apenas leads atribuídos a si, catálogo de imóveis e KB. Sem acesso a inbox, campanhas, config do tenant.
                     passwordResetToken, passwordResetExpiry (recuperação de senha)
                     apelido String? — nome de exibição (mostrado no header em vez do nome completo se preenchido)
                     preferences Json? — preferências do usuário: { theme: 'light' | 'dark' }
@@ -151,7 +152,8 @@ Lead.conversaCanal/conversaSessionId → canal ativo da conversa ('WHATSAPP_OFIC
 PlatformConfig    → configurações globais da plataforma (key/value). Chaves: globalAgentRules, agentIdentityRules, whatsappFormattingRules
 PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
 AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION|DOC_CLASSIFICATION, modelName). Chaves de API ficam no .env.
-Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
+Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent/partner) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
+                    Módulos configuráveis (14): leads, products, calendar, secretary, channels, botConfig, settings, pipeline, knowledgeBase, gestao_empreendimentos, inbox (view/send), campanhas (CRUD), duplicados (view/merge), exportacao (export).
 Tenant.roundRobinConfig → Json? — configuração da roleta de distribuição de leads: { incluirGerentes: bool, incluirOwner: bool }
 RefreshToken      → revogação de refresh token por jti: campos jti (unique), userId, expiresAt, revokedAt? — persiste no banco para invalidação segura
 ```
@@ -310,14 +312,14 @@ NEXT_PUBLIC_API_URL=
 
 - **Logger:** usar `const logger = new Logger('NomeDoServico')` de `../logger`. **Nunca** `console.log` em produção.
 - **Tenant isolation:** todo `findMany`/`findFirst` deve ter `where: { tenantId }` e `deletedAt: null` para leads.
-- **Role AGENT:** sempre filtrar por `branchId` se disponível.
+- **Role AGENT/PARTNER:** AGENT filtra por `assignedUserId` (ou `branchId` se disponível); PARTNER sempre filtra por `assignedUserId` — nunca tem acesso à filial inteira.
 - **Soft delete:** nunca usar `prisma.lead.delete()` — usar `update({ data: { deletedAt: new Date(), deletedBy, deletionReason } })`.
 - **Webhook tokens:** sempre usar `channels.findByToken(token)` — nunca buscar `webhookToken` diretamente no Prisma.
 - **Audit:** usar `AuditService.log()` em ações sensíveis (deleção, login, exportação). O serviço é `@Global()` — injetar direto no constructor.
 - **Branch resolver:** usar `IngestService.resolveDefaultBranchId(tenantId)` para obter a branch padrão — nunca hardcodar IDs.
 - **WhatsApp creds:** sempre usar `resolveWhatsappCreds(prisma, tenantId)` de `whatsapp/whatsapp-creds.ts` — nunca ler `process.env.WHATSAPP_TOKEN` diretamente.
 - **Role guard (tenant):** usar `requireOwner(req)` inline nos controllers para restringir a OWNER — padrão adotado em ai-agents, channels, tenants, users/team.
-- **Permissões configuráveis:** usar `GET /tenants/permissions-public` + hook `usePermissions()` do frontend para verificar permissões de MANAGER/AGENT. Nunca hardcodar restrições que deveriam ser configuráveis.
+- **Permissões configuráveis:** usar `GET /tenants/permissions-public` + hook `usePermissions()` do frontend para verificar permissões de MANAGER/AGENT/PARTNER. Nunca hardcodar restrições que deveriam ser configuráveis. OWNER tem bypass total (sempre `true`). `resolvePermissions()` em `permissions.config.ts` itera os 3 roles e mescla com defaults — novos módulos aparecem automaticamente.
 - **Platform Admin:** rotas `/admin/*` protegidas por `PlatformAdminGuard` — token separado, nunca misturar com JWT de tenant.
 - **Email:** `EmailService` é `@Global()` — injetar direto. Sempre envolto em try/catch para não quebrar fluxo.
 - **Scripts fora de `src/`:** qualquer arquivo `.ts` fora de `src/` (ex: `scripts/`) **deve** ser adicionado ao `exclude` de `apps/api/tsconfig.build.json`. Arquivos fora de `src/` mudam o `rootDir` inferido pelo TypeScript de `./src` para `./`, deslocando o output de `dist/main.js` para `dist/src/main.js` e causando crash silencioso no Railway (`Cannot find module '/app/dist/main'`).
@@ -330,9 +332,9 @@ NEXT_PUBLIC_API_URL=
 - **Dark mode:** toggled via classe `dark` no `<html>`. Preferência salva em `user.preferences.theme` (`PATCH /users/me`). `applyTheme()` em AppShell sincroniza na inicialização e na troca.
 - **AppShell sidebar:** exibe nome do tenant abaixo do logo; avatar com dropdown ("Meus Dados", "Sair"); badges de contagem de leads (`GET /leads/counts`, atualizado a cada 60s) ao lado de "Meus Leads" e "Todos os Leads"; seção "Funil de Vendas" colapsável (estado em `localStorage` key `sidebar_funnel_open`).
 - **Modal "Meus Dados":** nome, email, apelido, trocar senha (validação `senhaAtual` no backend), toggle tema Claro/Escuro. Usa `style={{ backgroundColor: "rgba(0,0,0,0.55)" }}` no overlay (Tailwind v4 não suporta `bg-black/40` de forma confiável).
-- **Modal de boas-vindas (WelcomeModal):** exibido no primeiro login de cada usuário. Detectado no AppShell via `profile.preferences?.welcomeSeen !== true` após carregar `GET /users/me`. Ao clicar "Começar", grava `{ welcomeSeen: true }` via `PATCH /users/me` com merge de preferences. Componente em `components/layout/WelcomeModal.tsx`. Cards de funcionalidades variam por role: AGENT (4 cards), MANAGER (+2 cards), OWNER (+4 cards adicionais). Não reaparece após o primeiro fechamento.
-- **Visibilidade de leads por role:** AGENT vê apenas leads com `assignedUserId = me`; MANAGER vê todos da filial (`branchId`); OWNER vê todos. Implementado em `LeadsService.list()`.
-- **Atribuição manual:** campo "Responsável" no detalhe do lead — OWNER/MANAGER veem `<select>` com membros da equipe (chama `POST /leads/:id/assign`); AGENT vê nome somente-leitura.
+- **Modal de boas-vindas (WelcomeModal):** exibido no primeiro login de cada usuário. Detectado no AppShell via `profile.preferences?.welcomeSeen !== true` após carregar `GET /users/me`. Ao clicar "Começar", grava `{ welcomeSeen: true }` via `PATCH /users/me` com merge de preferences. Componente em `components/layout/WelcomeModal.tsx`. Cards de funcionalidades variam por role: AGENT (4 cards), MANAGER (+2 cards), OWNER (+4 cards adicionais), PARTNER (2 cards: Meus Leads + Catálogo). Não reaparece após o primeiro fechamento.
+- **Visibilidade de leads por role:** AGENT e PARTNER veem apenas leads com `assignedUserId = me` (salvo se `pipeline.view = true`); MANAGER vê todos da filial (`branchId`); OWNER vê todos. Implementado em `LeadsService.list()`.
+- **Atribuição manual:** campo "Responsável" no detalhe do lead — OWNER/MANAGER veem `<select>` com membros da equipe (chama `POST /leads/:id/assign`); AGENT e PARTNER veem nome somente-leitura.
 - `lib/admin-api.ts` → função `adminFetch()` para chamadas do Platform Admin (usa `adminToken`).
 - Tokens tenant em `localStorage`: `accessToken` (15min), `refreshToken` (7d), `user` (objeto do usuário).
 - Tokens admin em `localStorage`: `adminToken` (8h), `adminUser`.
@@ -364,10 +366,10 @@ NEXT_PUBLIC_API_URL=
 - Seção 2 exige mínimo 4 fotos; Seção 6 exige pelo menos 1 proprietário vinculado
 - Footer: [Código interno] [Recarregar] [Salvar] à esquerda | [Status] [Publicação] à direita
 - `products.service.ts`: `update()` persiste `sectionStatus` no banco
-- `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
+- `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role (MANAGER/AGENT/PARTNER), ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
 - `/meus-leads` → leads atribuídos ao usuário logado (todos os roles) — usa `GET /leads/my`.
 - `/leads/duplicados` → detecção e resolução de leads duplicados (OWNER/MANAGER). Grupos CERTA: mesmo `telefoneKey` ou mesmo CPF. Grupos POSSIVEL: nome similar via Jaro-Winkler ≥ 0.80, excluindo pares onde ambos têm CPF preenchido e CPFs distintos. Cada grupo permite mesclar (escolha campo a campo), excluir um dos leads individualmente, ou descartar o grupo ("Não são duplicatas" — salvo em `localStorage` para não reaparecer). Merge: transfere eventos/documentos/participantes/unidades para o vencedor e faz soft-delete do fonte com `LEAD_MERGE` no AuditLog. **Merge manual:** seção colapsável no topo da página com dois `LeadSearchInput` (autocomplete debounced 300ms via `GET /leads/search`) — permite unificar quaisquer dois leads independente de detecção automática, abre o mesmo `MergeModal` de escolha campo a campo.
-- `/settings/permissions` → permissões por role (OWNER only) — toggles ver/criar/editar/excluir por módulo para MANAGER e AGENT. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
+- `/settings/permissions` → permissões por role (OWNER only) — 3 colunas (Gerente / Corretor / Parceiro), toggles por módulo/ação para MANAGER, AGENT e PARTNER. 14 módulos configuráveis. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
 - `/settings/whatsapp` → configuração do número WhatsApp do tenant.
 - `/forgot-password` e `/reset-password` → recuperação de senha.
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
