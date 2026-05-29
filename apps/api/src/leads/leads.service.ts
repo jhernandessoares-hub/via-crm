@@ -382,10 +382,10 @@ export class LeadsService {
       parsedFilenameBase = filenameRaw;
     }
 
-    let lastErrorText = '';
+    const allErrors: string[] = [];
     let res: any = null;
 
-    this.logger.warn(`downloadEventMedia: ${candidateUrls.length} candidatos para evento ${eventId}, media.url=${url?.slice(0, 80)}`);
+    this.logger.warn(`downloadEventMedia: ${candidateUrls.length} candidatos para evento ${eventId}, media.url=${url?.slice(0, 120)}`);
 
     for (const u of candidateUrls) {
       try {
@@ -395,11 +395,13 @@ export class LeadsService {
           break;
         }
         const txt = await r.text().catch(() => '');
-        lastErrorText = `url=${u.slice(0, 100)} status=${r.status} body=${txt.slice(0, 200)}`;
-        this.logger.warn(`downloadEventMedia: falha → ${lastErrorText}`);
+        const errLine = `[${u.slice(0, 120)} → ${r.status} ${txt.slice(0, 300)}]`;
+        allErrors.push(errLine);
+        this.logger.warn(`downloadEventMedia: falha → ${errLine}`);
       } catch (e: any) {
-        lastErrorText = `url=${u.slice(0, 100)} error=${e?.message || String(e)}`;
-        this.logger.warn(`downloadEventMedia: exceção → ${lastErrorText}`);
+        const errLine = `[${u.slice(0, 120)} → ERR ${e?.message || String(e)}]`;
+        allErrors.push(errLine);
+        this.logger.warn(`downloadEventMedia: exceção → ${errLine}`);
       }
     }
 
@@ -460,9 +462,7 @@ export class LeadsService {
         );
       }
       throw new BadRequestException(
-        `Falha ao baixar arquivo. ${
-          lastErrorText || (res ? `status=${res.status}` : 'sem response')
-        }`,
+        `Falha ao baixar arquivo. falhas=${JSON.stringify(allErrors)}`,
       );
     }
 
