@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { Logger } from '../logger';
+import { signCloudinaryUrl } from '../cloudinary/cloudinary-media.util';
 
 const logger = new Logger('InboxService');
 
@@ -294,7 +295,7 @@ export class InboxService {
           direcao: LIGHT_CHANNELS_IN.includes(ev.channel) ? 'in' : 'out',
           texto: extractText(ev.payloadRaw),
           criadoEm: ev.criadoEm,
-          mediaUrl: media.mediaUrl,
+          mediaUrl: media.mediaUrl ? signCloudinaryUrl(media.mediaUrl) : null,
           mediaType: media.mediaType,
           mimeType: media.mimeType,
           filename: media.filename,
