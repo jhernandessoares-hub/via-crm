@@ -868,7 +868,6 @@ function MediaBlock({
 
   const openModal = async () => {
     try {
-      // —S& Para PDF/documentos: SEMPRE abrir via blob do /download com Bearer
       const mt = String(m?.mimeType || "").toLowerCase();
       const looksPdf =
         mt.indexOf("pdf") >= 0 ||
@@ -876,15 +875,28 @@ function MediaBlock({
         kind === "document";
 
       if (looksPdf) {
+        // Tenta URL direta primeiro (igual ao fluxo de JPEG) — funciona para assets públicos
+        const directSrc = publicUrl || blobUrl;
+        if (directSrc) {
+          try {
+            const resp = await fetch(directSrc);
+            if (resp.ok) {
+              const b = await resp.blob();
+              const finalBlob = b.type.includes("pdf") ? b : new Blob([b], { type: "application/pdf" });
+              onOpenModal("document", filename, URL.createObjectURL(finalBlob), "application/pdf");
+              return;
+            }
+          } catch { /* cai no proxy abaixo */ }
+        }
+        // Fallback: proxy autenticado do backend
         const blob0 = await authFetchBlob(downloadUrl);
         const isPdfBlob = String((blob0 as any)?.type || "").toLowerCase().indexOf("pdf") >= 0;
         const blob = isPdfBlob ? blob0 : new Blob([blob0], { type: "application/pdf" });
-        const objectUrl = URL.createObjectURL(blob);
-        onOpenModal("document", filename, objectUrl, "application/pdf");
+        onOpenModal("document", filename, URL.createObjectURL(blob), "application/pdf");
         return;
       }
 
-      // —S& Para imagem/vídeo/áudio: usa o src já resolvido (publicUrl ou blobUrl)
+      // Para imagem/vídeo/áudio: usa o src já resolvido (publicUrl ou blobUrl)
       if (!effectiveSrc && needsAuthBlob) await ensureBlob();
       onOpenModal(kind, filename, publicUrl || blobUrl || effectiveSrc, m?.mimeType || undefined);
     } catch (e: any) {
@@ -895,18 +907,27 @@ function MediaBlock({
   const onDownload = async () => {
     try {
       await downloadWithAuth(downloadUrl, filename);
-    } catch (e: any) {
-      setLoadErr(e?.message || "Falha ao baixar arquivo.");
-      // Fallback: download direto via URL pública
+    } catch {
+      // Backend falhou — tenta fetch direto e cria blob (evita navigation guard)
       if (publicUrl) {
-        const a = document.createElement("a");
-        a.href = publicUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setLoadErr(null);
+        try {
+          const resp = await fetch(publicUrl);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const objUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = objUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(objUrl), 100);
+            setLoadErr(null);
+            return;
+          }
+        } catch { /* ignora */ }
       }
+      setLoadErr("Falha ao baixar arquivo.");
     }
   };
 
