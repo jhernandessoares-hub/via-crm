@@ -283,13 +283,14 @@ export class LeadsService {
     publicId: string;
     ext: string;
     resourceType: 'image' | 'video' | 'raw';
+    deliveryType?: 'upload' | 'authenticated';
   }): string {
     this.ensureCloudinaryConfigured();
     const expiresAt = Math.floor(Date.now() / 1000) + 300; // 5 minutos
     const format = input.ext && input.ext !== 'bin' ? input.ext : '';
     return (cloudinary.utils as any).private_download_url(input.publicId, format, {
       resource_type: input.resourceType,
-      type: 'upload',
+      type: input.deliveryType ?? 'upload',
       expires_at: expiresAt,
       attachment: false,
     });
@@ -348,6 +349,34 @@ export class LeadsService {
             resourceType,
           });
           if (signedUrl && signedUrl !== url) candidateUrls.push(signedUrl);
+        } catch {}
+
+        // Para raw: tenta também com a extensão incluída no publicId
+        // (Cloudinary raw resources guardam a ext no public_id, ex: "arquivo.pdf")
+        if (resourceType === 'raw' && parsed.ext && parsed.ext !== 'bin') {
+          const publicIdWithExt = `${parsed.publicId}.${parsed.ext}`;
+          for (const t of ['upload', 'authenticated'] as const) {
+            try {
+              const rawExtUrl = (cloudinary.utils as any).private_download_url(publicIdWithExt, '', {
+                resource_type: 'raw',
+                type: t,
+                expires_at: Math.floor(Date.now() / 1000) + 300,
+                attachment: false,
+              });
+              if (rawExtUrl && !candidateUrls.includes(rawExtUrl)) candidateUrls.push(rawExtUrl);
+            } catch {}
+          }
+        }
+
+        // Tenta type: 'authenticated' com o publicId sem ext (asset pode ter esse delivery type)
+        try {
+          const authUrl = this.buildPrivateDownloadUrl({
+            publicId: parsed.publicId,
+            ext: parsed.ext,
+            resourceType,
+            deliveryType: 'authenticated',
+          });
+          if (authUrl && !candidateUrls.includes(authUrl)) candidateUrls.push(authUrl);
         } catch {}
 
         // Fallback extra — tenta resource_type alternativo

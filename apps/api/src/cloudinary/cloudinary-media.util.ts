@@ -45,12 +45,13 @@ export function buildPrivateDownloadUrl(
   publicId: string,
   ext: string,
   resourceType: 'image' | 'video' | 'raw',
+  deliveryType: 'upload' | 'authenticated' = 'upload',
 ): string {
   const expiresAt = Math.floor(Date.now() / 1000) + 300; // 5 minutos
   const format = ext && ext !== 'bin' ? ext : '';
   return (cloudinary.utils as any).private_download_url(publicId, format, {
     resource_type: resourceType,
-    type: 'upload',
+    type: deliveryType,
     expires_at: expiresAt,
     attachment: false,
   });
@@ -63,7 +64,19 @@ export function signCloudinaryUrl(url: string): string {
   // PDF via video/upload deve ser tratado como raw
   let resourceType = parsed.resourceType;
   if (parsed.ext === 'pdf') resourceType = 'raw';
+
   try {
+    // Para raw com extensão conhecida: public_id no Cloudinary inclui a extensão
+    // ex: "folder/arquivo.pdf" é o public_id real, não "folder/arquivo"
+    if (resourceType === 'raw' && parsed.ext && parsed.ext !== 'bin') {
+      const publicIdWithExt = `${parsed.publicId}.${parsed.ext}`;
+      return (cloudinary.utils as any).private_download_url(publicIdWithExt, '', {
+        resource_type: 'raw',
+        type: 'upload',
+        expires_at: Math.floor(Date.now() / 1000) + 300,
+        attachment: false,
+      });
+    }
     return buildPrivateDownloadUrl(parsed.publicId, parsed.ext, resourceType);
   } catch {
     return url;
