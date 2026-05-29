@@ -169,6 +169,7 @@ RefreshToken      → revogação de refresh token por jti: campos jti (unique),
 - **Crypto at-rest:** `Tenant.whatsappToken` cifrado AES-256-GCM via `crypto/field-crypto.util.ts` (prefixo `ENC:`, requer `ENCRYPTION_KEY` 64 hex)
 - **Webhook tokens:** HMAC-SHA256 em `Channel.webhookTokenHash` + HMAC Meta `X-Hub-Signature-256` (opt-in via `appSecret`)
 - **Cloudinary privado:** `LeadDocument` usa `type: 'authenticated'`, URL assinada 2min via `buildSignedCloudinaryDownloadUrl()`. Singleton em `main.ts` — nunca `cloudinary.config()` direto
+- **Cloudinary raw public_id:** recursos `resource_type: 'raw'` (PDFs, docs) guardam a **extensão no public_id** (ex: `pasta/arquivo.pdf`, não `pasta/arquivo`). Ao chamar `private_download_url` para raw, use `publicId + '.' + ext` e `format: ''`. Para image/video o public_id não tem extensão — comportamento oposto. Código de referência: `cloudinary-media.util.ts` (`signCloudinaryUrl`) e `leads.service.ts` (`downloadEventMedia`). Ignorar essa regra causa 404 silencioso no download.
 - **LGPD:** soft delete em leads (`deletedAt/deletedBy/deletionReason`), `AuditService` `@Global()` com try/catch silencioso
 - **Boundaries:** `REGISTER_MASTER_SECRET` (tenants/master), `PLATFORM_ADMIN_SECRET` (bootstrap), `PlatformAdminGuard` em `/admin/*`
 - **Rate limiting:** 120/min global, 10/15min em `/auth/login`, 5/15min em registro e forgot-password. Helmet ativo
