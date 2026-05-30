@@ -2196,12 +2196,12 @@ export default function LeadDetailChatPage() {
       setWaLightSessions(list);
       const hasOficial = !!(waConfig?.whatsappPhoneNumberId && waConfig?.whatsappTokenConfigured);
       setWaOficialConfigured(hasOficial);
-      // Auto-seleciona: primeiro CONNECTED, depois Oficial, senão null
+      // Auto-seleciona: Oficial tem prioridade quando configurado, Light como fallback
       setSelectedCanalOut(prev => {
         if (prev) return prev;
+        if (hasOficial) return { type: "oficial" };
         const connected = list.find(s => s.status === "CONNECTED");
         if (connected) return { type: "light", sessionId: connected.id };
-        if (hasOficial) return { type: "oficial" };
         return null;
       });
     } catch {}

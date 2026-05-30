@@ -279,6 +279,8 @@ async function processPayload(
                   status: 'NOVO',
                   lastInboundAt: now,
                   stageId: firstStageId,
+                  conversaCanal: 'WHATSAPP_OFICIAL',
+                  lastEntryChannel: 'WHATSAPP_OFICIAL',
                 },
                 select: { id: true },
               });
@@ -321,7 +323,7 @@ async function processPayload(
             if (isReentry) {
               await tx.lead.update({
                 where: { id: leadId },
-                data: { lastInboundAt: now },
+                data: { lastInboundAt: now, conversaCanal: 'WHATSAPP_OFICIAL' },
               });
             }
 
