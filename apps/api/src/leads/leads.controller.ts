@@ -104,6 +104,11 @@ export class LeadsController {
     res.send('\uFEFF' + csv); // BOM for Excel UTF-8
   }
 
+  @Get('pending-reply')
+  async getPendingReply(@Req() req: any) {
+    return this.leadsService.getPendingReply(req.user);
+  }
+
   // =========================
   // ROTAS COM :id
   // =========================

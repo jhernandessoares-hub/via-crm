@@ -39,6 +39,7 @@ import {
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
 
 // ✅ NOVO: download seguro Cloudinary via backend (proxy)
@@ -1146,6 +1147,40 @@ export class LeadsService {
     groups[firstGroup] += noStage;
 
     return { total, mine, groups };
+  }
+
+  async getPendingReply(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
+    const { id, tenantId, role, branchId } = user;
+
+    const roleFilter =
+      role === 'AGENT' || role === 'PARTNER'
+        ? Prisma.sql`AND l."assignedUserId" = ${id}`
+        : role === 'MANAGER' && branchId
+          ? Prisma.sql`AND l."branchId" = ${branchId}`
+          : Prisma.empty;
+
+    return this.prisma.$queryRaw<Array<{
+      id: string;
+      nome: string;
+      nomeCorreto: string | null;
+      telefone: string | null;
+      lastInboundAt: Date;
+    }>>(Prisma.sql`
+      SELECT l.id, l.nome, l."nomeCorreto", l.telefone, l."lastInboundAt"
+      FROM "Lead" l
+      WHERE l."tenantId" = ${tenantId}
+      AND l."deletedAt" IS NULL
+      AND l."lastInboundAt" IS NOT NULL
+      ${roleFilter}
+      AND NOT EXISTS (
+        SELECT 1 FROM "LeadEvent" e
+        WHERE e."leadId" = l.id
+        AND e.channel IN ('whatsapp.out', 'whatsapp.unofficial.out')
+        AND e."criadoEm" > l."lastInboundAt"
+      )
+      ORDER BY l."lastInboundAt" DESC
+      LIMIT 20
+    `);
   }
 
   async dashboard(

@@ -42,6 +42,14 @@ type Counts = {
   groups: Record<string, number>;
 };
 
+type PendingReplyLead = {
+  id: string;
+  nome: string;
+  nomeCorreto: string | null;
+  telefone: string | null;
+  lastInboundAt: string;
+};
+
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2)
@@ -68,6 +76,7 @@ function AppShellInner({
   const [modalOpen, setModalOpen] = useState(false);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [pendingDeletions, setPendingDeletions] = useState(0);
+  const [pendingReplies, setPendingReplies] = useState<PendingReplyLead[]>([]);
   const [branding, setBranding] = useState<TenantBranding>({});
   const [tenantAddons, setTenantAddons] = useState<string[]>([]);
   const [tenantPlan, setTenantPlan] = useState<string>('');
@@ -118,6 +127,9 @@ function AppShellInner({
         .catch(() => null);
       apiFetch("/products/pending-deletions/count")
         .then((data: any) => setPendingDeletions(data?.count ?? 0))
+        .catch(() => null);
+      apiFetch("/leads/pending-reply")
+        .then((data: any) => setPendingReplies(Array.isArray(data) ? data : []))
         .catch(() => null);
     }
     fetchCounts();
@@ -197,6 +209,7 @@ function AppShellInner({
             onToggleTheme={toggleTheme}
             onOpenMeusDados={() => setModalOpen(true)}
             pendingDeletions={pendingDeletions}
+            pendingReplies={pendingReplies}
             sessionSecondsLeft={secondsLeft}
           />
           <main className="flex-1 p-6 overflow-y-auto">{children}</main>
