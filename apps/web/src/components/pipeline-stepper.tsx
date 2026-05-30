@@ -4,7 +4,7 @@ function cn(...classes: (string | undefined | false)[]): string {
   return classes.filter(Boolean).join(" ");
 }
 
-function ArrowRightIcon() {
+function ArrowRightIcon({ color = "#94a3b8" }: { color?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -16,7 +16,7 @@ function ArrowRightIcon() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ flexShrink: 0, color: "#94a3b8" }}
+      style={{ flexShrink: 0, color }}
     >
       <path d="M5 12h14" />
       <path d="m12 5 7 7-7 7" />
@@ -109,6 +109,7 @@ type ChipVariant =
   | "current"        // etapa atual — azul escuro
   | "next-positive"  // transição positiva — verde
   | "next-negative"  // transição negativa — âmbar
+  | "prev-group"     // stage da etapa anterior — âmbar suave, clicável
   | "future";        // etapa futura bloqueada — cinza claro
 
 const chipBase =
@@ -125,6 +126,8 @@ const chipStyles: Record<ChipVariant, string> = {
     "bg-white border-green-300 text-green-700 font-medium cursor-pointer hover:bg-green-50",
   "next-negative":
     "bg-white border-amber-300 text-amber-700 font-medium cursor-pointer hover:bg-amber-50",
+  "prev-group":
+    "bg-amber-50 border-amber-200 text-amber-700 font-medium cursor-pointer hover:bg-amber-100 hover:border-amber-300",
   future:
     "bg-white border-slate-200 text-slate-300 cursor-default",
 };
@@ -142,7 +145,10 @@ function StageChip({
 }) {
   const clickable =
     !disabled &&
-    (variant === "past-prev" || variant === "next-positive" || variant === "next-negative");
+    (variant === "past-prev" ||
+      variant === "next-positive" ||
+      variant === "next-negative" ||
+      variant === "prev-group");
 
   return (
     <button
@@ -196,6 +202,20 @@ function GroupTransitionBadge({
   );
 }
 
+// ─── Separador de grupo ───────────────────────────────────────────────────────
+
+function GroupDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-1.5 self-stretch">
+      <div className="h-full w-px bg-slate-200 dark:bg-neutral-600" style={{ minHeight: 28 }} />
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 writing-mode-vertical whitespace-nowrap">
+        {label}
+      </span>
+      <div className="h-full w-px bg-slate-200 dark:bg-neutral-600" style={{ minHeight: 28 }} />
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 interface PipelineStepperProps {
@@ -215,7 +235,7 @@ export function PipelineStepper({
   onSelectStage,
   disabled,
 }: PipelineStepperProps) {
-  // Apenas stages do grupo atual, em ordem
+  // Stages do grupo atual em ordem
   const list = (stages || [])
     .filter((s) => !currentGroup || s.group === currentGroup)
     .slice()
@@ -231,7 +251,29 @@ export function PipelineStepper({
     ? (GROUP_LABELS[currentGroup] ?? currentGroup)
     : "Todas as etapas";
 
-  // Classifica cada stage do grupo para exibição linear
+  // Determina a etapa anterior pela ordem de sortOrder mínimo de cada grupo
+  const groupOrder = [...new Set(
+    (stages || []).filter((s) => s.group).map((s) => s.group!)
+  )]
+    .map((g) => ({
+      group: g,
+      minOrder: Math.min(...(stages || []).filter((s) => s.group === g).map((s) => s.sortOrder ?? 0)),
+    }))
+    .sort((a, b) => a.minOrder - b.minOrder)
+    .map((g) => g.group);
+
+  const currentGroupIndex = currentGroup ? groupOrder.indexOf(currentGroup) : -1;
+  const prevGroupKey = currentGroupIndex > 0 ? groupOrder[currentGroupIndex - 1] : null;
+  const prevGroupLabel = prevGroupKey ? (GROUP_LABELS[prevGroupKey] ?? prevGroupKey) : null;
+
+  const prevGroupStages = prevGroupKey
+    ? (stages || [])
+        .filter((s) => s.group === prevGroupKey)
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    : [];
+
+  // Classifica cada stage do grupo atual
   function classifyStage(s: PipelineStage): {
     variant: ChipVariant;
     clickable: boolean;
@@ -244,7 +286,6 @@ export function PipelineStepper({
         ? { variant: "past-prev", clickable: true }
         : { variant: "past",      clickable: false };
     }
-    // order > currentOrder
     if (inAllowed) {
       return NEGATIVE_KEYS.has(s.key) || s.returnsToGroup
         ? { variant: "next-negative", clickable: true }
@@ -260,11 +301,45 @@ export function PipelineStepper({
         <span className="font-semibold text-slate-700 dark:text-slate-200">{groupLabel}</span>
       </p>
 
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+      <div className="flex flex-wrap items-start gap-x-1.5 gap-y-2">
+
+        {/* Stages da etapa anterior */}
+        {prevGroupStages.length > 0 && (
+          <>
+            {prevGroupStages.map((s, i) => {
+              const showAdvanceBadge = !!s.advancesToGroup;
+              const showReturnBadge  = !!s.returnsToGroup;
+              return (
+                <div key={s.id} className="flex items-center gap-1.5">
+                  {i > 0 && <ArrowRightIcon color="#fcd34d" />}
+                  <div className="flex flex-col items-start gap-1">
+                    <StageChip
+                      name={s.name}
+                      variant="prev-group"
+                      disabled={disabled}
+                      onClick={() => onSelectStage?.(s)}
+                    />
+                    {showAdvanceBadge && (
+                      <GroupTransitionBadge targetGroup={s.advancesToGroup!} direction="advance" />
+                    )}
+                    {showReturnBadge && (
+                      <GroupTransitionBadge targetGroup={s.returnsToGroup!} direction="return" />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Separador com label da etapa atual */}
+            <GroupDivider label={groupLabel} />
+          </>
+        )}
+
+        {/* Stages do grupo atual */}
         {list.map((s, i) => {
           const { variant, clickable } = classifyStage(s);
-          const showGroupAdvance = clickable && !!s.advancesToGroup;
-          const showGroupReturn  = clickable && !!s.returnsToGroup;
+          const showAdvanceBadge = clickable && !!s.advancesToGroup;
+          const showReturnBadge  = clickable && !!s.returnsToGroup;
 
           return (
             <div key={s.id} className="flex items-center gap-1.5">
@@ -276,16 +351,17 @@ export function PipelineStepper({
                   disabled={disabled || !clickable}
                   onClick={clickable ? () => onSelectStage?.(s) : undefined}
                 />
-                {showGroupAdvance && (
+                {showAdvanceBadge && (
                   <GroupTransitionBadge targetGroup={s.advancesToGroup!} direction="advance" />
                 )}
-                {showGroupReturn && (
+                {showReturnBadge && (
                   <GroupTransitionBadge targetGroup={s.returnsToGroup!} direction="return" />
                 )}
               </div>
             </div>
           );
         })}
+
       </div>
     </div>
   );
