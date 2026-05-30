@@ -68,6 +68,8 @@ export type PipelineStage = {
   sortOrder?: number;
   requiresEvidence?: boolean;
   ownerOnly?: boolean;
+  advancesToGroup?: string | null;
+  returnsToGroup?: string | null;
 };
 
 // ─── Etapas negativas → âmbar ─────────────────────────────────────────────────
@@ -154,6 +156,46 @@ function StageChip({
   );
 }
 
+// ─── Badge de transição de grupo ─────────────────────────────────────────────
+
+function GroupTransitionBadge({
+  targetGroup,
+  direction,
+}: {
+  targetGroup: string;
+  direction: "advance" | "return";
+}) {
+  const label = GROUP_LABELS[targetGroup] ?? targetGroup;
+  const isAdvance = direction === "advance";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
+        isAdvance
+          ? "border-green-300 bg-green-50 text-green-700"
+          : "border-amber-300 bg-amber-50 text-amber-700"
+      )}
+    >
+      {isAdvance ? (
+        <>
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+          </svg>
+          {label}
+        </>
+      ) : (
+        <>
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
+          </svg>
+          {label}
+        </>
+      )}
+    </span>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 interface PipelineStepperProps {
@@ -204,7 +246,7 @@ export function PipelineStepper({
     }
     // order > currentOrder
     if (inAllowed) {
-      return NEGATIVE_KEYS.has(s.key)
+      return NEGATIVE_KEYS.has(s.key) || s.returnsToGroup
         ? { variant: "next-negative", clickable: true }
         : { variant: "next-positive", clickable: true };
     }
@@ -221,20 +263,26 @@ export function PipelineStepper({
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
         {list.map((s, i) => {
           const { variant, clickable } = classifyStage(s);
-          const showArrow = i > 0 && variant !== "past" && variant !== "past-prev" &&
-            list[i - 1] && classifyStage(list[i - 1]).variant !== "next-positive" &&
-            classifyStage(list[i - 1]).variant !== "next-negative" &&
-            classifyStage(list[i - 1]).variant !== "future";
+          const showGroupAdvance = clickable && !!s.advancesToGroup;
+          const showGroupReturn  = clickable && !!s.returnsToGroup;
 
           return (
             <div key={s.id} className="flex items-center gap-1.5">
               {i > 0 && <ArrowRightIcon />}
-              <StageChip
-                name={s.name}
-                variant={variant}
-                disabled={disabled || !clickable}
-                onClick={clickable ? () => onSelectStage?.(s) : undefined}
-              />
+              <div className="flex flex-col items-start gap-1">
+                <StageChip
+                  name={s.name}
+                  variant={variant}
+                  disabled={disabled || !clickable}
+                  onClick={clickable ? () => onSelectStage?.(s) : undefined}
+                />
+                {showGroupAdvance && (
+                  <GroupTransitionBadge targetGroup={s.advancesToGroup!} direction="advance" />
+                )}
+                {showGroupReturn && (
+                  <GroupTransitionBadge targetGroup={s.returnsToGroup!} direction="return" />
+                )}
+              </div>
             </div>
           );
         })}

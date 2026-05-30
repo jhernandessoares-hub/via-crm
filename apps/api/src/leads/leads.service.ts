@@ -1835,7 +1835,7 @@ async getById(user: any, id: string) {
               NOT: { id: effectiveCurrentStageId ?? undefined },
               ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
             },
-            select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, ownerOnly: true },
+            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
             orderBy: { sortOrder: 'asc' },
           })
         : [];
@@ -2181,6 +2181,30 @@ async updateStage(user: any, leadId: string, stageId: string) {
         },
       }),
     ]);
+
+    const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
+    if (targetGroup) {
+      const firstStageOfGroup = await this.prisma.pipelineStage.findFirst({
+        where: { tenantId: user.tenantId, group: targetGroup, isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true },
+      });
+      if (firstStageOfGroup) {
+        await this.prisma.$transaction([
+          this.prisma.lead.update({ where: { id: leadId }, data: { stageId: firstStageOfGroup.id } }),
+          this.prisma.leadTransitionLog.create({
+            data: {
+              tenantId: user.tenantId,
+              leadId,
+              fromStage: toStage.name,
+              toStage: firstStageOfGroup.name,
+              changedBy: user?.id || 'USER',
+            },
+          }),
+        ]);
+      }
+    }
+
     return updated;
   }
 
