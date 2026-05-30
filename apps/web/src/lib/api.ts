@@ -50,6 +50,11 @@ async function tryRefreshToken(): Promise<string | null> {
   }
 }
 
+/** Renova o access token manualmente (chamado pelo modal de sessão) */
+export async function manualRefreshToken(): Promise<string | null> {
+  return tryRefreshToken();
+}
+
 /** Revoga o refresh token no servidor antes de limpar sessão local */
 export async function apiLogout(): Promise<void> {
   if (typeof window === "undefined") return;

@@ -23,6 +23,13 @@ interface HeaderProps {
   onToggleTheme: () => void;
   onOpenMeusDados: () => void;
   pendingDeletions?: number;
+  sessionSecondsLeft?: number | null;
+}
+
+function formatSessionTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 export function Header({
@@ -35,6 +42,7 @@ export function Header({
   onToggleTheme,
   onOpenMeusDados,
   pendingDeletions = 0,
+  sessionSecondsLeft,
 }: HeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -136,6 +144,31 @@ export function Header({
               </span>
             )}
           </a>
+
+          {/* Badge de sessão */}
+          {sessionSecondsLeft !== null && sessionSecondsLeft !== undefined && (
+            <span
+              className="hidden sm:inline-flex items-center gap-1 text-xs font-mono font-semibold px-2 py-1 rounded-md tabular-nums"
+              style={{
+                color:
+                  sessionSecondsLeft > 180
+                    ? "var(--shell-subtext)"
+                    : sessionSecondsLeft > 60
+                    ? "#F59E0B"
+                    : "#EF4444",
+                background:
+                  sessionSecondsLeft > 180
+                    ? "var(--shell-hover)"
+                    : sessionSecondsLeft > 60
+                    ? "rgba(245,158,11,0.1)"
+                    : "rgba(239,68,68,0.1)",
+                animation: sessionSecondsLeft <= 60 ? "pulse 1s infinite" : "none",
+              }}
+              title="Tempo restante de sessão"
+            >
+              🔒 {formatSessionTime(sessionSecondsLeft)}
+            </span>
+          )}
 
           <div
             className="w-px h-6 mx-2"

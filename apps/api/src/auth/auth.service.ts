@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import type { JwtPayload } from './types';
+import { validatePasswordStrength } from './password-strength.util';
 
 @Injectable()
 export class AuthService {
@@ -256,9 +257,8 @@ export class AuthService {
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
     if (!token) throw new BadRequestException('Token inválido.');
-    if (!newPassword || newPassword.length < 8) {
-      throw new BadRequestException('A senha deve ter no mínimo 8 caracteres.');
-    }
+    const pwError = validatePasswordStrength(newPassword);
+    if (pwError) throw new BadRequestException(pwError);
 
     const user = await this.prisma.user.findUnique({
       where: { passwordResetToken: token },
@@ -291,6 +291,8 @@ export class AuthService {
     senha: string;
   }) {
     const email = data.email.trim().toLowerCase();
+    const pwError = validatePasswordStrength(data.senha);
+    if (pwError) throw new BadRequestException(pwError);
     const senhaHash = await bcrypt.hash(data.senha, 10);
 
     const tenantId = await this.resolveTenantId(data.tenantId);

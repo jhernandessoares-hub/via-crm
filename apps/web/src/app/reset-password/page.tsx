@@ -3,6 +3,8 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { PasswordStrengthMeter } from "@/components/PasswordStrengthMeter";
+import { isPasswordStrong } from "@/lib/password";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -18,7 +20,7 @@ function ResetPasswordForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (password.length < 8) { setErr("A senha deve ter no mínimo 8 caracteres."); return; }
+    if (!isPasswordStrong(password)) { setErr("A senha não atende aos requisitos de segurança."); return; }
     if (password !== confirm) { setErr("As senhas não coincidem."); return; }
     setLoading(true);
     try {
@@ -82,13 +84,13 @@ function ResetPasswordForm() {
         <input
           type="password"
           required
-          minLength={8}
           className="w-full h-11 rounded-xl border border-gray-200 px-4 text-sm outline-none transition-all focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Mínimo 8 caracteres"
+          placeholder="Crie uma senha forte"
           autoComplete="new-password"
         />
+        {password && <PasswordStrengthMeter password={password} />}
       </div>
 
       <div className="space-y-1.5">

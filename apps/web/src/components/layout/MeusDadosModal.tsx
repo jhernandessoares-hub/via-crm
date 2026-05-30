@@ -6,6 +6,8 @@ import { apiFetch } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { PasswordStrengthMeter } from "@/components/PasswordStrengthMeter";
+import { isPasswordStrong } from "@/lib/password";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -55,8 +57,8 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
       setErr("A nova senha e a confirmação não coincidem.");
       return;
     }
-    if (novaSenha && novaSenha.length < 6) {
-      setErr("A nova senha deve ter pelo menos 6 caracteres.");
+    if (novaSenha && !isPasswordStrong(novaSenha)) {
+      setErr("A senha não atende aos requisitos de segurança.");
       return;
     }
 
@@ -141,11 +143,12 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
           />
           <Input
             type="password"
-            placeholder="Nova senha (mín. 6 caracteres)"
+            placeholder="Nova senha"
             value={novaSenha}
             onChange={(e) => setNovaSenha(e.target.value)}
             autoComplete="new-password"
           />
+          {novaSenha && <PasswordStrengthMeter password={novaSenha} />}
           <Input
             type="password"
             placeholder="Confirmar nova senha"
