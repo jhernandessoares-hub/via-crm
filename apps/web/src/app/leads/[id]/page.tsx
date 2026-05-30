@@ -1900,6 +1900,7 @@ export default function LeadDetailChatPage() {
   const [waLightSessions, setWaLightSessions] = useState<WaSession[]>([]);
   const [waOficialConfigured, setWaOficialConfigured] = useState(false);
   const [selectedCanalOut, setSelectedCanalOut] = useState<CanalOut | null>(null);
+  const [pendingCanalChange, setPendingCanalChange] = useState<CanalOut | null>(null);
   const [savingCanal, setSavingCanal] = useState(false);
   const [desvinculandoUnitId, setDesvinculandoUnitId] = useState<string | null>(null);
   const [trocandoUnit, setTrocandoUnit] = useState<string | null>(null);
@@ -2279,14 +2280,8 @@ export default function LeadDetailChatPage() {
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      const [leadResult,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
+      const [,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
       if (aiStatus) setTenantAiEnabled((aiStatus as any).autopilotEnabled ?? true);
-      // Sincroniza canal de saída com o canal gravado no lead (após loadWaChannels auto-selecionar)
-      if ((leadResult as any)?.conversaCanal === "WHATSAPP_LIGHT" && (leadResult as any)?.conversaSessionId) {
-        setSelectedCanalOut({ type: "light", sessionId: (leadResult as any).conversaSessionId });
-      } else if ((leadResult as any)?.conversaCanal === "WHATSAPP_OFICIAL") {
-        setSelectedCanalOut({ type: "oficial" });
-      }
       loadAgendaEvents();
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
@@ -3053,12 +3048,20 @@ function discardAiSuggestion() {
     const msg = String(message || "").trim();
     if (!msg) return;
 
-    if (!selectedCanalOut) {
-      alert("Defina o canal de saída antes de enviar.");
-      return;
-    }
-    if (selectedCanalOut.type === "light") {
-      const session = waLightSessions.find(s => s.id === selectedCanalOut.sessionId);
+    if (!lead?.conversaCanal) {
+      if (!selectedCanalOut) {
+        alert("Defina o canal de saída antes de enviar.");
+        return;
+      }
+      if (selectedCanalOut.type === "light") {
+        const session = waLightSessions.find(s => s.id === selectedCanalOut.sessionId);
+        if (session && session.status !== "CONNECTED") {
+          alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
+          return;
+        }
+      }
+    } else if (lead.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) {
+      const session = waLightSessions.find(s => s.id === lead.conversaSessionId);
       if (session && session.status !== "CONNECTED") {
         alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
         return;
@@ -3109,12 +3112,20 @@ function discardAiSuggestion() {
   async function sendRecordedAudio() {
     if (!audioBlob) return;
 
-    if (!selectedCanalOut) {
-      alert("Defina o canal de saída antes de enviar.");
-      return;
-    }
-    if (selectedCanalOut.type === "light") {
-      const session = waLightSessions.find(s => s.id === selectedCanalOut.sessionId);
+    if (!lead?.conversaCanal) {
+      if (!selectedCanalOut) {
+        alert("Defina o canal de saída antes de enviar.");
+        return;
+      }
+      if (selectedCanalOut.type === "light") {
+        const session = waLightSessions.find(s => s.id === selectedCanalOut.sessionId);
+        if (session && session.status !== "CONNECTED") {
+          alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
+          return;
+        }
+      }
+    } else if (lead.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) {
+      const session = waLightSessions.find(s => s.id === lead.conversaSessionId);
       if (session && session.status !== "CONNECTED") {
         alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
         return;
@@ -4953,18 +4964,28 @@ function discardAiSuggestion() {
                     ) : (
                       <span className="flex items-center gap-1 flex-wrap">
                         <select
-                          value={
-                            selectedCanalOut?.type === "light"
-                              ? selectedCanalOut.sessionId
-                              : selectedCanalOut?.type === "oficial"
-                              ? "__oficial__"
-                              : ""
-                          }
+                          value={(() => {
+                            if (lead?.conversaCanal) {
+                              // Lead tem canal gravado: pendingCanalChange se estiver mudando, senão direto do lead
+                              if (pendingCanalChange) {
+                                return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
+                              }
+                              if (lead.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
+                              if (lead.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
+                              return "";
+                            }
+                            // Lead sem canal: usa selectedCanalOut (auto-selecionado)
+                            return selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId
+                              : selectedCanalOut?.type === "oficial" ? "__oficial__" : "";
+                          })()}
                           onChange={(e) => {
                             const v = e.target.value;
-                            if (v === "__oficial__") setSelectedCanalOut({ type: "oficial" });
-                            else if (v) setSelectedCanalOut({ type: "light", sessionId: v });
-                            else setSelectedCanalOut(null);
+                            const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
+                            if (lead?.conversaCanal) {
+                              setPendingCanalChange(newVal);
+                            } else {
+                              setSelectedCanalOut(newVal);
+                            }
                           }}
                           className="rounded border bg-[var(--shell-card-bg)] px-2 py-1 text-xs"
                           style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
@@ -4979,29 +5000,22 @@ function discardAiSuggestion() {
                             <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
                           )}
                         </select>
-                        {lead?.conversaCanal && (
-                          lead.conversaCanal === "WHATSAPP_LIGHT"
-                            ? (selectedCanalOut?.type !== "light" || (selectedCanalOut as any).sessionId !== lead.conversaSessionId)
-                            : selectedCanalOut?.type !== "oficial"
-                        ) && (
+                        {lead?.conversaCanal && pendingCanalChange && (
                           <>
                             <button
                               type="button"
-                              disabled={savingCanal || !selectedCanalOut}
+                              disabled={savingCanal}
                               onClick={async () => {
-                                if (!selectedCanalOut) return;
+                                if (!pendingCanalChange) return;
                                 setSavingCanal(true);
                                 try {
                                   const body: Record<string, string | null> = {
-                                    conversaCanal: selectedCanalOut.type === "light" ? "WHATSAPP_LIGHT" : "WHATSAPP_OFICIAL",
+                                    conversaCanal: pendingCanalChange.type === "light" ? "WHATSAPP_LIGHT" : "WHATSAPP_OFICIAL",
+                                    conversaSessionId: pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : null,
                                   };
-                                  if (selectedCanalOut.type === "light") body.conversaSessionId = selectedCanalOut.sessionId;
                                   await apiFetch(`/leads/${id}/canal`, { method: "PATCH", body: JSON.stringify(body) });
-                                  setLead((prev: any) => prev ? {
-                                    ...prev,
-                                    conversaCanal: body.conversaCanal,
-                                    conversaSessionId: selectedCanalOut.type === "light" ? selectedCanalOut.sessionId : null,
-                                  } : prev);
+                                  setLead((prev: any) => prev ? { ...prev, ...body } : prev);
+                                  setPendingCanalChange(null);
                                 } catch {
                                   alert("Erro ao alterar canal");
                                 } finally {
@@ -5015,13 +5029,7 @@ function discardAiSuggestion() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead?.conversaSessionId) {
-                                  setSelectedCanalOut({ type: "light", sessionId: lead.conversaSessionId });
-                                } else if (lead?.conversaCanal === "WHATSAPP_OFICIAL") {
-                                  setSelectedCanalOut({ type: "oficial" });
-                                }
-                              }}
+                              onClick={() => setPendingCanalChange(null)}
                               className="rounded px-2 py-1 text-xs font-semibold text-[var(--shell-subtext)] hover:opacity-80"
                             >
                               Cancelar
