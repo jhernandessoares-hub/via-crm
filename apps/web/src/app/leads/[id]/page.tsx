@@ -4965,27 +4965,20 @@ function discardAiSuggestion() {
                       <span className="flex items-center gap-1 flex-wrap">
                         <select
                           value={(() => {
-                            if (lead?.conversaCanal) {
-                              // Lead tem canal gravado: pendingCanalChange se estiver mudando, senão direto do lead
-                              if (pendingCanalChange) {
-                                return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
-                              }
-                              if (lead.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
-                              if (lead.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
-                              return "";
+                            // Mudança pendente tem prioridade sempre
+                            if (pendingCanalChange) {
+                              return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
                             }
-                            // Lead sem canal: usa selectedCanalOut (auto-selecionado)
+                            if (lead?.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
+                            if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
+                            // Sem canal gravado: usa auto-seleção
                             return selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId
                               : selectedCanalOut?.type === "oficial" ? "__oficial__" : "";
                           })()}
                           onChange={(e) => {
                             const v = e.target.value;
                             const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
-                            if (lead?.conversaCanal) {
-                              setPendingCanalChange(newVal);
-                            } else {
-                              setSelectedCanalOut(newVal);
-                            }
+                            setPendingCanalChange(newVal);
                           }}
                           className="rounded border bg-[var(--shell-card-bg)] px-2 py-1 text-xs"
                           style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
@@ -5000,7 +4993,7 @@ function discardAiSuggestion() {
                             <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
                           )}
                         </select>
-                        {lead?.conversaCanal && pendingCanalChange && (
+                        {pendingCanalChange && (
                           <>
                             <button
                               type="button"
