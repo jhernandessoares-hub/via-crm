@@ -162,12 +162,13 @@ type LeadCalendarEvent = {
   id: string;
   title: string;
   startAt: string;
+  endAt: string;
   eventType: string;
   status: string;
   color: string;
   visibility: string;
   userId: string;
-  user: { id: string; nome: string; apelido?: string | null };
+  user: { id: string; nome: string; apelido?: string | null; role: string };
 };
 
 type AiSuggestedAttachment = {
@@ -1916,6 +1917,13 @@ export default function LeadDetailChatPage() {
 
   const [agendaEvents, setAgendaEvents] = useState<LeadCalendarEvent[]>([]);
   const [agendaOpen, setAgendaOpen] = useState(true);
+  const [slaOpen, setSlaOpen] = useState(true);
+  const [editingAgendaEvent, setEditingAgendaEvent] = useState<LeadCalendarEvent | null>(null);
+  const [agendaEditForm, setAgendaEditForm] = useState({ title: "", startAt: "", endAt: "", status: "", visibility: "" });
+  const [agendaEditSaving, setAgendaEditSaving] = useState(false);
+  const [agendaEditError, setAgendaEditError] = useState<string | null>(null);
+  const [currentAgendaUserId, setCurrentAgendaUserId] = useState("");
+  const [currentAgendaUserRole, setCurrentAgendaUserRole] = useState("");
 
   const filePickerRef = useRef<HTMLInputElement | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
@@ -2202,6 +2210,64 @@ export default function LeadDetailChatPage() {
       setAgendaEvents(Array.isArray(data) ? data : []);
     } catch {
       setAgendaEvents([]);
+    }
+  }
+
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      setCurrentAgendaUserId(u.id || u.sub || "");
+      setCurrentAgendaUserRole(u.role || "AGENT");
+    } catch {}
+  }, []);
+
+  const AGENDA_ROLE_LEVEL: Record<string, number> = { OWNER: 4, MANAGER: 3, AGENT: 2, PARTNER: 1 };
+
+  function canEditAgendaEvent(ev: LeadCalendarEvent): boolean {
+    if (ev.userId === currentAgendaUserId) return true;
+    return (AGENDA_ROLE_LEVEL[currentAgendaUserRole] ?? 0) > (AGENDA_ROLE_LEVEL[ev.user?.role] ?? 0);
+  }
+
+  function toAgendaInputDateTime(iso: string) {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function openAgendaEdit(ev: LeadCalendarEvent) {
+    setAgendaEditError(null);
+    setEditingAgendaEvent(ev);
+    setAgendaEditForm({
+      title: ev.title,
+      startAt: toAgendaInputDateTime(ev.startAt),
+      endAt: ev.endAt ? toAgendaInputDateTime(ev.endAt) : "",
+      status: ev.status,
+      visibility: ev.visibility,
+    });
+  }
+
+  async function saveAgendaEdit() {
+    if (!editingAgendaEvent) return;
+    if (!agendaEditForm.title.trim()) { setAgendaEditError("Título obrigatório."); return; }
+    setAgendaEditSaving(true);
+    setAgendaEditError(null);
+    try {
+      await apiFetch(`/calendar/events/${editingAgendaEvent.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: agendaEditForm.title.trim(),
+          startAt: new Date(agendaEditForm.startAt).toISOString(),
+          endAt: agendaEditForm.endAt ? new Date(agendaEditForm.endAt).toISOString() : undefined,
+          status: agendaEditForm.status,
+          visibility: agendaEditForm.visibility,
+        }),
+      });
+      setEditingAgendaEvent(null);
+      loadAgendaEvents();
+    } catch (e: any) {
+      setAgendaEditError(e?.message || "Erro ao salvar.");
+    } finally {
+      setAgendaEditSaving(false);
     }
   }
 
@@ -4482,119 +4548,6 @@ function discardAiSuggestion() {
               </div>
             )}
 
-            {/* Painel SLA */}
-            {slaData && (
-              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="text-sm font-semibold text-[var(--shell-text)]">SLA</div>
-                  {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
-                </div>
-
-                {/* Stage group badge */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    slaData.stageGroup === 'PRE_ATENDIMENTO'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
-                  }`}>
-                    {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
-                  </span>
-                  {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
-                    <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
-                  )}
-                </div>
-
-                {/* 23h window */}
-                {slaData.lastInboundAt && (
-                  <div className={`rounded-md border p-2 mb-3 text-xs ${
-                    slaData.windowExpired
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : slaData.windowRemainingMinutes < 120
-                        ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  }`}>
-                    <div className="font-medium mb-0.5">Janela WhatsApp (23h)</div>
-                    {slaData.windowExpired ? (
-                      <div>Janela expirada</div>
-                    ) : (
-                      <div>
-                        Fecha em{' '}
-                        {slaData.windowRemainingMinutes >= 60
-                          ? `${Math.floor(slaData.windowRemainingMinutes / 60)}h ${slaData.windowRemainingMinutes % 60}min`
-                          : `${slaData.windowRemainingMinutes}min`}
-                        {' '}· {new Date(slaData.windowCloseAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Scheduled jobs */}
-                {slaData.scheduledJobs?.length > 0 ? (
-                  <div className="mb-3">
-                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
-                    <div className="space-y-1">
-                      {slaData.scheduledJobs.map((job: any) => {
-                        const urgencyColor: Record<string, string> = {
-                          BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-                          MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
-                          ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
-                          CRITICA: 'text-red-700 bg-red-50 border-red-200',
-                        };
-                        const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
-                        return (
-                          <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
-                            <span className="font-medium">{job.name}</span>
-                            <span>
-                              {new Date(job.scheduledFor).toLocaleString('pt-BR', {
-                                day: '2-digit', month: '2-digit',
-                                hour: '2-digit', minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
-                  <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
-                ) : null}
-
-                {/* Recent history */}
-                {slaData.history?.length > 0 && (
-                  <div>
-                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Histórico recente</div>
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {slaData.history.slice(0, 8).map((ev: any) => {
-                        const p = ev.payload || {};
-                        const isBlocked = p.outcome === 'BLOCKED';
-                        const isDue = p.outcome === 'DUE';
-                        const isSuggestion = ev.channel === 'ai.suggestion';
-                        return (
-                          <div key={ev.id} className="flex items-start gap-1.5 text-xs text-[var(--shell-subtext)]">
-                            <span className="mt-0.5 shrink-0">
-                              {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
-                            </span>
-                            <span className="flex-1 min-w-0">
-                              <span className="font-medium">
-                                {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
-                              </span>
-                              {' · '}
-                              <span className="text-[var(--shell-subtext)]">
-                                {new Date(ev.criadoEm).toLocaleString('pt-BR', {
-                                  day: '2-digit', month: '2-digit',
-                                  hour: '2-digit', minute: '2-digit',
-                                })}
-                              </span>
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Agenda */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
               <button
@@ -4623,35 +4576,42 @@ function discardAiSuggestion() {
                   {agendaEvents.length === 0 ? (
                     <p className="text-xs text-[var(--shell-subtext)]">Nenhum evento agendado.</p>
                   ) : (
-                    agendaEvents.slice(0, 5).map((ev) => (
-                      <div
-                        key={ev.id}
-                        className="rounded-lg border p-2.5 text-xs space-y-0.5"
-                        style={{ borderColor: "var(--shell-card-border)" }}
-                      >
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${AGENDA_TYPE_COLOR[ev.eventType] ?? "bg-gray-100 text-gray-600"}`}>
-                            {AGENDA_TYPE_LABEL[ev.eventType] ?? ev.eventType}
-                          </span>
-                          {ev.visibility === "PRIVATE" && (
-                            <span className="text-[10px] text-[var(--shell-subtext)]">🔒</span>
-                          )}
-                          <span className="font-medium text-[var(--shell-text)] truncate flex-1">{ev.title}</span>
-                          <span className="text-[10px] font-medium text-[var(--shell-subtext)] shrink-0">
-                            👤 {ev.user?.apelido || (ev.user?.nome?.trim().split(" ")[0]) || "—"}
-                          </span>
+                    agendaEvents.slice(0, 5).map((ev) => {
+                      const editable = canEditAgendaEvent(ev);
+                      return (
+                        <div
+                          key={ev.id}
+                          className={`rounded-lg border p-2.5 text-xs space-y-0.5 ${editable ? "cursor-pointer hover:bg-[var(--shell-hover)] transition" : ""}`}
+                          style={{ borderColor: "var(--shell-card-border)" }}
+                          onClick={() => editable && openAgendaEdit(ev)}
+                        >
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${AGENDA_TYPE_COLOR[ev.eventType] ?? "bg-gray-100 text-gray-600"}`}>
+                              {AGENDA_TYPE_LABEL[ev.eventType] ?? ev.eventType}
+                            </span>
+                            {ev.visibility === "PRIVATE" && (
+                              <span className="text-[10px] text-[var(--shell-subtext)]">🔒</span>
+                            )}
+                            <span className="font-medium text-[var(--shell-text)] truncate flex-1">{ev.title}</span>
+                            <span className="text-[10px] font-medium text-[var(--shell-subtext)] shrink-0">
+                              👤 {ev.user?.apelido || (ev.user?.nome?.trim().split(" ")[0]) || "—"}
+                            </span>
+                            {editable && (
+                              <span className="text-[10px] text-blue-500 shrink-0">✏️</span>
+                            )}
+                          </div>
+                          <div className="text-[var(--shell-subtext)]">
+                            {new Date(ev.startAt).toLocaleString("pt-BR", {
+                              day: "2-digit", month: "2-digit", year: "numeric",
+                              hour: "2-digit", minute: "2-digit",
+                            })}
+                          </div>
+                          <div className="text-[var(--shell-subtext)]">
+                            {AGENDA_STATUS_LABEL[ev.status] ?? ev.status}
+                          </div>
                         </div>
-                        <div className="text-[var(--shell-subtext)]">
-                          {new Date(ev.startAt).toLocaleString("pt-BR", {
-                            day: "2-digit", month: "2-digit", year: "numeric",
-                            hour: "2-digit", minute: "2-digit",
-                          })}
-                        </div>
-                        <div className="text-[var(--shell-subtext)]">
-                          {AGENDA_STATUS_LABEL[ev.status] ?? ev.status}
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
 
                   <div className="flex items-center gap-2 pt-1">
@@ -4674,6 +4634,235 @@ function discardAiSuggestion() {
                 </div>
               )}
             </div>
+
+            {/* Painel SLA */}
+            {slaData && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
+                <button
+                  type="button"
+                  onClick={() => setSlaOpen((v) => !v)}
+                  className="flex w-full items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">SLA</span>
+                    {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
+                  </div>
+                  <svg
+                    className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${slaOpen ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {slaOpen && (
+                  <div className="mt-3">
+                    {/* Stage group badge */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        slaData.stageGroup === 'PRE_ATENDIMENTO'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
+                      }`}>
+                        {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
+                      </span>
+                      {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
+                        <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
+                      )}
+                    </div>
+
+                    {/* 23h window */}
+                    {slaData.lastInboundAt && (
+                      <div className={`rounded-md border p-2 mb-3 text-xs ${
+                        slaData.windowExpired
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : slaData.windowRemainingMinutes < 120
+                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}>
+                        <div className="font-medium mb-0.5">Janela WhatsApp (23h)</div>
+                        {slaData.windowExpired ? (
+                          <div>Janela expirada</div>
+                        ) : (
+                          <div>
+                            Fecha em{' '}
+                            {slaData.windowRemainingMinutes >= 60
+                              ? `${Math.floor(slaData.windowRemainingMinutes / 60)}h ${slaData.windowRemainingMinutes % 60}min`
+                              : `${slaData.windowRemainingMinutes}min`}
+                            {' '}· {new Date(slaData.windowCloseAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Scheduled jobs */}
+                    {slaData.scheduledJobs?.length > 0 ? (
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
+                        <div className="space-y-1">
+                          {slaData.scheduledJobs.map((job: any) => {
+                            const urgencyColor: Record<string, string> = {
+                              BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                              MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
+                              ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
+                              CRITICA: 'text-red-700 bg-red-50 border-red-200',
+                            };
+                            const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
+                            return (
+                              <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
+                                <span className="font-medium">{job.name}</span>
+                                <span>
+                                  {new Date(job.scheduledFor).toLocaleString('pt-BR', {
+                                    day: '2-digit', month: '2-digit',
+                                    hour: '2-digit', minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
+                      <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
+                    ) : null}
+
+                    {/* Recent history */}
+                    {slaData.history?.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Histórico recente</div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {slaData.history.slice(0, 8).map((ev: any) => {
+                            const p = ev.payload || {};
+                            const isBlocked = p.outcome === 'BLOCKED';
+                            const isDue = p.outcome === 'DUE';
+                            const isSuggestion = ev.channel === 'ai.suggestion';
+                            return (
+                              <div key={ev.id} className="flex items-start gap-1.5 text-xs text-[var(--shell-subtext)]">
+                                <span className="mt-0.5 shrink-0">
+                                  {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
+                                </span>
+                                <span className="flex-1 min-w-0">
+                                  <span className="font-medium">
+                                    {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
+                                  </span>
+                                  {' · '}
+                                  <span className="text-[var(--shell-subtext)]">
+                                    {new Date(ev.criadoEm).toLocaleString('pt-BR', {
+                                      day: '2-digit', month: '2-digit',
+                                      hour: '2-digit', minute: '2-digit',
+                                    })}
+                                  </span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal de edição inline de evento da agenda */}
+            {editingAgendaEvent && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+                <div className="w-full max-w-sm rounded-xl shadow-xl bg-[var(--shell-card-bg)]">
+                  <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                    <div>
+                      <h2 className="text-base font-semibold text-[var(--shell-text)]">Editar evento</h2>
+                      <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{AGENDA_TYPE_LABEL[editingAgendaEvent.eventType] ?? editingAgendaEvent.eventType}</p>
+                    </div>
+                    <button type="button" onClick={() => setEditingAgendaEvent(null)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">×</button>
+                  </div>
+
+                  <div className="px-5 py-4 space-y-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Título</label>
+                      <input
+                        value={agendaEditForm.title}
+                        onChange={(e) => setAgendaEditForm((p) => ({ ...p, title: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Início</label>
+                        <input
+                          type="datetime-local"
+                          value={agendaEditForm.startAt}
+                          onChange={(e) => setAgendaEditForm((p) => ({ ...p, startAt: e.target.value }))}
+                          className="w-full rounded-md border px-2 py-2 text-xs outline-none focus:border-slate-400"
+                          style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Fim</label>
+                        <input
+                          type="datetime-local"
+                          value={agendaEditForm.endAt}
+                          onChange={(e) => setAgendaEditForm((p) => ({ ...p, endAt: e.target.value }))}
+                          className="w-full rounded-md border px-2 py-2 text-xs outline-none focus:border-slate-400"
+                          style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Status</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(["AGENDADO","CONFIRMADO","REALIZADO","NO_SHOW","CANCELADO"] as const).map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setAgendaEditForm((p) => ({ ...p, status: s }))}
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                              agendaEditForm.status === s
+                                ? "bg-slate-800 text-white"
+                                : "bg-[var(--shell-hover)] text-[var(--shell-subtext)] hover:opacity-80"
+                            }`}
+                          >
+                            {AGENDA_STATUS_LABEL[s]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[var(--shell-subtext)]">Visibilidade</span>
+                      <div className="flex rounded-lg border overflow-hidden text-xs" style={{ borderColor: "var(--shell-card-border)" }}>
+                        <button type="button" onClick={() => setAgendaEditForm((p) => ({ ...p, visibility: "PUBLIC" }))}
+                          className={`px-3 py-1.5 transition ${agendaEditForm.visibility === "PUBLIC" ? "bg-blue-600 text-white font-medium" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                          🌐 Público
+                        </button>
+                        <button type="button" onClick={() => setAgendaEditForm((p) => ({ ...p, visibility: "PRIVATE" }))}
+                          className={`px-3 py-1.5 transition ${agendaEditForm.visibility === "PRIVATE" ? "bg-slate-600 text-white font-medium" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                          🔒 Privado
+                        </button>
+                      </div>
+                    </div>
+
+                    {agendaEditError && (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{agendaEditError}</div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2 border-t px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                    <button type="button" onClick={() => setEditingAgendaEvent(null)}
+                      className="rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                      style={{ borderColor: "var(--shell-card-border)" }}>
+                      Cancelar
+                    </button>
+                    <button type="button" onClick={saveAgendaEdit} disabled={agendaEditSaving}
+                      className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
+                      {agendaEditSaving ? "Salvando..." : "Salvar"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
 
