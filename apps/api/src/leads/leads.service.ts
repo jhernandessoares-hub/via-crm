@@ -1823,7 +1823,7 @@ async getById(user: any, id: string) {
     if (isCustomStage) {
       const currentStageRecord = await this.prisma.pipelineStage.findFirst({
         where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
-        select: { pipelineId: true },
+        select: { pipelineId: true, group: true, sortOrder: true },
       });
 
       const allCustomStages = currentStageRecord
@@ -1840,11 +1840,52 @@ async getById(user: any, id: string) {
           })
         : [];
 
+      // Descobre o stage real em que o lead esteve na etapa anterior (via log de transições)
+      let prevGroupLastStageId: string | null = null;
+      if (currentStageRecord?.group && allCustomStages.length > 0) {
+        // Agrupa todos os stages pelo grupo e calcula o minSortOrder de cada grupo
+        const groupMinOrder = new Map<string, number>();
+        for (const s of allCustomStages) {
+          if (!s.group) continue;
+          const cur = groupMinOrder.get(s.group) ?? Infinity;
+          groupMinOrder.set(s.group, Math.min(cur, s.sortOrder ?? 0));
+        }
+        // Inclui o grupo atual no mapa
+        if (!groupMinOrder.has(currentStageRecord.group)) {
+          groupMinOrder.set(currentStageRecord.group, currentStageRecord.sortOrder ?? 0);
+        }
+
+        const groupOrder = [...groupMinOrder.entries()]
+          .sort((a, b) => a[1] - b[1])
+          .map(([g]) => g);
+
+        const currentGroupIdx = groupOrder.indexOf(currentStageRecord.group);
+        const prevGroupKey = currentGroupIdx > 0 ? groupOrder[currentGroupIdx - 1] : null;
+
+        if (prevGroupKey) {
+          const prevGroupStages = allCustomStages.filter((s) => s.group === prevGroupKey);
+          const prevGroupNames = prevGroupStages.map((s) => s.name);
+
+          // Busca o log mais recente em que o lead saiu de um stage da etapa anterior
+          const lastLog = await this.prisma.leadTransitionLog.findFirst({
+            where: { tenantId: user.tenantId, leadId, fromStage: { in: prevGroupNames } },
+            orderBy: { createdAt: 'desc' },
+            select: { fromStage: true },
+          });
+
+          if (lastLog?.fromStage) {
+            const match = prevGroupStages.find((s) => s.name === lastLog.fromStage);
+            prevGroupLastStageId = match?.id ?? null;
+          }
+        }
+      }
+
       return {
         leadId,
         currentStageId: effectiveCurrentStageId,
         currentStageKey: fromStageKey,
         allowedStages: allCustomStages,
+        prevGroupLastStageId,
       };
     }
 
@@ -2065,14 +2106,17 @@ async updateStage(user: any, leadId: string, stageId: string) {
   let fromStageKey: string | null = null;
   let effectiveCurrentStageId: string | null = lead.stageId ?? null;
 
+  let fromStageGroup: string | null = null;
+
   if (lead.stageId) {
     const from = await this.prisma.pipelineStage.findFirst({
       where: { id: lead.stageId, tenantId: user.tenantId },
-      select: { key: true, name: true },
+      select: { key: true, name: true, group: true },
     });
 
     fromStageKey = from?.key ?? null;
     fromStageName = from?.name ?? null;
+    fromStageGroup = from?.group ?? null;
   } else {
     const defaultStage = await this.prisma.pipelineStage.findFirst({
       where: {
@@ -2183,7 +2227,9 @@ async updateStage(user: any, leadId: string, stageId: string) {
     ]);
 
     const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
-    if (targetGroup) {
+    // Só faz cascade se o grupo destino for diferente do grupo atual do lead
+    // (evita loop: clicar em stage gateway ao voltar re-empurraria para o grupo de origem)
+    if (targetGroup && targetGroup !== fromStageGroup) {
       const firstStageOfGroup = await this.prisma.pipelineStage.findFirst({
         where: { tenantId: user.tenantId, group: targetGroup, isActive: true },
         orderBy: { sortOrder: 'asc' },
