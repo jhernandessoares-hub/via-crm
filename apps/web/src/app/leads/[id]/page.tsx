@@ -2084,11 +2084,6 @@ export default function LeadDetailChatPage() {
     const l = await apiFetch("/leads/" + id, { method: "GET" });
     setLead(l);
     setNomeConfirmadoEdit(l?.nomeCorreto ?? "");
-    if (l?.conversaCanal === "WHATSAPP_LIGHT" && l?.conversaSessionId) {
-      setSelectedCanalOut({ type: "light", sessionId: l.conversaSessionId });
-    } else if (l?.conversaCanal === "WHATSAPP_OFICIAL") {
-      setSelectedCanalOut({ type: "oficial" });
-    }
     await loadAllowedStages(id);
     return l;
   }
@@ -2284,8 +2279,14 @@ export default function LeadDetailChatPage() {
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      const [,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
+      const [leadResult,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
       if (aiStatus) setTenantAiEnabled((aiStatus as any).autopilotEnabled ?? true);
+      // Sincroniza canal de saída com o canal gravado no lead (após loadWaChannels auto-selecionar)
+      if ((leadResult as any)?.conversaCanal === "WHATSAPP_LIGHT" && (leadResult as any)?.conversaSessionId) {
+        setSelectedCanalOut({ type: "light", sessionId: (leadResult as any).conversaSessionId });
+      } else if ((leadResult as any)?.conversaCanal === "WHATSAPP_OFICIAL") {
+        setSelectedCanalOut({ type: "oficial" });
+      }
       loadAgendaEvents();
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
