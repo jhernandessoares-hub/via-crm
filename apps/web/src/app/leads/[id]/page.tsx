@@ -1974,6 +1974,7 @@ export default function LeadDetailChatPage() {
   const [savingCredit,      setSavingCredit]      = useState(false);
   const [slaLoading, setSlaLoading] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showCanalModal, setShowCanalModal] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showEndConvDialog, setShowEndConvDialog] = useState(false);
   const pendingNavRef = useRef<string | null>(null);
@@ -4978,7 +4979,7 @@ function discardAiSuggestion() {
                           onChange={(e) => {
                             const v = e.target.value;
                             const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
-                            setPendingCanalChange(newVal);
+                            if (newVal) { setPendingCanalChange(newVal); setShowCanalModal(true); }
                           }}
                           className="rounded border bg-[var(--shell-card-bg)] px-2 py-1 text-xs"
                           style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
@@ -4994,40 +4995,7 @@ function discardAiSuggestion() {
                           )}
                         </select>
                         {pendingCanalChange && (
-                          <>
-                            <button
-                              type="button"
-                              disabled={savingCanal}
-                              onClick={async () => {
-                                if (!pendingCanalChange) return;
-                                setSavingCanal(true);
-                                try {
-                                  const body: Record<string, string | null> = {
-                                    conversaCanal: pendingCanalChange.type === "light" ? "WHATSAPP_LIGHT" : "WHATSAPP_OFICIAL",
-                                    conversaSessionId: pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : null,
-                                  };
-                                  await apiFetch(`/leads/${id}/canal`, { method: "PATCH", body: JSON.stringify(body) });
-                                  setLead((prev: any) => prev ? { ...prev, ...body } : prev);
-                                  setPendingCanalChange(null);
-                                } catch {
-                                  alert("Erro ao alterar canal");
-                                } finally {
-                                  setSavingCanal(false);
-                                }
-                              }}
-                              className="rounded px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
-                              style={{ background: "var(--brand-accent)" }}
-                            >
-                              {savingCanal ? "Salvando..." : "Confirmar"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPendingCanalChange(null)}
-                              className="rounded px-2 py-1 text-xs font-semibold text-[var(--shell-subtext)] hover:opacity-80"
-                            >
-                              Cancelar
-                            </button>
-                          </>
+                          <span className="text-xs text-amber-600 font-medium">Troca pendente — confirme no popup</span>
                         )}
                       </span>
                     )}
@@ -6046,6 +6014,71 @@ function discardAiSuggestion() {
                 className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600"
               >
                 Sim, encerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCanalModal && pendingCanalChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" style={{ background: "var(--shell-card-bg)", border: "1px solid var(--shell-card-border)" }}>
+            <h2 className="text-base font-bold mb-3" style={{ color: "var(--shell-text)" }}>⚠️ Confirmar troca de canal</h2>
+            <p className="text-sm mb-2" style={{ color: "var(--shell-subtext)" }}>
+              {lead?.conversaCanal ? (
+                <>
+                  Este cliente entrou em contato pelo{" "}
+                  <strong style={{ color: "var(--shell-text)" }}>
+                    {lead.conversaCanal === "WHATSAPP_OFICIAL"
+                      ? "WhatsApp Oficial (Meta)"
+                      : (() => { const s = waLightSessions.find(x => x.id === lead.conversaSessionId); return s ? `${s.nome}${s.phoneNumber ? ` · ${s.phoneNumber}` : ""}` : "WhatsApp Light"; })()}
+                  </strong>.{" "}
+                </>
+              ) : null}
+              Ao confirmar, as próximas mensagens serão enviadas pelo{" "}
+              <strong style={{ color: "var(--shell-text)" }}>
+                {pendingCanalChange.type === "oficial"
+                  ? "WhatsApp Oficial (Meta)"
+                  : (() => { const s = waLightSessions.find(x => x.id === pendingCanalChange.sessionId); return s ? `${s.nome}${s.phoneNumber ? ` · ${s.phoneNumber}` : ""}` : "WhatsApp Light"; })()}
+              </strong>.
+            </p>
+            <p className="text-sm mb-5" style={{ color: "var(--shell-subtext)" }}>
+              O cliente poderá receber mensagens de um número novo e talvez desconhecido para ele.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setPendingCanalChange(null); setShowCanalModal(false); }}
+                className="rounded px-4 py-2 text-sm font-semibold hover:opacity-80"
+                style={{ background: "var(--shell-sidebar-bg)", color: "var(--shell-subtext)" }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={savingCanal}
+                onClick={async () => {
+                  if (!pendingCanalChange) return;
+                  setSavingCanal(true);
+                  try {
+                    const body: Record<string, string | null> = {
+                      conversaCanal: pendingCanalChange.type === "light" ? "WHATSAPP_LIGHT" : "WHATSAPP_OFICIAL",
+                      conversaSessionId: pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : null,
+                    };
+                    await apiFetch(`/leads/${id}/canal`, { method: "PATCH", body: JSON.stringify(body) });
+                    setLead((prev: any) => prev ? { ...prev, ...body } : prev);
+                    setPendingCanalChange(null);
+                    setShowCanalModal(false);
+                  } catch {
+                    alert("Erro ao alterar canal");
+                  } finally {
+                    setSavingCanal(false);
+                  }
+                }}
+                className="rounded px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: "#dc2626" }}
+              >
+                {savingCanal ? "Salvando..." : "Confirmar troca"}
               </button>
             </div>
           </div>
