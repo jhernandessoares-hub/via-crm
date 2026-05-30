@@ -223,6 +223,7 @@ interface PipelineStepperProps {
   currentStageId?: string | null;
   currentGroup?: string | null;
   allowedStageIds?: string[];
+  prevGroupActualStageId?: string | null;
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
 }
@@ -232,6 +233,7 @@ export function PipelineStepper({
   currentStageId,
   currentGroup,
   allowedStageIds,
+  prevGroupActualStageId,
   onSelectStage,
   disabled,
 }: PipelineStepperProps) {
@@ -273,6 +275,14 @@ export function PipelineStepper({
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     : [];
 
+  // Mostra o stage real em que o lead esteve na etapa anterior (do log de transições)
+  // Fallback para o gateway configurado ou o último stage do grupo anterior
+  const prevGatewayStage =
+    (prevGroupActualStageId ? prevGroupStages.find((s) => s.id === prevGroupActualStageId) : null) ??
+    prevGroupStages.find((s) => s.advancesToGroup === currentGroup) ??
+    prevGroupStages[prevGroupStages.length - 1] ??
+    null;
+
   // Classifica cada stage do grupo atual
   function classifyStage(s: PipelineStage): {
     variant: ChipVariant;
@@ -303,32 +313,22 @@ export function PipelineStepper({
 
       <div className="flex flex-wrap items-start gap-x-1.5 gap-y-2">
 
-        {/* Stages da etapa anterior */}
-        {prevGroupStages.length > 0 && (
+        {/* Stage gateway da etapa anterior (único) */}
+        {prevGatewayStage && (
           <>
-            {prevGroupStages.map((s, i) => {
-              const showAdvanceBadge = !!s.advancesToGroup;
-              const showReturnBadge  = !!s.returnsToGroup;
-              return (
-                <div key={s.id} className="flex items-center gap-1.5">
-                  {i > 0 && <ArrowRightIcon color="#fcd34d" />}
-                  <div className="flex flex-col items-start gap-1">
-                    <StageChip
-                      name={s.name}
-                      variant="prev-group"
-                      disabled={disabled}
-                      onClick={() => onSelectStage?.(s)}
-                    />
-                    {showAdvanceBadge && (
-                      <GroupTransitionBadge targetGroup={s.advancesToGroup!} direction="advance" />
-                    )}
-                    {showReturnBadge && (
-                      <GroupTransitionBadge targetGroup={s.returnsToGroup!} direction="return" />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            <div className="flex items-center gap-1.5">
+              <div className="flex flex-col items-start gap-1">
+                <StageChip
+                  name={prevGatewayStage.name}
+                  variant="prev-group"
+                  disabled={disabled}
+                  onClick={() => onSelectStage?.(prevGatewayStage)}
+                />
+                {prevGatewayStage.advancesToGroup && (
+                  <GroupTransitionBadge targetGroup={prevGatewayStage.advancesToGroup} direction="advance" />
+                )}
+              </div>
+            </div>
 
             {/* Separador com label da etapa atual */}
             <GroupDivider label={groupLabel} />
