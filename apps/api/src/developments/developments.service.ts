@@ -518,7 +518,13 @@ export class DevelopmentsService {
               where: { id: leadRecord.stageId },
               select: { group: true },
             });
-            const ALLOWED = ['NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
+            const ALLOWED = [
+              // Pipeline padrão
+              'NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA',
+              // Pipelines customizados (ex.: SP9) — libera proposta a partir de Documentação.
+              // INTERIM: substituir por regra sensível ao pipeline do tenant quando unificarmos.
+              'DOCUMENTACAO', 'ESCOLHA_UNIDADE', 'CONTRATO', 'REGISTRO',
+            ];
             if (stage && !ALLOWED.includes(stage.group ?? '')) {
               throw new BadRequestException('O lead precisa estar em Negociações ou etapa posterior para fazer uma proposta.');
             }
