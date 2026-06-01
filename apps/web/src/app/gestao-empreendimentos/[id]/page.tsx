@@ -853,7 +853,8 @@ function EspelhoVertical({ tower, devId, filters, onUnitClick, onUnitPopup }: {
                           );
                         }
                         const visible = unitMatches(unit, filters, true);
-                        const tooltipText = `${unit.nome}${unit.pne ? " · PNE" : ""} — ${STATUS_LABEL[unit.status]}${unit.areaM2 != null ? ` · ${unit.areaM2}m²` : ""}${unit.valorVenda != null ? ` · ${fmt(unit.valorVenda)}` : ""}`;
+                        const leadNome = unit.lead?.nomeCorreto ?? unit.lead?.nome;
+                        const tooltipText = `${unit.nome}${unit.pne ? " · PNE" : ""} — ${STATUS_LABEL[unit.status]}${unit.areaM2 != null ? ` · ${unit.areaM2}m²` : ""}${unit.valorVenda != null ? ` · ${fmt(unit.valorVenda)}` : ""}${leadNome ? ` · 👤 ${leadNome}` : ""}`;
                         return (
                           <div key={pos} className="relative group w-16 h-14 border-r border-white/30 last:border-r-0">
                             <button type="button"
@@ -948,7 +949,8 @@ function EspelhoHorizontal({ tower, devId, filters, onUnitClick, onUnitPopup, is
               );
             }
             const visible = unitMatches(unit, filters, false);
-            const tooltipText = `${unit.loteNum ?? unit.nome}${unit.pne ? " · PNE" : ""} — ${STATUS_LABEL[unit.status]}${unit.loteAreaM2 != null ? ` · ${unit.loteAreaM2}m²` : ""}${unit.valorVenda != null ? ` · ${fmt(unit.valorVenda)}` : ""}`;
+            const leadNome = unit.lead?.nomeCorreto ?? unit.lead?.nome;
+            const tooltipText = `${unit.loteNum ?? unit.nome}${unit.pne ? " · PNE" : ""} — ${STATUS_LABEL[unit.status]}${unit.loteAreaM2 != null ? ` · ${unit.loteAreaM2}m²` : ""}${unit.valorVenda != null ? ` · ${fmt(unit.valorVenda)}` : ""}${leadNome ? ` · 👤 ${leadNome}` : ""}`;
             return (
               <div key={unit.id} className="relative group">
                 <button type="button"
