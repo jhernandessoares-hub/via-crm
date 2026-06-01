@@ -39,7 +39,6 @@ import {
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
-import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
 
 // ✅ NOVO: download seguro Cloudinary via backend (proxy)
@@ -1152,35 +1151,43 @@ export class LeadsService {
   async getPendingReply(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
     const { id, tenantId, role, branchId } = user;
 
-    const roleFilter =
+    const roleFilter: Record<string, unknown> =
       role === 'AGENT' || role === 'PARTNER'
-        ? Prisma.sql`AND l."assignedUserId" = ${id}`
+        ? { assignedUserId: id }
         : role === 'MANAGER' && branchId
-          ? Prisma.sql`AND l."branchId" = ${branchId}`
-          : Prisma.empty;
+          ? { branchId }
+          : {};
 
-    return this.prisma.$queryRaw<Array<{
-      id: string;
-      nome: string;
-      nomeCorreto: string | null;
-      telefone: string | null;
-      lastInboundAt: Date;
-    }>>(Prisma.sql`
-      SELECT l.id, l.nome, l."nomeCorreto", l.telefone, l."lastInboundAt"
-      FROM "Lead" l
-      WHERE l."tenantId" = ${tenantId}
-      AND l."deletedAt" IS NULL
-      AND l."lastInboundAt" IS NOT NULL
-      ${roleFilter}
-      AND NOT EXISTS (
-        SELECT 1 FROM "LeadEvent" e
-        WHERE e."leadId" = l.id
-        AND e.channel IN ('whatsapp.out', 'whatsapp.unofficial.out')
-        AND e."criadoEm" > l."lastInboundAt"
-      )
-      ORDER BY l."lastInboundAt" DESC
-      LIMIT 20
-    `);
+    const leads = await this.prisma.lead.findMany({
+      where: { tenantId, deletedAt: null, lastInboundAt: { not: null }, ...roleFilter },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true, lastInboundAt: true },
+      orderBy: { lastInboundAt: 'desc' },
+      take: 100,
+    });
+
+    if (leads.length === 0) return [];
+
+    const leadIds = leads.map((l) => l.id);
+
+    const lastOutbounds = await this.prisma.leadEvent.groupBy({
+      by: ['leadId'],
+      where: {
+        leadId: { in: leadIds },
+        channel: { in: ['whatsapp.out', 'whatsapp.unofficial.out'] },
+      },
+      _max: { criadoEm: true },
+    });
+
+    const lastOutboundMap = new Map(
+      lastOutbounds.map((lo) => [lo.leadId, lo._max.criadoEm]),
+    );
+
+    return leads
+      .filter((lead) => {
+        const lastOut = lastOutboundMap.get(lead.id);
+        return !lastOut || lead.lastInboundAt! > lastOut;
+      })
+      .slice(0, 20);
   }
 
   async dashboard(
