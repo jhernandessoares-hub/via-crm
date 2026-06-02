@@ -697,7 +697,7 @@ export default function SitePage() {
             {/* Seções do template base — no modo público sempre aparecem; no editor só quando não há seções dinâmicas */}
             {(!editorMode || draft.dynamicSections.length === 0) && <>
             <section className="mx-auto max-w-7xl px-6 pb-16 pt-2 lg:px-8">
-              <div className="grid items-center gap-14 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-10">
+              <div className="grid items-start gap-14 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-10">
                 <div className="max-w-3xl">
                   <EditableText active={interactiveEditing} selected={selectedField === "hero.badge"} label="Badge hero" value={view.hero.badge} onClick={() => setSelectedField("hero.badge")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.badge", v))} className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-semibold tracking-wide text-emerald-700 uppercase" styleBox={getElementStyle("hero.badge")} minWidth={180} minHeight={38} onMove={(ns) => updateElementStyle("hero.badge", ns)} onResize={(ns) => updateElementStyle("hero.badge", ns)} />
                   <div className="mt-6 space-y-3">
