@@ -43,10 +43,11 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm space-y-6 rounded-xl bg-white p-8">
         <div className="flex items-center gap-4">
           <Image
-            src="/logo-via.svg"
+            src="/Novo%20modelo%20de%20Logo.png"
             alt="VIA CRM"
             width={240}
             height={78}
+            unoptimized
             className="h-16 w-auto"
           />
           <div>
