@@ -648,17 +648,17 @@ export default function SitePage() {
             {/* Cabeçalho — no modo público sempre aparece; no editor só quando não há seção "header" dinâmica */}
             {(!editorMode || !draft.dynamicSections.some((s) => s.kind === "header")) && (
               !interactiveEditing ? (
-                <div className="sticky top-0 z-40 px-6 pt-4 pb-2 bg-white/80 backdrop-blur-md lg:px-8">
-                  <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
+                <div className="sticky top-0 z-40 px-6 pt-4 pb-2 lg:px-8">
+                  <header className="flex items-center justify-between rounded-full border border-slate-700/60 bg-slate-800/90 px-5 py-3 shadow-lg shadow-slate-900/20 backdrop-blur">
                     <EditableLogo active={interactiveEditing} selected={selectedField === "branding.headerLogo"} label="Logo principal" src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt} height={view.branding.headerLogo.height} styleBox={getElementStyle("branding.headerLogo")} minWidth={160} minHeight={40} onMove={(ns) => updateElementStyle("branding.headerLogo", ns)} onResize={(ns) => updateElementStyle("branding.headerLogo", ns)} onClick={() => setSelectedField("branding.headerLogo")} />
                     <div className="flex items-center gap-5">
-                      <nav className="flex items-center gap-5 text-sm font-medium text-slate-600">
-                        <a href="#problema" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.problem}</a>
-                        <a href="#solucao" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.solution}</a>
-                        <a href="#planos" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.plans}</a>
+                      <nav className="flex items-center gap-5 text-sm font-medium text-slate-200">
+                        <a href="#problema" className="text-sm font-medium text-slate-200 transition hover:text-white">{view.nav.problem}</a>
+                        <a href="#solucao" className="text-sm font-medium text-slate-200 transition hover:text-white">{view.nav.solution}</a>
+                        <a href="#planos" className="text-sm font-medium text-slate-200 transition hover:text-white">{view.nav.plans}</a>
                       </nav>
-                      <Link href="/login" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-950 sm:inline-flex">{view.header.loginLabel}</Link>
-                      <Link href="/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</Link>
+                      <Link href="/login" className="hidden text-sm font-medium text-slate-200 transition hover:text-white sm:inline-flex">{view.header.loginLabel}</Link>
+                      <Link href="/login" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-200">{view.header.ctaLabel}</Link>
                     </div>
                   </header>
                 </div>
