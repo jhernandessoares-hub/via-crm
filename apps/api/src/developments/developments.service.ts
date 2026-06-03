@@ -500,15 +500,17 @@ export class DevelopmentsService {
     if (updateData.ativo !== undefined) updateData.ativo = Boolean(updateData.ativo);
     delete updateData.lead;
 
-    // PROPOSTA: validações
+    // PROPOSTA / RESERVADO: validações sensíveis à etapa do lead
     const newStatus = updateData.status;
     if (newStatus && newStatus !== unit.status) {
-      if (newStatus === 'PROPOSTA') {
-        const leadIdToUse = updateData.leadId || unit.leadId;
-        if (!leadIdToUse) throw new BadRequestException('PROPOSTA requer um lead vinculado.');
+      const isOwner = actor?.role === 'OWNER';
 
-        // OWNER pode vincular proposta independente do stage do lead (ajustes administrativos)
-        if (actor?.role !== 'OWNER') {
+      // Resolve grupo + unitAction da etapa atual do lead (quando há lead envolvido)
+      let leadStageGroup: string | null = null;
+      let leadUnitAction: string | null = null;
+      if (newStatus === 'PROPOSTA' || newStatus === 'RESERVADO') {
+        const leadIdToUse = updateData.leadId || unit.leadId;
+        if (leadIdToUse) {
           const leadRecord = await this.prisma.lead.findFirst({
             where: { id: leadIdToUse },
             select: { stageId: true },
@@ -516,27 +518,51 @@ export class DevelopmentsService {
           if (leadRecord?.stageId) {
             const stage = await this.prisma.pipelineStage.findFirst({
               where: { id: leadRecord.stageId },
-              select: { group: true },
+              select: { group: true, unitAction: true },
             });
-            const ALLOWED = [
-              // Pipeline padrão
-              'NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA',
-              // Pipelines customizados (ex.: SP9) — libera proposta a partir de Documentação.
-              // INTERIM: substituir por regra sensível ao pipeline do tenant quando unificarmos.
-              'DOCUMENTACAO', 'ESCOLHA_UNIDADE', 'CONTRATO', 'REGISTRO',
-            ];
-            if (stage && !ALLOWED.includes(stage.group ?? '')) {
+            leadStageGroup = stage?.group ?? null;
+            leadUnitAction = stage?.unitAction ?? null;
+          }
+        }
+      }
+
+      if (newStatus === 'PROPOSTA') {
+        const leadIdToUse = updateData.leadId || unit.leadId;
+        if (!leadIdToUse) throw new BadRequestException('PROPOSTA requer um lead vinculado.');
+
+        // OWNER pode vincular proposta independente do stage do lead (ajustes administrativos)
+        if (!isOwner) {
+          if (leadUnitAction != null) {
+            // Pipeline com regra por etapa (ex.: SP9): proposta só na etapa de Escolha da Unidade
+            if (leadUnitAction !== 'PROPOSTA') {
+              throw new BadRequestException('A proposta só pode ser feita na etapa de Escolha da Unidade.');
+            }
+          } else if (leadStageGroup) {
+            // Pipeline padrão (sem unitAction): comportamento atual
+            const ALLOWED = ['NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
+            if (!ALLOWED.includes(leadStageGroup)) {
               throw new BadRequestException('O lead precisa estar em Negociações ou etapa posterior para fazer uma proposta.');
             }
           }
         }
       }
 
-      // RESERVADO a partir de PROPOSTA: só OWNER/MANAGER
-      if (newStatus === 'RESERVADO' && unit.status === 'PROPOSTA') {
-        if (actor?.role && !['OWNER', 'MANAGER'].includes(actor.role)) {
-          throw new ForbiddenException('Apenas OWNER ou MANAGER podem confirmar uma proposta como reserva.');
+      if (newStatus === 'RESERVADO') {
+        if (unit.status === 'PROPOSTA') {
+          // Fluxo padrão: confirmar uma proposta como reserva — só OWNER/MANAGER
+          if (actor?.role && !['OWNER', 'MANAGER'].includes(actor.role)) {
+            throw new ForbiddenException('Apenas OWNER ou MANAGER podem confirmar uma proposta como reserva.');
+          }
+        } else if (leadUnitAction != null && !isOwner) {
+          // Reserva direta (ex.: SP9 Documentação): exige etapa marcada como RESERVA
+          if (leadUnitAction !== 'RESERVA') {
+            throw new BadRequestException('A reserva só pode ser feita na etapa Documentação.');
+          }
+          if (!(updateData.leadId || unit.leadId)) {
+            throw new BadRequestException('RESERVA requer um lead vinculado.');
+          }
         }
+        // Tenants sem unitAction reservando a partir de DISPONÍVEL: comportamento atual (sem trava extra)
       }
 
       // Ao voltar para DISPONIVEL: limpar campos da proposta/venda

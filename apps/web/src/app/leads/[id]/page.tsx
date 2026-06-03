@@ -1277,9 +1277,10 @@ const ESPELHO_STATUS_LABEL: Record<string, string> = {
   VENDIDO: "Vendido", BLOQUEADO: "Bloqueado",
 };
 
-function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, onClose, onDone }: {
+function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, linkStatus = "PROPOSTA", onClose, onDone }: {
   devId: string; leadId: string;
   trocandoUnitId?: string; trocandoUnitNome?: string;
+  linkStatus?: "PROPOSTA" | "RESERVADO";
   onClose: () => void; onDone: () => void;
 }) {
   const [dev, setDev] = useState<any>(null);
@@ -1309,7 +1310,7 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
       }
       await apiFetch(`/developments/${devId}/units/${confirming.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ leadId, status: "PROPOSTA" }),
+        body: JSON.stringify({ leadId, status: linkStatus }),
       });
       onDone();
     } catch (e: any) {
@@ -1333,7 +1334,9 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
             <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
               {trocandoUnitId
                 ? "Clique em uma unidade Disponível para selecionar a nova unidade (PARA)"
-                : "Clique em uma unidade Disponível para vincular ao lead"}
+                : linkStatus === "RESERVADO"
+                ? "Clique em uma unidade Disponível para RESERVAR para o lead"
+                : "Clique em uma unidade Disponível para vincular como PROPOSTA"}
               {" · "}<span className="text-green-600 font-semibold">{allDisponivel} disponíveis</span>
             </p>
           </div>
@@ -1845,12 +1848,14 @@ export default function LeadDetailChatPage() {
   const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
+  const [currentStageUnitAction, setCurrentStageUnitAction] = useState<string | null>(null);
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
   const [evidencesOpen, setEvidencesOpen] = useState(false);
   const [transitions, setTransitions] = useState<LeadTransition[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
+  const [unitConfirm, setUnitConfirm] = useState<{ stage: PipelineStage; message: string } | null>(null);
 
   // (preparação pro futuro) etapa —Sfinal⬝ pode sugerir minimizar chat
 
@@ -2081,11 +2086,13 @@ export default function LeadDetailChatPage() {
       setPrevGroupLastStageId(data?.prevGroupLastStageId ?? null);
       setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
       setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
+      setCurrentStageUnitAction(data?.currentUnitAction ?? null);
     } catch {
       setAllowedStages([]);
       setPrevGroupLastStageId(null);
       setCurrentStageRequiresEvidence(false);
       setCurrentStageRequiresReason(false);
+      setCurrentStageUnitAction(null);
     }
   }
 
@@ -3433,7 +3440,7 @@ function discardAiSuggestion() {
               }
             }
 
-            function handleSelectStage(stage: PipelineStage) {
+            function proceedSelectStage(stage: PipelineStage) {
               // Abre o modal ao ENTRAR num status que exige evidência/justificativa
               // ou ao SAIR de um (ex.: reativar lead suspenso/excluído). Os flags
               // current* vêm do backend (allowed-stage-transitions), determinísticos.
@@ -3445,6 +3452,35 @@ function discardAiSuggestion() {
               } else {
                 moveToStage(stage.id);
               }
+            }
+
+            function unitLabel(u: any) {
+              return [u?.development?.nome, u?.tower?.nome, u?.nome].filter(Boolean).join(" · ");
+            }
+
+            // Antes de mover: avisa quando a unidade vinculada vai mudar de status pela etapa.
+            function handleSelectStage(stage: PipelineStage) {
+              const units = (lead as any)?.developmentUnits ?? [];
+              const reservedUnit = units.find((u: any) => u.status === "RESERVADO");
+              const propostaUnit = units.find((u: any) => u.status === "PROPOSTA");
+              const willPropose = !!reservedUnit && (stage.unitAction === "PROPOSTA" || stage.advancesToGroup === "ESCOLHA_UNIDADE");
+              const willSell = !!propostaUnit && stage.unitAction === "VENDA";
+
+              if (willPropose) {
+                setUnitConfirm({
+                  stage,
+                  message: `Este lead tem a unidade ${unitLabel(reservedUnit)} reservada. Ao avançar para a Escolha da Unidade, ela passará para Proposta.`,
+                });
+                return;
+              }
+              if (willSell) {
+                setUnitConfirm({
+                  stage,
+                  message: `A unidade ${unitLabel(propostaUnit)} será marcada como Vendida ao confirmar o contrato.`,
+                });
+                return;
+              }
+              proceedSelectStage(stage);
             }
 
             async function handleEvidenceConfirm(payload: { file?: File; motivo?: string }) {
@@ -3503,6 +3539,30 @@ function discardAiSuggestion() {
                   onClose={() => { setEvidenceModalOpen(false); setPendingStage(null); }}
                   onConfirm={handleEvidenceConfirm}
                 />
+                {unitConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
+                      <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Unidade vinculada</h2>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{unitConfirm.message}</p>
+                      <div className="mt-5 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setUnitConfirm(null)}
+                          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { const s = unitConfirm.stage; setUnitConfirm(null); proceedSelectStage(s); }}
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                        >
+                          Confirmar e avançar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             );
           })() : loadingPipeline ? (
@@ -4502,17 +4562,21 @@ function discardAiSuggestion() {
                   {selectedDevId && (
                     <div className="flex gap-2">
                       {(() => {
-                        const canOpenEspelho = lead?.stageGroup === "ESCOLHA_UNIDADE" || user?.role === "OWNER";
+                        // Reserva na Documentação (RESERVA) e proposta na Escolha (PROPOSTA); OWNER sempre.
+                        const canReserva = currentStageUnitAction === "RESERVA";
+                        const canProposta = currentStageUnitAction === "PROPOSTA" || lead?.stageGroup === "ESCOLHA_UNIDADE";
+                        const canOpenEspelho = canReserva || canProposta || user?.role === "OWNER";
+                        const label = canReserva && !canProposta ? "🏗️ Abrir Espelho (Reservar)" : "🏗️ Abrir Espelho";
                         return (
                           <button
                             type="button"
                             disabled={!canOpenEspelho}
                             onClick={() => setEspelhoModal({ devId: selectedDevId })}
-                            title={canOpenEspelho ? undefined : "Disponível apenas na etapa Escolha da Unidade"}
+                            title={canOpenEspelho ? undefined : "Disponível nas etapas Documentação (reserva) e Escolha da Unidade (proposta)"}
                             className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{ background: "var(--brand-accent)" }}
                           >
-                            🏗️ Abrir Espelho
+                            {label}
                           </button>
                         );
                       })()}
@@ -6027,6 +6091,7 @@ function discardAiSuggestion() {
           leadId={id}
           trocandoUnitId={espelhoModal.trocandoUnitId}
           trocandoUnitNome={espelhoModal.trocandoUnitNome}
+          linkStatus={currentStageUnitAction === "RESERVA" ? "RESERVADO" : "PROPOSTA"}
           onClose={() => setEspelhoModal(null)}
           onDone={() => { setEspelhoModal(null); loadLead(); }}
         />

@@ -37,6 +37,7 @@ model PipelineStage {
   isActive         Boolean   @default(true)
   requiresEvidence Boolean   @default(false)
   requiresReason   Boolean   @default(false) // exige justificativa em texto (de todos os roles) ao entrar/sair
+  unitAction       String?   // espelho: RESERVA (permite reservar) | PROPOSTA (converte reserva→proposta ao entrar) | VENDA (converte proposta→vendido ao entrar)
   ownerOnly        Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

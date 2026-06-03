@@ -1777,16 +1777,18 @@ async getById(user: any, id: string) {
     // o modal também ao SAIR de um status sensível (suspenso/excluído/etc.)
     let currentRequiresEvidence = false;
     let currentRequiresReason = false;
+    let currentUnitAction: string | null = null;
 
     if (lead.stageId) {
       const from = await this.prisma.pipelineStage.findFirst({
         where: { id: lead.stageId, tenantId: user.tenantId },
-        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, unitAction: true },
       });
 
       fromStageKey = from?.key ?? null;
       currentRequiresEvidence = from?.requiresEvidence ?? false;
       currentRequiresReason = from?.requiresReason ?? false;
+      currentUnitAction = from?.unitAction ?? null;
     } else {
       const defaultStage = await this.prisma.pipelineStage.findFirst({
         where: {
@@ -1794,7 +1796,7 @@ async getById(user: any, id: string) {
           isActive: true,
         },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, unitAction: true },
       });
 
       if (!defaultStage?.id) {
@@ -1805,6 +1807,7 @@ async getById(user: any, id: string) {
       fromStageKey = defaultStage.key;
       currentRequiresEvidence = defaultStage.requiresEvidence ?? false;
       currentRequiresReason = defaultStage.requiresReason ?? false;
+      currentUnitAction = defaultStage.unitAction ?? null;
     }
 
     if (!fromStageKey) {
@@ -1885,7 +1888,7 @@ async getById(user: any, id: string) {
               NOT: { id: effectiveCurrentStageId ?? undefined },
               ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
             },
-            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
+            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
             orderBy: { sortOrder: 'asc' },
           })
         : [];
@@ -1936,6 +1939,7 @@ async getById(user: any, id: string) {
         currentStageKey: fromStageKey,
         currentRequiresEvidence,
         currentRequiresReason,
+        currentUnitAction,
         allowedStages: allCustomStages,
         prevGroupLastStageId,
       };
@@ -1953,6 +1957,7 @@ async getById(user: any, id: string) {
           currentStageKey: fromStageKey,
           currentRequiresEvidence,
           currentRequiresReason,
+          currentUnitAction,
           allowedStages: [],
         };
       }
@@ -2052,6 +2057,7 @@ async getById(user: any, id: string) {
               sortOrder: true,
               requiresEvidence: true,
               requiresReason: true,
+              unitAction: true,
               ownerOnly: true,
             },
             orderBy: { sortOrder: 'asc' },
@@ -2064,6 +2070,7 @@ async getById(user: any, id: string) {
       currentStageKey: fromStageKey,
       currentRequiresEvidence,
       currentRequiresReason,
+      currentUnitAction,
       allowedStages,
     };
   }
@@ -2284,6 +2291,28 @@ async updateStage(
       },
     });
 
+  // Efeitos no espelho ao ENTRAR numa etapa (sensível ao pipeline via unitAction):
+  //   PROPOSTA → converte unidade RESERVADO do lead em PROPOSTA
+  //   VENDA    → converte unidade PROPOSTA do lead em VENDIDO
+  // Best-effort: nunca quebra a mudança de etapa (já efetivada).
+  const applyUnitSideEffects = async (unitAction: string | null | undefined) => {
+    try {
+      if (unitAction === 'PROPOSTA') {
+        await this.prisma.developmentUnit.updateMany({
+          where: { tenantId: user.tenantId, leadId, status: 'RESERVADO' },
+          data: { status: 'PROPOSTA' },
+        });
+      } else if (unitAction === 'VENDA') {
+        await this.prisma.developmentUnit.updateMany({
+          where: { tenantId: user.tenantId, leadId, status: 'PROPOSTA' },
+          data: { status: 'VENDIDO', soldAt: new Date() },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`applyUnitSideEffects falhou (lead ${leadId}): ${(e as Error).message}`);
+    }
+  };
+
   const allowedTransitions: Record<string, string[]> = {
     NOVO_LEAD: ['EM_CONTATO'],
 
@@ -2369,6 +2398,7 @@ async updateStage(
     ]);
 
     await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
+    await applyUnitSideEffects(toStage.unitAction);
 
     const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
     // Só faz cascade se o grupo destino for diferente do grupo atual do lead
@@ -2377,7 +2407,7 @@ async updateStage(
       const firstStageOfGroup = await this.prisma.pipelineStage.findFirst({
         where: { tenantId: user.tenantId, group: targetGroup, isActive: true },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, name: true },
+        select: { id: true, name: true, unitAction: true },
       });
       if (firstStageOfGroup) {
         await this.prisma.$transaction([
@@ -2394,6 +2424,7 @@ async updateStage(
           }),
         ]);
         await auditMove(toStage.name, firstStageOfGroup.name, targetGroup, true);
+        await applyUnitSideEffects(firstStageOfGroup.unitAction);
       }
     }
 
@@ -2527,6 +2558,7 @@ async updateStage(
   ]);
 
   await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
+  await applyUnitSideEffects(toStage.unitAction);
 
   return updated;
 }
