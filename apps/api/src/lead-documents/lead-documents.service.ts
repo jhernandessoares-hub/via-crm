@@ -841,24 +841,23 @@ Objetivo:
     this.ensureCloudinaryConfigured();
 
     const expiresAt = Math.floor(Date.now() / 1000) + 120; // 2 minutos
+    const hasExt = input.ext && input.ext !== 'bin';
 
+    // Recursos raw guardam a extensão NO public_id (ex.: pasta/arquivo.pdf) e o
+    // download assinado usa format ''. Para image/video o public_id não tem extensão
+    // e o format vai separado. Usa private_download_url (forma comprovada no resto do app).
     if (input.resourceType === 'raw') {
-      return cloudinary.url(`${input.publicId}.${input.ext}`, {
-        resource_type: 'raw',
-        type: 'authenticated',
-        secure: true,
-        sign_url: true,
-        expires_at: expiresAt,
-      } as any);
+      return (cloudinary.utils as any).private_download_url(
+        hasExt ? `${input.publicId}.${input.ext}` : input.publicId,
+        '',
+        { resource_type: 'raw', type: 'authenticated', expires_at: expiresAt, attachment: false },
+      );
     }
 
-    return cloudinary.url(input.publicId, {
-      resource_type: input.resourceType,
-      type: 'authenticated',
-      secure: true,
-      sign_url: true,
-      format: input.ext,
-      expires_at: expiresAt,
-    } as any);
+    return (cloudinary.utils as any).private_download_url(
+      input.publicId,
+      hasExt ? input.ext : '',
+      { resource_type: input.resourceType, type: 'authenticated', expires_at: expiresAt, attachment: false },
+    );
   }
 }
