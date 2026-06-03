@@ -781,7 +781,10 @@ REGRAS DE EXTRAÇÃO (importantes):
       .sort((a, b) => b.score - a.score)[0];
 
     const bestParticipantScore = bestParticipant?.score ?? 0;
-    if (leadScore >= 72 && leadScore >= bestParticipantScore + 5) {
+    // Lead e participantes competem em pé de igualdade; empate vai para o lead (titular principal).
+    // Antes o lead exigia margem de +5 sobre o participante, o que enviava documentos do próprio
+    // titular para participantes em famílias com sobrenome igual.
+    if (leadScore >= 72 && leadScore >= bestParticipantScore) {
       return {
         participanteNome: null,
         ownerLabel: leadNome,
