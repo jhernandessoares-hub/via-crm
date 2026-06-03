@@ -1254,12 +1254,31 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   const [nameVal, setNameVal] = useState(personName ?? "");
   const [savingName, setSavingName] = useState(false);
   const [applyingAll, setApplyingAll] = useState(false);
+  // Campos "revisados" (o usuário entrou/interagiu) — ficam verdes. Persistido em localStorage.
+  const revisadoKey = `cadastro_revisado_${leadId}_${isLead ? "lead" : participanteId}`;
+  const [reviewed, setReviewed] = useState<Set<string>>(new Set());
 
   // Sync when parent re-renders with new data (after AI confirm)
   useEffect(() => { setVals(initialValues); setOrigens(initialOrigem); }, [JSON.stringify(initialValues), JSON.stringify(initialOrigem)]);
   useEffect(() => { setNameVal(personName ?? ""); }, [personName]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(revisadoKey);
+      if (raw) setReviewed(new Set(JSON.parse(raw)));
+    } catch { /* ignora */ }
+  }, [revisadoKey]);
+
+  function markReviewed(field: string) {
+    setReviewed(prev => {
+      if (prev.has(field)) return prev;
+      const next = new Set(prev).add(field);
+      try { localStorage.setItem(revisadoKey, JSON.stringify([...next])); } catch { /* ignora */ }
+      return next;
+    });
+  }
 
   async function saveField(field: string, value: any, origin: string | null = null) {
+    markReviewed(field);
     const newOrigens = { ...origens, [field]: origin };
     setOrigens(newOrigens);
     try {
@@ -1353,7 +1372,10 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   }) => {
     const isIA = origens[name] === "IA";
     const suggestion = aiSuggestions[name];
-    const showSuggestion = !!suggestion && (vals[name] === null || vals[name] === undefined || vals[name] === "");
+    // Mostra a sugestão da IA mesmo em campo já preenchido, desde que o valor lido seja diferente do atual
+    const showSuggestion = !!suggestion && String(suggestion.value ?? "") !== String(vals[name] ?? "");
+    const isReviewed = reviewed.has(name);
+    const fieldBorder = isReviewed ? "border-green-400" : "border-[var(--shell-card-border)]";
     const relevantDocs = getRelevantDocs(name);
     // Olho só aparece quando há ao menos um doc do tipo preferido para este campo
     const preferredTypes = FIELD_DOC_MAP[name] ?? [];
@@ -1380,14 +1402,15 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
         <div className="relative">
           {options ? (
-            <select className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]"
-              value={vals[name] ?? ""} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
+            <select className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
+              value={vals[name] ?? ""} onFocus={() => markReviewed(name)} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
               onBlur={e => saveField(name, e.target.value)}>
               {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : (
-            <input type={type} className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]"
+            <input type={type} className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
               value={vals[name] ?? ""}
+              onFocus={() => markReviewed(name)}
               onChange={e => {
                 const masked = name === "cpf" ? maskCPF(e.target.value)
                   : name === "cep" ? maskCEP(e.target.value)
@@ -1408,6 +1431,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
           )}
           {savedField === name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs">✓</span>}
           {errField === name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 text-xs">!</span>}
+          {isReviewed && savedField !== name && errField !== name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs" title="Campo revisado">✓</span>}
         </div>
         {showSuggestion && (
           <div className="mt-1 rounded-md border border-blue-100 bg-blue-50 px-2 py-1.5">
