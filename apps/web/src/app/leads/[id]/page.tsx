@@ -1846,7 +1846,7 @@ export default function LeadDetailChatPage() {
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
-  const [evidencesOpen, setEvidencesOpen] = useState(true);
+  const [evidencesOpen, setEvidencesOpen] = useState(false);
   const [transitions, setTransitions] = useState<LeadTransition[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
