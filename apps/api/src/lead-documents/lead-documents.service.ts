@@ -161,25 +161,33 @@ export class LeadDocumentsService {
     const rawName = doc.filename || doc.nome || 'documento';
     const filename = this.safeFilename(rawName, mimeType.split('/')[1] || 'bin');
 
-    let fetchUrl: string;
-
+    // Candidatos de URL, em ordem de preferência. O backend baixa e faz streaming,
+    // então a URL nunca chega ao cliente — usar a secure_url salva é seguro.
+    const candidates: string[] = [];
     if (doc.publicId) {
       const isImage = mimeType.startsWith('image/');
       const resourceType = isImage ? 'image' : 'raw';
       const ext = rawName.includes('.') ? rawName.split('.').pop()! : (mimeType.split('/')[1] || 'bin');
-      fetchUrl = this.buildSignedCloudinaryDownloadUrl({ publicId: doc.publicId, ext, resourceType });
-    } else if (doc.url) {
-      // Fallback para documentos antigos sem publicId (período de migração)
-      fetchUrl = doc.url;
-    } else {
+      candidates.push(this.buildSignedCloudinaryDownloadUrl({ publicId: doc.publicId, ext, resourceType }));
+    }
+    if (doc.url) candidates.push(doc.url); // secure_url já assinada pelo Cloudinary no upload
+
+    if (candidates.length === 0) {
       throw new NotFoundException('Documento não encontrado ou sem arquivo');
     }
 
-    this.logger.log(`viewDocument fetch: ${fetchUrl.substring(0, 120)}`);
-    const response = await fetch(fetchUrl);
-    if (!response.ok) {
-      this.logger.error(`viewDocument Cloudinary error: status=${response.status} url=${fetchUrl.substring(0, 120)}`);
-      throw new NotFoundException(`Arquivo não disponível no storage (${response.status})`);
+    let response: Response | null = null;
+    let lastStatus = 0;
+    for (const url of candidates) {
+      this.logger.log(`viewDocument fetch: ${url.substring(0, 120)}`);
+      const r = await fetch(url);
+      if (r.ok) { response = r; break; }
+      lastStatus = r.status;
+      this.logger.error(`viewDocument Cloudinary error: status=${r.status} url=${url.substring(0, 120)}`);
+    }
+
+    if (!response) {
+      throw new NotFoundException(`Arquivo não disponível no storage (${lastStatus || 404})`);
     }
 
     const contentLength = response.headers.get('content-length');
@@ -847,8 +855,13 @@ Objetivo:
     // download assinado usa format ''. Para image/video o public_id não tem extensão
     // e o format vai separado. Usa private_download_url (forma comprovada no resto do app).
     if (input.resourceType === 'raw') {
+      // O result.public_id do upload raw normalmente já inclui a extensão.
+      // Só anexa se ainda não estiver lá — evita "arquivo.pdf.pdf" (404).
+      const alreadyHasExt =
+        hasExt && input.publicId.toLowerCase().endsWith(`.${input.ext.toLowerCase()}`);
+      const rawPublicId = !hasExt || alreadyHasExt ? input.publicId : `${input.publicId}.${input.ext}`;
       return (cloudinary.utils as any).private_download_url(
-        hasExt ? `${input.publicId}.${input.ext}` : input.publicId,
+        rawPublicId,
         '',
         { resource_type: 'raw', type: 'authenticated', expires_at: expiresAt, attachment: false },
       );
