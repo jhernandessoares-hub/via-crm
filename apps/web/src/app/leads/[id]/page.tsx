@@ -1834,6 +1834,7 @@ export default function LeadDetailChatPage() {
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
   const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
+  const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
   const [evidencesOpen, setEvidencesOpen] = useState(true);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
@@ -2066,9 +2067,11 @@ export default function LeadDetailChatPage() {
       const list: PipelineStage[] = Array.isArray(data?.allowedStages) ? data.allowedStages : [];
       setAllowedStages(list);
       setPrevGroupLastStageId(data?.prevGroupLastStageId ?? null);
+      setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
     } catch {
       setAllowedStages([]);
       setPrevGroupLastStageId(null);
+      setCurrentStageRequiresEvidence(false);
     }
   }
 
@@ -3409,9 +3412,9 @@ function discardAiSuggestion() {
             function handleSelectStage(stage: PipelineStage) {
               // Exige evidência ao ENTRAR num status com requiresEvidence ou ao SAIR
               // de um status com requiresEvidence (ex.: reativar lead suspenso/excluído).
-              const currentRequiresEvidence =
-                pipelineStages.find((s) => s.id === currentStageId)?.requiresEvidence ?? false;
-              if (stage.requiresEvidence || currentRequiresEvidence) {
+              // currentStageRequiresEvidence vem do backend (allowed-stage-transitions),
+              // determinístico — não depende de casar ids entre fetches distintos.
+              if (stage.requiresEvidence || currentStageRequiresEvidence) {
                 setPendingStage(stage);
                 setEvidenceModalOpen(true);
               } else {

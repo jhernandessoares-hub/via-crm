@@ -1773,14 +1773,18 @@ async getById(user: any, id: string) {
 
     let fromStageKey: string | null = null;
     let effectiveCurrentStageId: string | null = lead.stageId ?? null;
+    // requiresEvidence do status ATUAL — usado pelo frontend para abrir o modal
+    // de evidência também ao SAIR de um status sensível (suspenso/excluído/etc.)
+    let currentRequiresEvidence = false;
 
     if (lead.stageId) {
       const from = await this.prisma.pipelineStage.findFirst({
         where: { id: lead.stageId, tenantId: user.tenantId },
-        select: { id: true, key: true, name: true, sortOrder: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true },
       });
 
       fromStageKey = from?.key ?? null;
+      currentRequiresEvidence = from?.requiresEvidence ?? false;
     } else {
       const defaultStage = await this.prisma.pipelineStage.findFirst({
         where: {
@@ -1788,7 +1792,7 @@ async getById(user: any, id: string) {
           isActive: true,
         },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, key: true, name: true, sortOrder: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true },
       });
 
       if (!defaultStage?.id) {
@@ -1797,6 +1801,7 @@ async getById(user: any, id: string) {
 
       effectiveCurrentStageId = defaultStage.id;
       fromStageKey = defaultStage.key;
+      currentRequiresEvidence = defaultStage.requiresEvidence ?? false;
     }
 
     if (!fromStageKey) {
@@ -1926,6 +1931,7 @@ async getById(user: any, id: string) {
         leadId,
         currentStageId: effectiveCurrentStageId,
         currentStageKey: fromStageKey,
+        currentRequiresEvidence,
         allowedStages: allCustomStages,
         prevGroupLastStageId,
       };
@@ -1941,6 +1947,7 @@ async getById(user: any, id: string) {
           leadId,
           currentStageId: effectiveCurrentStageId,
           currentStageKey: fromStageKey,
+          currentRequiresEvidence,
           allowedStages: [],
         };
       }
@@ -2049,6 +2056,7 @@ async getById(user: any, id: string) {
       leadId,
       currentStageId: effectiveCurrentStageId,
       currentStageKey: fromStageKey,
+      currentRequiresEvidence,
       allowedStages,
     };
   }
