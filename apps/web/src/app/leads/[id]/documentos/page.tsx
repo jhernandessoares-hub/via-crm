@@ -468,7 +468,7 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }}>
-      <div className="relative w-full max-w-4xl mx-4 flex flex-col" style={{ maxHeight: "92vh" }} onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-6xl mx-4 flex flex-col" style={{ maxHeight: "95vh" }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-[var(--shell-card-bg)] rounded-t-xl px-4 py-3 shrink-0">
           <span className="text-sm font-medium text-[var(--shell-text)] truncate flex-1">{nome}</span>
           <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-4">✕</button>
@@ -526,7 +526,7 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
   const isPdf = mime === "application/pdf";
 
   return (
-    <div className="flex-1 flex items-center justify-center overflow-hidden" style={{ minHeight: 200 }}>
+    <div className="flex-1 flex items-center justify-center overflow-hidden" style={{ minHeight: 480 }}>
       {loading && (
         <div className="flex flex-col items-center gap-2 text-[var(--shell-subtext)]">
           <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
@@ -535,7 +535,7 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
       )}
       {!loading && fetchError && <p className="text-xs text-[var(--shell-subtext)]">Não foi possível carregar o arquivo.</p>}
       {!loading && blobUrl && isImage && <img src={blobUrl} alt={doc.nome} className="max-w-full max-h-full object-contain" />}
-      {!loading && blobUrl && isPdf && <iframe src={blobUrl} className="w-full h-full" title={doc.nome} style={{ minHeight: 320 }} />}
+      {!loading && blobUrl && isPdf && <iframe src={blobUrl} className="w-full h-full" title={doc.nome} style={{ minHeight: 600 }} />}
       {!loading && blobUrl && !isImage && !isPdf && (
         <div className="text-center text-[var(--shell-subtext)] text-xs p-6">
           <p className="mb-2">Visualização não disponível.</p>
@@ -577,7 +577,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }}>
       <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl flex overflow-hidden mx-4"
-        style={{ width: selectedDoc ? 860 : 400, maxWidth: "95vw", maxHeight: "90vh", transition: "width 0.2s ease" }}
+        style={{ width: selectedDoc ? 1150 : 400, maxWidth: "96vw", height: selectedDoc ? "92vh" : undefined, maxHeight: "92vh", transition: "width 0.2s ease" }}
         onClick={e => e.stopPropagation()}>
 
         {/* ── Coluna esquerda: participante + botões de doc + campo ── */}
@@ -982,36 +982,36 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
               <div>
                 <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="CPF" name="cpf" />
-                  <Field label="RG" name="rg" />
-                  <Field label="Data de Nascimento" name="dataNascimento" type="date" />
-                  <Field label="Naturalidade" name="naturalidade" />
+                  {Field({ label: "CPF", name: "cpf" })}
+                  {Field({ label: "RG", name: "rg" })}
+                  {Field({ label: "Data de Nascimento", name: "dataNascimento", type: "date" })}
+                  {Field({ label: "Naturalidade", name: "naturalidade" })}
                   <div className="col-span-2">
-                    <Field label="Estado Civil" name="estadoCivil" options={ESTADOS_CIVIS} />
+                    {Field({ label: "Estado Civil", name: "estadoCivil", options: ESTADOS_CIVIS })}
                   </div>
                 </div>
               </div>
               <div>
                 <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Telefone" name="telefone" />
-                  <Field label="Email" name="email" type="email" />
-                  <div className="col-span-2"><Field label="Endereço" name="endereco" /></div>
-                  <Field label="CEP" name="cep" />
-                  <Field label="Cidade" name="cidade" />
+                  {Field({ label: "Telefone", name: "telefone" })}
+                  {Field({ label: "Email", name: "email", type: "email" })}
+                  <div className="col-span-2">{Field({ label: "Endereço", name: "endereco" })}</div>
+                  {Field({ label: "CEP", name: "cep" })}
+                  {Field({ label: "Cidade", name: "cidade" })}
                   <div className="col-span-2">
-                    <Field label="UF" name="uf" options={UFS.map(u => ({ value: u, label: u || "—" }))} />
+                    {Field({ label: "UF", name: "uf", options: UFS.map(u => ({ value: u, label: u || "—" })) })}
                   </div>
                 </div>
               </div>
               <div>
                 <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Profissão" name="profissao" />
-                  <Field label="Empresa" name="empresa" />
-                  <Field label={isLead ? "Renda bruta familiar (R$)" : "Renda mensal (R$)"} name={isLead ? "rendaBrutaFamiliar" : "renda"} type="number" />
-                  {isLead && <Field label="FGTS disponível (R$)" name="fgts" type="number" />}
-                  {isLead && <Field label="Entrada disponível (R$)" name="valorEntrada" type="number" />}
+                  {Field({ label: "Profissão", name: "profissao" })}
+                  {Field({ label: "Empresa", name: "empresa" })}
+                  {Field({ label: isLead ? "Renda bruta familiar (R$)" : "Renda mensal (R$)", name: isLead ? "rendaBrutaFamiliar" : "renda", type: "number" })}
+                  {isLead && Field({ label: "FGTS disponível (R$)", name: "fgts", type: "number" })}
+                  {isLead && Field({ label: "Entrada disponível (R$)", name: "valorEntrada", type: "number" })}
                 </div>
               </div>
             </div>
@@ -1333,12 +1333,14 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   // Os tipos mapeados para o campo vêm primeiro.
   function getRelevantDocs(fieldName: string): DocItem[] {
     if (!docs) return [];
+    const cadastroTipos = new Set(TIPOS_PADRAO.map(t => t.value));
     const preferredTypes = FIELD_DOC_MAP[fieldName] ?? [];
     const all = docs.filter(d =>
       nameFuzzyMatch(d.participanteNome, participanteNome ?? null) &&
       !d.naoAplicavel &&
       !d.pendingReview &&
-      !!d.url,
+      !!d.url &&
+      cadastroTipos.has(d.tipo), // só documentos de cadastro — exclui EVIDENCIA_TRANSICAO etc.
     );
     return [
       ...all.filter(d => preferredTypes.includes(d.tipo)),
@@ -1496,32 +1498,32 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       <div>
         <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-          <Field label="CPF" name="cpf" />
-          <Field label="RG" name="rg" />
-          <Field label="Data de Nascimento" name="dataNascimento" type="date" />
-          <Field label="Naturalidade" name="naturalidade" />
-          <Field label="Estado Civil" name="estadoCivil" options={ESTADOS_CIVIS} span2 />
+          {Field({ label: "CPF", name: "cpf" })}
+          {Field({ label: "RG", name: "rg" })}
+          {Field({ label: "Data de Nascimento", name: "dataNascimento", type: "date" })}
+          {Field({ label: "Naturalidade", name: "naturalidade" })}
+          {Field({ label: "Estado Civil", name: "estadoCivil", options: ESTADOS_CIVIS, span2: true })}
         </div>
       </div>
       <div>
         <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-          <Field label="Telefone" name="telefone" />
-          <Field label="Email" name="email" type="email" />
-          <Field label="Endereço" name="endereco" span2 />
-          <Field label="CEP" name="cep" />
-          <Field label="Cidade" name="cidade" />
-          <Field label="UF" name="uf" options={UFS.map(u => ({ value: u, label: u || "—" }))} span2 />
+          {Field({ label: "Telefone", name: "telefone" })}
+          {Field({ label: "Email", name: "email", type: "email" })}
+          {Field({ label: "Endereço", name: "endereco", span2: true })}
+          {Field({ label: "CEP", name: "cep" })}
+          {Field({ label: "Cidade", name: "cidade" })}
+          {Field({ label: "UF", name: "uf", options: UFS.map(u => ({ value: u, label: u || "—" })), span2: true })}
         </div>
       </div>
       <div>
         <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-          <Field label="Profissão" name="profissao" />
-          <Field label="Empresa" name="empresa" />
-          <Field label="Renda mensal (R$)" name={isLead ? "rendaBrutaFamiliar" : "renda"} type="number" />
-          {showFinanceiro && <Field label="FGTS disponível (R$)" name="fgts" type="number" />}
-          {showFinanceiro && <Field label="Entrada disponível (R$)" name="valorEntrada" type="number" />}
+          {Field({ label: "Profissão", name: "profissao" })}
+          {Field({ label: "Empresa", name: "empresa" })}
+          {Field({ label: isLead ? "Renda bruta familiar (R$)" : "Renda mensal (R$)", name: isLead ? "rendaBrutaFamiliar" : "renda", type: "number" })}
+          {showFinanceiro && Field({ label: "FGTS disponível (R$)", name: "fgts", type: "number" })}
+          {showFinanceiro && Field({ label: "Entrada disponível (R$)", name: "valorEntrada", type: "number" })}
         </div>
       </div>
 
@@ -2087,7 +2089,7 @@ export default function DocumentosPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_480px] gap-6 items-start">
 
           {/* ── Coluna esquerda: Documentos ──────────────────────────────────── */}
           <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">

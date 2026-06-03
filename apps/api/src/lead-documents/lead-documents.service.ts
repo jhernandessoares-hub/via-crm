@@ -500,7 +500,9 @@ export class LeadDocumentsService {
 
     contentBlocks.push({
       type: 'text',
-      text: `Extraia as informações pessoais dos documentos acima e responda SOMENTE com JSON (sem markdown):
+      text: `Extraia as informações pessoais dos documentos acima e responda SOMENTE com JSON (sem markdown).
+Leia com atenção e transcreva EXATAMENTE o que está escrito — NÃO invente. Se um campo não estiver claramente legível, use null (melhor null do que valor errado). Copie CPF e datas dígito por dígito.
+
 {
   "cpf": "xxx.xxx.xxx-xx ou null",
   "rg": "número do RG ou null",
@@ -523,7 +525,7 @@ export class LeadDocumentsService {
       const response = await client.messages.create(
         {
           model,
-          max_tokens: 600,
+          max_tokens: 1500,
           messages: [{ role: 'user', content: contentBlocks }],
         },
         { timeout: 45000 }, // evita travar indefinidamente se a IA pendurar
@@ -601,6 +603,12 @@ Objetivo:
 - extrair o nome da pessoa titular do documento, quando aparecer
 - resumir em uma frase curta o motivo da classificação
 
+REGRAS DE EXTRAÇÃO (importantes):
+- Leia o documento com atenção e transcreva EXATAMENTE o que está escrito. NÃO invente nem deduza.
+- Se um campo não estiver claramente legível no documento, use null. É melhor null do que um valor errado.
+- CPF e datas: copie dígito por dígito. Não preencha CPF a partir do RG nem vice-versa.
+- Só extraia dados que pertençam ao titular do documento.
+
 {
   "tipo": "RG_CNH" | "CPF" | "COMP_RESIDENCIA" | "COMP_RENDA" | "FGTS" | "DECL_IR" | "CERT_ESTADO_CIVIL" | "CONTRATO_TRABALHO" | "OUTRO" | "NAO_IDENTIFICADO",
   "confianca": "ALTA" | "MEDIA" | "BAIXA",
@@ -632,7 +640,7 @@ Objetivo:
       const response = await client.messages.create(
         {
           model,
-          max_tokens: 350,
+          max_tokens: 1500, // 350 era baixo p/ classificação + 16 campos — truncava/degradava a leitura
           messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }],
         },
         { timeout: 45000 }, // evita doc preso em "Analisando" se a IA pendurar
