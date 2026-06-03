@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
+import { maskCPF, maskCEP, maskPhone, isValidCPF } from "@/lib/format";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -256,7 +257,8 @@ function buildCadastroSuggestions(docs: DocItem[], participanteNome: string | nu
     for (const [field, rawValue] of Object.entries(extracted)) {
       const value = normalizeSuggestionValue(field, rawValue);
       if (value === null) continue;
-      const targetField = !isLead && field === "rendaBrutaFamiliar" ? "renda" : field;
+      // A IA extrai "renda"; no lead o campo é "rendaBrutaFamiliar" — alinhar a chave da sugestão ao nome do campo
+      const targetField = isLead && field === "renda" ? "rendaBrutaFamiliar" : field;
       if (!suggestions[targetField]) {
         suggestions[targetField] = { value, sourceDocName: doc.nome || doc.filename || "Documento" };
       }
@@ -557,16 +559,19 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
   onSave: (value: any) => Promise<void>;
   onClose: () => void;
 }) {
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  // Auto-seleciona o primeiro documento ao abrir — antes ficava em branco até o usuário clicar
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(relevantDocs[0]?.id ?? null);
   const [inputValue, setInputValue] = useState(String(currentValue ?? ""));
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const selectedDoc = relevantDocs.find(d => d.id === selectedDocId) ?? null;
 
   async function handleSave() {
     setSaving(true);
+    setSaveError(null);
     try { await onSave(inputValue); onClose(); }
-    catch { setSaving(false); }
+    catch (e: any) { setSaveError(e?.message ?? "Erro ao salvar"); setSaving(false); }
   }
 
   return (
@@ -622,6 +627,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
                 onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
               />
             )}
+            {saveError && <div className="mt-2 text-xs text-red-500">{saveError}</div>}
             <div className="flex gap-2 mt-3">
               <button
                 className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
@@ -918,7 +924,13 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
 
   async function confirm() {
     setStatus("saving");
-    await onConfirm(campos, origens);
+    setError(null);
+    try {
+      await onConfirm(campos, origens);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao salvar cadastro");
+      setStatus("ready");
+    }
   }
 
   const Field = ({ label, name, type = "text", options }: { label: string; name: string; type?: string; options?: { value: string; label: string }[] }) => (
@@ -1241,6 +1253,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(personName ?? "");
   const [savingName, setSavingName] = useState(false);
+  const [applyingAll, setApplyingAll] = useState(false);
 
   // Sync when parent re-renders with new data (after AI confirm)
   useEffect(() => { setVals(initialValues); setOrigens(initialOrigem); }, [JSON.stringify(initialValues), JSON.stringify(initialOrigem)]);
@@ -1259,6 +1272,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       setSavedField(field);
       setTimeout(() => setSavedField(s => s === field ? null : s), 2000);
     } catch {
+      setOrigens(origens); // reverte a origem otimista — o salvar falhou
       setErrField(field);
       setTimeout(() => setErrField(e => e === field ? null : e), 3000);
     }
@@ -1282,10 +1296,31 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       const current = vals[field];
       return (current === null || current === undefined || current === "") && suggestion?.value !== null && suggestion?.value !== undefined && suggestion?.value !== "";
     });
+    if (entries.length === 0 || applyingAll) return;
+    setApplyingAll(true);
+    // Monta UM único PATCH com todos os campos + origens — mais rápido e sem corrida de origens
+    const newVals = { ...vals };
+    const newOrigens = { ...origens };
+    const body: Record<string, any> = {};
     for (const [field, suggestion] of entries) {
-      setVals(v => ({ ...v, [field]: suggestion.value }));
-      // eslint-disable-next-line no-await-in-loop
-      await saveField(field, suggestion.value, "IA");
+      newVals[field] = suggestion.value;
+      newOrigens[field] = "IA";
+      body[field] = suggestion.value === "" ? null : suggestion.value;
+    }
+    body.cadastroOrigem = newOrigens;
+    try {
+      if (isLead) {
+        await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await apiFetch(`/leads/${leadId}/participantes/${participanteId}`, { method: "PATCH", body: JSON.stringify(body) });
+      }
+      setVals(newVals);
+      setOrigens(newOrigens);
+    } catch {
+      setErrField("__all__");
+      setTimeout(() => setErrField(e => e === "__all__" ? null : e), 3000);
+    } finally {
+      setApplyingAll(false);
     }
   }
 
@@ -1350,8 +1385,24 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
             </select>
           ) : (
             <input type={type} className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]"
-              value={vals[name] ?? ""} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
-              onBlur={e => saveField(name, e.target.value)} />
+              value={vals[name] ?? ""}
+              onChange={e => {
+                const masked = name === "cpf" ? maskCPF(e.target.value)
+                  : name === "cep" ? maskCEP(e.target.value)
+                  : name === "telefone" ? maskPhone(e.target.value)
+                  : e.target.value;
+                setVals(v => ({ ...v, [name]: masked }));
+              }}
+              onBlur={e => {
+                const val = e.target.value;
+                // CPF inválido: marca erro e NÃO envia (o backend também bloqueia)
+                if (name === "cpf" && val.replace(/\D/g, "").length === 11 && !isValidCPF(val)) {
+                  setErrField(name);
+                  setTimeout(() => setErrField(prev => prev === name ? null : prev), 3000);
+                  return;
+                }
+                saveField(name, val);
+              }} />
           )}
           {savedField === name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs">✓</span>}
           {errField === name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 text-xs">!</span>}
@@ -1433,10 +1484,11 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
             </div>
             <button
               type="button"
-              className="rounded-lg border border-blue-200 bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+              disabled={applyingAll}
+              className="rounded-lg border border-blue-200 bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
               onClick={applyAllSuggestions}
             >
-              Aplicar campos vazios
+              {applyingAll ? `Aplicando ${pendingSuggestions.length}...` : "Aplicar campos vazios"}
             </button>
           </div>
         </div>
@@ -1579,20 +1631,37 @@ export default function DocumentosPage() {
   const hasClassifying = docs.some(
     d => d.processingStatus === "EM_FILA" || d.processingStatus === "ANALISANDO",
   );
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const prevClassifying = useRef(false);
+
   useEffect(() => {
     if (!hasClassifying) return;
+    setPollTimedOut(false);
+    let cycles = 0;
+    const MAX_CYCLES = 36; // ~3 min — rede de segurança contra spinner infinito
     const interval = setInterval(async () => {
+      cycles++;
+      if (cycles > MAX_CYCLES) { clearInterval(interval); setPollTimedOut(true); return; }
       try {
-        const [docsRes, partsRes] = await Promise.all([
-          apiFetch(`/leads/${leadId}/documents`),
-          apiFetch(`/leads/${leadId}/participantes`),
-        ]);
+        // Só atualiza documentos — NÃO sobrescreve participantes/lead para não apagar
+        // o que o usuário está digitando. Os dados auto-preenchidos são recarregados
+        // quando a classificação termina (efeito abaixo).
+        const docsRes = await apiFetch(`/leads/${leadId}/documents`);
         setDocs(docsRes);
-        setParticipantes(partsRes);
       } catch { /* silencioso */ }
     }, 5000);
     return () => clearInterval(interval);
   }, [hasClassifying, leadId]);
+
+  // Quando a classificação termina (true → false), recarrega participantes + lead uma vez
+  // para trazer os campos auto-preenchidos pela IA, sem clobber durante a digitação.
+  useEffect(() => {
+    if (prevClassifying.current && !hasClassifying) {
+      reloadParts();
+      apiFetch(`/leads/${leadId}`).then(setLead).catch(() => {});
+    }
+    prevClassifying.current = hasClassifying;
+  }, [hasClassifying]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -1724,13 +1793,19 @@ export default function DocumentosPage() {
 
   async function handleAICadastroConfirm(campos: Record<string, any>, origens: Record<string, string | null>) {
     if (!aiCadastroTarget || !lead) return;
-    const { participanteNome, participanteId, isLead } = aiCadastroTarget;
-    const body = { ...campos, cadastroOrigem: origens };
+    const { participanteId, isLead } = aiCadastroTarget;
+    // Erros propagam de propósito — o modal (confirm) trata e exibe a mensagem.
     if (isLead) {
+      // A IA devolve `renda`; o lead usa `rendaBrutaFamiliar` — remapear chave e origem
+      const leadCampos: Record<string, any> = { ...campos };
+      const leadOrigens: Record<string, string | null> = { ...origens };
+      if ("renda" in leadCampos) { leadCampos.rendaBrutaFamiliar = leadCampos.renda; delete leadCampos.renda; }
+      if ("renda" in leadOrigens) { leadOrigens.rendaBrutaFamiliar = leadOrigens.renda; delete leadOrigens.renda; }
+      const body = { ...leadCampos, cadastroOrigem: leadOrigens };
       await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify(body) });
-      // Update local lead state
-      setLead(prev => prev ? { ...prev, ...campos, cadastroOrigem: origens } : prev);
+      setLead(prev => prev ? { ...prev, ...leadCampos, cadastroOrigem: leadOrigens } : prev);
     } else if (participanteId) {
+      const body = { ...campos, cadastroOrigem: origens };
       await apiFetch(`/leads/${leadId}/participantes/${participanteId}`, { method: "PATCH", body: JSON.stringify(body) });
       setParticipantes(prev => prev.map(p => p.id === participanteId ? { ...p, ...campos, cadastroOrigem: origens } : p));
     }
@@ -1999,6 +2074,19 @@ export default function DocumentosPage() {
           Voltar ao lead
         </button>
 
+        {pollTimedOut && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <span className="text-sm text-amber-800">
+              A análise de alguns documentos está demorando mais que o esperado. Recarregue ou identifique manualmente.
+            </span>
+            <button
+              className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+              onClick={() => { setPollTimedOut(false); loadAll(); }}>
+              Recarregar
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
 
           {/* ── Coluna esquerda: Documentos ──────────────────────────────────── */}
@@ -2061,7 +2149,8 @@ export default function DocumentosPage() {
                     onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
                     personName={lead.nomeCorreto ?? lead.nome}
                     onPersonNameSave={async (name) => {
-                      await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name, cadastroOrigem: {} }) });
+                      // Não enviar cadastroOrigem aqui — senão zera os selos IA/Manual dos outros campos
+                      await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name }) });
                       setLead(l => l ? { ...l, nomeCorreto: name } : l);
                     }}
                     initialValues={{

@@ -21,6 +21,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 
+// Tipos de arquivo aceitos para documentos do lead (espelha o accept do front e o que a IA consegue ler)
+const LEAD_DOC_ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const leadDocFileFilter = (_req: any, file: any, cb: (error: Error | null, accept: boolean) => void) => {
+  if (LEAD_DOC_ALLOWED_MIMES.includes(file.mimetype)) return cb(null, true);
+  cb(new BadRequestException(`Tipo de arquivo não suportado: ${file.mimetype}. Aceitos: JPG, PNG, WEBP, PDF.`), false);
+};
+
 @UseGuards(JwtAuthGuard)
 @Controller('leads')
 export class LeadsController {
@@ -228,6 +235,18 @@ export class LeadsController {
       produtoInteresseId?: string | null;
       empreendimentoInteresseId?: string | null;
       resumoLead?: string | null;
+      cpf?: string | null;
+      rg?: string | null;
+      profissao?: string | null;
+      empresa?: string | null;
+      naturalidade?: string | null;
+      endereco?: string | null;
+      cep?: string | null;
+      cidade?: string | null;
+      uf?: string | null;
+      telefone?: string | null;
+      email?: string | null;
+      cadastroOrigem?: Record<string, string | null>;
     },
   ) {
     // AGENT só pode editar qualificação de leads atribuídos a si mesmo
@@ -451,7 +470,7 @@ export class LeadsController {
   // ─── Classificação bulk + AI cadastro ───────────────────────────────────────
 
   @Post(':id/documents/classify-bulk')
-  @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 100 * 1024 * 1024, files: 20, fields: 30 } }))
+  @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 100 * 1024 * 1024, files: 20, fields: 30 }, fileFilter: leadDocFileFilter }))
   async classifyBulk(
     @Req() req: any,
     @Param('id') id: string,
@@ -504,7 +523,7 @@ export class LeadsController {
   }
 
   @Post(':id/documents/:docId/upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { fileFilter: leadDocFileFilter }))
   async uploadDocument(
     @Req() req: any,
     @Param('id') id: string,

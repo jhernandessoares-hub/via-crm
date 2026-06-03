@@ -56,6 +56,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import { LeadDocumentsService } from '../lead-documents/lead-documents.service';
 import { getNextLeadNumber } from './lead-numbering.helper';
 import { resolvePermissions } from '../tenants/permissions.config';
+import { isValidCPF } from './cpf.util';
 
 @Injectable()
 export class LeadsService {
@@ -2111,15 +2112,28 @@ async updateQualification(tenantId: string, leadId: string, data: {
   cep?: string | null;
   cidade?: string | null;
   uf?: string | null;
+  telefone?: string | null;
+  email?: string | null;
 }) {
+  // Campos monetários: o front envia string (input type="number") — converter para Float (vazio → null)
+  const toFloat = (v: any): number | null => {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  // CPF: bloqueia salvar valor inválido (vazio/null é permitido)
+  if (data.cpf !== undefined && data.cpf !== null && String(data.cpf).trim() !== '' && !isValidCPF(data.cpf)) {
+    throw new BadRequestException('CPF inválido');
+  }
+
   const updateData: any = {};
   if (data.nomeCorreto !== undefined) {
     updateData.nomeCorreto = data.nomeCorreto;
     updateData.nomeCorretoOrigem = data.nomeCorreto ? 'MANUAL' : null;
   }
-  if (data.rendaBrutaFamiliar !== undefined) updateData.rendaBrutaFamiliar = data.rendaBrutaFamiliar;
-  if (data.fgts !== undefined) updateData.fgts = data.fgts;
-  if (data.valorEntrada !== undefined) updateData.valorEntrada = data.valorEntrada;
+  if (data.rendaBrutaFamiliar !== undefined) updateData.rendaBrutaFamiliar = toFloat(data.rendaBrutaFamiliar);
+  if (data.fgts !== undefined) updateData.fgts = toFloat(data.fgts);
+  if (data.valorEntrada !== undefined) updateData.valorEntrada = toFloat(data.valorEntrada);
   if (data.estadoCivil !== undefined) updateData.estadoCivil = data.estadoCivil;
   if (data.dataNascimento !== undefined) updateData.dataNascimento = data.dataNascimento ? new Date(data.dataNascimento) : null;
   if (data.tempoProcurandoImovel !== undefined) updateData.tempoProcurandoImovel = data.tempoProcurandoImovel;
@@ -2129,8 +2143,8 @@ async updateQualification(tenantId: string, leadId: string, data: {
   if (data.produtoInteresseId !== undefined) updateData.produtoInteresseId = data.produtoInteresseId;
   if (data.empreendimentoInteresseId !== undefined) updateData.empreendimentoInteresseId = data.empreendimentoInteresseId;
   if (data.resumoLead !== undefined) updateData.resumoLead = data.resumoLead;
-  // Cadastro pessoal
-  const pessoalFields = ['cpf', 'rg', 'profissao', 'empresa', 'naturalidade', 'endereco', 'cep', 'cidade', 'uf'] as const;
+  // Cadastro pessoal (campos string)
+  const pessoalFields = ['cpf', 'rg', 'profissao', 'empresa', 'naturalidade', 'endereco', 'cep', 'cidade', 'uf', 'telefone', 'email'] as const;
   for (const f of pessoalFields) {
     if (data[f] !== undefined) updateData[f] = data[f];
   }
@@ -3069,15 +3083,28 @@ const aiAssistanceLabel =
 
   async updateParticipante(tenantId: string, leadId: string, partId: string, data: Record<string, any>) {
     await this.assertLeadAccess(tenantId, leadId);
+    // CPF: bloqueia salvar valor inválido (vazio/null é permitido)
+    if (data.cpf !== undefined && data.cpf !== null && String(data.cpf).trim() !== '' && !isValidCPF(data.cpf)) {
+      throw new BadRequestException('CPF inválido');
+    }
     const allowed = ['nome', 'classificacao', 'cpf', 'rg', 'dataNascimento', 'estadoCivil', 'naturalidade', 'profissao', 'empresa', 'renda', 'telefone', 'email', 'endereco', 'cep', 'cidade', 'uf', 'sortOrder'];
     const updateData: any = {};
     for (const f of allowed) {
       if (data[f] !== undefined) updateData[f] = data[f];
     }
+    // renda é Float no banco — o front envia string (input type="number")
+    if (data.renda !== undefined) {
+      if (data.renda === '' || data.renda === null) {
+        updateData.renda = null;
+      } else {
+        const n = Number(data.renda);
+        updateData.renda = Number.isFinite(n) ? n : null;
+      }
+    }
     if (data.dataNascimento !== undefined) {
       updateData.dataNascimento = data.dataNascimento ? new Date(data.dataNascimento) : null;
     }
-    const existing = await (this.prisma as any).leadParticipante.findFirst({ where: { id: partId, leadId } });
+    const existing = await (this.prisma as any).leadParticipante.findFirst({ where: { id: partId, leadId, tenantId } });
     if (!existing) throw new NotFoundException('Participante não encontrado neste lead');
     return (this.prisma as any).leadParticipante.update({
       where: { id: partId },
@@ -3099,7 +3126,8 @@ const aiAssistanceLabel =
         this.ensureCloudinaryConfigured();
         await Promise.all(docsToDelete.map(d => {
           const rt = d.mimeType?.startsWith('image/') ? 'image' : 'raw';
-          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, type: 'authenticated', invalidate: true }).catch(() => {});
+          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, type: 'authenticated', invalidate: true })
+            .catch((err: any) => this.logger.warn(`deleteParticipante: falha ao remover asset ${d.publicId}: ${err?.message}`));
         }));
       } catch { /* não bloqueia o fluxo se Cloudinary não estiver configurado */ }
     }

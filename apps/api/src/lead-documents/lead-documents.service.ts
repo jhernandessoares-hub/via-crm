@@ -114,10 +114,12 @@ export class LeadDocumentsService {
 
     this.ensureCloudinaryConfigured();
 
-    // Se já tinha arquivo, deleta o antigo
+    // Se já tinha arquivo, deleta o antigo (precisa de type:'authenticated' — os assets são privados)
     if (doc.publicId) {
       const rt = doc.mimeType?.startsWith('image/') ? 'image' : 'raw';
-      await cloudinary.uploader.destroy(doc.publicId, { resource_type: rt, invalidate: true }).catch(() => {});
+      await cloudinary.uploader
+        .destroy(doc.publicId, { resource_type: rt, type: 'authenticated', invalidate: true })
+        .catch((err: any) => this.logger.warn(`uploadDocument: falha ao remover asset antigo ${doc.publicId}: ${err?.message}`));
     }
 
     const isImage = file.mimetype.startsWith('image/');
@@ -208,7 +210,9 @@ export class LeadDocumentsService {
     if (doc.publicId) {
       this.ensureCloudinaryConfigured();
       const rt = doc.mimeType?.startsWith('image/') ? 'image' : 'raw';
-      await cloudinary.uploader.destroy(doc.publicId, { resource_type: rt, type: 'authenticated', invalidate: true }).catch(() => {});
+      await cloudinary.uploader
+        .destroy(doc.publicId, { resource_type: rt, type: 'authenticated', invalidate: true })
+        .catch((err: any) => this.logger.warn(`deleteDocument: falha ao remover asset ${doc.publicId}: ${err?.message}`));
     }
 
     await this.prisma.leadDocument.delete({ where: { id: docId } });
@@ -456,12 +460,31 @@ export class LeadDocumentsService {
     const contentBlocks: any[] = [];
     for (const doc of docs) {
       try {
-        const res = await fetch(doc.url!);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const base64 = buffer.toString('base64');
         const mime = doc.mimeType || 'application/pdf';
         const mediaType = this.claudeMediaType(mime);
         if (!mediaType) continue;
+
+        // Os documentos são privados (type: 'authenticated') — buscar via URL assinada,
+        // nunca pela secure_url crua (retorna 401). Fallback para doc.url em docs antigos sem publicId.
+        let fetchUrl: string;
+        if (doc.publicId) {
+          const isImage = mime.startsWith('image/');
+          const rawName = doc.filename || doc.nome || 'documento';
+          const ext = rawName.includes('.') ? rawName.split('.').pop()! : (mime.split('/')[1] || 'bin');
+          fetchUrl = this.buildSignedCloudinaryDownloadUrl({ publicId: doc.publicId, ext, resourceType: isImage ? 'image' : 'raw' });
+        } else if (doc.url) {
+          fetchUrl = doc.url;
+        } else {
+          continue;
+        }
+
+        const res = await fetch(fetchUrl);
+        if (!res.ok) {
+          this.logger.warn(`aiCadastroFill: doc=${doc.id} indisponível no storage (${res.status})`);
+          continue;
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const base64 = buffer.toString('base64');
 
         const isPdf = mime === 'application/pdf';
         contentBlocks.push(
@@ -497,11 +520,14 @@ export class LeadDocumentsService {
     });
 
     try {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 600,
-        messages: [{ role: 'user', content: contentBlocks }],
-      });
+      const response = await client.messages.create(
+        {
+          model,
+          max_tokens: 600,
+          messages: [{ role: 'user', content: contentBlocks }],
+        },
+        { timeout: 45000 }, // evita travar indefinidamente se a IA pendurar
+      );
       const text = (response.content[0] as any)?.text ?? '{}';
       const clean = text.replace(/```json|```/g, '').trim();
       const campos = JSON.parse(clean);
@@ -603,11 +629,14 @@ Objetivo:
 }`;
 
     try {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 350,
-        messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }],
-      });
+      const response = await client.messages.create(
+        {
+          model,
+          max_tokens: 350,
+          messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }],
+        },
+        { timeout: 45000 }, // evita doc preso em "Analisando" se a IA pendurar
+      );
       const text = (response.content[0] as any)?.text ?? '{}';
       const clean = text.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(clean);
