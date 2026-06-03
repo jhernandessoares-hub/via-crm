@@ -1835,6 +1835,7 @@ export default function LeadDetailChatPage() {
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
   const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
+  const [evidencesOpen, setEvidencesOpen] = useState(true);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
 
@@ -3477,45 +3478,6 @@ function discardAiSuggestion() {
           ) : null}
         </div>
 
-        {/* Evidências de Status — só aparece quando há evidência/justificativa registrada */}
-        {statusEvidences.length > 0 && (
-          <div className="mt-4 rounded-xl border bg-[var(--shell-card-bg)] p-4">
-            <div className="mb-3 text-sm font-semibold text-[var(--shell-text)]">
-              Evidências de Status
-            </div>
-            <ul className="space-y-2">
-              {statusEvidences.map((ev) => (
-                <li
-                  key={ev.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--shell-border)] px-3 py-2 text-sm"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-[var(--shell-text)]">
-                      {ev.fromStage ? `${ev.fromStage} → ` : ""}{ev.toStage}
-                    </div>
-                    {ev.motivo && (
-                      <div className="mt-0.5 text-[var(--shell-subtext)]">{ev.motivo}</div>
-                    )}
-                    <div className="mt-0.5 text-xs text-[var(--shell-subtext)]">
-                      {ev.changedByName ? `${ev.changedByName} · ` : ""}
-                      {new Date(ev.createdAt).toLocaleString("pt-BR")}
-                    </div>
-                  </div>
-                  {ev.document && (
-                    <button
-                      type="button"
-                      onClick={() => openStatusEvidenceDoc(ev.document!.id, ev.document!.filename || ev.document!.nome)}
-                      className="shrink-0 rounded-lg border border-[var(--shell-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]"
-                    >
-                      📎 Ver evidência
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         <div className="grid gap-4 lg:grid-cols-3 items-stretch h-[calc(100vh-220px)] overflow-hidden">
           {/* ESQUERDA */}
           <div className="space-y-4 lg:col-span-1 overflow-y-auto pr-1">
@@ -4556,6 +4518,54 @@ function discardAiSuggestion() {
                 </span>
                 <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
               </a>
+            )}
+
+            {/* Evidências de Status — só aparece quando há evidência/justificativa registrada */}
+            {statusEvidences.length > 0 && (
+              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setEvidencesOpen((o) => !o)}
+                  className="flex w-full items-center justify-between px-4 py-3 border-b border-[var(--shell-card-border)]"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📎</span>
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">Evidências de Status</span>
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{statusEvidences.length}</span>
+                  </div>
+                  <span className="text-[var(--shell-subtext)]">{evidencesOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {evidencesOpen && (
+                  <ul className="divide-y divide-[var(--shell-card-border)]">
+                    {statusEvidences.map((ev) => (
+                      <li key={ev.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-[var(--shell-text)]">
+                            {ev.fromStage ? `${ev.fromStage} → ` : ""}{ev.toStage}
+                          </div>
+                          {ev.motivo && (
+                            <div className="mt-0.5 text-[var(--shell-subtext)]">{ev.motivo}</div>
+                          )}
+                          <div className="mt-0.5 text-xs text-[var(--shell-subtext)]">
+                            {ev.changedByName ? `${ev.changedByName} · ` : ""}
+                            {new Date(ev.createdAt).toLocaleString("pt-BR")}
+                          </div>
+                        </div>
+                        {ev.document && (
+                          <button
+                            type="button"
+                            onClick={() => openStatusEvidenceDoc(ev.document!.id, ev.document!.filename || ev.document!.nome)}
+                            className="shrink-0 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+                          >
+                            Ver evidência
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
 
             {/* Análise de Crédito */}
