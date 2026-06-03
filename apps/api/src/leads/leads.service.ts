@@ -2154,16 +2154,18 @@ async updateStage(
   let effectiveCurrentStageId: string | null = lead.stageId ?? null;
 
   let fromStageGroup: string | null = null;
+  let fromStageRequiresEvidence = false;
 
   if (lead.stageId) {
     const from = await this.prisma.pipelineStage.findFirst({
       where: { id: lead.stageId, tenantId: user.tenantId },
-      select: { key: true, name: true, group: true },
+      select: { key: true, name: true, group: true, requiresEvidence: true },
     });
 
     fromStageKey = from?.key ?? null;
     fromStageName = from?.name ?? null;
     fromStageGroup = from?.group ?? null;
+    fromStageRequiresEvidence = from?.requiresEvidence ?? false;
   } else {
     const defaultStage = await this.prisma.pipelineStage.findFirst({
       where: {
@@ -2192,12 +2194,15 @@ async updateStage(
   }
 
   // ── Evidência obrigatória (requiresEvidence) ──────────────────────────────
+  // Exigida ao ENTRAR num status com requiresEvidence E ao SAIR de um status
+  // com requiresEvidence (ex.: reativar um lead suspenso/excluído/desistente).
   // Não-OWNER: precisa anexar um documento (upload concluído) vinculado a este lead.
   // OWNER: dispensa documento, mas exige texto de justificativa.
   const motivo = typeof opts.motivo === 'string' ? opts.motivo.trim() : '';
   let evidenceDocumentId: string | null = null;
+  const needsEvidence = toStage.requiresEvidence || fromStageRequiresEvidence;
 
-  if (toStage.requiresEvidence) {
+  if (needsEvidence) {
     const isOwner = user?.role === 'OWNER';
 
     if (opts.evidenceDocumentId) {

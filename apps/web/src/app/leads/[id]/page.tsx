@@ -3407,7 +3407,11 @@ function discardAiSuggestion() {
             }
 
             function handleSelectStage(stage: PipelineStage) {
-              if (stage.requiresEvidence) {
+              // Exige evidência ao ENTRAR num status com requiresEvidence ou ao SAIR
+              // de um status com requiresEvidence (ex.: reativar lead suspenso/excluído).
+              const currentRequiresEvidence =
+                pipelineStages.find((s) => s.id === currentStageId)?.requiresEvidence ?? false;
+              if (stage.requiresEvidence || currentRequiresEvidence) {
                 setPendingStage(stage);
                 setEvidenceModalOpen(true);
               } else {
