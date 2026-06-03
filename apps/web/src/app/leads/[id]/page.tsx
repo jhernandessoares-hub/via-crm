@@ -1844,6 +1844,7 @@ export default function LeadDetailChatPage() {
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
   const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
+  const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
   const [evidencesOpen, setEvidencesOpen] = useState(true);
   const [transitions, setTransitions] = useState<LeadTransition[]>([]);
@@ -2079,10 +2080,12 @@ export default function LeadDetailChatPage() {
       setAllowedStages(list);
       setPrevGroupLastStageId(data?.prevGroupLastStageId ?? null);
       setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
+      setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
     } catch {
       setAllowedStages([]);
       setPrevGroupLastStageId(null);
       setCurrentStageRequiresEvidence(false);
+      setCurrentStageRequiresReason(false);
     }
   }
 
@@ -3431,11 +3434,12 @@ function discardAiSuggestion() {
             }
 
             function handleSelectStage(stage: PipelineStage) {
-              // Exige evidência ao ENTRAR num status com requiresEvidence ou ao SAIR
-              // de um status com requiresEvidence (ex.: reativar lead suspenso/excluído).
-              // currentStageRequiresEvidence vem do backend (allowed-stage-transitions),
-              // determinístico — não depende de casar ids entre fetches distintos.
-              if (stage.requiresEvidence || currentStageRequiresEvidence) {
+              // Abre o modal ao ENTRAR num status que exige evidência/justificativa
+              // ou ao SAIR de um (ex.: reativar lead suspenso/excluído). Os flags
+              // current* vêm do backend (allowed-stage-transitions), determinísticos.
+              const needsDocument = Boolean(stage.requiresEvidence) || currentStageRequiresEvidence;
+              const needsReason = Boolean(stage.requiresReason) || currentStageRequiresReason;
+              if (needsDocument || needsReason) {
                 setPendingStage(stage);
                 setEvidenceModalOpen(true);
               } else {
@@ -3494,6 +3498,8 @@ function discardAiSuggestion() {
                   isOpen={evidenceModalOpen}
                   stageName={pendingStage?.name ?? ""}
                   isOwner={user?.role === "OWNER"}
+                  needsDocument={Boolean(pendingStage?.requiresEvidence) || currentStageRequiresEvidence}
+                  needsReason={Boolean(pendingStage?.requiresReason) || currentStageRequiresReason}
                   onClose={() => { setEvidenceModalOpen(false); setPendingStage(null); }}
                   onConfirm={handleEvidenceConfirm}
                 />
@@ -4596,22 +4602,6 @@ function discardAiSuggestion() {
               </div>
             )}
 
-            {/* Histórico de Movimentações — botão que abre popup de consulta */}
-            {transitions.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setHistoryOpen(true)}
-                className="flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
-              >
-                <span className="flex items-center gap-2">
-                  <span>🕑</span>
-                  Histórico de Movimentações
-                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{transitions.length}</span>
-                </span>
-                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-              </button>
-            )}
-
             {/* Análise de Crédito */}
             {lead && (
               <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
@@ -4952,6 +4942,22 @@ function discardAiSuggestion() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Histórico de Movimentações — botão que abre popup de consulta (abaixo do SLA) */}
+            {transitions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                className="flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+              >
+                <span className="flex items-center gap-2">
+                  <span>🕑</span>
+                  Histórico de Movimentações
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{transitions.length}</span>
+                </span>
+                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+              </button>
             )}
 
             {/* Modal de edição inline de evento da agenda */}

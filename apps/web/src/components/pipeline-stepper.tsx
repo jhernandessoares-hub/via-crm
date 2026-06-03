@@ -67,6 +67,7 @@ export type PipelineStage = {
   group?: string | null;
   sortOrder?: number;
   requiresEvidence?: boolean;
+  requiresReason?: boolean;
   ownerOnly?: boolean;
   advancesToGroup?: string | null;
   returnsToGroup?: string | null;

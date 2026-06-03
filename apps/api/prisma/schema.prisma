@@ -36,6 +36,7 @@ model PipelineStage {
   returnsToGroup   String?
   isActive         Boolean   @default(true)
   requiresEvidence Boolean   @default(false)
+  requiresReason   Boolean   @default(false) // exige justificativa em texto (de todos os roles) ao entrar/sair
   ownerOnly        Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

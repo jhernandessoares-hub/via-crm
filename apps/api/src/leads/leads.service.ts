@@ -1773,18 +1773,20 @@ async getById(user: any, id: string) {
 
     let fromStageKey: string | null = null;
     let effectiveCurrentStageId: string | null = lead.stageId ?? null;
-    // requiresEvidence do status ATUAL — usado pelo frontend para abrir o modal
-    // de evidência também ao SAIR de um status sensível (suspenso/excluído/etc.)
+    // requiresEvidence/requiresReason do status ATUAL — usado pelo frontend para abrir
+    // o modal também ao SAIR de um status sensível (suspenso/excluído/etc.)
     let currentRequiresEvidence = false;
+    let currentRequiresReason = false;
 
     if (lead.stageId) {
       const from = await this.prisma.pipelineStage.findFirst({
         where: { id: lead.stageId, tenantId: user.tenantId },
-        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true },
       });
 
       fromStageKey = from?.key ?? null;
       currentRequiresEvidence = from?.requiresEvidence ?? false;
+      currentRequiresReason = from?.requiresReason ?? false;
     } else {
       const defaultStage = await this.prisma.pipelineStage.findFirst({
         where: {
@@ -1792,7 +1794,7 @@ async getById(user: any, id: string) {
           isActive: true,
         },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true },
       });
 
       if (!defaultStage?.id) {
@@ -1802,6 +1804,7 @@ async getById(user: any, id: string) {
       effectiveCurrentStageId = defaultStage.id;
       fromStageKey = defaultStage.key;
       currentRequiresEvidence = defaultStage.requiresEvidence ?? false;
+      currentRequiresReason = defaultStage.requiresReason ?? false;
     }
 
     if (!fromStageKey) {
@@ -1882,7 +1885,7 @@ async getById(user: any, id: string) {
               NOT: { id: effectiveCurrentStageId ?? undefined },
               ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
             },
-            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
+            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
             orderBy: { sortOrder: 'asc' },
           })
         : [];
@@ -1932,6 +1935,7 @@ async getById(user: any, id: string) {
         currentStageId: effectiveCurrentStageId,
         currentStageKey: fromStageKey,
         currentRequiresEvidence,
+        currentRequiresReason,
         allowedStages: allCustomStages,
         prevGroupLastStageId,
       };
@@ -1948,6 +1952,7 @@ async getById(user: any, id: string) {
           currentStageId: effectiveCurrentStageId,
           currentStageKey: fromStageKey,
           currentRequiresEvidence,
+          currentRequiresReason,
           allowedStages: [],
         };
       }
@@ -2046,6 +2051,7 @@ async getById(user: any, id: string) {
               name: true,
               sortOrder: true,
               requiresEvidence: true,
+              requiresReason: true,
               ownerOnly: true,
             },
             orderBy: { sortOrder: 'asc' },
@@ -2057,6 +2063,7 @@ async getById(user: any, id: string) {
       currentStageId: effectiveCurrentStageId,
       currentStageKey: fromStageKey,
       currentRequiresEvidence,
+      currentRequiresReason,
       allowedStages,
     };
   }
@@ -2163,17 +2170,19 @@ async updateStage(
 
   let fromStageGroup: string | null = null;
   let fromStageRequiresEvidence = false;
+  let fromStageRequiresReason = false;
 
   if (lead.stageId) {
     const from = await this.prisma.pipelineStage.findFirst({
       where: { id: lead.stageId, tenantId: user.tenantId },
-      select: { key: true, name: true, group: true, requiresEvidence: true },
+      select: { key: true, name: true, group: true, requiresEvidence: true, requiresReason: true },
     });
 
     fromStageKey = from?.key ?? null;
     fromStageName = from?.name ?? null;
     fromStageGroup = from?.group ?? null;
     fromStageRequiresEvidence = from?.requiresEvidence ?? false;
+    fromStageRequiresReason = from?.requiresReason ?? false;
   } else {
     const defaultStage = await this.prisma.pipelineStage.findFirst({
       where: {
@@ -2208,9 +2217,11 @@ async updateStage(
   // OWNER: dispensa documento, mas exige texto de justificativa.
   const motivo = typeof opts.motivo === 'string' ? opts.motivo.trim() : '';
   let evidenceDocumentId: string | null = null;
+  // needsEvidence = exige documento (não-OWNER); needsReason = exige justificativa em texto (todos)
   const needsEvidence = toStage.requiresEvidence || fromStageRequiresEvidence;
+  const needsReason = toStage.requiresReason || fromStageRequiresReason;
 
-  if (needsEvidence) {
+  if (needsEvidence || needsReason) {
     const isOwner = user?.role === 'OWNER';
 
     if (opts.evidenceDocumentId) {
@@ -2227,13 +2238,22 @@ async updateStage(
       evidenceDocumentId = doc.id;
     }
 
-    if (!isOwner && !evidenceDocumentId) {
+    // Justificativa em texto: obrigatória para TODOS quando o status exige motivo.
+    if (needsReason && !motivo) {
+      throw new BadRequestException(
+        'Esta etapa exige uma justificativa. Descreva o motivo para continuar.',
+      );
+    }
+
+    // Documento: obrigatório para não-OWNER quando o status exige evidência.
+    if (needsEvidence && !isOwner && !evidenceDocumentId) {
       throw new BadRequestException(
         'Esta etapa exige uma evidência. Anexe um documento (print, arquivo ou e-mail) para continuar.',
       );
     }
 
-    if (isOwner && !evidenceDocumentId && !motivo) {
+    // OWNER em status que exige evidência (sem motivo já cobrir): precisa de documento OU justificativa.
+    if (needsEvidence && isOwner && !evidenceDocumentId && !motivo) {
       throw new BadRequestException(
         'Esta etapa exige evidência. Anexe um documento ou informe uma justificativa para continuar.',
       );

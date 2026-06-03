@@ -115,6 +115,7 @@ export class PipelineService {
         sortOrder: true,
         group: true,
         requiresEvidence: true,
+        requiresReason: true,
         ownerOnly: true,
       },
     });
@@ -127,7 +128,7 @@ export class PipelineService {
 
     const stage = await this.prisma.pipelineStage.findFirst({
       where: { id: stageId, tenantId, isActive: true },
-      select: { id: true, key: true, name: true, group: true, pipelineId: true, ownerOnly: true, requiresEvidence: true, advancesToGroup: true, returnsToGroup: true },
+      select: { id: true, key: true, name: true, group: true, pipelineId: true, ownerOnly: true, requiresEvidence: true, requiresReason: true, advancesToGroup: true, returnsToGroup: true },
     });
 
     if (!stage) {
