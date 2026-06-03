@@ -5,26 +5,31 @@ import { useRef, useState } from "react";
 interface EvidenceUploadModalProps {
   isOpen: boolean;
   stageName: string;
+  isOwner?: boolean;
   onClose: () => void;
-  onConfirm: (file: File) => Promise<void>;
+  onConfirm: (payload: { file?: File; motivo?: string }) => Promise<void>;
 }
 
 export function EvidenceUploadModal({
   isOpen,
   stageName,
+  isOwner = false,
   onClose,
   onConfirm,
 }: EvidenceUploadModalProps) {
-  const [phase, setPhase] = useState<"confirm" | "upload">("confirm");
+  // Não-OWNER passa pelo gate "tenho a evidência"; OWNER já abre no formulário.
+  const [phase, setPhase] = useState<"confirm" | "upload">(isOwner ? "upload" : "confirm");
   const [file, setFile] = useState<File | null>(null);
+  const [motivo, setMotivo] = useState("");
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function reset() {
-    setPhase("confirm");
+    setPhase(isOwner ? "upload" : "confirm");
     setFile(null);
+    setMotivo("");
     setDragging(false);
     setLoading(false);
     setError(null);
@@ -41,17 +46,21 @@ export function EvidenceUploadModal({
   }
 
   async function handleSubmit() {
-    if (!file) {
+    if (!isOwner && !file) {
       setError("Selecione um arquivo para continuar.");
+      return;
+    }
+    if (isOwner && !file && !motivo.trim()) {
+      setError("Anexe um arquivo ou informe uma justificativa para continuar.");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      await onConfirm(file);
+      await onConfirm({ file: file ?? undefined, motivo: motivo.trim() || undefined });
       reset();
     } catch (e: any) {
-      setError(e?.message || "Erro ao enviar evidência.");
+      setError(e?.message || "Erro ao registrar evidência.");
     } finally {
       setLoading(false);
     }
@@ -68,18 +77,20 @@ export function EvidenceUploadModal({
         {/* Header */}
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-            Evidência obrigatória
+            {isOwner ? "Justificativa do status" : "Evidência obrigatória"}
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Para mover para{" "}
             <span className="font-medium text-slate-700 dark:text-slate-200">
               {stageName}
             </span>{" "}
-            é necessário anexar uma evidência (print, documento ou e-mail).
+            {isOwner
+              ? "anexe um documento ou informe uma justificativa."
+              : "é necessário anexar uma evidência (print, documento ou e-mail)."}
           </p>
         </div>
 
-        {/* Phase: confirm */}
+        {/* Phase: confirm (apenas não-OWNER) */}
         {phase === "confirm" && (
           <div className="flex justify-end gap-2 pt-2">
             <button
@@ -99,9 +110,25 @@ export function EvidenceUploadModal({
           </div>
         )}
 
-        {/* Phase: upload */}
+        {/* Phase: upload/form */}
         {phase === "upload" && (
           <div className="space-y-4">
+            {/* Justificativa (OWNER) */}
+            {isOwner && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Justificativa
+                </label>
+                <textarea
+                  value={motivo}
+                  onChange={(e) => { setMotivo(e.target.value); setError(null); }}
+                  rows={3}
+                  placeholder="Descreva o motivo desta mudança de status"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-200"
+                />
+              </div>
+            )}
+
             {/* Drop zone */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -135,7 +162,7 @@ export function EvidenceUploadModal({
               ) : (
                 <>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Arraste o arquivo ou clique para selecionar
+                    {isOwner ? "Anexar arquivo (opcional)" : "Arraste o arquivo ou clique para selecionar"}
                   </p>
                   <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                     PDF, imagem ou documento
@@ -160,7 +187,7 @@ export function EvidenceUploadModal({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!file || loading}
+                disabled={loading || (!isOwner && !file) || (isOwner && !file && !motivo.trim())}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {loading ? "Enviando..." : "Confirmar transição"}

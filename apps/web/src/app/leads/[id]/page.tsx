@@ -171,6 +171,16 @@ type LeadCalendarEvent = {
   user: { id: string; nome: string; apelido?: string | null; role: string };
 };
 
+type StatusEvidence = {
+  id: string;
+  fromStage: string | null;
+  toStage: string;
+  motivo: string | null;
+  changedByName: string | null;
+  createdAt: string;
+  document: { id: string; nome: string; filename: string | null; mimeType: string | null } | null;
+};
+
 type AiSuggestedAttachment = {
   kind?: "image" | "video" | "document" | "audio";
   url?: string;
@@ -1824,6 +1834,7 @@ export default function LeadDetailChatPage() {
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
   const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
+  const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
 
@@ -2060,6 +2071,26 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  async function loadStatusEvidences(leadId: string) {
+    try {
+      const data = await apiFetch("/leads/" + leadId + "/status-evidences", { method: "GET" });
+      setStatusEvidences(Array.isArray(data) ? data : []);
+    } catch {
+      setStatusEvidences([]);
+    }
+  }
+
+  async function openStatusEvidenceDoc(docId: string, _nome: string) {
+    try {
+      const blob = await authFetchBlob(absApiUrl(`/leads/${id}/documents/${docId}/view`));
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e: any) {
+      alert(e?.message || "Não foi possível abrir a evidência.");
+    }
+  }
+
   async function loadCreditData() {
     if (!id) return;
     try {
@@ -2087,6 +2118,7 @@ export default function LeadDetailChatPage() {
     setLead(l);
     setNomeConfirmadoEdit(l?.nomeCorreto ?? "");
     await loadAllowedStages(id);
+    await loadStatusEvidences(id);
     return l;
   }
 
@@ -3382,22 +3414,39 @@ function discardAiSuggestion() {
               }
             }
 
-            async function handleEvidenceConfirm(file: File) {
+            async function handleEvidenceConfirm(payload: { file?: File; motivo?: string }) {
               if (!pendingStage || !id) return;
-              const docRes = await apiFetch(`/leads/${id}/documents`, {
-                method: "POST",
-                body: JSON.stringify({ tipo: "EVIDENCIA_TRANSICAO", nome: `Evidência — ${pendingStage.name}` }),
-              });
-              if (docRes?.id) {
+              let evidenceDocumentId: string | undefined;
+
+              if (payload.file) {
+                const docRes = await apiFetch(`/leads/${id}/documents`, {
+                  method: "POST",
+                  body: JSON.stringify({ tipo: "EVIDENCIA_TRANSICAO", nome: `Evidência — ${pendingStage.name}` }),
+                });
+                if (!docRes?.id) {
+                  throw new Error("Não foi possível registrar a evidência. Tente novamente.");
+                }
                 const uploadForm = new FormData();
-                uploadForm.append("file", file);
+                uploadForm.append("file", payload.file);
                 await apiFetch(`/leads/${id}/documents/${docRes.id}/upload`, {
                   method: "POST",
                   body: uploadForm,
                 });
+                evidenceDocumentId = docRes.id;
               }
+
+              // Só move após upload (quando há arquivo) confirmado; backend valida a regra.
+              await apiFetch("/leads/" + id + "/stage", {
+                method: "PATCH",
+                body: JSON.stringify({ stageId: pendingStage.id, evidenceDocumentId, motivo: payload.motivo }),
+              });
+              const updatedLead = await loadLead();
+              const actualGroup = updatedLead?.stageGroup ?? null;
+              if (actualGroup && actualGroup !== effectiveGroup) {
+                router.replace(`/leads/${id}?group=${actualGroup}`);
+              }
+              await loadStatusEvidences(id);
               setEvidenceModalOpen(false);
-              await moveToStage(pendingStage.id);
               setPendingStage(null);
             }
 
@@ -3415,6 +3464,7 @@ function discardAiSuggestion() {
                 <EvidenceUploadModal
                   isOpen={evidenceModalOpen}
                   stageName={pendingStage?.name ?? ""}
+                  isOwner={user?.role === "OWNER"}
                   onClose={() => { setEvidenceModalOpen(false); setPendingStage(null); }}
                   onConfirm={handleEvidenceConfirm}
                 />
@@ -3426,6 +3476,45 @@ function discardAiSuggestion() {
             <div className="text-sm text-red-700">{pipelineErr}</div>
           ) : null}
         </div>
+
+        {/* Evidências de Status — só aparece quando há evidência/justificativa registrada */}
+        {statusEvidences.length > 0 && (
+          <div className="mt-4 rounded-xl border bg-[var(--shell-card-bg)] p-4">
+            <div className="mb-3 text-sm font-semibold text-[var(--shell-text)]">
+              Evidências de Status
+            </div>
+            <ul className="space-y-2">
+              {statusEvidences.map((ev) => (
+                <li
+                  key={ev.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--shell-border)] px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-[var(--shell-text)]">
+                      {ev.fromStage ? `${ev.fromStage} → ` : ""}{ev.toStage}
+                    </div>
+                    {ev.motivo && (
+                      <div className="mt-0.5 text-[var(--shell-subtext)]">{ev.motivo}</div>
+                    )}
+                    <div className="mt-0.5 text-xs text-[var(--shell-subtext)]">
+                      {ev.changedByName ? `${ev.changedByName} · ` : ""}
+                      {new Date(ev.createdAt).toLocaleString("pt-BR")}
+                    </div>
+                  </div>
+                  {ev.document && (
+                    <button
+                      type="button"
+                      onClick={() => openStatusEvidenceDoc(ev.document!.id, ev.document!.filename || ev.document!.nome)}
+                      className="shrink-0 rounded-lg border border-[var(--shell-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-text)] hover:bg-[var(--shell-hover)]"
+                    >
+                      📎 Ver evidência
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-3 items-stretch h-[calc(100vh-220px)] overflow-hidden">
           {/* ESQUERDA */}

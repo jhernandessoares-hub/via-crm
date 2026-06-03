@@ -2127,7 +2127,12 @@ async updateQualification(tenantId: string, leadId: string, data: {
   });
 }
 
-async updateStage(user: any, leadId: string, stageId: string) {
+async updateStage(
+  user: any,
+  leadId: string,
+  stageId: string,
+  opts: { evidenceDocumentId?: string; motivo?: string } = {},
+) {
   if (!leadId) throw new BadRequestException('leadId ausente');
   if (!stageId) throw new BadRequestException('stageId ausente');
 
@@ -2184,6 +2189,42 @@ async updateStage(user: any, leadId: string, stageId: string) {
 
   if (toStage.ownerOnly && user?.role !== 'OWNER') {
     throw new ForbiddenException('Apenas o OWNER pode mover para esta etapa.');
+  }
+
+  // ── Evidência obrigatória (requiresEvidence) ──────────────────────────────
+  // Não-OWNER: precisa anexar um documento (upload concluído) vinculado a este lead.
+  // OWNER: dispensa documento, mas exige texto de justificativa.
+  const motivo = typeof opts.motivo === 'string' ? opts.motivo.trim() : '';
+  let evidenceDocumentId: string | null = null;
+
+  if (toStage.requiresEvidence) {
+    const isOwner = user?.role === 'OWNER';
+
+    if (opts.evidenceDocumentId) {
+      const doc = await this.prisma.leadDocument.findFirst({
+        where: { id: opts.evidenceDocumentId, leadId, tenantId: user.tenantId },
+        select: { id: true, status: true, url: true, publicId: true },
+      });
+      if (!doc) {
+        throw new BadRequestException('Evidência inválida: documento não encontrado para este lead.');
+      }
+      if (doc.status !== 'ENVIADO' && !doc.publicId && !doc.url) {
+        throw new BadRequestException('Evidência inválida: o upload do documento não foi concluído.');
+      }
+      evidenceDocumentId = doc.id;
+    }
+
+    if (!isOwner && !evidenceDocumentId) {
+      throw new BadRequestException(
+        'Esta etapa exige uma evidência. Anexe um documento (print, arquivo ou e-mail) para continuar.',
+      );
+    }
+
+    if (isOwner && !evidenceDocumentId && !motivo) {
+      throw new BadRequestException(
+        'Esta etapa exige evidência. Anexe um documento ou informe uma justificativa para continuar.',
+      );
+    }
   }
 
   const allowedTransitions: Record<string, string[]> = {
@@ -2264,6 +2305,8 @@ async updateStage(user: any, leadId: string, stageId: string) {
           fromStage: fromStageName,
           toStage: toStage.name,
           changedBy: user?.id || 'USER',
+          evidenceDocumentId,
+          motivo: motivo || null,
         },
       }),
     ]);
@@ -2416,12 +2459,82 @@ async updateStage(user: any, leadId: string, stageId: string) {
         fromStage: fromStageName,
         toStage: toStage.name,
         changedBy: user?.id || 'USER',
+        evidenceDocumentId,
+        motivo: motivo || null,
       },
     }),
   ]);
 
   return updated;
 }
+
+/**
+ * Lista as evidências/justificativas registradas em transições de status do lead.
+ * Retorna apenas transições que exigiram evidência (documento anexado ou justificativa).
+ */
+async listStatusEvidences(user: any, leadId: string) {
+  const lead = await this.prisma.lead.findFirst({
+    where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!lead) throw new NotFoundException('Lead não encontrado');
+
+  const logs = await this.prisma.leadTransitionLog.findMany({
+    where: {
+      tenantId: user.tenantId,
+      leadId,
+      OR: [
+        { evidenceDocumentId: { not: null } },
+        { motivo: { not: null } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      fromStage: true,
+      toStage: true,
+      changedBy: true,
+      evidenceDocumentId: true,
+      motivo: true,
+      createdAt: true,
+    },
+  });
+
+  if (logs.length === 0) return [];
+
+  // Resolve documentos e nomes de quem moveu, em lote
+  const docIds = logs.map((l) => l.evidenceDocumentId).filter((d): d is string => !!d);
+  const userIds = logs.map((l) => l.changedBy).filter((u): u is string => !!u);
+
+  const [docs, users] = await Promise.all([
+    docIds.length
+      ? this.prisma.leadDocument.findMany({
+          where: { id: { in: docIds }, tenantId: user.tenantId },
+          select: { id: true, nome: true, filename: true, mimeType: true },
+        })
+      : Promise.resolve([]),
+    userIds.length
+      ? this.prisma.user.findMany({
+          where: { id: { in: userIds }, tenantId: user.tenantId },
+          select: { id: true, nome: true, apelido: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const docMap = new Map(docs.map((d) => [d.id, d] as const));
+  const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome] as const));
+
+  return logs.map((l) => ({
+    id: l.id,
+    fromStage: l.fromStage,
+    toStage: l.toStage,
+    motivo: l.motivo,
+    changedByName: l.changedBy ? userMap.get(l.changedBy) ?? null : null,
+    createdAt: l.createdAt,
+    document: l.evidenceDocumentId ? docMap.get(l.evidenceDocumentId) ?? null : null,
+  }));
+}
+
   async getMyLeads(user: any) {
     const leads = await this.prisma.lead.findMany({
       where: {

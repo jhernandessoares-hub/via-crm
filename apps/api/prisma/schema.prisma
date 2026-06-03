@@ -572,15 +572,17 @@ model BaseFria {
 }
 
 model LeadTransitionLog {
-  id        String   @id @default(uuid())
-  tenantId  String
-  leadId    String
-  fromStage String?
-  toStage   String
-  changedBy String?
-  createdAt DateTime @default(now())
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(uuid())
+  tenantId           String
+  leadId             String
+  fromStage          String?
+  toStage            String
+  changedBy          String?
+  evidenceDocumentId String?  // documento de evidência anexado em transições com requiresEvidence
+  motivo             String?  // justificativa (obrigatória para OWNER em status com requiresEvidence)
+  createdAt          DateTime @default(now())
+  lead               Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId])
   @@index([tenantId, createdAt])

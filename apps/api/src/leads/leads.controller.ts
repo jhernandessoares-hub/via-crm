@@ -253,13 +253,22 @@ export class LeadsController {
   async updateStage(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { stageId: string },
+    @Body() body: { stageId: string; evidenceDocumentId?: string; motivo?: string },
   ) {
     if (!body?.stageId) {
       throw new BadRequestException('stageId é obrigatório');
     }
 
-    return this.leadsService.updateStage(req.user, id, body.stageId);
+    return this.leadsService.updateStage(req.user, id, body.stageId, {
+      evidenceDocumentId: body.evidenceDocumentId,
+      motivo: body.motivo,
+    });
+  }
+
+  /** Lista evidências/justificativas registradas em transições de status do lead */
+  @Get(':id/status-evidences')
+  async listStatusEvidences(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.listStatusEvidences(req.user, id);
   }
 
   /**
