@@ -1853,6 +1853,7 @@ export default function LeadDetailChatPage() {
   const [evidencesOpen, setEvidencesOpen] = useState(false);
   const [transitions, setTransitions] = useState<LeadTransition[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [evidencePreview, setEvidencePreview] = useState<{ url: string; mime: string; nome: string } | null>(null);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
   const [unitConfirm, setUnitConfirm] = useState<{ stage: PipelineStage; message: string } | null>(null);
@@ -2114,15 +2115,24 @@ export default function LeadDetailChatPage() {
     }
   }
 
-  async function openStatusEvidenceDoc(docId: string, _nome: string) {
+  async function openStatusEvidenceDoc(docId: string, nome: string) {
     try {
       const blob = await authFetchBlob(absApiUrl(`/leads/${id}/documents/${docId}/view`));
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setEvidencePreview((prev) => {
+        if (prev?.url) URL.revokeObjectURL(prev.url);
+        return { url, mime: blob.type || "", nome };
+      });
     } catch (e: any) {
       alert(e?.message || "Não foi possível abrir a evidência.");
     }
+  }
+
+  function closeEvidencePreview() {
+    setEvidencePreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return null;
+    });
   }
 
   async function loadCreditData() {
@@ -6383,6 +6393,56 @@ function discardAiSuggestion() {
               >
                 Fechar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup — Visualização de evidência (imagem/PDF) na mesma tela */}
+      {evidencePreview && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+        >
+          <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-[var(--shell-card-border)] px-5 py-3">
+              <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {evidencePreview.nome || "Evidência"}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={evidencePreview.url}
+                  download={evidencePreview.nome || "evidencia"}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+                >
+                  Baixar
+                </a>
+                <button
+                  type="button"
+                  onClick={closeEvidencePreview}
+                  className="rounded-full p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-neutral-800"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-100 dark:bg-neutral-950 p-3">
+              {evidencePreview.mime.startsWith("image/") ? (
+                <img src={evidencePreview.url} alt={evidencePreview.nome} className="mx-auto max-h-[78vh] object-contain" />
+              ) : evidencePreview.mime === "application/pdf" ? (
+                <iframe src={evidencePreview.url} title={evidencePreview.nome} className="h-[78vh] w-full rounded-md bg-white" />
+              ) : (
+                <div className="py-16 text-center text-sm text-slate-500 dark:text-slate-400">
+                  Pré-visualização não disponível para este tipo de arquivo.
+                  <div className="mt-3">
+                    <a href={evidencePreview.url} download={evidencePreview.nome || "evidencia"} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                      Baixar arquivo
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
