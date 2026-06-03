@@ -262,6 +262,7 @@ export class LeadsController {
     return this.leadsService.updateStage(req.user, id, body.stageId, {
       evidenceDocumentId: body.evidenceDocumentId,
       motivo: body.motivo,
+      ipAddress: req.ip,
     });
   }
 
@@ -269,6 +270,12 @@ export class LeadsController {
   @Get(':id/status-evidences')
   async listStatusEvidences(@Req() req: any, @Param('id') id: string) {
     return this.leadsService.listStatusEvidences(req.user, id);
+  }
+
+  /** Histórico completo de movimentações de etapa/status do lead */
+  @Get(':id/transitions')
+  async listTransitions(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.listTransitions(req.user, id);
   }
 
   /**

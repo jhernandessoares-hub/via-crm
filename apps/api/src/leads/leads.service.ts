@@ -2139,7 +2139,7 @@ async updateStage(
   user: any,
   leadId: string,
   stageId: string,
-  opts: { evidenceDocumentId?: string; motivo?: string } = {},
+  opts: { evidenceDocumentId?: string; motivo?: string; ipAddress?: string } = {},
 ) {
   if (!leadId) throw new BadRequestException('leadId ausente');
   if (!stageId) throw new BadRequestException('stageId ausente');
@@ -2240,6 +2240,30 @@ async updateStage(
     }
   }
 
+  // Registra a movimentação na trilha de auditoria (LGPD). Silencioso, nunca quebra o fluxo.
+  const auditMove = (
+    fromName: string | null,
+    toName: string,
+    group: string | null,
+    cascade: boolean,
+  ) =>
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user?.id,
+      action: 'MOVE_PIPELINE',
+      resourceType: 'lead',
+      resourceId: leadId,
+      ipAddress: opts.ipAddress,
+      metadata: {
+        fromStage: fromName,
+        toStage: toName,
+        group,
+        role: user?.role ?? null,
+        cascade,
+        ...(cascade ? {} : { motivo: motivo || null, evidenceDocumentId }),
+      },
+    });
+
   const allowedTransitions: Record<string, string[]> = {
     NOVO_LEAD: ['EM_CONTATO'],
 
@@ -2324,6 +2348,8 @@ async updateStage(
       }),
     ]);
 
+    await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
+
     const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
     // Só faz cascade se o grupo destino for diferente do grupo atual do lead
     // (evita loop: clicar em stage gateway ao voltar re-empurraria para o grupo de origem)
@@ -2343,9 +2369,11 @@ async updateStage(
               fromStage: toStage.name,
               toStage: firstStageOfGroup.name,
               changedBy: user?.id || 'USER',
+              cascade: true,
             },
           }),
         ]);
+        await auditMove(toStage.name, firstStageOfGroup.name, targetGroup, true);
       }
     }
 
@@ -2478,6 +2506,8 @@ async updateStage(
     }),
   ]);
 
+  await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
+
   return updated;
 }
 
@@ -2545,6 +2575,54 @@ async listStatusEvidences(user: any, leadId: string) {
     changedByName: l.changedBy ? userMap.get(l.changedBy) ?? null : null,
     createdAt: l.createdAt,
     document: l.evidenceDocumentId ? docMap.get(l.evidenceDocumentId) ?? null : null,
+  }));
+}
+
+/**
+ * Histórico completo de movimentações de etapa/status do lead (mais recentes primeiro).
+ * Marca movimentos automáticos (cascade) e resolve o nome de quem moveu.
+ */
+async listTransitions(user: any, leadId: string) {
+  const lead = await this.prisma.lead.findFirst({
+    where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!lead) throw new NotFoundException('Lead não encontrado');
+
+  const logs = await this.prisma.leadTransitionLog.findMany({
+    where: { tenantId: user.tenantId, leadId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      fromStage: true,
+      toStage: true,
+      changedBy: true,
+      cascade: true,
+      createdAt: true,
+    },
+  });
+
+  if (logs.length === 0) return [];
+
+  const userIds = logs
+    .map((l) => l.changedBy)
+    .filter((u): u is string => !!u && u !== 'USER' && u !== 'SYSTEM');
+
+  const users = userIds.length
+    ? await this.prisma.user.findMany({
+        where: { id: { in: userIds }, tenantId: user.tenantId },
+        select: { id: true, nome: true, apelido: true },
+      })
+    : [];
+  const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome] as const));
+
+  return logs.map((l) => ({
+    id: l.id,
+    fromStage: l.fromStage,
+    toStage: l.toStage,
+    cascade: l.cascade,
+    changedByName: l.changedBy ? userMap.get(l.changedBy) ?? null : null,
+    createdAt: l.createdAt,
   }));
 }
 

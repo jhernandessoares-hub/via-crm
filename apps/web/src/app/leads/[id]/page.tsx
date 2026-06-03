@@ -181,6 +181,15 @@ type StatusEvidence = {
   document: { id: string; nome: string; filename: string | null; mimeType: string | null } | null;
 };
 
+type LeadTransition = {
+  id: string;
+  fromStage: string | null;
+  toStage: string;
+  cascade: boolean;
+  changedByName: string | null;
+  createdAt: string;
+};
+
 type AiSuggestedAttachment = {
   kind?: "image" | "video" | "document" | "audio";
   url?: string;
@@ -1837,6 +1846,8 @@ export default function LeadDetailChatPage() {
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
   const [evidencesOpen, setEvidencesOpen] = useState(true);
+  const [transitions, setTransitions] = useState<LeadTransition[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
 
@@ -2084,6 +2095,15 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  async function loadTransitions(leadId: string) {
+    try {
+      const data = await apiFetch("/leads/" + leadId + "/transitions", { method: "GET" });
+      setTransitions(Array.isArray(data) ? data : []);
+    } catch {
+      setTransitions([]);
+    }
+  }
+
   async function openStatusEvidenceDoc(docId: string, _nome: string) {
     try {
       const blob = await authFetchBlob(absApiUrl(`/leads/${id}/documents/${docId}/view`));
@@ -2123,6 +2143,7 @@ export default function LeadDetailChatPage() {
     setNomeConfirmadoEdit(l?.nomeCorreto ?? "");
     await loadAllowedStages(id);
     await loadStatusEvidences(id);
+    await loadTransitions(id);
     return l;
   }
 
@@ -4575,6 +4596,22 @@ function discardAiSuggestion() {
               </div>
             )}
 
+            {/* Histórico de Movimentações — botão que abre popup de consulta */}
+            {transitions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                className="flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+              >
+                <span className="flex items-center gap-2">
+                  <span>🕑</span>
+                  Histórico de Movimentações
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{transitions.length}</span>
+                </span>
+                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+              </button>
+            )}
+
             {/* Análise de Crédito */}
             {lead && (
               <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
@@ -6223,6 +6260,59 @@ function discardAiSuggestion() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Popup — Histórico de Movimentações (somente consulta) */}
+      {historyOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+        >
+          <div className="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-[var(--shell-card-border)] px-5 py-4">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
+                <span>🕑</span> Histórico de Movimentações
+              </h2>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="rounded-full p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-neutral-800"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <ul className="divide-y divide-[var(--shell-card-border)] overflow-y-auto">
+              {transitions.map((t) => (
+                <li key={t.id} className="px-5 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-slate-800 dark:text-slate-100">
+                      {t.fromStage ? `${t.fromStage} → ` : ""}{t.toStage}
+                    </span>
+                    {t.cascade && (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-neutral-800 dark:text-slate-400">automático</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    {t.cascade ? "Sistema" : (t.changedByName || "—")} · {new Date(t.createdAt).toLocaleString("pt-BR")}
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex justify-end border-t border-[var(--shell-card-border)] px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
