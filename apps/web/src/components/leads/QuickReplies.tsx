@@ -151,7 +151,7 @@ export default function QuickReplies({ onInsert }: Props) {
           {/* overlay transparente para fechar ao clicar fora (dropdown de seleção) */}
           <div className="fixed inset-0 z-30" onClick={() => { setOpen(false); resetForm(); }} />
 
-          <div className="absolute bottom-12 left-0 z-40 w-80 rounded-lg border bg-[var(--shell-card-bg)] shadow-lg p-3">
+          <div className="absolute bottom-12 right-0 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-lg border bg-[var(--shell-card-bg)] shadow-lg p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-semibold">Mensagens padrão</div>
               {editing === null ? (
