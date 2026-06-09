@@ -2148,6 +2148,12 @@ async updateQualification(tenantId: string, leadId: string, data: {
   for (const f of pessoalFields) {
     if (data[f] !== undefined) updateData[f] = data[f];
   }
+  // Telefone alterado: normaliza para dígitos e recalcula a chave de deduplicação
+  if (data.telefone !== undefined) {
+    const digits = this.digitsOnly(data.telefone ?? '');
+    updateData.telefone = digits || null;
+    updateData.telefoneKey = digits ? this.telefoneKeyFrom(digits) : null;
+  }
   if ((data as any).cadastroOrigem !== undefined) updateData.cadastroOrigem = (data as any).cadastroOrigem;
 
   return this.prisma.lead.update({
@@ -2159,6 +2165,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
       tempoProcurandoImovel: true, conversouComCorretor: true,
       qualCorretorImobiliaria: true, perfilImovel: true,
       produtoInteresseId: true, empreendimentoInteresseId: true, resumoLead: true,
+      cpf: true, telefone: true, telefoneKey: true,
     },
   });
 }

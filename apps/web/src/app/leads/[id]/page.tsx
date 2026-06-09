@@ -13,6 +13,7 @@ import {
   type Correspondent, type CreditRequest,
 } from "@/lib/correspondente.service";
 import { formatLeadNumber } from "@/lib/format-lead-number";
+import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
@@ -1976,6 +1977,12 @@ export default function LeadDetailChatPage() {
   const [origemEditValue, setOrigemEditValue] = useState('');
   const [savingOrigemField, setSavingOrigemField] = useState(false);
 
+  // TEMP-EDIT-TEL-CPF (temporário — remover depois): edição inline de telefone / CPF no card do lead
+  const [contactEditField, setContactEditField] = useState<null | 'telefone' | 'cpf'>(null);
+  const [contactEditValue, setContactEditValue] = useState('');
+  const [savingContactField, setSavingContactField] = useState(false);
+  const [contactFieldErr, setContactFieldErr] = useState<string | null>(null);
+
   // Atribuição manual
   const [teamMembers, setTeamMembers] = useState<{ id: string; nome: string; role: string }[]>([]);
   const [assignLoading, setAssignLoading] = useState(false);
@@ -2859,6 +2866,46 @@ function discardAiSuggestion() {
     }
   }
 
+  // TEMP-EDIT-TEL-CPF (temporário — remover depois)
+  function startContactEdit(field: 'telefone' | 'cpf') {
+    if (!lead) return;
+    setContactFieldErr(null);
+    setContactEditField(field);
+    if (field === 'telefone') setContactEditValue(maskPhone(lead.telefone ?? ''));
+    else setContactEditValue(maskCPF(lead.cpf ?? ''));
+  }
+
+  async function saveContactField() {
+    if (!lead || !contactEditField) return;
+    const field = contactEditField;
+    const digits = contactEditValue.replace(/\D/g, '');
+
+    if (field === 'cpf' && digits.length > 0 && !isValidCPF(contactEditValue)) {
+      setContactFieldErr('CPF inválido');
+      return;
+    }
+
+    setSavingContactField(true);
+    setContactFieldErr(null);
+    try {
+      const value = digits || null;
+      const updated = await apiFetch(`/leads/${lead.id}/qualification`, {
+        method: 'PATCH',
+        body: JSON.stringify({ [field]: value }),
+      });
+      setLead((prev) => prev ? {
+        ...prev,
+        [field]: updated?.[field] ?? value,
+        ...(field === 'telefone' ? { telefoneKey: updated?.telefoneKey ?? prev.telefoneKey } : {}),
+      } : prev);
+      setContactEditField(null);
+    } catch (err: any) {
+      setContactFieldErr(err?.message || 'Erro ao salvar.');
+    } finally {
+      setSavingContactField(false);
+    }
+  }
+
   async function toggleAutopilot(nextValue: boolean) {
     setAutopilotEnabled(nextValue);
     await apiFetch(`/leads/${id}/bot-paused`, {
@@ -3650,22 +3697,63 @@ function discardAiSuggestion() {
                     </div>
                   </div>
 
-                  {/* Par 2: Telefone + CPF */}
+                  {/* Par 2: Telefone + CPF — TEMP-EDIT-TEL-CPF (edição inline temporária; remover depois, voltar a somente-leitura) */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="min-w-0">
                       <div className="text-xs text-[var(--shell-subtext)]">Telefone</div>
-                      <div className="text-[var(--shell-text)] truncate">{lead.telefone || "—"}</div>
+                      {contactEditField === 'telefone' ? (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <input
+                            autoFocus
+                            inputMode="numeric"
+                            className="flex-1 min-w-0 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)]"
+                            value={contactEditValue}
+                            onChange={(e) => setContactEditValue(maskPhone(e.target.value))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') saveContactField(); if (e.key === 'Escape') { setContactEditField(null); setContactFieldErr(null); } }}
+                            disabled={savingContactField}
+                          />
+                          <button className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50" onClick={saveContactField} disabled={savingContactField}>✓</button>
+                          <button className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]" onClick={() => { setContactEditField(null); setContactFieldErr(null); }} disabled={savingContactField}>✕</button>
+                        </div>
+                      ) : (
+                        <div className="group flex items-center gap-1 cursor-pointer" onClick={() => startContactEdit('telefone')}>
+                          <span className="text-[var(--shell-text)] truncate">{lead.telefone ? maskPhone(lead.telefone) : "—"}</span>
+                          <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)] shrink-0">✏️</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="min-w-0">
                       <div className="text-xs text-[var(--shell-subtext)]">CPF</div>
-                      <div className="text-sm text-[var(--shell-text)] truncate font-mono">
-                        {lead.cpf
-                          ? lead.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') || lead.cpf
-                          : "—"}
-                      </div>
+                      {contactEditField === 'cpf' ? (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <input
+                            autoFocus
+                            inputMode="numeric"
+                            className="flex-1 min-w-0 rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1 text-sm text-[var(--shell-text)] font-mono"
+                            value={contactEditValue}
+                            onChange={(e) => setContactEditValue(maskCPF(e.target.value))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') saveContactField(); if (e.key === 'Escape') { setContactEditField(null); setContactFieldErr(null); } }}
+                            disabled={savingContactField}
+                          />
+                          <button className="rounded bg-green-600 px-2 py-1 text-xs text-white disabled:opacity-50" onClick={saveContactField} disabled={savingContactField}>✓</button>
+                          <button className="rounded border px-2 py-1 text-xs text-[var(--shell-subtext)]" onClick={() => { setContactEditField(null); setContactFieldErr(null); }} disabled={savingContactField}>✕</button>
+                        </div>
+                      ) : (
+                        <div className="group flex items-center gap-1 cursor-pointer" onClick={() => startContactEdit('cpf')}>
+                          <span className="text-sm text-[var(--shell-text)] truncate font-mono">
+                            {lead.cpf
+                              ? lead.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') || lead.cpf
+                              : "—"}
+                          </span>
+                          <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)] shrink-0">✏️</span>
+                        </div>
+                      )}
                     </div>
                   </div>
+                  {contactFieldErr ? (
+                    <div className="text-[11px] text-red-600">{contactFieldErr}</div>
+                  ) : null}
 
                   {/* Status */}
                   <div className="min-w-0">
