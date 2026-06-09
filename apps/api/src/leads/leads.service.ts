@@ -929,6 +929,18 @@ export class LeadsService {
     return d;
   }
 
+  /** Normaliza para o padrão de discagem 55+DDD+numero (ex: 5511999999999).
+   * Garante que o número salvo seja sempre completo, para o envio de WhatsApp
+   * conseguir falar com o cliente. Números nacionais (10/11 dígitos) recebem o 55;
+   * números que já têm o país (12/13 dígitos) são mantidos. */
+  private normalizePhoneBR(input: string | null | undefined): string | null {
+    const d = this.digitsOnly(input ?? '');
+    if (!d) return null;
+    if (d.startsWith('55') && (d.length === 12 || d.length === 13)) return d;
+    if (d.length === 10 || d.length === 11) return '55' + d;
+    return d;
+  }
+
   private getInboundChannels(): string[] {
     const raw = (process.env.SLA_INBOUND_CHANNELS || '')
       .split(',')
@@ -1016,7 +1028,7 @@ export class LeadsService {
   // =============================
   async create(tenantId: string, body: any) {
     const telefoneRaw = body?.telefone ? String(body.telefone) : '';
-    const telefoneDigits = this.digitsOnly(telefoneRaw);
+    const telefoneDigits = this.normalizePhoneBR(telefoneRaw);
 
     let telefoneKey: string | null = null;
     if (telefoneDigits) {
@@ -2148,11 +2160,11 @@ async updateQualification(tenantId: string, leadId: string, data: {
   for (const f of pessoalFields) {
     if (data[f] !== undefined) updateData[f] = data[f];
   }
-  // Telefone alterado: normaliza para dígitos e recalcula a chave de deduplicação
+  // Telefone alterado: normaliza para o padrão 55+DDD+numero e recalcula a chave de deduplicação
   if (data.telefone !== undefined) {
-    const digits = this.digitsOnly(data.telefone ?? '');
-    updateData.telefone = digits || null;
-    updateData.telefoneKey = digits ? this.telefoneKeyFrom(digits) : null;
+    const normalized = this.normalizePhoneBR(data.telefone);
+    updateData.telefone = normalized;
+    updateData.telefoneKey = normalized ? this.telefoneKeyFrom(normalized) : null;
   }
   if ((data as any).cadastroOrigem !== undefined) updateData.cadastroOrigem = (data as any).cadastroOrigem;
 
