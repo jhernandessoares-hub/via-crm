@@ -126,6 +126,7 @@ model Tenant {
   campanhaModelos               CampanhaModelo[]
   campanhaDisparos              CampanhaDisparo[]
   leadCounter                   TenantLeadCounter?
+  messageTemplates              UserMessageTemplate[]
 
   @@map("tenants")
 }
@@ -137,6 +138,23 @@ model TenantLeadCounter {
   tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_lead_counters")
+}
+
+model UserMessageTemplate {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  title     String
+  content   String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("user_message_templates")
 }
 
 model Channel {
@@ -205,6 +223,7 @@ model User {
   campanhaModelos          CampanhaModelo[]
   campanhaDisparos         CampanhaDisparo[]
   calendarEvents           CalendarEvent[]
+  messageTemplates         UserMessageTemplate[]
 
   @@unique([tenantId, email])
   @@map("users")

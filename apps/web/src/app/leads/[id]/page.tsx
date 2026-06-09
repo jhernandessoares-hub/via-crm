@@ -5,6 +5,7 @@ import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import QuickReplies from "@/components/leads/QuickReplies";
 import { apiFetch } from "@/lib/api";
 import {
   listCorrespondents, listCreditRequests, createCreditRequest, cancelCreditRequest,
@@ -5798,6 +5799,8 @@ function discardAiSuggestion() {
                   disabled={sending}
                   rows={1}
                 />
+
+                <QuickReplies onInsert={insertIntoChat} />
 
                 <button
                   className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-60"
