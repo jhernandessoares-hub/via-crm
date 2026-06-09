@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
@@ -10,6 +10,7 @@ import { apiFetch } from "@/lib/api";
 
 type EventType = "VISITA" | "TAREFA" | "CAPTACAO" | "REUNIAO" | "FOLLOW_UP";
 type EventStatus = "AGENDADO" | "CONFIRMADO" | "REALIZADO" | "NO_SHOW" | "CANCELADO";
+type EventVisibility = "PUBLIC" | "PRIVATE";
 
 type CalendarEvent = {
   id: string;
@@ -22,8 +23,11 @@ type CalendarEvent = {
   leadId?: string | null;
   eventType: EventType;
   status: EventStatus;
+  visibility: EventVisibility;
   location?: string | null;
   productId?: string | null;
+  userId: string;
+  user: { id: string; nome: string; apelido?: string | null; role: string };
   createdAt: string;
 };
 
@@ -38,7 +42,15 @@ type EventForm = {
   productId: string;
   eventType: EventType;
   status: EventStatus;
+  visibility: EventVisibility;
   location: string;
+};
+
+type LeadSearchResult = {
+  id: string;
+  nome: string;
+  nomeCorreto?: string | null;
+  telefone?: string | null;
 };
 
 type View = "month" | "week" | "day";
@@ -151,6 +163,22 @@ function formatShortTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+const ROLE_LEVEL: Record<string, number> = { OWNER: 4, MANAGER: 3, AGENT: 2, PARTNER: 1 };
+
+function canEditEvent(ev: CalendarEvent, currentUserId: string, currentUserRole: string): boolean {
+  if (ev.userId === currentUserId) return true;
+  return (ROLE_LEVEL[currentUserRole] ?? 0) > (ROLE_LEVEL[ev.user?.role] ?? 0);
+}
+
+function creatorDisplayName(ev: CalendarEvent, currentUserId: string): string {
+  if (ev.userId === currentUserId) return "Você";
+  const u = ev.user;
+  if (!u) return "—";
+  if (u.apelido) return u.apelido;
+  const parts = u.nome.trim().split(" ");
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
+}
+
 // ──────────────────────────────────────────────
 // Empty form
 // ──────────────────────────────────────────────
@@ -168,6 +196,7 @@ function emptyForm(date?: Date): EventForm {
     productId: "",
     eventType: "TAREFA",
     status: "AGENDADO",
+    visibility: "PUBLIC",
     location: "",
   };
 }
@@ -184,6 +213,7 @@ function eventToForm(ev: CalendarEvent): EventForm {
     productId: ev.productId ?? "",
     eventType: ev.eventType || "TAREFA",
     status: ev.status || "AGENDADO",
+    visibility: ev.visibility || "PUBLIC",
     location: ev.location ?? "",
   };
 }
@@ -208,6 +238,25 @@ export default function CalendarPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Usuário atual (para diferenciar "Você" de outros e checar permissão de edição)
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState("");
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      setCurrentUserId(u.id || u.sub || "");
+      setCurrentUserRole(u.role || "AGENT");
+    } catch {}
+  }, []);
+
+  // Lead autocomplete
+  const [leadQuery, setLeadQuery] = useState("");
+  const [leadResults, setLeadResults] = useState<LeadSearchResult[]>([]);
+  const [leadSearching, setLeadSearching] = useState(false);
+  const [leadDropdownOpen, setLeadDropdownOpen] = useState(false);
+  const [selectedLeadName, setSelectedLeadName] = useState("");
+  const leadDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Compute visible range based on view
   const { rangeStart, rangeEnd } = useMemo(() => {
@@ -240,6 +289,20 @@ export default function CalendarPage() {
     }
   }
 
+  // Lê leadId/leadName da URL e abre o modal com o lead pré-selecionado
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const lid = params.get("leadId");
+    const lname = params.get("leadName");
+    if (lid) {
+      const name = lname ? decodeURIComponent(lname) : lid;
+      setForm((prev) => ({ ...prev, leadId: lid }));
+      setSelectedLeadName(name);
+      setLeadQuery(name);
+      setModalOpen(true);
+    }
+  }, []);
+
   // ── Navigation ────────────────────────────────
 
   function navigate(dir: -1 | 1) {
@@ -264,6 +327,9 @@ export default function CalendarPage() {
     setForm(emptyForm(date));
     setFormError(null);
     setConfirmDelete(false);
+    setLeadQuery("");
+    setSelectedLeadName("");
+    setLeadDropdownOpen(false);
     setModalOpen(true);
   }
 
@@ -272,6 +338,10 @@ export default function CalendarPage() {
     setForm(eventToForm(ev));
     setFormError(null);
     setConfirmDelete(false);
+    // Pré-preenche o campo com o nome salvo (se houver) ou UUID truncado
+    const name = selectedLeadName && ev.leadId ? selectedLeadName : (ev.leadId ? ev.leadId.slice(0, 8) + "..." : "");
+    setLeadQuery(name);
+    setLeadDropdownOpen(false);
     setModalOpen(true);
   }
 
@@ -279,7 +349,52 @@ export default function CalendarPage() {
     setModalOpen(false);
     setEditingEvent(null);
     setConfirmDelete(false);
+    setLeadQuery("");
+    setSelectedLeadName("");
+    setLeadDropdownOpen(false);
   }
+
+  // ── Lead autocomplete ─────────────────────────
+
+  function searchLeads(q: string) {
+    if (leadDebounceRef.current) clearTimeout(leadDebounceRef.current);
+    if (!q.trim() || q.trim().length < 2) {
+      setLeadResults([]);
+      setLeadDropdownOpen(false);
+      return;
+    }
+    leadDebounceRef.current = setTimeout(async () => {
+      setLeadSearching(true);
+      try {
+        const data = await apiFetch(`/leads/search?q=${encodeURIComponent(q.trim())}`);
+        setLeadResults(Array.isArray(data) ? data : []);
+        setLeadDropdownOpen(true);
+      } catch {
+        setLeadResults([]);
+      } finally {
+        setLeadSearching(false);
+      }
+    }, 300);
+  }
+
+  function selectLead(l: LeadSearchResult) {
+    const name = l.nomeCorreto ?? l.nome;
+    setForm((p) => ({ ...p, leadId: l.id }));
+    setSelectedLeadName(name);
+    setLeadQuery(name);
+    setLeadDropdownOpen(false);
+    setLeadResults([]);
+  }
+
+  function clearLead() {
+    setForm((p) => ({ ...p, leadId: "" }));
+    setSelectedLeadName("");
+    setLeadQuery("");
+    setLeadResults([]);
+    setLeadDropdownOpen(false);
+  }
+
+  // ─────────────────────────────────────────────
 
   async function saveEvent() {
     setFormError(null);
@@ -303,6 +418,7 @@ export default function CalendarPage() {
         productId: form.productId.trim() || undefined,
         eventType: form.eventType,
         status: form.status,
+        visibility: form.visibility,
         location: form.location.trim() || undefined,
       };
 
@@ -477,7 +593,11 @@ export default function CalendarPage() {
                           }`}
                         >
                           {ev.allDay ? "" : `${formatShortTime(ev.startAt)} `}
+                          {ev.visibility === "PRIVATE" && "🔒 "}
                           {ev.title}
+                          {ev.userId !== currentUserId && (
+                            <span className="ml-1 font-normal opacity-80">· {creatorDisplayName(ev, currentUserId)}</span>
+                          )}
                         </button>
                       ))}
                       {dayEvents.length > 3 && (
@@ -538,10 +658,16 @@ export default function CalendarPage() {
                           COLOR_CLASS[ev.color] || COLOR_CLASS.blue
                         }`}
                       >
-                        <div className="truncate">{ev.title}</div>
+                        <div className="truncate">
+                          {ev.visibility === "PRIVATE" && <span className="mr-0.5">🔒</span>}
+                          {ev.title}
+                        </div>
                         {!ev.allDay && (
                           <div className="opacity-80">{formatShortTime(ev.startAt)}</div>
                         )}
+                        <div className="text-[10px] font-medium text-[var(--shell-subtext)] truncate mt-0.5">
+                          👤 {creatorDisplayName(ev, currentUserId)}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -581,7 +707,13 @@ export default function CalendarPage() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="font-semibold text-sm">{ev.title}</div>
+                        <div className="font-semibold text-sm">
+                          {ev.visibility === "PRIVATE" && <span className="mr-1">🔒</span>}
+                          {ev.title}
+                        </div>
+                        <div className="text-xs font-medium text-[var(--shell-subtext)] mt-1">
+                          👤 {creatorDisplayName(ev, currentUserId)}
+                        </div>
                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[ev.status] || STATUS_BADGE_CLASS.AGENDADO}`}>
                           {EVENT_STATUS_OPTIONS.find((s) => s.value === ev.status)?.label || ev.status}
                         </span>
@@ -618,9 +750,21 @@ export default function CalendarPage() {
           <div className="w-full max-w-md rounded-xl shadow-xl bg-[var(--shell-card-bg)]">
             {/* Modal header */}
             <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
-              <h2 className="text-base font-semibold text-[var(--shell-text)]">
-                {editingEvent ? "Editar evento" : "Novo evento"}
-              </h2>
+              <div>
+                <h2 className="text-base font-semibold text-[var(--shell-text)]">
+                  {editingEvent ? "Editar evento" : "Novo evento"}
+                </h2>
+                {editingEvent && (
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <p className="text-xs text-[var(--shell-subtext)]">
+                      Criado por <span className="font-medium text-[var(--shell-text)]">{creatorDisplayName(editingEvent, currentUserId)}</span>
+                    </p>
+                    {!canEditEvent(editingEvent, currentUserId, currentUserRole) && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">somente leitura</span>
+                    )}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={closeModal}
                 className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none"
@@ -630,7 +774,9 @@ export default function CalendarPage() {
             </div>
 
             {/* Modal body */}
-            <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            {/* readonly = editando evento de outra pessoa sem permissão */}
+            {(() => { const readonly = !!(editingEvent && !canEditEvent(editingEvent, currentUserId, currentUserRole)); return (
+            <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto" style={readonly ? { pointerEvents: "none", opacity: 0.75 } : undefined}>
               {/* Type selector */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-[var(--shell-subtext)]">Tipo</label>
@@ -779,6 +925,35 @@ export default function CalendarPage() {
                 </div>
               </div>
 
+              {/* Visibilidade */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-[var(--shell-subtext)]">Visibilidade</span>
+                <div className="flex rounded-lg border overflow-hidden text-xs" style={{ borderColor: "var(--shell-card-border)" }}>
+                  <button
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, visibility: "PUBLIC" }))}
+                    className={`px-3 py-1.5 transition ${
+                      form.visibility === "PUBLIC"
+                        ? "bg-blue-600 text-white font-medium"
+                        : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                    }`}
+                  >
+                    🌐 Público
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, visibility: "PRIVATE" }))}
+                    className={`px-3 py-1.5 transition ${
+                      form.visibility === "PRIVATE"
+                        ? "bg-slate-600 text-white font-medium"
+                        : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                    }`}
+                  >
+                    🔒 Privado
+                  </button>
+                </div>
+              </div>
+
               {/* Campo dinâmico por tipo */}
               {(form.eventType === "VISITA" || form.eventType === "CAPTACAO") && (
                 <div>
@@ -799,15 +974,70 @@ export default function CalendarPage() {
                 <div>
                   <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">
                     Lead vinculado{" "}
-                    <span className="font-normal text-[var(--shell-subtext)] opacity-60">(ID opcional)</span>
+                    <span className="font-normal text-[var(--shell-subtext)] opacity-60">(opcional)</span>
                   </label>
-                  <input
-                    value={form.leadId}
-                    onChange={(e) => setForm((p) => ({ ...p, leadId: e.target.value }))}
-                    className="w-full rounded-md border px-3 py-2 text-sm font-mono outline-none focus:border-slate-400"
-                    style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
-                    placeholder="UUID do lead"
-                  />
+                  <div className="relative">
+                    <div className="flex gap-1">
+                      <input
+                        value={leadQuery}
+                        onChange={(e) => {
+                          setLeadQuery(e.target.value);
+                          if (form.leadId && e.target.value !== selectedLeadName) {
+                            setForm((p) => ({ ...p, leadId: "" }));
+                            setSelectedLeadName("");
+                          }
+                          searchLeads(e.target.value);
+                        }}
+                        onFocus={() => { if (leadResults.length > 0) setLeadDropdownOpen(true); }}
+                        onBlur={() => setTimeout(() => setLeadDropdownOpen(false), 150)}
+                        className="flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        style={{
+                          background: "var(--shell-input-bg)",
+                          color: "var(--shell-input-text)",
+                          borderColor: form.leadId ? "var(--brand-accent)" : "var(--shell-input-border)",
+                        }}
+                        placeholder="Buscar lead por nome ou telefone..."
+                        autoComplete="off"
+                      />
+                      {(form.leadId || leadQuery) && (
+                        <button
+                          type="button"
+                          onClick={clearLead}
+                          className="rounded-md border px-2 text-xs text-[var(--shell-subtext)] hover:text-red-500"
+                          style={{ borderColor: "var(--shell-input-border)" }}
+                          title="Remover lead vinculado"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {leadDropdownOpen && leadResults.length > 0 && (
+                      <div
+                        className="absolute z-10 mt-1 w-full rounded-md border bg-[var(--shell-card-bg)] shadow-lg"
+                        style={{ borderColor: "var(--shell-card-border)" }}
+                      >
+                        {leadResults.map((l) => (
+                          <button
+                            key={l.id}
+                            type="button"
+                            onMouseDown={() => selectLead(l)}
+                            className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-[var(--shell-hover)] text-left"
+                          >
+                            <span className="font-medium text-[var(--shell-text)]">{l.nomeCorreto ?? l.nome}</span>
+                            {l.telefone && (
+                              <span className="ml-2 text-xs text-[var(--shell-subtext)] shrink-0">{l.telefone}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {form.leadId && (
+                      <div className="mt-1 text-[11px] text-emerald-600">Lead selecionado</div>
+                    )}
+                    {leadSearching && (
+                      <div className="mt-1 text-[11px] text-[var(--shell-subtext)]">Buscando...</div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -836,11 +1066,12 @@ export default function CalendarPage() {
                 </div>
               )}
             </div>
+            ); })()}
 
             {/* Modal footer */}
             <div className="flex items-center justify-between border-t px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
               <div>
-                {editingEvent && !confirmDelete && (
+                {editingEvent && !confirmDelete && canEditEvent(editingEvent, currentUserId, currentUserRole) && (
                   <button
                     onClick={() => setConfirmDelete(true)}
                     className="text-xs text-red-500 hover:text-red-700"
@@ -855,15 +1086,17 @@ export default function CalendarPage() {
                   className="rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
                   style={{ borderColor: "var(--shell-card-border)" }}
                 >
-                  Cancelar
+                  {editingEvent && !canEditEvent(editingEvent, currentUserId, currentUserRole) ? "Fechar" : "Cancelar"}
                 </button>
-                <button
-                  onClick={saveEvent}
-                  disabled={saving}
-                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {saving ? "Salvando..." : editingEvent ? "Salvar" : "Criar"}
-                </button>
+                {(!editingEvent || canEditEvent(editingEvent, currentUserId, currentUserRole)) && (
+                  <button
+                    onClick={saveEvent}
+                    disabled={saving}
+                    className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {saving ? "Salvando..." : editingEvent ? "Salvar" : "Criar"}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -90,6 +90,7 @@ interface UpsertLeadParams {
   mediaUrl?: string | null;
   mimeType?: string | null;
   transcription?: string | null;
+  media?: { url: string; mimeType: string; filename: string | null; kind: string } | null;
 }
 
 export async function upsertLeadFromWhatsapp(
@@ -97,7 +98,7 @@ export async function upsertLeadFromWhatsapp(
   queue: QueueService,
   params: UpsertLeadParams,
 ) {
-  const { tenantId, from, text, type, sessionId, rawMsg, contactName, avatarUrl, mediaUrl, mimeType, transcription } = params;
+  const { tenantId, from, text, type, sessionId, rawMsg, contactName, avatarUrl, mediaUrl, mimeType, transcription, media } = params;
   const now = new Date();
   const telefoneKey = telefoneKeyFrom(from);
   const canal = sessionId ? 'WHATSAPP_LIGHT' : 'WHATSAPP_OFICIAL';
@@ -106,7 +107,7 @@ export async function upsertLeadFromWhatsapp(
   const existingLead = telefoneKey
     ? await prisma.lead.findFirst({
         where: { tenantId, telefoneKey, deletedAt: null },
-        select: { id: true },
+        select: { id: true, lastEntryChannel: true, nomeCorretoOrigem: true },
         orderBy: { criadoEm: 'desc' },
       })
     : null;
@@ -119,27 +120,30 @@ export async function upsertLeadFromWhatsapp(
   if (existingLead) {
     leadId = existingLead.id;
     isReentry = true;
+    const AI_SILENT_TYPES_SET = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
+    const isConversaAberta = !AI_SILENT_TYPES_SET.has(type);
     await prisma.lead.update({
       where: { id: leadId },
       data: {
         // Mensagens de sistema não reiniciam o timer de inbound nem alteram canal
         ...(!isSystemMessage ? { lastInboundAt: now, conversaCanal: canal } : {}),
         ...(sessionId && !isSystemMessage ? { conversaSessionId: sessionId } : {}),
-        ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
+        ...(contactName && existingLead.nomeCorretoOrigem !== 'MANUAL' ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
         ...(avatarUrl ? { avatarUrl } : {}),
-        // Reentrada: incrementa contador (não gera novo número)
-        // Mensagens de sistema não contam como reentrada real
-        ...(!isSystemMessage ? { reentradaCount: { increment: 1 } } : {}),
+        // Reentrada: incrementa contador somente quando o canal muda (não em toda mensagem)
+        ...(!isSystemMessage && canal !== existingLead.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: canal } : {}),
+        // Marca conversa aberta para mensagens reais (não silenciosas)
+        ...(isConversaAberta ? { conversaAberta: true } : {}),
       },
     });
   } else {
-    const [firstStageId, assignment] = await Promise.all([
+    const [firstStage, assignment] = await Promise.all([
       prisma.pipelineStage
-        .findFirst({ where: { tenantId, key: 'NOVO_LEAD' }, select: { id: true } })
-        .then((s) => s?.id ?? null),
+        .findFirst({ where: { tenantId, isActive: true }, orderBy: { sortOrder: 'asc' }, select: { id: true, pipelineId: true } }),
       resolveAssignment(prisma, tenantId),
     ]);
 
+    const AI_SILENT_TYPES_NEW = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
     const created = await prisma.$transaction(async (tx) => {
       const numero = await getNextLeadNumber(tx, tenantId);
       const c = await tx.lead.create({
@@ -152,10 +156,13 @@ export async function upsertLeadFromWhatsapp(
           origem: sessionId ? 'WhatsApp Light' : 'WhatsApp',
           status: 'NOVO',
           lastInboundAt: now,
-          stageId: firstStageId,
+          stageId: firstStage?.id ?? null,
+          pipelineId: firstStage?.pipelineId ?? null,
           conversaCanal: canal,
+          lastEntryChannel: canal,
           branchId: assignment.branchId,
           assignedUserId: assignment.assignedUserId,
+          conversaAberta: !AI_SILENT_TYPES_NEW.has(type),
           ...(sessionId ? { conversaSessionId: sessionId } : {}),
           ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
           ...(avatarUrl ? { avatarUrl } : {}),
@@ -184,6 +191,7 @@ export async function upsertLeadFromWhatsapp(
         ...(mediaUrl ? { mediaUrl } : {}),
         ...(mimeType ? { mimeType } : {}),
         ...(transcription ? { transcription } : {}),
+        ...(media ? { media } : {}),
       },
     },
   });

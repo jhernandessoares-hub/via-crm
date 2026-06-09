@@ -1,4 +1,4 @@
-# VIA CRM — Guia para Claude
+﻿# VIA CRM — Guia para Claude
 
 Sistema CRM SaaS multi-tenant para imobiliárias brasileiras. Gerencia leads, funil de vendas, atendimento via WhatsApp com IA, catálogo de imóveis e secretária pessoal por voz/texto.
 
@@ -42,7 +42,7 @@ via-crm/
 |--------|-----------------|
 | `auth/` | Login, registro de master, refresh token, JWT Strategy, recuperação de senha |
 | `admin/` | Platform Admin — CRUD tenants, impersonation, audit, health |
-| `tenants/` | CRUD de tenants, configurações WhatsApp, bot-config e permissões por role (`permissionsConfig`) |
+| `tenants/` | CRUD de tenants, configurações WhatsApp, bot-config e permissões por role (`permissionsConfig`); `GET /tenants/ai-status` (todos os roles — retorna `{ autopilotEnabled }` para uso na UI) |
 | `users/` | CRUD de usuários, perfis, configurações de secretária; gestão de equipe (OWNER: POST/PATCH/DELETE /users/team); round-robin config (OWNER: GET/PATCH /users/round-robin) |
 | `leads/` | CRUD de leads, qualificação, SLA, eventos, soft delete, exportação CSV; `GET /leads/my` (assignados ao usuário); `GET /leads/counts` (contagem por role para sidebar); `GET /leads/duplicates` (grupos CERTA/POSSIVEL); `GET /leads/search?q=` (autocomplete — busca por nome/telefone/CPF/número, retorna até 10 resultados, respeita isolamento por role); `POST /leads/:id/merge` (mesclar dois leads com escolha campo a campo) |
 | `pipeline/` | Funil customizável com etapas e transições |
@@ -107,7 +107,8 @@ campaign-queue         → campaign-send (encadeado, um por campanha)
 PlatformAdmin     → administrador da plataforma SaaS (acima dos tenants)
 Tenant            → raiz multi-tenant (plan: STARTER | PREMIUM)
                     whatsappPhoneNumberId, whatsappToken, whatsappVerifyToken (por tenant)
-User              → role: OWNER | MANAGER | AGENT
+User              → role: OWNER | MANAGER | AGENT | PARTNER
+                    PARTNER = Parceiro Externo — acesso restrito e totalmente configurável pelo OWNER via /settings/permissions. Defaults: vê apenas leads atribuídos a si, catálogo de imóveis e KB. Sem acesso a inbox, campanhas, config do tenant.
                     passwordResetToken, passwordResetExpiry (recuperação de senha)
                     apelido String? — nome de exibição (mostrado no header em vez do nome completo se preenchido)
                     preferences Json? — preferências do usuário: { theme: 'light' | 'dark' }
@@ -117,6 +118,7 @@ LeadDocument      → documentos do lead (RG/CNH/CPF/COMP_RENDA/...) com classif
 LeadParticipante  → cônjuge/sócio/fiador do lead com dados pessoais e origem (IA|MANUAL). Detalhes em squad-atendimento.md
 Lead              → campos de cadastro pessoal: cpf, rg, profissao, empresa, naturalidade, endereco, cep, cidade, uf + cadastroOrigem Json?
                     nomeCorreto String? — nome real confirmado (IA ou humano); nomeCorretoOrigem String? ("IA"|"MANUAL")
+                    Regra: quando nomeCorretoOrigem='MANUAL', nenhuma atualização automática (inbound WA ou Assistente Operacional) pode sobrescrever o nomeCorreto
                     Prioridade de exibição: nomeCorreto ?? nome em toda a UI e notificações
                     com soft delete (deletedAt/deletedBy/deletionReason)
                     numero Int? — sequencial por tenant (formatado 6 dígitos na UI via `formatLeadNumber`); reentradaCount Int @default(1) incrementa em reentradas. Ver "Numeração sequencial de leads"
@@ -150,7 +152,8 @@ Lead.conversaCanal/conversaSessionId → canal ativo da conversa ('WHATSAPP_OFIC
 PlatformConfig    → configurações globais da plataforma (key/value). Chaves: globalAgentRules, agentIdentityRules, whatsappFormattingRules
 PlatformConfigHistory → histórico de alterações de PlatformConfig (key, previousValue, newValue, changedAt)
 AiModelConfig     → modelo configurado por função (function PK: DEFAULT|FOLLOW_UP|PDF_EXTRACTION|TRANSCRIPTION|DOC_CLASSIFICATION, modelName). Chaves de API ficam no .env.
-Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
+Tenant.permissionsConfig → Json? — permissões configuráveis por role (manager/agent/partner) por módulo/ação. Gerenciado via /settings/permissions (OWNER). Defaults em tenants/permissions.config.ts.
+                    Módulos configuráveis (14): leads, products, calendar, secretary, channels, botConfig, settings, pipeline, knowledgeBase, gestao_empreendimentos, inbox (view/send), campanhas (CRUD), duplicados (view/merge), exportacao (export).
 Tenant.roundRobinConfig → Json? — configuração da roleta de distribuição de leads: { incluirGerentes: bool, incluirOwner: bool }
 RefreshToken      → revogação de refresh token por jti: campos jti (unique), userId, expiresAt, revokedAt? — persiste no banco para invalidação segura
 ```
@@ -166,6 +169,7 @@ RefreshToken      → revogação de refresh token por jti: campos jti (unique),
 - **Crypto at-rest:** `Tenant.whatsappToken` cifrado AES-256-GCM via `crypto/field-crypto.util.ts` (prefixo `ENC:`, requer `ENCRYPTION_KEY` 64 hex)
 - **Webhook tokens:** HMAC-SHA256 em `Channel.webhookTokenHash` + HMAC Meta `X-Hub-Signature-256` (opt-in via `appSecret`)
 - **Cloudinary privado:** `LeadDocument` usa `type: 'authenticated'`, URL assinada 2min via `buildSignedCloudinaryDownloadUrl()`. Singleton em `main.ts` — nunca `cloudinary.config()` direto
+- **Cloudinary raw public_id:** recursos `resource_type: 'raw'` (PDFs, docs) guardam a **extensão no public_id** (ex: `pasta/arquivo.pdf`, não `pasta/arquivo`). Ao chamar `private_download_url` para raw, use `publicId + '.' + ext` e `format: ''`. Para image/video o public_id não tem extensão — comportamento oposto. Código de referência: `cloudinary-media.util.ts` (`signCloudinaryUrl`) e `leads.service.ts` (`downloadEventMedia`). Ignorar essa regra causa 404 silencioso no download.
 - **LGPD:** soft delete em leads (`deletedAt/deletedBy/deletionReason`), `AuditService` `@Global()` com try/catch silencioso
 - **Boundaries:** `REGISTER_MASTER_SECRET` (tenants/master), `PLATFORM_ADMIN_SECRET` (bootstrap), `PlatformAdminGuard` em `/admin/*`
 - **Rate limiting:** 120/min global, 10/15min em `/auth/login`, 5/15min em registro e forgot-password. Helmet ativo
@@ -309,14 +313,14 @@ NEXT_PUBLIC_API_URL=
 
 - **Logger:** usar `const logger = new Logger('NomeDoServico')` de `../logger`. **Nunca** `console.log` em produção.
 - **Tenant isolation:** todo `findMany`/`findFirst` deve ter `where: { tenantId }` e `deletedAt: null` para leads.
-- **Role AGENT:** sempre filtrar por `branchId` se disponível.
+- **Role AGENT/PARTNER:** AGENT filtra por `assignedUserId` (ou `branchId` se disponível); PARTNER sempre filtra por `assignedUserId` — nunca tem acesso à filial inteira.
 - **Soft delete:** nunca usar `prisma.lead.delete()` — usar `update({ data: { deletedAt: new Date(), deletedBy, deletionReason } })`.
 - **Webhook tokens:** sempre usar `channels.findByToken(token)` — nunca buscar `webhookToken` diretamente no Prisma.
 - **Audit:** usar `AuditService.log()` em ações sensíveis (deleção, login, exportação). O serviço é `@Global()` — injetar direto no constructor.
 - **Branch resolver:** usar `IngestService.resolveDefaultBranchId(tenantId)` para obter a branch padrão — nunca hardcodar IDs.
 - **WhatsApp creds:** sempre usar `resolveWhatsappCreds(prisma, tenantId)` de `whatsapp/whatsapp-creds.ts` — nunca ler `process.env.WHATSAPP_TOKEN` diretamente.
 - **Role guard (tenant):** usar `requireOwner(req)` inline nos controllers para restringir a OWNER — padrão adotado em ai-agents, channels, tenants, users/team.
-- **Permissões configuráveis:** usar `GET /tenants/permissions-public` + hook `usePermissions()` do frontend para verificar permissões de MANAGER/AGENT. Nunca hardcodar restrições que deveriam ser configuráveis.
+- **Permissões configuráveis:** usar `GET /tenants/permissions-public` + hook `usePermissions()` do frontend para verificar permissões de MANAGER/AGENT/PARTNER. Nunca hardcodar restrições que deveriam ser configuráveis. OWNER tem bypass total (sempre `true`). `resolvePermissions()` em `permissions.config.ts` itera os 3 roles e mescla com defaults — novos módulos aparecem automaticamente.
 - **Platform Admin:** rotas `/admin/*` protegidas por `PlatformAdminGuard` — token separado, nunca misturar com JWT de tenant.
 - **Email:** `EmailService` é `@Global()` — injetar direto. Sempre envolto em try/catch para não quebrar fluxo.
 - **Scripts fora de `src/`:** qualquer arquivo `.ts` fora de `src/` (ex: `scripts/`) **deve** ser adicionado ao `exclude` de `apps/api/tsconfig.build.json`. Arquivos fora de `src/` mudam o `rootDir` inferido pelo TypeScript de `./src` para `./`, deslocando o output de `dist/main.js` para `dist/src/main.js` e causando crash silencioso no Railway (`Cannot find module '/app/dist/main'`).
@@ -329,9 +333,9 @@ NEXT_PUBLIC_API_URL=
 - **Dark mode:** toggled via classe `dark` no `<html>`. Preferência salva em `user.preferences.theme` (`PATCH /users/me`). `applyTheme()` em AppShell sincroniza na inicialização e na troca.
 - **AppShell sidebar:** exibe nome do tenant abaixo do logo; avatar com dropdown ("Meus Dados", "Sair"); badges de contagem de leads (`GET /leads/counts`, atualizado a cada 60s) ao lado de "Meus Leads" e "Todos os Leads"; seção "Funil de Vendas" colapsável (estado em `localStorage` key `sidebar_funnel_open`).
 - **Modal "Meus Dados":** nome, email, apelido, trocar senha (validação `senhaAtual` no backend), toggle tema Claro/Escuro. Usa `style={{ backgroundColor: "rgba(0,0,0,0.55)" }}` no overlay (Tailwind v4 não suporta `bg-black/40` de forma confiável).
-- **Modal de boas-vindas (WelcomeModal):** exibido no primeiro login de cada usuário. Detectado no AppShell via `profile.preferences?.welcomeSeen !== true` após carregar `GET /users/me`. Ao clicar "Começar", grava `{ welcomeSeen: true }` via `PATCH /users/me` com merge de preferences. Componente em `components/layout/WelcomeModal.tsx`. Cards de funcionalidades variam por role: AGENT (4 cards), MANAGER (+2 cards), OWNER (+4 cards adicionais). Não reaparece após o primeiro fechamento.
-- **Visibilidade de leads por role:** AGENT vê apenas leads com `assignedUserId = me`; MANAGER vê todos da filial (`branchId`); OWNER vê todos. Implementado em `LeadsService.list()`.
-- **Atribuição manual:** campo "Responsável" no detalhe do lead — OWNER/MANAGER veem `<select>` com membros da equipe (chama `POST /leads/:id/assign`); AGENT vê nome somente-leitura.
+- **Modal de boas-vindas (WelcomeModal):** exibido no primeiro login de cada usuário. Detectado no AppShell via `profile.preferences?.welcomeSeen !== true` após carregar `GET /users/me`. Ao clicar "Começar", grava `{ welcomeSeen: true }` via `PATCH /users/me` com merge de preferences. Componente em `components/layout/WelcomeModal.tsx`. Cards de funcionalidades variam por role: AGENT (4 cards), MANAGER (+2 cards), OWNER (+4 cards adicionais), PARTNER (2 cards: Meus Leads + Catálogo). Não reaparece após o primeiro fechamento.
+- **Visibilidade de leads por role:** AGENT e PARTNER veem apenas leads com `assignedUserId = me` (salvo se `pipeline.view = true`); MANAGER vê todos da filial (`branchId`); OWNER vê todos. Implementado em `LeadsService.list()`.
+- **Atribuição manual:** campo "Responsável" no detalhe do lead — OWNER/MANAGER veem `<select>` com membros da equipe (chama `POST /leads/:id/assign`); AGENT e PARTNER veem nome somente-leitura.
 - `lib/admin-api.ts` → função `adminFetch()` para chamadas do Platform Admin (usa `adminToken`).
 - Tokens tenant em `localStorage`: `accessToken` (15min), `refreshToken` (7d), `user` (objeto do usuário).
 - Tokens admin em `localStorage`: `adminToken` (8h), `adminUser`.
@@ -363,17 +367,17 @@ NEXT_PUBLIC_API_URL=
 - Seção 2 exige mínimo 4 fotos; Seção 6 exige pelo menos 1 proprietário vinculado
 - Footer: [Código interno] [Recarregar] [Salvar] à esquerda | [Status] [Publicação] à direita
 - `products.service.ts`: `update()` persiste `sectionStatus` no banco
-- `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role, ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
+- `/equipe` → gestão de equipe (OWNER only) — ver membros, convidar, editar role (MANAGER/AGENT/PARTNER), ativar/desativar, redefinir senha; painel de configuração da roleta (incluirGerentes/incluirOwner); toggle `recebeLeads` por membro.
 - `/meus-leads` → leads atribuídos ao usuário logado (todos os roles) — usa `GET /leads/my`.
 - `/leads/duplicados` → detecção e resolução de leads duplicados (OWNER/MANAGER). Grupos CERTA: mesmo `telefoneKey` ou mesmo CPF. Grupos POSSIVEL: nome similar via Jaro-Winkler ≥ 0.80, excluindo pares onde ambos têm CPF preenchido e CPFs distintos. Cada grupo permite mesclar (escolha campo a campo), excluir um dos leads individualmente, ou descartar o grupo ("Não são duplicatas" — salvo em `localStorage` para não reaparecer). Merge: transfere eventos/documentos/participantes/unidades para o vencedor e faz soft-delete do fonte com `LEAD_MERGE` no AuditLog. **Merge manual:** seção colapsável no topo da página com dois `LeadSearchInput` (autocomplete debounced 300ms via `GET /leads/search`) — permite unificar quaisquer dois leads independente de detecção automática, abre o mesmo `MergeModal` de escolha campo a campo.
-- `/settings/permissions` → permissões por role (OWNER only) — toggles ver/criar/editar/excluir por módulo para MANAGER e AGENT. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
+- `/settings/permissions` → permissões por role (OWNER only) — 3 colunas (Gerente / Corretor / Parceiro), toggles por módulo/ação para MANAGER, AGENT e PARTNER. 14 módulos configuráveis. Novos módulos adicionados em `tenants/permissions.config.ts` aparecem automaticamente.
 - `/settings/whatsapp` → configuração do número WhatsApp do tenant.
 - `/forgot-password` e `/reset-password` → recuperação de senha.
 - `/admin/*` → painel Platform Admin com shell separado (sidebar escuro).
 - `/admin/site` → Gerenciador de Sites (Platform Admin) — CRUD de SiteTemplates via API.
 - `/admin/regras-globais` → módulo de Regras Globais — edita globalAgentRules, agentIdentityRules, whatsappFormattingRules com dupla confirmação e histórico.
 - `/admin/ia/provedores` → Provedores de IA — configuração de modelo por função do sistema (DEFAULT, FOLLOW_UP, PDF_EXTRACTION, TRANSCRIPTION, DOC_CLASSIFICATION) sem deploy. DOC_CLASSIFICATION e PDF_EXTRACTION restritos a modelos Anthropic (visão).
-- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — 4 abas (Cadastro, Espelho de Vendas, Preços, Dashboard). Backend: `DevelopmentsModule`. **Espelho de Vendas (MVP):** grid visual colorido por status; torre tem `ladoConfig Json?` (`{"1":"Norte","2":"Sul"}`) para filtrar unidades por lado; unidades têm `leadId` FK para vincular comprador ao lead. Clicar na unidade abre `UnitDetailsPopup` (view-only + busca de lead debounced 300ms) — título exibe "NomeTorre · NomeUnidade". **Fluxo Trocar unidade:** da página do lead, botão "Ver no espelho" / "Abrir Espelho" abre `EspelhoSelectorModal` (popup full-screen sobre a página do lead); ao selecionar unidade DISPONIVEL e confirmar, desvincula a unidade anterior (`unlinkUnit`) e vincula a nova (`PATCH /developments/:devId/units/:unitId` com `{ leadId, status: "PROPOSTA" }`). **OWNER bypass de etapa:** `developments.service.ts` pula a validação "lead deve estar em Negociações ou posterior" quando `actor.role === 'OWNER'`. 3D/Metaverso removido desta versão — upgrade futuro. Detalhes completos em futuro `squad-empreendimentos.md`.
+- `/gestao-empreendimentos` → Módulo de Gestão de Empreendimentos (OWNER only) — 4 abas (Cadastro, Espelho de Vendas, Preços, Dashboard). Backend: `DevelopmentsModule`. **Espelho de Vendas (MVP):** grid visual colorido por status; resumo no topo com 6 cards (Total, Disponível, Proposta, Reservado, Vendido, Bloqueado); torre tem `ladoConfig Json?` (`{"1":"Norte","2":"Sul"}`) para filtrar unidades por lado; unidades têm `leadId` FK para vincular comprador ao lead. Clicar na unidade abre `UnitDetailsPopup` (view-only + busca de lead debounced 300ms) — título exibe "NomeTorre · NomeUnidade". **Fluxo Trocar unidade:** da página do lead, botão "Ver no espelho" / "Abrir Espelho" abre `EspelhoSelectorModal` (popup full-screen sobre a página do lead); ao selecionar unidade DISPONIVEL e confirmar, desvincula a unidade anterior (`unlinkUnit`) e vincula a nova (`PATCH /developments/:devId/units/:unitId` com `{ leadId, status: "PROPOSTA" }`). **OWNER bypass de etapa:** `developments.service.ts` pula a validação "lead deve estar em Negociações ou posterior" quando `actor.role === 'OWNER'`. 3D/Metaverso removido desta versão — upgrade futuro. Detalhes completos em futuro `squad-empreendimentos.md`.
 - `/my-site` → Gerenciador de Sites do tenant (OWNER only) — 1 site por tenant, fluxo adaptado com/sem site ativo; Publicar/Tirar do ar ficam em Configurações.
 - `/s/[slug]` → Site público (SSR, `revalidate: 60`) — renderiza `publishedJson` do TenantSite.
 - `/s/[slug]/imovel/[id]` → Detalhe público de imóvel — busca produto via `/sites/public/:slug/imovel/:id`.
@@ -426,6 +430,8 @@ NEXT_PUBLIC_API_URL=
 | Campanha — mensagens silenciosas pré-resposta | `SILENT_INBOUND_TYPES = ['sticker', 'poll', 'system', 'unknown', 'edited']`: quando contato de campanha envia tipo silencioso, **não cria lead, não muda tag para RESPONDEU**, salva em `CampanhaContato.previewMessages`. Visíveis no inbox. Quando chega a primeira mensagem real, os previews são replayed como LeadEvents com timestamps originais **antes** do evento real — IA recebe contexto completo. Para leads já existentes (não-campanha), os mesmos tipos silenciosos: LeadEvent é criado mas IA **não é acionada** (`AI_SILENT_TYPES` em `lead-upsert.helper.ts`). |
 | Lead page — canais unofficial | `isOutgoing()` reconhece `whatsapp.unofficial.out` como enviado (direita) e `whatsapp.unofficial.in` como recebido (esquerda) |
 | Inbox WA Light — conversas por sessão | `GET /inbox?sessionId=X` filtra conversas pelo inbox específico; sem filtro retorna todas as conversas WHATSAPP_LIGHT do tenant |
+| Inbox WA Light — filtros da sidebar | 5 abas em `inbox-wa-light/[id]/page.tsx`: **Todas**, **Não lidas** (`naoLidos > 0`), **Não respondidas** (contatos de campanha que receberam a mensagem mas ainda não responderam: `isTrackedConversation(c) && !c.leadId`), **Acompanhadas** (`isTrackedConversation`), **Leads** (`leadId != null`). Quando contato de campanha responde, lead é criado (`leadId` preenchido) → sai de "Não respondidas" e entra em "Não lidas". Polling a cada 5s atualiza os contadores automaticamente. |
+| Painel da IA oculto quando IA desligada | `GET /tenants/ai-status` (todos os roles) expõe `autopilotEnabled`; lead page busca no `loadAll()` e condiciona `{tenantAiEnabled && <PainelIA>}`. `GET /tenants/bot-config` continua restrito a OWNER pois expõe detalhes operacionais. |
 | Avatar clicável no inbox e no lead | Clicar na foto de perfil abre modal fullscreen (`showPhotoModal` em `inbox-wa-light/[id]/page.tsx`, `showAvatarModal` em `leads/[id]/page.tsx`) — só abre se `avatarUrl` existir. Feature perdida no refactor do inbox (`f58c725`) e restaurada em 2026-05-27. Preservar em futuros refatores. |
 | Tailwind v4 sem opacidade em bg-black/40 | Modificador de opacidade não funciona de forma confiável — usar `style={{ backgroundColor: "rgba(...)" }}` para overlays e valores hex para fundos de modal |
 | `router.push/replace` em Next.js 16 + React 19 | Envolto em `startTransition(() => router.replace(...))` para evitar "Router action dispatched before initialization" |
@@ -469,6 +475,8 @@ NEXT_PUBLIC_API_URL=
 - Convite de membro por e-mail (atualmente cria com senha inicial definida pelo OWNER)
 - Permissões de exclusão de produtos (hoje hardcoded): mover regras de quem pode excluir/solicitar exclusão de produto para o sistema de `permissionsConfig` do tenant (OWNER configura via `/settings/permissions`), assim como já existe para leads/agenda/KB
 - **Sistema de preferências de notificação por usuário** — campo `User.notificationSettings Json?` já existe no banco mas não está conectado. Implementar: (A) tela em "Meus Dados" com toggles "Notificar quando chegar lead" e "Notificar quando lead qualificar" para todos os roles; (B) preferência exclusiva do Owner: "Receber notificações de todos os leads qualificados do tenant" — notifica o Owner sempre que qualquer lead do tenant qualificar, independente do responsável; (C) incluir nome do corretor responsável na mensagem de qualificação ("👤 Atendido por: [nome]"). Requisito para receber notificação: `whatsappNumber` preenchido no perfil; janela de 24h da Meta se aplica. A secretária é independente das notificações — não exige conversa ativa.
+- **Validação de etapa da PROPOSTA não é sensível ao pipeline do tenant** — a whitelist `ALLOWED` em `developments.service.ts` (`updateUnit`, validação de `status === 'PROPOSTA'`) tem nomes de grupo **hardcoded**. Fix interim (2026-06-01) adicionou os grupos do pipeline customizado do SP9 (`DOCUMENTACAO`, `ESCOLHA_UNIDADE`, `CONTRATO`, `REGISTRO`) à lista para liberar a operação. Unificar: substituir a whitelist global por regra configurável por pipeline/tenant (ex.: flag `allowsUnitLink` no `PipelineStage` ou marcar o grupo de entrada da venda por tenant) e remover os grupos hardcoded.
+- **Editor visual do site institucional (`?editor=1`) precisa ser desacoplado/consertado** — a home pública `/` (`apps/web/src/app/(site)/page.tsx`) renderiza conteúdo **fixo** (`defaultSiteContent` em `lib/site-content.ts`); edições do editor NÃO refletem no site no ar. Fix de 2026-06-02 corrigiu o que estava quebrado VISUALMENTE em produção: (a) `defaultSiteContent.headerLogo/panelLogo` apontava para `/logo-via.svg` (404 — arquivo inexistente em `public/`); agora usa `/Novo%20modelo%20de%20Logo.png` (mesma logo do resto do app); (b) o anel de seleção do editor (`ring-2 ring-sky-500` em `EditableText`/`EditableLogo`) vazava para o site público porque `ringClass` não checava `active` — agora `active && selected`. Obs.: o app inteiro é client-only por design (`AuthGuard` carregado com `dynamic(..., { ssr: false })` em `ClientProviders` envolve todas as páginas), então a home não tem SSR — não é bug, é a arquitetura atual. Pendências do editor: (1) `ResizableFrame` aplica `transform/width/minHeight` por pixel mesmo no render público (`active=false`) — posições arrastadas no editor vazam para o layout responsivo; (2) persistência só em `localStorage` (some entre navegadores); (3) "publicar" grava em `SiteTemplate`/`TenantSite` via API mas a home pública nunca lê esse conteúdo publicado. Reativar edição real: separar render público do editor e fazer `/` buscar o `publishedJson` do servidor. (O mesmo fix de logo foi aplicado em `admin/login/page.tsx`, que também usava `/logo-via.svg`.)
 
 ---
 

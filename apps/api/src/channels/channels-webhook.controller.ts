@@ -245,10 +245,11 @@ export class ChannelsWebhookController {
       const telefone = normalized.telefone?.replace(/\D/g, '') || null;
       const telefoneKey = telefone ? telefone.slice(-9) : null;
 
-      // Busca stage inicial do funil (Pré-atendimento)
+      // Busca stage inicial do funil — primeiro stage ativo por sortOrder (suporta pipelines customizados)
       const pipelineId = await this.pipeline.ensureDefaultPipeline(tenant.id);
       const firstStage = await this.prisma.pipelineStage.findFirst({
-        where: { tenantId: tenant.id, pipelineId, key: 'NOVO_LEAD' },
+        where: { tenantId: tenant.id, pipelineId, isActive: true },
+        orderBy: { sortOrder: 'asc' },
         select: { id: true },
       });
 
@@ -262,6 +263,7 @@ export class ChannelsWebhookController {
               id: true,
               nome: true,
               stageId: true,
+              lastEntryChannel: true,
               stage: { select: { key: true } },
             },
           })
@@ -279,10 +281,12 @@ export class ChannelsWebhookController {
         // ── Lead ativo: registra retorno, não duplica ──
         leadId = existing.id;
 
-        // Reentrada: incrementa contador (não gera novo número)
+        // Reentrada: incrementa contador somente quando o canal muda
         await this.prisma.lead.update({
           where: { id: leadId },
-          data: { reentradaCount: { increment: 1 } },
+          data: {
+            ...(channel.type !== existing.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: channel.type } : {}),
+          },
         });
 
         const retornoMsg =
@@ -327,6 +331,7 @@ export class ChannelsWebhookController {
               origem: normalized.origem,
               status: 'NOVO',
               stageId: firstStage?.id ?? null,
+              lastEntryChannel: channel.type,
             },
             select: { id: true },
           });

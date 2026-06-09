@@ -122,8 +122,8 @@ export default function EmpreendimentosPage() {
 
                   {/* Thumbnail da implantação ou placeholder */}
                   <div className="relative h-40 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 overflow-hidden">
-                    {item.implantacaoUrl ? (
-                      <img src={item.implantacaoUrl} alt={item.nome}
+                    {((item as any).capaUrl || item.implantacaoUrl) ? (
+                      <img src={(item as any).capaUrl || item.implantacaoUrl!} alt={item.nome}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">

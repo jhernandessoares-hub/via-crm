@@ -1,5 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+
+// Hierarquia de roles: OWNER > MANAGER > AGENT = PARTNER
+const ROLE_LEVEL: Record<string, number> = {
+  OWNER: 4,
+  MANAGER: 3,
+  AGENT: 2,
+  PARTNER: 1,
+};
+
+function canEditEvent(
+  requesterUserId: string,
+  requesterRole: string,
+  eventOwnerId: string,
+  eventOwnerRole: string,
+): boolean {
+  if (requesterUserId === eventOwnerId) return true;
+  return (ROLE_LEVEL[requesterRole] ?? 0) > (ROLE_LEVEL[eventOwnerRole] ?? 0);
+}
 
 @Injectable()
 export class CalendarService {
@@ -12,8 +30,17 @@ export class CalendarService {
     end?: string,
     eventType?: string,
     status?: string,
+    leadId?: string,
   ) {
-    const where: any = { tenantId, userId };
+    // Vê evento se for dele (qualquer visibilidade) OU se for PUBLIC do tenant
+    const where: any = {
+      tenantId,
+      OR: [{ userId }, { visibility: 'PUBLIC' }],
+    };
+
+    if (leadId) {
+      where.leadId = leadId;
+    }
 
     if (start || end) {
       where.startAt = {};
@@ -26,6 +53,7 @@ export class CalendarService {
     return this.prisma.calendarEvent.findMany({
       where,
       orderBy: { startAt: 'asc' },
+      include: { user: { select: { id: true, nome: true, apelido: true, role: true } } },
     });
   }
 
@@ -37,10 +65,11 @@ export class CalendarService {
     return this.prisma.calendarEvent.findMany({
       where: {
         tenantId,
-        userId,
+        OR: [{ userId }, { visibility: 'PUBLIC' }],
         startAt: { gte: startOfDay, lte: endOfDay },
       },
       orderBy: { startAt: 'asc' },
+      include: { user: { select: { id: true, nome: true, apelido: true, role: true } } },
     });
   }
 
@@ -57,6 +86,7 @@ export class CalendarService {
       leadId?: string;
       eventType?: string;
       status?: string;
+      visibility?: string;
       productId?: string;
       location?: string;
     },
@@ -74,6 +104,7 @@ export class CalendarService {
         leadId: body.leadId || null,
         eventType: (body.eventType as any) || 'TAREFA',
         status: (body.status as any) || 'AGENDADO',
+        visibility: (body.visibility as any) || 'PUBLIC',
         productId: body.productId || null,
         location: body.location?.trim() || null,
       },
@@ -82,7 +113,8 @@ export class CalendarService {
 
   async update(
     tenantId: string,
-    userId: string,
+    requesterId: string,
+    requesterRole: string,
     id: string,
     body: {
       title?: string;
@@ -94,15 +126,20 @@ export class CalendarService {
       leadId?: string | null;
       eventType?: string;
       status?: string;
+      visibility?: string;
       productId?: string | null;
       location?: string | null;
     },
   ) {
     const existing = await this.prisma.calendarEvent.findFirst({
-      where: { id, tenantId, userId },
-      select: { id: true },
+      where: { id, tenantId },
+      include: { user: { select: { id: true, role: true } } },
     });
     if (!existing) throw new NotFoundException('Evento não encontrado.');
+
+    if (!canEditEvent(requesterId, requesterRole, existing.userId, existing.user.role)) {
+      throw new ForbiddenException('Você não tem permissão para editar este evento.');
+    }
 
     const data: any = {};
     if (body.title !== undefined) data.title = body.title.trim();
@@ -117,18 +154,23 @@ export class CalendarService {
     if (body.leadId !== undefined) data.leadId = body.leadId || null;
     if (body.eventType !== undefined) data.eventType = body.eventType;
     if (body.status !== undefined) data.status = body.status;
+    if (body.visibility !== undefined) data.visibility = body.visibility;
     if (body.productId !== undefined) data.productId = body.productId || null;
     if (body.location !== undefined) data.location = body.location?.trim() || null;
 
     return this.prisma.calendarEvent.update({ where: { id }, data });
   }
 
-  async remove(tenantId: string, userId: string, id: string) {
+  async remove(tenantId: string, requesterId: string, requesterRole: string, id: string) {
     const existing = await this.prisma.calendarEvent.findFirst({
-      where: { id, tenantId, userId },
-      select: { id: true },
+      where: { id, tenantId },
+      include: { user: { select: { id: true, role: true } } },
     });
     if (!existing) throw new NotFoundException('Evento não encontrado.');
+
+    if (!canEditEvent(requesterId, requesterRole, existing.userId, existing.user.role)) {
+      throw new ForbiddenException('Você não tem permissão para excluir este evento.');
+    }
 
     await this.prisma.calendarEvent.delete({ where: { id } });
     return { ok: true, id };

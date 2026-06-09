@@ -648,17 +648,17 @@ export default function SitePage() {
             {/* Cabeçalho — no modo público sempre aparece; no editor só quando não há seção "header" dinâmica */}
             {(!editorMode || !draft.dynamicSections.some((s) => s.kind === "header")) && (
               !interactiveEditing ? (
-                <div className="sticky top-0 z-40 px-6 pt-4 pb-2 bg-white/80 backdrop-blur-md lg:px-8">
-                  <header className="flex items-center justify-between rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 shadow-sm backdrop-blur">
+                <div className="sticky top-0 z-40 px-6 pt-4 pb-2 lg:px-8">
+                  <header className="flex items-center justify-between rounded-full border border-slate-700/60 bg-slate-800/90 px-5 py-3 shadow-lg shadow-slate-900/20 backdrop-blur">
                     <EditableLogo active={interactiveEditing} selected={selectedField === "branding.headerLogo"} label="Logo principal" src={view.branding.headerLogo.src} alt={view.branding.headerLogo.alt} height={view.branding.headerLogo.height} styleBox={getElementStyle("branding.headerLogo")} minWidth={160} minHeight={40} onMove={(ns) => updateElementStyle("branding.headerLogo", ns)} onResize={(ns) => updateElementStyle("branding.headerLogo", ns)} onClick={() => setSelectedField("branding.headerLogo")} />
                     <div className="flex items-center gap-5">
-                      <nav className="flex items-center gap-5 text-sm font-medium text-slate-600">
-                        <a href="#problema" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.problem}</a>
-                        <a href="#solucao" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.solution}</a>
-                        <a href="#planos" className="text-sm font-medium text-slate-600 transition hover:text-slate-950">{view.nav.plans}</a>
+                      <nav className="flex items-center gap-5 text-sm font-medium text-slate-200">
+                        <a href="#problema" className="text-sm font-medium text-slate-200 transition hover:text-white">{view.nav.problem}</a>
+                        <a href="#solucao" className="text-sm font-medium text-slate-200 transition hover:text-white">{view.nav.solution}</a>
+                        <a href="#planos" className="text-sm font-medium text-slate-200 transition hover:text-white">{view.nav.plans}</a>
                       </nav>
-                      <Link href="/login" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-950 sm:inline-flex">{view.header.loginLabel}</Link>
-                      <Link href="/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</Link>
+                      <Link href="/login" className="hidden text-sm font-medium text-slate-200 transition hover:text-white sm:inline-flex">{view.header.loginLabel}</Link>
+                      <Link href="/login" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-200">{view.header.ctaLabel}</Link>
                     </div>
                   </header>
                 </div>
@@ -696,8 +696,8 @@ export default function SitePage() {
 
             {/* Seções do template base — no modo público sempre aparecem; no editor só quando não há seções dinâmicas */}
             {(!editorMode || draft.dynamicSections.length === 0) && <>
-            <section className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 pb-16 pt-6 lg:px-8">
-              <div className="grid flex-1 items-center gap-14 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:py-20">
+            <section className="mx-auto max-w-7xl px-6 pb-16 pt-2 lg:px-8">
+              <div className="grid items-start gap-14 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-10">
                 <div className="max-w-3xl">
                   <EditableText active={interactiveEditing} selected={selectedField === "hero.badge"} label="Badge hero" value={view.hero.badge} onClick={() => setSelectedField("hero.badge")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.badge", v))} className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-semibold tracking-wide text-emerald-700 uppercase" styleBox={getElementStyle("hero.badge")} minWidth={180} minHeight={38} onMove={(ns) => updateElementStyle("hero.badge", ns)} onResize={(ns) => updateElementStyle("hero.badge", ns)} />
                   <div className="mt-6 space-y-3">

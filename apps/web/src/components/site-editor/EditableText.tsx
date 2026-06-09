@@ -56,7 +56,7 @@ export default function EditableText({
   const isInlineEditing = active && selected && Boolean(onTextChange);
 
   const isLink = !active && Boolean(styleBox?.clickable && styleBox?.href);
-  const ringClass = selected ? "ring-2 ring-sky-500 ring-offset-4 ring-offset-transparent" : "";
+  const ringClass = active && selected ? "ring-2 ring-sky-500 ring-offset-4 ring-offset-transparent" : "";
   const hoverClass =
     active && !isInlineEditing
       ? "cursor-text rounded-2xl transition hover:ring-2 hover:ring-sky-300/70"

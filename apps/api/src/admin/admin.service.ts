@@ -1,11 +1,17 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { downloadMediaMessage } from '@whiskeysockets/baileys';
+import { v2 as cloudinary } from 'cloudinary';
+import { Readable } from 'stream';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { QueueService } from '../queue/queue.service';
 import { DEFAULT_GLOBAL_SAFETY_RULES, DEFAULT_AGENT_IDENTITY_RULES, DEFAULT_WHATSAPP_FORMATTING_RULES } from '../ai/ai.service';
+import { Logger } from '../logger';
+
+const logger = new Logger('AdminBackfill');
 
 @Injectable()
 export class AdminService {
@@ -786,5 +792,92 @@ export class AdminService {
       orderBy: { changedAt: 'desc' },
       take: 20,
     });
+  }
+
+  // ── Backfill mídia WhatsApp Light ─────────────────────────────────────────
+
+  async backfillWhatsappLightMedia(since: string) {
+    const sinceDate = new Date(since);
+    if (isNaN(sinceDate.getTime())) {
+      throw new BadRequestException('Parâmetro "since" inválido. Use formato ISO: 2026-05-26T00:00:00.000Z');
+    }
+
+    const events = await this.prisma.leadEvent.findMany({
+      where: { channel: 'whatsapp.unofficial.in', criadoEm: { gte: sinceDate } },
+      select: { id: true, payloadRaw: true },
+      orderBy: { criadoEm: 'asc' },
+    });
+
+    const MEDIA_TYPES = new Set(['image', 'video', 'document']);
+    const candidates = events.filter((ev) => {
+      const p = ev.payloadRaw as any;
+      return p && MEDIA_TYPES.has(p.type) && !p.media?.url && p.rawMsg;
+    });
+
+    let ok = 0; let skip = 0; let fail = 0;
+    const errors: string[] = [];
+
+    for (const ev of candidates) {
+      const p = ev.payloadRaw as any;
+      const type: string = p.type;
+      const rawMsg = p.rawMsg;
+
+      try {
+        const buffer = await downloadMediaMessage(rawMsg, 'buffer', {}) as Buffer;
+        if (!buffer || buffer.length === 0) {
+          logger.warn(`[SKIP] ${ev.id} — buffer vazio`);
+          skip++;
+          continue;
+        }
+
+        const inner =
+          rawMsg?.message?.documentWithCaptionMessage?.message ||
+          rawMsg?.message?.viewOnceMessage?.message ||
+          rawMsg?.message?.viewOnceMessageV2?.message?.viewOnceMessage?.message ||
+          rawMsg?.message?.ephemeralMessage?.message ||
+          rawMsg?.message || {};
+
+        let rawMime: string;
+        let filename: string | null = null;
+        let resourceType: 'image' | 'video' | 'raw';
+
+        if (type === 'image') {
+          rawMime = inner.imageMessage?.mimetype ?? 'image/jpeg';
+          resourceType = 'image';
+        } else if (type === 'video') {
+          rawMime = inner.videoMessage?.mimetype ?? 'video/mp4';
+          resourceType = 'video';
+        } else {
+          rawMime = inner.documentMessage?.mimetype ?? 'application/octet-stream';
+          filename = inner.documentMessage?.fileName ?? null;
+          resourceType = 'raw';
+        }
+
+        const mimeType = rawMime.split(';')[0].trim();
+
+        const mediaUrl = await new Promise<string>((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: 'via-crm/whatsapp-light/files', resource_type: resourceType },
+            (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
+          );
+          Readable.from(buffer).pipe(stream);
+        });
+
+        await this.prisma.leadEvent.update({
+          where: { id: ev.id },
+          data: { payloadRaw: { ...p, media: { url: mediaUrl, mimeType, filename, kind: type } } },
+        });
+
+        logger.log(`[OK] ${ev.id} (${type}) → ${mediaUrl}`);
+        ok++;
+      } catch (err: any) {
+        const msg = `${ev.id}: ${err?.message}`;
+        logger.warn(`[FAIL] ${msg}`);
+        errors.push(msg);
+        fail++;
+      }
+    }
+
+    return { candidates: candidates.length, ok, skip, fail, errors };
   }
 }

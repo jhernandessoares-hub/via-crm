@@ -36,7 +36,7 @@ export default function EditableLogo({
   onClick: () => void;
 }) {
   const isLink = !active && Boolean(styleBox?.clickable && styleBox?.href);
-  const ringClass = selected ? "ring-2 ring-sky-500 ring-offset-4 ring-offset-transparent" : "";
+  const ringClass = active && selected ? "ring-2 ring-sky-500 ring-offset-4 ring-offset-transparent" : "";
   const wStyle: React.CSSProperties = {
     width: styleBox?.width ? `${styleBox.width}px` : undefined,
     minHeight: styleBox?.height ? `${styleBox.height}px` : undefined,

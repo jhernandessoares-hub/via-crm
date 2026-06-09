@@ -97,6 +97,28 @@ async function bootstrap() {
     logger.warn(`seedPlanConfigs ignorado (${e?.code ?? e?.message}) — será tentado na próxima reinicialização`);
   }
 
+  // 🧹 Destrava documentos órfãos da classificação IA: se o processo reiniciou (deploy/crash)
+  // no meio do background, docs ficam presos em EM_FILA/ANALISANDO para sempre. Marca como ERRO
+  // os que estão parados há mais de 10 min. Idempotente.
+  try {
+    const prisma = app.get(PrismaService);
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000);
+    const reaped = await prisma.leadDocument.updateMany({
+      where: {
+        processingStatus: { in: ['EM_FILA', 'ANALISANDO'] },
+        atualizadoEm: { lt: cutoff },
+      },
+      data: {
+        processingStatus: 'ERRO',
+        processingStep: 'Análise interrompida (reinício do servidor)',
+        aiReason: 'Processamento não finalizado antes de uma reinicialização. Refaça o upload ou identifique manualmente.',
+      },
+    });
+    if (reaped.count > 0) logger.warn(`Documentos órfãos destravados no boot: ${reaped.count}`);
+  } catch (e: any) {
+    logger.warn(`Reaper de documentos órfãos ignorado (${e?.code ?? e?.message})`);
+  }
+
   // 🔍 Verificar Redis antes de iniciar os workers
   const queueService = app.get(QueueService);
   const redisCheck = await queueService.redisHealthCheck();

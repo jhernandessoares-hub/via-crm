@@ -32,8 +32,12 @@ model PipelineStage {
   name             String
   sortOrder        Int
   group            String?
+  advancesToGroup  String?
+  returnsToGroup   String?
   isActive         Boolean   @default(true)
   requiresEvidence Boolean   @default(false)
+  requiresReason   Boolean   @default(false) // exige justificativa em texto (de todos os roles) ao entrar/sair
+  unitAction       String?   // espelho: RESERVA (permite reservar) | PROPOSTA (converte reserva→proposta ao entrar) | VENDA (converte proposta→vendido ao entrar)
   ownerOnly        Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -115,11 +119,14 @@ model Tenant {
   tenantSites            TenantSite[]
   users                  User[]
   developments           Development[]
+  developmentMedia       DevelopmentMedia[]
+  developmentObraUpdates DevelopmentObraUpdate[]
   creditRequests                CreditRequest[]
   whatsappUnofficialSessions    WhatsappUnofficialSession[]
   campanhaModelos               CampanhaModelo[]
   campanhaDisparos              CampanhaDisparo[]
   leadCounter                   TenantLeadCounter?
+  messageTemplates              UserMessageTemplate[]
 
   @@map("tenants")
 }
@@ -131,6 +138,23 @@ model TenantLeadCounter {
   tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_lead_counters")
+}
+
+model UserMessageTemplate {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  title     String
+  content   String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("user_message_templates")
 }
 
 model Channel {
@@ -198,6 +222,8 @@ model User {
   tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   campanhaModelos          CampanhaModelo[]
   campanhaDisparos         CampanhaDisparo[]
+  calendarEvents           CalendarEvent[]
+  messageTemplates         UserMessageTemplate[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -223,6 +249,7 @@ model Lead {
   tenantId                String
   numero                  Int?
   reentradaCount          Int                  @default(1)
+  lastEntryChannel        String?
   nome                    String
   telefone                String?
   email                   String?
@@ -249,8 +276,9 @@ model Lead {
   conversouComCorretor    Boolean?
   qualCorretorImobiliaria String?
   perfilImovel            String?
-  produtoInteresseId      String?
-  resumoLead              String?
+  produtoInteresseId           String?
+  empreendimentoInteresseId    String?
+  resumoLead                   String?
   pendingRouting          Boolean              @default(false)
   pendingRoutingScope     PendingRoutingScope?
   pipelineId              String?
@@ -270,8 +298,10 @@ model Lead {
   conversaSessionId       String?
   avatarUrl               String?
   lastReadAt              DateTime?
+  conversaAberta          Boolean              @default(false)
   aiExecutionLogs         AiExecutionLog[]
   baseFria                BaseFria?
+  calendarEvents          CalendarEvent[]
   kbTeachings             KbTeaching[]
   documents               LeadDocument[]
   events                  LeadEvent[]
@@ -284,7 +314,8 @@ model Lead {
   stage                   PipelineStage?             @relation(fields: [stageId], references: [id])
   tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   reviews                 ManagerReview[]
-  conversaSession         WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
+  conversaSession              WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
+  empreendimentoInteresse      Development?               @relation("LeadEmpreendimentoInteresse", fields: [empreendimentoInteresseId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, telefoneKey])
   @@index([tenantId, status])
@@ -562,15 +593,18 @@ model BaseFria {
 }
 
 model LeadTransitionLog {
-  id        String   @id @default(uuid())
-  tenantId  String
-  leadId    String
-  fromStage String?
-  toStage   String
-  changedBy String?
-  createdAt DateTime @default(now())
-  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(uuid())
+  tenantId           String
+  leadId             String
+  fromStage          String?
+  toStage            String
+  changedBy          String?
+  evidenceDocumentId String?  // documento de evidência anexado em transições com requiresEvidence
+  motivo             String?  // justificativa (obrigatória para OWNER em status com requiresEvidence)
+  cascade            Boolean  @default(false) // true = movimento automático do sistema (avanço entre grupos)
+  createdAt          DateTime @default(now())
+  lead               Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId])
   @@index([tenantId, createdAt])
@@ -991,27 +1025,32 @@ model AuditLog {
 }
 
 model CalendarEvent {
-  id             String      @id @default(uuid())
+  id             String          @id @default(uuid())
   tenantId       String
   userId         String
   title          String
   description    String?
   startAt        DateTime
   endAt          DateTime
-  allDay         Boolean     @default(false)
-  color          String      @default("blue")
+  allDay         Boolean         @default(false)
+  color          String          @default("blue")
   leadId         String?
-  eventType      EventType   @default(TAREFA)
-  status         EventStatus @default(AGENDADO)
+  eventType      EventType       @default(TAREFA)
+  status         EventStatus     @default(AGENDADO)
+  visibility     EventVisibility @default(PUBLIC)
   productId      String?
   location       String?
   reminderSentAt DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  user User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
   @@index([tenantId, userId, status])
   @@index([tenantId, userId, eventType])
+  @@index([tenantId, leadId])
 }
 
 model PersonalNote {
@@ -1164,6 +1203,7 @@ enum UserRole {
   OWNER
   MANAGER
   AGENT
+  PARTNER
 }
 
 enum LeadStatus {
@@ -1382,6 +1422,11 @@ enum EventStatus {
   CANCELADO
 }
 
+enum EventVisibility {
+  PUBLIC
+  PRIVATE
+}
+
 enum LearningSourceType {
   HUMAN
   LEAD
@@ -1463,6 +1508,7 @@ model Development {
   implantacaoUrl      String?   // URL Cloudinary da planta de implantação
   implantacaoPublicId String?   // Cloudinary public ID para delete
   implantacaoMode     String?   // SATELITE | IMAGEM — modo de posicionamento das torres
+  capaUrl             String?   // URL da foto de capa do card na listagem
   terrainDesign       Json?     // Desenho do terreno: { version, shapes: [{id, type, points, ...}] }
   modelUrl            String?   // URL Cloudinary do modelo 3D do arquiteto (.glb/.gltf)
   modelPublicId       String?   // Cloudinary public ID do modelo 3D para delete
@@ -1475,6 +1521,9 @@ model Development {
   towers           Tower[]
   units            DevelopmentUnit[]
   paymentCondition DevelopmentPaymentCondition?
+  mediaItems       DevelopmentMedia[]
+  obraUpdates      DevelopmentObraUpdate[]
+  leadInteresses   Lead[]                        @relation("LeadEmpreendimentoInteresse")
 
   @@index([tenantId])
   @@map("developments")
@@ -1643,6 +1692,66 @@ model DevelopmentPaymentCondition {
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("development_payment_conditions")
+}
+
+enum DevelopmentMediaCategoria {
+  FOTO_COMERCIAL
+  PANFLETO
+  BOOK
+}
+
+model DevelopmentMedia {
+  id            String                    @id @default(uuid())
+  developmentId String
+  tenantId      String
+  url           String
+  publicId      String
+  categoria     DevelopmentMediaCategoria
+  titulo        String?
+  ordem         Int                       @default(0)
+  createdAt     DateTime                  @default(now())
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([developmentId])
+  @@index([tenantId])
+  @@map("development_media")
+}
+
+model DevelopmentObraUpdate {
+  id              String    @id @default(uuid())
+  developmentId   String
+  tenantId        String
+  dataAtualizacao DateTime
+  titulo            String?
+  observacoes       String?
+  percentualAvanco  Int?      // 0–100
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  development Development           @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fotos       DevelopmentObraFoto[]
+
+  @@index([developmentId])
+  @@index([tenantId])
+  @@map("development_obra_updates")
+}
+
+model DevelopmentObraFoto {
+  id        String   @id @default(uuid())
+  updateId  String
+  url       String
+  publicId  String
+  legenda   String?
+  ordem     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  obraUpdate DevelopmentObraUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
+
+  @@index([updateId])
+  @@map("development_obra_fotos")
 }
 
 model Correspondent {

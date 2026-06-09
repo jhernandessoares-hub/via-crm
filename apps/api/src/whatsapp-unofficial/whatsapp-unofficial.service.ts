@@ -417,23 +417,37 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     await socket.sendMessage(jid, { text });
   }
 
-  async sendImage(sessionId: string, to: string, imageUrl: string, caption?: string): Promise<void> {
+  async sendImage(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveJid(socket, to);
+    const image: any = Buffer.isBuffer(content) ? content : { url: content };
     await socket.sendMessage(jid, {
-      image: { url: imageUrl },
+      image,
       caption: caption ?? undefined,
     });
   }
 
-  async sendVideo(sessionId: string, to: string, videoUrl: string, caption?: string): Promise<void> {
+  async sendVideo(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<void> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = this.toJid(to);
+    const video: any = Buffer.isBuffer(content) ? content : { url: content };
     await socket.sendMessage(jid, {
-      video: { url: videoUrl },
+      video,
       caption: caption ?? undefined,
+    });
+  }
+
+  async sendDocument(sessionId: string, to: string, content: string | Buffer, filename: string, mimetype?: string): Promise<void> {
+    const socket = this.sockets.get(sessionId);
+    if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
+    const jid = await this.resolveJid(socket, to);
+    const document: any = Buffer.isBuffer(content) ? content : { url: content };
+    await socket.sendMessage(jid, {
+      document,
+      fileName: filename,
+      mimetype: mimetype ?? 'application/octet-stream',
     });
   }
 
@@ -449,7 +463,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
       const mediaUrl = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: 'via-crm/whatsapp-light/audio', resource_type: 'video', format: ext },
+          { folder: 'via-crm/whatsapp-light/audio', resource_type: 'video', format: ext, type: 'upload', access_mode: 'public' },
           (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
         );
         Readable.from(buffer).pipe(stream);
@@ -465,6 +479,57 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     } catch (err: any) {
       logger.warn(`⚠️ Erro ao processar áudio inbound: ${err?.message}`);
       return { mediaUrl: null, mimeType: null, transcription: null };
+    }
+  }
+
+  // ── Processamento de mídia inbound (image/video/document → Cloudinary) ──
+
+  private async processMediaInbound(
+    msg: any,
+    type: 'image' | 'video' | 'document',
+  ): Promise<{ mediaUrl: string | null; mimeType: string | null; filename: string | null }> {
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {}) as Buffer;
+      if (!buffer || buffer.length === 0) return { mediaUrl: null, mimeType: null, filename: null };
+
+      const inner =
+        msg.message?.documentWithCaptionMessage?.message ||
+        msg.message?.viewOnceMessage?.message ||
+        msg.message?.viewOnceMessageV2?.message?.viewOnceMessage?.message ||
+        msg.message?.ephemeralMessage?.message ||
+        msg.message || {};
+
+      let rawMime: string;
+      let filename: string | null = null;
+      let resourceType: 'image' | 'video' | 'raw';
+
+      if (type === 'image') {
+        rawMime = inner.imageMessage?.mimetype ?? 'image/jpeg';
+        resourceType = 'image';
+      } else if (type === 'video') {
+        rawMime = inner.videoMessage?.mimetype ?? 'video/mp4';
+        resourceType = 'video';
+      } else {
+        rawMime = inner.documentMessage?.mimetype ?? 'application/octet-stream';
+        filename = inner.documentMessage?.fileName ?? null;
+        resourceType = 'raw';
+      }
+
+      const mimeType = rawMime.split(';')[0].trim();
+
+      const mediaUrl = await new Promise<string>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'via-crm/whatsapp-light/files', resource_type: resourceType, type: 'upload', access_mode: 'public' },
+          (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
+        );
+        Readable.from(buffer).pipe(stream);
+      });
+
+      logger.log(`📎 Mídia inbound (${type}, ${buffer.length} bytes) salva no Cloudinary`);
+      return { mediaUrl, mimeType, filename };
+    } catch (err: any) {
+      logger.warn(`⚠️ Erro ao processar mídia inbound (${type}): ${err?.message}`);
+      return { mediaUrl: null, mimeType: null, filename: null };
     }
   }
 
@@ -554,6 +619,20 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       audioMediaUrl = audioResult.mediaUrl;
       audioMimeType = audioResult.mimeType;
       audioTranscription = audioResult.transcription;
+    }
+
+    // Processa imagem/vídeo/documento: baixa buffer via Baileys, sobe ao Cloudinary
+    let inboundMedia: { url: string; mimeType: string; filename: string | null; kind: string } | null = null;
+    if (type === 'image' || type === 'video' || type === 'document') {
+      const result = await this.processMediaInbound(msg, type);
+      if (result.mediaUrl) {
+        inboundMedia = {
+          url: result.mediaUrl,
+          mimeType: result.mimeType ?? 'application/octet-stream',
+          filename: result.filename,
+          kind: type,
+        };
+      }
     }
 
     // Verifica se é contato de disparo aguardando resposta
@@ -661,6 +740,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       mediaUrl: audioMediaUrl,
       mimeType: audioMimeType,
       transcription: audioTranscription,
+      media: inboundMedia,
     });
 
     // Se é resposta de campanha e o lead NÃO foi criado pelo worker (fluxo legado),

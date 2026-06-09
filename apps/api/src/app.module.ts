@@ -23,6 +23,7 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 import { SecretaryModule } from './secretary/secretary.module';
 import { ChannelsModule } from './channels/channels.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { MessageTemplatesModule } from './message-templates/message-templates.module';
 import { DevModule } from './dev/dev.module';
 import { OwnersModule } from './owners/owners.module';
 import { AdminModule } from './admin/admin.module';
@@ -63,6 +64,7 @@ import { LeadDocumentsModule } from './lead-documents/lead-documents.module';
     SecretaryModule,
     ChannelsModule,
     CalendarModule,
+    MessageTemplatesModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevModule] : []),
     OwnersModule,
     AdminModule,

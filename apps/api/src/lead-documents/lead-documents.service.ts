@@ -114,10 +114,12 @@ export class LeadDocumentsService {
 
     this.ensureCloudinaryConfigured();
 
-    // Se já tinha arquivo, deleta o antigo
+    // Se já tinha arquivo, deleta o antigo (precisa de type:'authenticated' — os assets são privados)
     if (doc.publicId) {
       const rt = doc.mimeType?.startsWith('image/') ? 'image' : 'raw';
-      await cloudinary.uploader.destroy(doc.publicId, { resource_type: rt, invalidate: true }).catch(() => {});
+      await cloudinary.uploader
+        .destroy(doc.publicId, { resource_type: rt, type: 'authenticated', invalidate: true })
+        .catch((err: any) => this.logger.warn(`uploadDocument: falha ao remover asset antigo ${doc.publicId}: ${err?.message}`));
     }
 
     const isImage = file.mimetype.startsWith('image/');
@@ -161,23 +163,34 @@ export class LeadDocumentsService {
     const rawName = doc.filename || doc.nome || 'documento';
     const filename = this.safeFilename(rawName, mimeType.split('/')[1] || 'bin');
 
-    let fetchUrl: string;
-
+    // Candidatos de URL, em ordem de preferência. O backend baixa e faz streaming,
+    // então a URL nunca chega ao cliente — usar a secure_url salva é seguro.
+    const candidates: string[] = [];
     if (doc.publicId) {
-      // 🔒 Documento privado (authenticated) — URL assinada válida por 2 minutos
       const isImage = mimeType.startsWith('image/');
       const resourceType = isImage ? 'image' : 'raw';
       const ext = rawName.includes('.') ? rawName.split('.').pop()! : (mimeType.split('/')[1] || 'bin');
-      fetchUrl = this.buildSignedCloudinaryDownloadUrl({ publicId: doc.publicId, ext, resourceType });
-    } else if (doc.url) {
-      // Fallback para documentos antigos sem publicId (período de migração)
-      fetchUrl = doc.url;
-    } else {
+      candidates.push(this.buildSignedCloudinaryDownloadUrl({ publicId: doc.publicId, ext, resourceType }));
+    }
+    if (doc.url) candidates.push(doc.url); // secure_url já assinada pelo Cloudinary no upload
+
+    if (candidates.length === 0) {
       throw new NotFoundException('Documento não encontrado ou sem arquivo');
     }
 
-    const response = await fetch(fetchUrl);
-    if (!response.ok) throw new NotFoundException('Arquivo não disponível no storage');
+    let response: Response | null = null;
+    let lastStatus = 0;
+    for (const url of candidates) {
+      this.logger.log(`viewDocument fetch: ${url.substring(0, 120)}`);
+      const r = await fetch(url);
+      if (r.ok) { response = r; break; }
+      lastStatus = r.status;
+      this.logger.error(`viewDocument Cloudinary error: status=${r.status} url=${url.substring(0, 120)}`);
+    }
+
+    if (!response) {
+      throw new NotFoundException(`Arquivo não disponível no storage (${lastStatus || 404})`);
+    }
 
     const contentLength = response.headers.get('content-length');
 
@@ -197,7 +210,9 @@ export class LeadDocumentsService {
     if (doc.publicId) {
       this.ensureCloudinaryConfigured();
       const rt = doc.mimeType?.startsWith('image/') ? 'image' : 'raw';
-      await cloudinary.uploader.destroy(doc.publicId, { resource_type: rt, type: 'authenticated', invalidate: true }).catch(() => {});
+      await cloudinary.uploader
+        .destroy(doc.publicId, { resource_type: rt, type: 'authenticated', invalidate: true })
+        .catch((err: any) => this.logger.warn(`deleteDocument: falha ao remover asset ${doc.publicId}: ${err?.message}`));
     }
 
     await this.prisma.leadDocument.delete({ where: { id: docId } });
@@ -445,12 +460,31 @@ export class LeadDocumentsService {
     const contentBlocks: any[] = [];
     for (const doc of docs) {
       try {
-        const res = await fetch(doc.url!);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const base64 = buffer.toString('base64');
         const mime = doc.mimeType || 'application/pdf';
         const mediaType = this.claudeMediaType(mime);
         if (!mediaType) continue;
+
+        // Os documentos são privados (type: 'authenticated') — buscar via URL assinada,
+        // nunca pela secure_url crua (retorna 401). Fallback para doc.url em docs antigos sem publicId.
+        let fetchUrl: string;
+        if (doc.publicId) {
+          const isImage = mime.startsWith('image/');
+          const rawName = doc.filename || doc.nome || 'documento';
+          const ext = rawName.includes('.') ? rawName.split('.').pop()! : (mime.split('/')[1] || 'bin');
+          fetchUrl = this.buildSignedCloudinaryDownloadUrl({ publicId: doc.publicId, ext, resourceType: isImage ? 'image' : 'raw' });
+        } else if (doc.url) {
+          fetchUrl = doc.url;
+        } else {
+          continue;
+        }
+
+        const res = await fetch(fetchUrl);
+        if (!res.ok) {
+          this.logger.warn(`aiCadastroFill: doc=${doc.id} indisponível no storage (${res.status})`);
+          continue;
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const base64 = buffer.toString('base64');
 
         const isPdf = mime === 'application/pdf';
         contentBlocks.push(
@@ -466,7 +500,9 @@ export class LeadDocumentsService {
 
     contentBlocks.push({
       type: 'text',
-      text: `Extraia as informações pessoais dos documentos acima e responda SOMENTE com JSON (sem markdown):
+      text: `Extraia as informações pessoais dos documentos acima e responda SOMENTE com JSON (sem markdown).
+Leia com atenção e transcreva EXATAMENTE o que está escrito — NÃO invente. Se um campo não estiver claramente legível, use null (melhor null do que valor errado). Copie CPF e datas dígito por dígito.
+
 {
   "cpf": "xxx.xxx.xxx-xx ou null",
   "rg": "número do RG ou null",
@@ -486,11 +522,14 @@ export class LeadDocumentsService {
     });
 
     try {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 600,
-        messages: [{ role: 'user', content: contentBlocks }],
-      });
+      const response = await client.messages.create(
+        {
+          model,
+          max_tokens: 1500,
+          messages: [{ role: 'user', content: contentBlocks }],
+        },
+        { timeout: 45000 }, // evita travar indefinidamente se a IA pendurar
+      );
       const text = (response.content[0] as any)?.text ?? '{}';
       const clean = text.replace(/```json|```/g, '').trim();
       const campos = JSON.parse(clean);
@@ -564,6 +603,12 @@ Objetivo:
 - extrair o nome da pessoa titular do documento, quando aparecer
 - resumir em uma frase curta o motivo da classificação
 
+REGRAS DE EXTRAÇÃO (importantes):
+- Leia o documento com atenção e transcreva EXATAMENTE o que está escrito. NÃO invente nem deduza.
+- Se um campo não estiver claramente legível no documento, use null. É melhor null do que um valor errado.
+- CPF e datas: copie dígito por dígito. Não preencha CPF a partir do RG nem vice-versa.
+- Só extraia dados que pertençam ao titular do documento.
+
 {
   "tipo": "RG_CNH" | "CPF" | "COMP_RESIDENCIA" | "COMP_RENDA" | "FGTS" | "DECL_IR" | "CERT_ESTADO_CIVIL" | "CONTRATO_TRABALHO" | "OUTRO" | "NAO_IDENTIFICADO",
   "confianca": "ALTA" | "MEDIA" | "BAIXA",
@@ -592,11 +637,14 @@ Objetivo:
 }`;
 
     try {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 350,
-        messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }],
-      });
+      const response = await client.messages.create(
+        {
+          model,
+          max_tokens: 1500, // 350 era baixo p/ classificação + 16 campos — truncava/degradava a leitura
+          messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }],
+        },
+        { timeout: 45000 }, // evita doc preso em "Analisando" se a IA pendurar
+      );
       const text = (response.content[0] as any)?.text ?? '{}';
       const clean = text.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(clean);
@@ -733,7 +781,10 @@ Objetivo:
       .sort((a, b) => b.score - a.score)[0];
 
     const bestParticipantScore = bestParticipant?.score ?? 0;
-    if (leadScore >= 72 && leadScore >= bestParticipantScore + 5) {
+    // Lead e participantes competem em pé de igualdade; empate vai para o lead (titular principal).
+    // Antes o lead exigia margem de +5 sobre o participante, o que enviava documentos do próprio
+    // titular para participantes em famílias com sobrenome igual.
+    if (leadScore >= 72 && leadScore >= bestParticipantScore) {
       return {
         participanteNome: null,
         ownerLabel: leadNome,
@@ -838,25 +889,28 @@ Objetivo:
     this.ensureCloudinaryConfigured();
 
     const expiresAt = Math.floor(Date.now() / 1000) + 120; // 2 minutos
+    const hasExt = input.ext && input.ext !== 'bin';
 
-    // ✅ Para PDFs e outros RAW protegidos
+    // Recursos raw guardam a extensão NO public_id (ex.: pasta/arquivo.pdf) e o
+    // download assinado usa format ''. Para image/video o public_id não tem extensão
+    // e o format vai separado. Usa private_download_url (forma comprovada no resto do app).
     if (input.resourceType === 'raw') {
-      // @ts-ignore
-      return cloudinary.utils.private_download_url(input.publicId, input.ext, {
-        resource_type: 'raw',
-        type: 'authenticated',
-        expires_at: expiresAt,
-      });
+      // O result.public_id do upload raw normalmente já inclui a extensão.
+      // Só anexa se ainda não estiver lá — evita "arquivo.pdf.pdf" (404).
+      const alreadyHasExt =
+        hasExt && input.publicId.toLowerCase().endsWith(`.${input.ext.toLowerCase()}`);
+      const rawPublicId = !hasExt || alreadyHasExt ? input.publicId : `${input.publicId}.${input.ext}`;
+      return (cloudinary.utils as any).private_download_url(
+        rawPublicId,
+        '',
+        { resource_type: 'raw', type: 'authenticated', expires_at: expiresAt, attachment: false },
+      );
     }
 
-    // ✅ Para image e video
-    return cloudinary.url(input.publicId, {
-      resource_type: input.resourceType,
-      type: 'authenticated',
-      secure: true,
-      sign_url: true,
-      format: input.ext,
-      expires_at: expiresAt,
-    } as any);
+    return (cloudinary.utils as any).private_download_url(
+      input.publicId,
+      hasExt ? input.ext : '',
+      { resource_type: input.resourceType, type: 'authenticated', expires_at: expiresAt, attachment: false },
+    );
   }
 }

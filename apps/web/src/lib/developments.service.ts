@@ -163,6 +163,7 @@ export type Development = {
   terrainDesign?: TerrainDesign | null;
   modelUrl?: string | null;
   modelPublicId?: string | null;
+  capaUrl?: string | null;
   areasComuns?: {
     piscina?: boolean;
     academia?: boolean;
@@ -296,4 +297,93 @@ export async function publishDevelopment(devId: string): Promise<Development> {
 
 export async function unpublishDevelopment(devId: string): Promise<Development> {
   return apiFetch(`/developments/${devId}/unpublish`, { method: "POST" });
+}
+
+// ─── Mídia ────────────────────────────────────────────────────────────────
+
+export type DevMediaCategoria = "FOTO_COMERCIAL" | "PANFLETO" | "BOOK";
+
+export interface DevMedia {
+  id: string;
+  developmentId: string;
+  tenantId: string;
+  url: string;
+  publicId: string;
+  categoria: DevMediaCategoria;
+  titulo: string | null;
+  ordem: number;
+  createdAt: string;
+}
+
+export async function listMedia(devId: string, categoria?: DevMediaCategoria): Promise<DevMedia[]> {
+  const qs = categoria ? `?categoria=${categoria}` : "";
+  return apiFetch(`/developments/${devId}/media${qs}`);
+}
+
+export async function uploadMedia(devId: string, file: File, categoria: DevMediaCategoria, titulo?: string): Promise<DevMedia> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("categoria", categoria);
+  if (titulo) form.append("titulo", titulo);
+  return apiFetch(`/developments/${devId}/media`, { method: "POST", body: form });
+}
+
+export async function patchMedia(devId: string, mediaId: string, data: { titulo?: string | null }): Promise<DevMedia> {
+  return apiFetch(`/developments/${devId}/media/${mediaId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteMedia(devId: string, mediaId: string): Promise<void> {
+  return apiFetch(`/developments/${devId}/media/${mediaId}`, { method: "DELETE" });
+}
+
+// ─── Evolução de Obra ─────────────────────────────────────────────────────
+
+export interface DevObraFoto {
+  id: string;
+  updateId: string;
+  url: string;
+  publicId: string;
+  legenda: string | null;
+  ordem: number;
+  createdAt: string;
+}
+
+export interface DevObraUpdate {
+  id: string;
+  developmentId: string;
+  tenantId: string;
+  dataAtualizacao: string;
+  titulo: string | null;
+  observacoes: string | null;
+  percentualAvanco: number | null;
+  createdAt: string;
+  updatedAt: string;
+  fotos: DevObraFoto[];
+}
+
+export async function listObraUpdates(devId: string): Promise<DevObraUpdate[]> {
+  return apiFetch(`/developments/${devId}/obra-updates`);
+}
+
+export async function createObraUpdate(devId: string, data: { dataAtualizacao: string; titulo?: string; observacoes?: string; percentualAvanco?: number }): Promise<DevObraUpdate> {
+  return apiFetch(`/developments/${devId}/obra-updates`, { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateObraUpdate(devId: string, updateId: string, data: { dataAtualizacao?: string; titulo?: string; observacoes?: string; percentualAvanco?: number }): Promise<DevObraUpdate> {
+  return apiFetch(`/developments/${devId}/obra-updates/${updateId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deleteObraUpdate(devId: string, updateId: string): Promise<void> {
+  return apiFetch(`/developments/${devId}/obra-updates/${updateId}`, { method: "DELETE" });
+}
+
+export async function uploadObraFoto(devId: string, updateId: string, file: File, legenda?: string): Promise<DevObraFoto> {
+  const form = new FormData();
+  form.append("file", file);
+  if (legenda) form.append("legenda", legenda);
+  return apiFetch(`/developments/${devId}/obra-updates/${updateId}/fotos`, { method: "POST", body: form });
+}
+
+export async function deleteObraFoto(devId: string, updateId: string, fotoId: string): Promise<void> {
+  return apiFetch(`/developments/${devId}/obra-updates/${updateId}/fotos/${fotoId}`, { method: "DELETE" });
 }

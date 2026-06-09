@@ -175,12 +175,12 @@ export const defaultSiteContent: SiteContent = {
   theme: undefined,
   branding: {
     headerLogo: {
-      src: "/logo-via.svg",
+      src: "/Novo%20modelo%20de%20Logo.png",
       alt: "VIA CRM",
       height: 56,
     },
     panelLogo: {
-      src: "/logo-via.svg",
+      src: "/Novo%20modelo%20de%20Logo.png",
       alt: "VIA CRM",
       height: 48,
     },

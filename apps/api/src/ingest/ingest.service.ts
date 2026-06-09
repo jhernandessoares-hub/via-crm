@@ -137,12 +137,19 @@ export class IngestService {
             // branch: só define se ainda estiver vazio
             branchId: existingLead.branchId ?? branchId,
 
-            // Reentrada: incrementa contador (não gera novo número)
-            reentradaCount: { increment: 1 },
+            // Reentrada: incrementa contador somente quando o canal muda
+            ...(channel !== existingLead.lastEntryChannel ? { reentradaCount: { increment: 1 }, lastEntryChannel: channel } : {}),
           },
         })
       : await (async () => {
-          const assignedUserId = await this.roundRobinAssign(tenantId, branchId);
+          const [assignedUserId, firstStage] = await Promise.all([
+            this.roundRobinAssign(tenantId, branchId),
+            this.prisma.pipelineStage.findFirst({
+              where: { tenantId, isActive: true },
+              orderBy: { sortOrder: 'asc' },
+              select: { id: true, pipelineId: true },
+            }),
+          ]);
           return this.prisma.$transaction(async (tx) => {
             const numero = await getNextLeadNumber(tx, tenantId);
             return tx.lead.create({
@@ -155,6 +162,10 @@ export class IngestService {
                 telefoneKey,
                 email,
                 origem: channel,
+                lastEntryChannel: channel,
+                status: 'NOVO',
+                stageId: firstStage?.id ?? null,
+                pipelineId: firstStage?.pipelineId ?? null,
                 ...(assignedUserId ? { assignedUserId } : {}),
               },
             });

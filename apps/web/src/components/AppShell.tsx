@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import EnvBanner from "@/components/EnvBanner";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -8,16 +8,18 @@ import {
   MeusDadosModal,
   type FullProfile,
 } from "@/components/layout/MeusDadosModal";
+import { SessionTimeoutModal } from "@/components/layout/SessionTimeoutModal";
 import dynamic from "next/dynamic";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, manualRefreshToken, apiLogout } from "@/lib/api";
 import { getPalette, applyPalette } from "@/lib/palettes";
+import { useSessionTimer } from "@/hooks/useSessionTimer";
 
 const WelcomeModal = dynamic(
   () => import("@/components/layout/WelcomeModal").then((m) => ({ default: m.WelcomeModal })),
   { ssr: false }
 );
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
 type TenantBranding = {
   brandPalette?: string | null;
@@ -38,6 +40,14 @@ type Counts = {
   total: number;
   mine: number;
   groups: Record<string, number>;
+};
+
+type PendingReplyLead = {
+  id: string;
+  nome: string;
+  nomeCorreto: string | null;
+  telefone: string | null;
+  lastInboundAt: string;
 };
 
 function getInitials(name: string) {
@@ -66,10 +76,13 @@ function AppShellInner({
   const [modalOpen, setModalOpen] = useState(false);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [pendingDeletions, setPendingDeletions] = useState(0);
+  const [pendingReplies, setPendingReplies] = useState<PendingReplyLead[]>([]);
   const [branding, setBranding] = useState<TenantBranding>({});
   const [tenantAddons, setTenantAddons] = useState<string[]>([]);
   const [tenantPlan, setTenantPlan] = useState<string>('');
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+  const [timeoutModalSeconds, setTimeoutModalSeconds] = useState(10);
 
   useEffect(() => {
     try {
@@ -115,11 +128,41 @@ function AppShellInner({
       apiFetch("/products/pending-deletions/count")
         .then((data: any) => setPendingDeletions(data?.count ?? 0))
         .catch(() => null);
+      apiFetch("/leads/pending-reply")
+        .then((data: any) => setPendingReplies(Array.isArray(data) ? data : []))
+        .catch(() => null);
     }
     fetchCounts();
     const i = setInterval(fetchCounts, 60_000);
     return () => clearInterval(i);
   }, []);
+
+  const handleSessionWarning = useCallback(() => {
+    setTimeoutModalSeconds(10);
+    setShowTimeoutModal(true);
+  }, []);
+
+  const handleSessionExpired = useCallback(async () => {
+    setShowTimeoutModal(false);
+    await apiLogout();
+    window.location.href = "/login";
+  }, []);
+
+  const handleRenewSession = useCallback(async () => {
+    const newToken = await manualRefreshToken();
+    if (newToken) {
+      setShowTimeoutModal(false);
+    } else {
+      await apiLogout();
+      window.location.href = "/login";
+    }
+  }, []);
+
+  const { secondsLeft } = useSessionTimer({
+    onWarning: handleSessionWarning,
+    onExpired: handleSessionExpired,
+    warningAt: 10,
+  });
 
   async function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -166,10 +209,20 @@ function AppShellInner({
             onToggleTheme={toggleTheme}
             onOpenMeusDados={() => setModalOpen(true)}
             pendingDeletions={pendingDeletions}
+            pendingReplies={pendingReplies}
+            sessionSecondsLeft={secondsLeft}
           />
           <main className="flex-1 p-6 overflow-y-auto">{children}</main>
         </div>
       </div>
+
+      {showTimeoutModal && (
+        <SessionTimeoutModal
+          initialSeconds={timeoutModalSeconds}
+          onRenew={handleRenewSession}
+          onLogout={handleSessionExpired}
+        />
+      )}
 
       {welcomeOpen && profile && (
         <WelcomeModal

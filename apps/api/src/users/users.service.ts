@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { EmailService } from "../email/email.service";
 import { LimitsService } from "../plans/limits.service";
 import { UsageService, LimitExceededException } from "../plans/usage.service";
+import { validatePasswordStrength } from "../auth/password-strength.util";
 
 @Injectable()
 export class UsersService {
@@ -75,7 +76,7 @@ export class UsersService {
       throw new LimitExceededException('maxUsers', activeUsers, maxUsers);
     }
 
-    const validRoles = ['MANAGER', 'AGENT'];
+    const validRoles = ['MANAGER', 'AGENT', 'PARTNER'];
     const role = (data.role && validRoles.includes(data.role)) ? data.role : 'AGENT';
 
     const senhaHash = await bcrypt.hash(data.senha, 10);
@@ -118,10 +119,10 @@ export class UsersService {
       throw new ForbiddenException('Não é permitido alterar seu próprio papel ou status por esta rota.');
     }
 
-    // OWNER não pode virar OWNER via esta rota — role se limita a MANAGER/AGENT
-    const validRoles = ['MANAGER', 'AGENT'];
+    // OWNER não pode virar OWNER via esta rota — role se limita a MANAGER/AGENT/PARTNER
+    const validRoles = ['MANAGER', 'AGENT', 'PARTNER'];
     if (data.role && !validRoles.includes(data.role)) {
-      throw new BadRequestException('Role inválido. Use MANAGER ou AGENT.');
+      throw new BadRequestException('Role inválido. Use MANAGER, AGENT ou PARTNER.');
     }
 
     const updateData: any = {};
@@ -130,7 +131,11 @@ export class UsersService {
     if (data.ativo !== undefined) updateData.ativo = data.ativo;
     if (data.branchId !== undefined) updateData.branchId = data.branchId;
     if (data.recebeLeads !== undefined) updateData.recebeLeads = data.recebeLeads;
-    if (data.senha) updateData.senhaHash = await bcrypt.hash(data.senha, 10);
+    if (data.senha) {
+      const pwError = validatePasswordStrength(data.senha);
+      if (pwError) throw new BadRequestException(pwError);
+      updateData.senhaHash = await bcrypt.hash(data.senha, 10);
+    }
 
     return this.prisma.user.update({
       where: { id: userId },
@@ -192,11 +197,13 @@ export class UsersService {
     const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuário não encontrado.');
 
-    // Troca de senha: exige senha atual
+    // Troca de senha: exige senha atual e força mínima
     if (data.novaSenha) {
       if (!data.senhaAtual) throw new BadRequestException('Informe a senha atual para trocar a senha.');
       const ok = await bcrypt.compare(data.senhaAtual, user.senhaHash);
       if (!ok) throw new BadRequestException('Senha atual incorreta.');
+      const pwError = validatePasswordStrength(data.novaSenha);
+      if (pwError) throw new BadRequestException(pwError);
     }
 
     // Validar email único no tenant

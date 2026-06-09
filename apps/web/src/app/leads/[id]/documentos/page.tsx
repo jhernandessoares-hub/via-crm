@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
+import { maskCPF, maskCEP, maskPhone, isValidCPF } from "@/lib/format";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -256,7 +257,8 @@ function buildCadastroSuggestions(docs: DocItem[], participanteNome: string | nu
     for (const [field, rawValue] of Object.entries(extracted)) {
       const value = normalizeSuggestionValue(field, rawValue);
       if (value === null) continue;
-      const targetField = !isLead && field === "rendaBrutaFamiliar" ? "renda" : field;
+      // A IA extrai "renda"; no lead o campo é "rendaBrutaFamiliar" — alinhar a chave da sugestão ao nome do campo
+      const targetField = isLead && field === "renda" ? "rendaBrutaFamiliar" : field;
       if (!suggestions[targetField]) {
         suggestions[targetField] = { value, sourceDocName: doc.nome || doc.filename || "Documento" };
       }
@@ -466,7 +468,7 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }}>
-      <div className="relative w-full max-w-4xl mx-4 flex flex-col" style={{ maxHeight: "92vh" }} onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-6xl mx-4 flex flex-col" style={{ maxHeight: "95vh" }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-[var(--shell-card-bg)] rounded-t-xl px-4 py-3 shrink-0">
           <span className="text-sm font-medium text-[var(--shell-text)] truncate flex-1">{nome}</span>
           <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-4">✕</button>
@@ -524,7 +526,7 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
   const isPdf = mime === "application/pdf";
 
   return (
-    <div className="flex-1 flex items-center justify-center overflow-hidden" style={{ minHeight: 200 }}>
+    <div className="flex-1 flex items-center justify-center overflow-hidden" style={{ minHeight: 480 }}>
       {loading && (
         <div className="flex flex-col items-center gap-2 text-[var(--shell-subtext)]">
           <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
@@ -533,7 +535,7 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
       )}
       {!loading && fetchError && <p className="text-xs text-[var(--shell-subtext)]">Não foi possível carregar o arquivo.</p>}
       {!loading && blobUrl && isImage && <img src={blobUrl} alt={doc.nome} className="max-w-full max-h-full object-contain" />}
-      {!loading && blobUrl && isPdf && <iframe src={blobUrl} className="w-full h-full" title={doc.nome} style={{ minHeight: 320 }} />}
+      {!loading && blobUrl && isPdf && <iframe src={blobUrl} className="w-full h-full" title={doc.nome} style={{ minHeight: 600 }} />}
       {!loading && blobUrl && !isImage && !isPdf && (
         <div className="text-center text-[var(--shell-subtext)] text-xs p-6">
           <p className="mb-2">Visualização não disponível.</p>
@@ -557,22 +559,25 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
   onSave: (value: any) => Promise<void>;
   onClose: () => void;
 }) {
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  // Auto-seleciona o primeiro documento ao abrir — antes ficava em branco até o usuário clicar
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(relevantDocs[0]?.id ?? null);
   const [inputValue, setInputValue] = useState(String(currentValue ?? ""));
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const selectedDoc = relevantDocs.find(d => d.id === selectedDocId) ?? null;
 
   async function handleSave() {
     setSaving(true);
+    setSaveError(null);
     try { await onSave(inputValue); onClose(); }
-    catch { setSaving(false); }
+    catch (e: any) { setSaveError(e?.message ?? "Erro ao salvar"); setSaving(false); }
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }}>
       <div className="bg-[var(--shell-card-bg)] rounded-2xl shadow-2xl flex overflow-hidden mx-4"
-        style={{ width: selectedDoc ? 860 : 400, maxWidth: "95vw", maxHeight: "90vh", transition: "width 0.2s ease" }}
+        style={{ width: selectedDoc ? 1150 : 400, maxWidth: "96vw", height: selectedDoc ? "92vh" : undefined, maxHeight: "92vh", transition: "width 0.2s ease" }}
         onClick={e => e.stopPropagation()}>
 
         {/* ── Coluna esquerda: participante + botões de doc + campo ── */}
@@ -622,6 +627,7 @@ function FieldDocModal({ leadId, personName, fieldLabel, currentValue, inputType
                 onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
               />
             )}
+            {saveError && <div className="mt-2 text-xs text-red-500">{saveError}</div>}
             <div className="flex gap-2 mt-3">
               <button
                 className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
@@ -918,7 +924,13 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
 
   async function confirm() {
     setStatus("saving");
-    await onConfirm(campos, origens);
+    setError(null);
+    try {
+      await onConfirm(campos, origens);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao salvar cadastro");
+      setStatus("ready");
+    }
   }
 
   const Field = ({ label, name, type = "text", options }: { label: string; name: string; type?: string; options?: { value: string; label: string }[] }) => (
@@ -970,36 +982,36 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
               <div>
                 <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="CPF" name="cpf" />
-                  <Field label="RG" name="rg" />
-                  <Field label="Data de Nascimento" name="dataNascimento" type="date" />
-                  <Field label="Naturalidade" name="naturalidade" />
+                  {Field({ label: "CPF", name: "cpf" })}
+                  {Field({ label: "RG", name: "rg" })}
+                  {Field({ label: "Data de Nascimento", name: "dataNascimento", type: "date" })}
+                  {Field({ label: "Naturalidade", name: "naturalidade" })}
                   <div className="col-span-2">
-                    <Field label="Estado Civil" name="estadoCivil" options={ESTADOS_CIVIS} />
+                    {Field({ label: "Estado Civil", name: "estadoCivil", options: ESTADOS_CIVIS })}
                   </div>
                 </div>
               </div>
               <div>
                 <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Telefone" name="telefone" />
-                  <Field label="Email" name="email" type="email" />
-                  <div className="col-span-2"><Field label="Endereço" name="endereco" /></div>
-                  <Field label="CEP" name="cep" />
-                  <Field label="Cidade" name="cidade" />
+                  {Field({ label: "Telefone", name: "telefone" })}
+                  {Field({ label: "Email", name: "email", type: "email" })}
+                  <div className="col-span-2">{Field({ label: "Endereço", name: "endereco" })}</div>
+                  {Field({ label: "CEP", name: "cep" })}
+                  {Field({ label: "Cidade", name: "cidade" })}
                   <div className="col-span-2">
-                    <Field label="UF" name="uf" options={UFS.map(u => ({ value: u, label: u || "—" }))} />
+                    {Field({ label: "UF", name: "uf", options: UFS.map(u => ({ value: u, label: u || "—" })) })}
                   </div>
                 </div>
               </div>
               <div>
                 <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Profissão" name="profissao" />
-                  <Field label="Empresa" name="empresa" />
-                  <Field label={isLead ? "Renda bruta familiar (R$)" : "Renda mensal (R$)"} name={isLead ? "rendaBrutaFamiliar" : "renda"} type="number" />
-                  {isLead && <Field label="FGTS disponível (R$)" name="fgts" type="number" />}
-                  {isLead && <Field label="Entrada disponível (R$)" name="valorEntrada" type="number" />}
+                  {Field({ label: "Profissão", name: "profissao" })}
+                  {Field({ label: "Empresa", name: "empresa" })}
+                  {Field({ label: isLead ? "Renda bruta familiar (R$)" : "Renda mensal (R$)", name: isLead ? "rendaBrutaFamiliar" : "renda", type: "number" })}
+                  {isLead && Field({ label: "FGTS disponível (R$)", name: "fgts", type: "number" })}
+                  {isLead && Field({ label: "Entrada disponível (R$)", name: "valorEntrada", type: "number" })}
                 </div>
               </div>
             </div>
@@ -1241,12 +1253,32 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(personName ?? "");
   const [savingName, setSavingName] = useState(false);
+  const [applyingAll, setApplyingAll] = useState(false);
+  // Campos "revisados" (o usuário entrou/interagiu) — ficam verdes. Persistido em localStorage.
+  const revisadoKey = `cadastro_revisado_${leadId}_${isLead ? "lead" : participanteId}`;
+  const [reviewed, setReviewed] = useState<Set<string>>(new Set());
 
   // Sync when parent re-renders with new data (after AI confirm)
   useEffect(() => { setVals(initialValues); setOrigens(initialOrigem); }, [JSON.stringify(initialValues), JSON.stringify(initialOrigem)]);
   useEffect(() => { setNameVal(personName ?? ""); }, [personName]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(revisadoKey);
+      if (raw) setReviewed(new Set(JSON.parse(raw)));
+    } catch { /* ignora */ }
+  }, [revisadoKey]);
+
+  function markReviewed(field: string) {
+    setReviewed(prev => {
+      if (prev.has(field)) return prev;
+      const next = new Set(prev).add(field);
+      try { localStorage.setItem(revisadoKey, JSON.stringify([...next])); } catch { /* ignora */ }
+      return next;
+    });
+  }
 
   async function saveField(field: string, value: any, origin: string | null = null) {
+    markReviewed(field);
     const newOrigens = { ...origens, [field]: origin };
     setOrigens(newOrigens);
     try {
@@ -1259,6 +1291,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       setSavedField(field);
       setTimeout(() => setSavedField(s => s === field ? null : s), 2000);
     } catch {
+      setOrigens(origens); // reverte a origem otimista — o salvar falhou
       setErrField(field);
       setTimeout(() => setErrField(e => e === field ? null : e), 3000);
     }
@@ -1282,10 +1315,31 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       const current = vals[field];
       return (current === null || current === undefined || current === "") && suggestion?.value !== null && suggestion?.value !== undefined && suggestion?.value !== "";
     });
+    if (entries.length === 0 || applyingAll) return;
+    setApplyingAll(true);
+    // Monta UM único PATCH com todos os campos + origens — mais rápido e sem corrida de origens
+    const newVals = { ...vals };
+    const newOrigens = { ...origens };
+    const body: Record<string, any> = {};
     for (const [field, suggestion] of entries) {
-      setVals(v => ({ ...v, [field]: suggestion.value }));
-      // eslint-disable-next-line no-await-in-loop
-      await saveField(field, suggestion.value, "IA");
+      newVals[field] = suggestion.value;
+      newOrigens[field] = "IA";
+      body[field] = suggestion.value === "" ? null : suggestion.value;
+    }
+    body.cadastroOrigem = newOrigens;
+    try {
+      if (isLead) {
+        await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await apiFetch(`/leads/${leadId}/participantes/${participanteId}`, { method: "PATCH", body: JSON.stringify(body) });
+      }
+      setVals(newVals);
+      setOrigens(newOrigens);
+    } catch {
+      setErrField("__all__");
+      setTimeout(() => setErrField(e => e === "__all__" ? null : e), 3000);
+    } finally {
+      setApplyingAll(false);
     }
   }
 
@@ -1298,12 +1352,14 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   // Os tipos mapeados para o campo vêm primeiro.
   function getRelevantDocs(fieldName: string): DocItem[] {
     if (!docs) return [];
+    const cadastroTipos = new Set(TIPOS_PADRAO.map(t => t.value));
     const preferredTypes = FIELD_DOC_MAP[fieldName] ?? [];
     const all = docs.filter(d =>
       nameFuzzyMatch(d.participanteNome, participanteNome ?? null) &&
       !d.naoAplicavel &&
       !d.pendingReview &&
-      !!d.url,
+      !!d.url &&
+      cadastroTipos.has(d.tipo), // só documentos de cadastro — exclui EVIDENCIA_TRANSICAO etc.
     );
     return [
       ...all.filter(d => preferredTypes.includes(d.tipo)),
@@ -1316,7 +1372,10 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   }) => {
     const isIA = origens[name] === "IA";
     const suggestion = aiSuggestions[name];
-    const showSuggestion = !!suggestion && (vals[name] === null || vals[name] === undefined || vals[name] === "");
+    // Mostra a sugestão da IA mesmo em campo já preenchido, desde que o valor lido seja diferente do atual
+    const showSuggestion = !!suggestion && String(suggestion.value ?? "") !== String(vals[name] ?? "");
+    const isReviewed = reviewed.has(name);
+    const fieldBorder = isReviewed ? "border-green-400" : "border-[var(--shell-card-border)]";
     const relevantDocs = getRelevantDocs(name);
     // Olho só aparece quando há ao menos um doc do tipo preferido para este campo
     const preferredTypes = FIELD_DOC_MAP[name] ?? [];
@@ -1343,18 +1402,36 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
         <div className="relative">
           {options ? (
-            <select className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]"
-              value={vals[name] ?? ""} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
+            <select className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
+              value={vals[name] ?? ""} onFocus={() => markReviewed(name)} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
               onBlur={e => saveField(name, e.target.value)}>
               {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : (
-            <input type={type} className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]"
-              value={vals[name] ?? ""} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
-              onBlur={e => saveField(name, e.target.value)} />
+            <input type={type} className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
+              value={vals[name] ?? ""}
+              onFocus={() => markReviewed(name)}
+              onChange={e => {
+                const masked = name === "cpf" ? maskCPF(e.target.value)
+                  : name === "cep" ? maskCEP(e.target.value)
+                  : name === "telefone" ? maskPhone(e.target.value)
+                  : e.target.value;
+                setVals(v => ({ ...v, [name]: masked }));
+              }}
+              onBlur={e => {
+                const val = e.target.value;
+                // CPF inválido: marca erro e NÃO envia (o backend também bloqueia)
+                if (name === "cpf" && val.replace(/\D/g, "").length === 11 && !isValidCPF(val)) {
+                  setErrField(name);
+                  setTimeout(() => setErrField(prev => prev === name ? null : prev), 3000);
+                  return;
+                }
+                saveField(name, val);
+              }} />
           )}
           {savedField === name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs">✓</span>}
           {errField === name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 text-xs">!</span>}
+          {isReviewed && savedField !== name && errField !== name && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500 text-xs" title="Campo revisado">✓</span>}
         </div>
         {showSuggestion && (
           <div className="mt-1 rounded-md border border-blue-100 bg-blue-50 px-2 py-1.5">
@@ -1433,10 +1510,11 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
             </div>
             <button
               type="button"
-              className="rounded-lg border border-blue-200 bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+              disabled={applyingAll}
+              className="rounded-lg border border-blue-200 bg-[var(--shell-card-bg)] px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
               onClick={applyAllSuggestions}
             >
-              Aplicar campos vazios
+              {applyingAll ? `Aplicando ${pendingSuggestions.length}...` : "Aplicar campos vazios"}
             </button>
           </div>
         </div>
@@ -1444,32 +1522,32 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
       <div>
         <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-          <Field label="CPF" name="cpf" />
-          <Field label="RG" name="rg" />
-          <Field label="Data de Nascimento" name="dataNascimento" type="date" />
-          <Field label="Naturalidade" name="naturalidade" />
-          <Field label="Estado Civil" name="estadoCivil" options={ESTADOS_CIVIS} span2 />
+          {Field({ label: "CPF", name: "cpf" })}
+          {Field({ label: "RG", name: "rg" })}
+          {Field({ label: "Data de Nascimento", name: "dataNascimento", type: "date" })}
+          {Field({ label: "Naturalidade", name: "naturalidade" })}
+          {Field({ label: "Estado Civil", name: "estadoCivil", options: ESTADOS_CIVIS, span2: true })}
         </div>
       </div>
       <div>
         <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-          <Field label="Telefone" name="telefone" />
-          <Field label="Email" name="email" type="email" />
-          <Field label="Endereço" name="endereco" span2 />
-          <Field label="CEP" name="cep" />
-          <Field label="Cidade" name="cidade" />
-          <Field label="UF" name="uf" options={UFS.map(u => ({ value: u, label: u || "—" }))} span2 />
+          {Field({ label: "Telefone", name: "telefone" })}
+          {Field({ label: "Email", name: "email", type: "email" })}
+          {Field({ label: "Endereço", name: "endereco", span2: true })}
+          {Field({ label: "CEP", name: "cep" })}
+          {Field({ label: "Cidade", name: "cidade" })}
+          {Field({ label: "UF", name: "uf", options: UFS.map(u => ({ value: u, label: u || "—" })), span2: true })}
         </div>
       </div>
       <div>
         <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-          <Field label="Profissão" name="profissao" />
-          <Field label="Empresa" name="empresa" />
-          <Field label="Renda mensal (R$)" name={isLead ? "rendaBrutaFamiliar" : "renda"} type="number" />
-          {showFinanceiro && <Field label="FGTS disponível (R$)" name="fgts" type="number" />}
-          {showFinanceiro && <Field label="Entrada disponível (R$)" name="valorEntrada" type="number" />}
+          {Field({ label: "Profissão", name: "profissao" })}
+          {Field({ label: "Empresa", name: "empresa" })}
+          {Field({ label: isLead ? "Renda bruta familiar (R$)" : "Renda mensal (R$)", name: isLead ? "rendaBrutaFamiliar" : "renda", type: "number" })}
+          {showFinanceiro && Field({ label: "FGTS disponível (R$)", name: "fgts", type: "number" })}
+          {showFinanceiro && Field({ label: "Entrada disponível (R$)", name: "valorEntrada", type: "number" })}
         </div>
       </div>
 
@@ -1579,20 +1657,37 @@ export default function DocumentosPage() {
   const hasClassifying = docs.some(
     d => d.processingStatus === "EM_FILA" || d.processingStatus === "ANALISANDO",
   );
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const prevClassifying = useRef(false);
+
   useEffect(() => {
     if (!hasClassifying) return;
+    setPollTimedOut(false);
+    let cycles = 0;
+    const MAX_CYCLES = 36; // ~3 min — rede de segurança contra spinner infinito
     const interval = setInterval(async () => {
+      cycles++;
+      if (cycles > MAX_CYCLES) { clearInterval(interval); setPollTimedOut(true); return; }
       try {
-        const [docsRes, partsRes] = await Promise.all([
-          apiFetch(`/leads/${leadId}/documents`),
-          apiFetch(`/leads/${leadId}/participantes`),
-        ]);
+        // Só atualiza documentos — NÃO sobrescreve participantes/lead para não apagar
+        // o que o usuário está digitando. Os dados auto-preenchidos são recarregados
+        // quando a classificação termina (efeito abaixo).
+        const docsRes = await apiFetch(`/leads/${leadId}/documents`);
         setDocs(docsRes);
-        setParticipantes(partsRes);
       } catch { /* silencioso */ }
     }, 5000);
     return () => clearInterval(interval);
   }, [hasClassifying, leadId]);
+
+  // Quando a classificação termina (true → false), recarrega participantes + lead uma vez
+  // para trazer os campos auto-preenchidos pela IA, sem clobber durante a digitação.
+  useEffect(() => {
+    if (prevClassifying.current && !hasClassifying) {
+      reloadParts();
+      apiFetch(`/leads/${leadId}`).then(setLead).catch(() => {});
+    }
+    prevClassifying.current = hasClassifying;
+  }, [hasClassifying]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -1724,13 +1819,19 @@ export default function DocumentosPage() {
 
   async function handleAICadastroConfirm(campos: Record<string, any>, origens: Record<string, string | null>) {
     if (!aiCadastroTarget || !lead) return;
-    const { participanteNome, participanteId, isLead } = aiCadastroTarget;
-    const body = { ...campos, cadastroOrigem: origens };
+    const { participanteId, isLead } = aiCadastroTarget;
+    // Erros propagam de propósito — o modal (confirm) trata e exibe a mensagem.
     if (isLead) {
+      // A IA devolve `renda`; o lead usa `rendaBrutaFamiliar` — remapear chave e origem
+      const leadCampos: Record<string, any> = { ...campos };
+      const leadOrigens: Record<string, string | null> = { ...origens };
+      if ("renda" in leadCampos) { leadCampos.rendaBrutaFamiliar = leadCampos.renda; delete leadCampos.renda; }
+      if ("renda" in leadOrigens) { leadOrigens.rendaBrutaFamiliar = leadOrigens.renda; delete leadOrigens.renda; }
+      const body = { ...leadCampos, cadastroOrigem: leadOrigens };
       await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify(body) });
-      // Update local lead state
-      setLead(prev => prev ? { ...prev, ...campos, cadastroOrigem: origens } : prev);
+      setLead(prev => prev ? { ...prev, ...leadCampos, cadastroOrigem: leadOrigens } : prev);
     } else if (participanteId) {
+      const body = { ...campos, cadastroOrigem: origens };
       await apiFetch(`/leads/${leadId}/participantes/${participanteId}`, { method: "PATCH", body: JSON.stringify(body) });
       setParticipantes(prev => prev.map(p => p.id === participanteId ? { ...p, ...campos, cadastroOrigem: origens } : p));
     }
@@ -1999,7 +2100,20 @@ export default function DocumentosPage() {
           Voltar ao lead
         </button>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
+        {pollTimedOut && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+            <span className="text-sm text-amber-800">
+              A análise de alguns documentos está demorando mais que o esperado. Recarregue ou identifique manualmente.
+            </span>
+            <button
+              className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+              onClick={() => { setPollTimedOut(false); loadAll(); }}>
+              Recarregar
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_480px] gap-6 items-start">
 
           {/* ── Coluna esquerda: Documentos ──────────────────────────────────── */}
           <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
@@ -2061,7 +2175,8 @@ export default function DocumentosPage() {
                     onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
                     personName={lead.nomeCorreto ?? lead.nome}
                     onPersonNameSave={async (name) => {
-                      await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name, cadastroOrigem: {} }) });
+                      // Não enviar cadastroOrigem aqui — senão zera os selos IA/Manual dos outros campos
+                      await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name }) });
                       setLead(l => l ? { ...l, nomeCorreto: name } : l);
                     }}
                     initialValues={{

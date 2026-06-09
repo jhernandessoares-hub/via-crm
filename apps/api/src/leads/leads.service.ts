@@ -56,6 +56,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import { LeadDocumentsService } from '../lead-documents/lead-documents.service';
 import { getNextLeadNumber } from './lead-numbering.helper';
 import { resolvePermissions } from '../tenants/permissions.config';
+import { isValidCPF } from './cpf.util';
 
 @Injectable()
 export class LeadsService {
@@ -189,6 +190,8 @@ export class LeadsService {
             resource_type: resourceType,
             public_id: publicId,
             overwrite: false,
+            type: 'upload',
+            access_mode: 'public',
           },
           (err: any, res: any) => {
             if (err) return reject(err);
@@ -244,13 +247,16 @@ export class LeadsService {
             ? 'raw'
             : 'image';
 
-      // depois de upload vem "v123" e depois o caminho do publicId + ext
-      // então pegamos tudo depois do vNNN
+      // depois de upload vem opcionalmente "s--sig--", depois "v123", depois o publicId + ext
       const afterUpload = parts.slice(uploadIdx + 1);
-      const withoutVersion =
-        afterUpload[0] && /^v\d+$/.test(afterUpload[0])
+      const afterSig =
+        afterUpload.length > 0 && /^s--[A-Za-z0-9_-]+--$/.test(afterUpload[0])
           ? afterUpload.slice(1)
           : afterUpload;
+      const withoutVersion =
+        afterSig.length > 0 && /^v\d+$/.test(afterSig[0])
+          ? afterSig.slice(1)
+          : afterSig;
 
       if (withoutVersion.length === 0) return null;
 
@@ -270,37 +276,25 @@ export class LeadsService {
   }
 
   /**
-   * ✅ Gera uma URL assinada (curta, expira) para Cloudinary,
-   * mas o usuário NUNCA vê essa URL — o backend usa pra baixar e streamar.
+   * Gera URL de download privada via credenciais admin do Cloudinary.
+   * Funciona para qualquer asset (upload ou authenticated), expira em 5min.
+   * O backend usa pra baixar — o frontend nunca vê essa URL.
    */
-  private buildSignedCloudinaryDownloadUrl(input: {
+  private buildPrivateDownloadUrl(input: {
     publicId: string;
     ext: string;
     resourceType: 'image' | 'video' | 'raw';
+    deliveryType?: 'upload' | 'authenticated';
   }): string {
     this.ensureCloudinaryConfigured();
-
-    const expiresAt = Math.floor(Date.now() / 1000) + 120; // 2 minutos
-
-    // ✅ Para PDFs e outros RAW protegidos
-    if (input.resourceType === 'raw') {
-      // @ts-ignore
-      return cloudinary.utils.private_download_url(input.publicId, input.ext, {
-        resource_type: 'raw',
-        type: 'authenticated',
-        expires_at: expiresAt,
-      });
-    }
-
-    // ✅ Para image e video
-    return cloudinary.url(input.publicId, {
+    const expiresAt = Math.floor(Date.now() / 1000) + 300; // 5 minutos
+    const format = input.ext && input.ext !== 'bin' ? input.ext : '';
+    return (cloudinary.utils as any).private_download_url(input.publicId, format, {
       resource_type: input.resourceType,
-      type: 'authenticated',
-      secure: true,
-      sign_url: true,
-      format: input.ext,
+      type: input.deliveryType ?? 'upload',
       expires_at: expiresAt,
-    } as any);
+      attachment: false,
+    });
   }
 
   async downloadEventMedia(
@@ -336,59 +330,92 @@ export class LeadsService {
       String(media?.mimeType || '').trim() || 'application/octet-stream';
     const filenameRaw = String(media?.filename || '').trim();
 
-    if (!url || !url.includes('cloudinary.com')) {
-      throw new BadRequestException(
-        'Este evento não tem mídia em Cloudinary (url ausente).',
-      );
-    }
-
-    const parsed = this.parseCloudinaryUrl(url);
-    if (!parsed?.publicId) {
-      throw new BadRequestException(
-        'Não consegui extrair publicId da URL do Cloudinary.',
-      );
-    }
-
-    // Ajuste: pdf deve ser raw (mesmo se a URL atual veio como image/upload)
-    let resourceType: 'image' | 'video' | 'raw' = parsed.resourceType;
-    if (parsed.ext === 'pdf') resourceType = 'raw';
-
     const candidateUrls: string[] = [];
 
-    // (A) 1º: URL original do evento
-    candidateUrls.push(url);
+    // (A) URL do Cloudinary, se disponível
+    if (url && url.includes('cloudinary.com')) {
+      candidateUrls.push(url);
 
-    // (B) 2º: URL assinada (fallback)
-    try {
-      const signedUrl = this.buildSignedCloudinaryDownloadUrl({
-        publicId: parsed.publicId,
-        ext: parsed.ext,
-        resourceType,
-      });
-      if (signedUrl && signedUrl !== url) candidateUrls.push(signedUrl);
-    } catch {}
+      const parsed = this.parseCloudinaryUrl(url);
+      if (parsed?.publicId) {
+        // Ajuste: pdf deve ser raw (mesmo se a URL atual veio como image/upload)
+        let resourceType: 'image' | 'video' | 'raw' = parsed.resourceType;
+        if (parsed.ext === 'pdf') resourceType = 'raw';
 
-    // (C) 3º: fallback extra — tenta resource_type alternativo
-    const altResourceTypes: Array<'image' | 'video' | 'raw'> = [
-      'image',
-      'video',
-      'raw',
-    ].filter((x) => x !== resourceType) as any;
+        // URL assinada (fallback)
+        try {
+          const signedUrl = this.buildPrivateDownloadUrl({
+            publicId: parsed.publicId,
+            ext: parsed.ext,
+            resourceType,
+          });
+          if (signedUrl && signedUrl !== url) candidateUrls.push(signedUrl);
+        } catch {}
 
-    for (const rt of altResourceTypes) {
-      try {
-        const altSigned = this.buildSignedCloudinaryDownloadUrl({
-          publicId: parsed.publicId,
-          ext: parsed.ext,
-          resourceType: rt,
-        });
-        if (altSigned && !candidateUrls.includes(altSigned))
-          candidateUrls.push(altSigned);
-      } catch {}
+        // Para raw: tenta também com a extensão incluída no publicId
+        // (Cloudinary raw resources guardam a ext no public_id, ex: "arquivo.pdf")
+        if (resourceType === 'raw' && parsed.ext && parsed.ext !== 'bin') {
+          const publicIdWithExt = `${parsed.publicId}.${parsed.ext}`;
+          for (const t of ['upload', 'authenticated'] as const) {
+            try {
+              const rawExtUrl = (cloudinary.utils as any).private_download_url(publicIdWithExt, '', {
+                resource_type: 'raw',
+                type: t,
+                expires_at: Math.floor(Date.now() / 1000) + 300,
+                attachment: false,
+              });
+              if (rawExtUrl && !candidateUrls.includes(rawExtUrl)) candidateUrls.push(rawExtUrl);
+            } catch {}
+          }
+        }
+
+        // Tenta type: 'authenticated' com o publicId sem ext (asset pode ter esse delivery type)
+        try {
+          const authUrl = this.buildPrivateDownloadUrl({
+            publicId: parsed.publicId,
+            ext: parsed.ext,
+            resourceType,
+            deliveryType: 'authenticated',
+          });
+          if (authUrl && !candidateUrls.includes(authUrl)) candidateUrls.push(authUrl);
+        } catch {}
+
+        // Fallback extra — tenta resource_type alternativo
+        const altResourceTypes: Array<'image' | 'video' | 'raw'> = (['image', 'video', 'raw'] as const).filter((x) => x !== resourceType);
+        for (const rt of altResourceTypes) {
+          try {
+            const altSigned = this.buildPrivateDownloadUrl({
+              publicId: parsed.publicId,
+              ext: parsed.ext,
+              resourceType: rt,
+            });
+            if (altSigned && !candidateUrls.includes(altSigned)) candidateUrls.push(altSigned);
+          } catch {}
+        }
+      }
+    } else if (url && url.startsWith('http')) {
+      // URL direta (não-Cloudinary): tenta servir diretamente
+      candidateUrls.push(url);
     }
 
-    let lastErrorText = '';
+    let parsedExt = '';
+    let parsedFilenameBase = 'arquivo';
+    if (url && url.includes('cloudinary.com')) {
+      const tmp = this.parseCloudinaryUrl(url);
+      if (tmp?.publicId) {
+        parsedExt = tmp.ext || '';
+        parsedFilenameBase = tmp.publicId.split('/').pop() || 'arquivo';
+      }
+    } else if (filenameRaw) {
+      const dot = filenameRaw.lastIndexOf('.');
+      parsedExt = dot >= 0 ? filenameRaw.slice(dot + 1) : '';
+      parsedFilenameBase = filenameRaw;
+    }
+
+    const allErrors: string[] = [];
     let res: any = null;
+
+    this.logger.warn(`downloadEventMedia: ${candidateUrls.length} candidatos para evento ${eventId}, media.url=${url?.slice(0, 120)}`);
 
     for (const u of candidateUrls) {
       try {
@@ -398,9 +425,13 @@ export class LeadsService {
           break;
         }
         const txt = await r.text().catch(() => '');
-        lastErrorText = `url=${u} status=${r.status} ${txt || ''}`.trim();
+        const errLine = `[${u.slice(0, 120)} → ${r.status} ${txt.slice(0, 300)}]`;
+        allErrors.push(errLine);
+        this.logger.warn(`downloadEventMedia: falha → ${errLine}`);
       } catch (e: any) {
-        lastErrorText = `url=${u} error=${e?.message || String(e)}`;
+        const errLine = `[${u.slice(0, 120)} → ERR ${e?.message || String(e)}]`;
+        allErrors.push(errLine);
+        this.logger.warn(`downloadEventMedia: exceção → ${errLine}`);
       }
     }
 
@@ -455,10 +486,13 @@ export class LeadsService {
         // se fallback falhar, cai no throw original abaixo
       }
 
+      if (candidateUrls.length === 0) {
+        throw new BadRequestException(
+          'Este arquivo não possui URL de download disponível. Pode ser um arquivo antigo enviado antes do armazenamento ser configurado.',
+        );
+      }
       throw new BadRequestException(
-        `Falha ao baixar do Cloudinary via backend. ${
-          lastErrorText || (res ? `status=${res.status}` : 'sem response')
-        }`,
+        `Falha ao baixar arquivo. falhas=${JSON.stringify(allErrors)}`,
       );
     }
 
@@ -468,10 +502,10 @@ export class LeadsService {
     const contentLength = len ? Number(len) : undefined;
 
     const g = this.guessFromMime(contentType);
+    const extFinal = parsedExt || g.ext;
     const filename = this.safeFilename(
-      filenameRaw ||
-        `${parsed.publicId.split('/').pop() || 'arquivo'}.${parsed.ext || g.ext}`,
-      parsed.ext || g.ext,
+      filenameRaw || `${parsedFilenameBase}.${extFinal}`,
+      extFinal,
     );
 
     // Node 18: converte WebStream -> Node Readable
@@ -719,6 +753,10 @@ export class LeadsService {
 
     const buffer = await this.getFileBuffer(file);
 
+    if (buffer.length > 50 * 1024 * 1024) {
+      throw new BadRequestException('Arquivo muito grande. O tamanho máximo permitido é 50 MB.');
+    }
+
     // 2) decide tipo de mensagem (para saber se é "document")
     const isImage = mimetypeRaw.startsWith('image/');
     const isVideo = mimetypeRaw.startsWith('video/');
@@ -745,12 +783,69 @@ export class LeadsService {
       mimeType: mimetype || 'application/octet-stream',
     });
 
+    if (!cloudUrl) {
+      throw new BadRequestException('Falha ao armazenar mídia (URL Cloudinary vazia). Tente novamente.');
+    }
+
+    const mediaKind = isImage ? 'image' : isVideo ? 'video' : 'document';
+
+    // Rota pelo canal ativo do lead
+    if (lead.conversaCanal === 'WHATSAPP_LIGHT' && lead.conversaSessionId) {
+      const sessionId = lead.conversaSessionId;
+      const to = lead.telefone!;
+      try {
+        // Passa o buffer diretamente — Baileys não precisa baixar do Cloudinary
+        if (isImage) {
+          await this.unofficialService.sendImage(sessionId, to, buffer);
+        } else if (isVideo) {
+          await this.unofficialService.sendVideo(sessionId, to, buffer);
+        } else {
+          await this.unofficialService.sendDocument(sessionId, to, buffer, originalname, mimetype || 'application/octet-stream');
+        }
+      } catch (err: any) {
+        await this.prisma.leadEvent.create({
+          data: {
+            tenantId: user.tenantId,
+            leadId,
+            channel: 'whatsapp.out.failed',
+            payloadRaw: { type: mediaKind, error: err?.message || String(err) },
+          },
+        });
+        throw new BadRequestException(err?.message || 'Falha ao enviar via WhatsApp Light.');
+      }
+
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.unofficial.out',
+          payloadRaw: {
+            to,
+            type: mediaKind,
+            media: {
+              kind: mediaKind,
+              mimeType: mimetype,
+              filename: originalname,
+              url: cloudUrl,
+            },
+          },
+        },
+      });
+
+      return { ok: true };
+    }
+
     // 1) upload para Meta -> mediaId
-    const upload = await this.messaging.uploadMetaMedia({
-      buffer,
-      filename: originalname,
-      mimeType: mimetype || 'application/octet-stream',
-    }, user.tenantId);
+    let upload: Awaited<ReturnType<MessagingService['uploadMetaMedia']>>;
+    try {
+      upload = await this.messaging.uploadMetaMedia({
+        buffer,
+        filename: originalname,
+        mimeType: mimetype || 'application/octet-stream',
+      }, user.tenantId);
+    } catch (err: any) {
+      throw new BadRequestException(err?.message || 'Falha ao enviar mídia para o WhatsApp (upload Meta).');
+    }
 
     let send: Awaited<ReturnType<MessagingService['sendMetaImageMessage']>>;
     try {
@@ -771,13 +866,13 @@ export class LeadsService {
           leadId,
           channel: 'whatsapp.out.failed',
           payloadRaw: {
-            type: isImage ? 'image' : isVideo ? 'video' : 'document',
+            type: mediaKind,
             mediaId: upload.mediaId,
             error: err?.message || String(err),
           },
         },
       });
-      throw err;
+      throw new BadRequestException(err?.message || 'Falha ao enviar mensagem via WhatsApp (Meta).');
     }
 
     // 3) salva evento
@@ -788,9 +883,9 @@ export class LeadsService {
         channel: 'whatsapp.out',
         payloadRaw: {
           to: send.to,
-          type: isImage ? 'image' : isVideo ? 'video' : 'document',
+          type: mediaKind,
           media: {
-            kind: isImage ? 'image' : isVideo ? 'video' : 'document',
+            kind: mediaKind,
             id: upload.mediaId,
             mimeType: mimetype,
             filename: originalname,
@@ -928,10 +1023,11 @@ export class LeadsService {
       telefoneKey = this.telefoneKeyFrom(telefoneDigits);
     }
 
-    // ✅ garante pipeline/stages e define stage inicial (Novo Lead)
+    // ✅ garante pipeline/stages e define stage inicial (primeiro ativo por sortOrder)
     const pipelineId = await this.pipelineService.ensureDefaultPipeline(tenantId);
     const firstStage = await this.prisma.pipelineStage.findFirst({
-      where: { tenantId, pipelineId, key: 'NOVO_LEAD' },
+      where: { tenantId, pipelineId, isActive: true },
+      orderBy: { sortOrder: 'asc' },
       select: { id: true, name: true },
     });
 
@@ -990,8 +1086,8 @@ export class LeadsService {
     const { id, tenantId, role, branchId } = user;
 
     let extraFilter: Record<string, unknown> = {};
-    if (role === 'AGENT') {
-      const canViewAll = await this.agentCanViewPipeline(tenantId);
+    if (role === 'AGENT' || role === 'PARTNER') {
+      const canViewAll = await this.canViewPipeline(tenantId, role);
       if (!canViewAll) extraFilter = { assignedUserId: id };
     } else if (role === 'MANAGER' && branchId) {
       extraFilter = { branchId };
@@ -1053,6 +1149,48 @@ export class LeadsService {
     return { total, mine, groups };
   }
 
+  async getPendingReply(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
+    const { id, tenantId, role, branchId } = user;
+
+    const roleFilter: Record<string, unknown> =
+      role === 'AGENT' || role === 'PARTNER'
+        ? { assignedUserId: id }
+        : role === 'MANAGER' && branchId
+          ? { branchId }
+          : {};
+
+    const leads = await this.prisma.lead.findMany({
+      where: { tenantId, deletedAt: null, lastInboundAt: { not: null }, ...roleFilter },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true, lastInboundAt: true },
+      orderBy: { lastInboundAt: 'desc' },
+      take: 100,
+    });
+
+    if (leads.length === 0) return [];
+
+    const leadIds = leads.map((l) => l.id);
+
+    const lastOutbounds = await this.prisma.leadEvent.groupBy({
+      by: ['leadId'],
+      where: {
+        leadId: { in: leadIds },
+        channel: { in: ['whatsapp.out', 'whatsapp.unofficial.out'] },
+      },
+      _max: { criadoEm: true },
+    });
+
+    const lastOutboundMap = new Map(
+      lastOutbounds.map((lo) => [lo.leadId, lo._max.criadoEm]),
+    );
+
+    return leads
+      .filter((lead) => {
+        const lastOut = lastOutboundMap.get(lead.id);
+        return !lastOut || lead.lastInboundAt! > lastOut;
+      })
+      .slice(0, 20);
+  }
+
   async dashboard(
     user: { id: string; tenantId: string; role: string; branchId?: string | null },
     from: Date,
@@ -1061,7 +1199,7 @@ export class LeadsService {
     const { id, tenantId, role, branchId } = user;
 
     let roleFilter: Record<string, unknown> = {};
-    if (role === 'AGENT') roleFilter = { assignedUserId: id };
+    if (role === 'AGENT' || role === 'PARTNER') roleFilter = { assignedUserId: id };
     else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
 
     const baseWhere = { tenantId, ...roleFilter, deletedAt: null };
@@ -1211,7 +1349,7 @@ export class LeadsService {
       startAt: { gte: now },
       status: { in: ['AGENDADO', 'CONFIRMADO'] },
     };
-    if (role === 'AGENT') agendaWhere.userId = id;
+    if (role === 'AGENT' || role === 'PARTNER') agendaWhere.userId = id;
     else if (role === 'MANAGER' && branchId) {
       const teamIds = await this.prisma.user.findMany({ where: { tenantId, branchId }, select: { id: true } });
       agendaWhere.userId = { in: teamIds.map((u) => u.id) };
@@ -1265,13 +1403,14 @@ export class LeadsService {
     };
   }
 
-  private async agentCanViewPipeline(tenantId: string): Promise<boolean> {
+  private async canViewPipeline(tenantId: string, role: string): Promise<boolean> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { permissionsConfig: true },
     });
     const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
-    return perms.agent.pipeline?.view ?? false;
+    const roleKey = role.toLowerCase() as 'agent' | 'partner';
+    return perms[roleKey]?.pipeline?.view ?? false;
   }
 
   async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
@@ -1279,8 +1418,8 @@ export class LeadsService {
 
     let extraFilter: Record<string, unknown> = {};
 
-    if (role === 'AGENT') {
-      const canViewAll = await this.agentCanViewPipeline(tenantId);
+    if (role === 'AGENT' || role === 'PARTNER') {
+      const canViewAll = await this.canViewPipeline(tenantId, role);
       if (!canViewAll) extraFilter = { assignedUserId: id };
     } else if (role === 'MANAGER' && branchId) {
       extraFilter = { branchId };
@@ -1290,6 +1429,7 @@ export class LeadsService {
       where: { tenantId, ...extraFilter, deletedAt: null },
       orderBy: { criadoEm: 'desc' },
       include: {
+        stage: { select: { id: true, name: true, key: true, group: true } },
         developmentUnits: {
           select: {
             id: true,
@@ -1305,7 +1445,29 @@ export class LeadsService {
       },
     });
 
-    return this.attachLastInboundPreview(tenantId, leads);
+    const assignedIds = [...new Set(leads.map((l) => l.assignedUserId).filter(Boolean))] as string[];
+    const assignedUsers = assignedIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: assignedIds } }, select: { id: true, nome: true, apelido: true } })
+      : [];
+    const assignedMap = Object.fromEntries(assignedUsers.map((u) => [u.id, u.apelido || u.nome]));
+    const enriched = leads.map((l) => ({
+      ...l,
+      assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
+    }));
+
+    // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
+    enriched.sort((a, b) => {
+      if (a.conversaAberta && !b.conversaAberta) return -1;
+      if (!a.conversaAberta && b.conversaAberta) return 1;
+      if (a.conversaAberta && b.conversaAberta) {
+        const ta = a.lastInboundAt ? new Date(a.lastInboundAt as any).getTime() : 0;
+        const tb = b.lastInboundAt ? new Date(b.lastInboundAt as any).getTime() : 0;
+        return tb - ta;
+      }
+      return new Date(b.criadoEm as any).getTime() - new Date(a.criadoEm as any).getTime();
+    });
+
+    return this.attachLastInboundPreview(tenantId, enriched);
   }
 
 async getById(user: any, id: string) {
@@ -1332,7 +1494,6 @@ async getById(user: any, id: string) {
     const firstStage = await this.prisma.pipelineStage.findFirst({
       where: {
         tenantId: user.tenantId,
-        key: 'NOVO_LEAD',
         isActive: true,
       },
       orderBy: { sortOrder: 'asc' },
@@ -1420,6 +1581,14 @@ async getById(user: any, id: string) {
     },
   });
 
+  let empreendimentoInteresse: { id: string; nome: string; capaUrl: string | null } | null = null;
+  if ((lead as any).empreendimentoInteresseId) {
+    empreendimentoInteresse = await this.prisma.development.findFirst({
+      where: { id: (lead as any).empreendimentoInteresseId, tenantId: user.tenantId },
+      select: { id: true, nome: true, capaUrl: true },
+    }) ?? null;
+  }
+
   return {
     ...lead,
     stageId: effectiveStageId,
@@ -1429,6 +1598,7 @@ async getById(user: any, id: string) {
     previousStageName,
     previousStageKey,
     developmentUnits: linkedUnits,
+    empreendimentoInteresse,
   };
 }
 
@@ -1560,7 +1730,7 @@ async getById(user: any, id: string) {
 
 
   async assignLead(id: string, assignedUserId: string, user: any) {
-    if (user.role === 'AGENT') {
+    if (user.role === 'AGENT' || user.role === 'PARTNER') {
       throw new ForbiddenException('Sem permissão');
     }
 
@@ -1604,23 +1774,30 @@ async getById(user: any, id: string) {
 
     let fromStageKey: string | null = null;
     let effectiveCurrentStageId: string | null = lead.stageId ?? null;
+    // requiresEvidence/requiresReason do status ATUAL — usado pelo frontend para abrir
+    // o modal também ao SAIR de um status sensível (suspenso/excluído/etc.)
+    let currentRequiresEvidence = false;
+    let currentRequiresReason = false;
+    let currentUnitAction: string | null = null;
 
     if (lead.stageId) {
       const from = await this.prisma.pipelineStage.findFirst({
         where: { id: lead.stageId, tenantId: user.tenantId },
-        select: { id: true, key: true, name: true, sortOrder: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, unitAction: true },
       });
 
       fromStageKey = from?.key ?? null;
+      currentRequiresEvidence = from?.requiresEvidence ?? false;
+      currentRequiresReason = from?.requiresReason ?? false;
+      currentUnitAction = from?.unitAction ?? null;
     } else {
       const defaultStage = await this.prisma.pipelineStage.findFirst({
         where: {
           tenantId: user.tenantId,
-          key: 'NOVO_LEAD',
           isActive: true,
         },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, key: true, name: true, sortOrder: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, unitAction: true },
       });
 
       if (!defaultStage?.id) {
@@ -1629,6 +1806,9 @@ async getById(user: any, id: string) {
 
       effectiveCurrentStageId = defaultStage.id;
       fromStageKey = defaultStage.key;
+      currentRequiresEvidence = defaultStage.requiresEvidence ?? false;
+      currentRequiresReason = defaultStage.requiresReason ?? false;
+      currentUnitAction = defaultStage.unitAction ?? null;
     }
 
     if (!fromStageKey) {
@@ -1697,7 +1877,7 @@ async getById(user: any, id: string) {
     if (isCustomStage) {
       const currentStageRecord = await this.prisma.pipelineStage.findFirst({
         where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
-        select: { pipelineId: true },
+        select: { pipelineId: true, group: true, sortOrder: true },
       });
 
       const allCustomStages = currentStageRecord
@@ -1709,16 +1889,60 @@ async getById(user: any, id: string) {
               NOT: { id: effectiveCurrentStageId ?? undefined },
               ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
             },
-            select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, ownerOnly: true },
+            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
             orderBy: { sortOrder: 'asc' },
           })
         : [];
+
+      // Descobre o stage real em que o lead esteve na etapa anterior (via log de transições)
+      let prevGroupLastStageId: string | null = null;
+      if (currentStageRecord?.group && allCustomStages.length > 0) {
+        // Agrupa todos os stages pelo grupo e calcula o minSortOrder de cada grupo
+        const groupMinOrder = new Map<string, number>();
+        for (const s of allCustomStages) {
+          if (!s.group) continue;
+          const cur = groupMinOrder.get(s.group) ?? Infinity;
+          groupMinOrder.set(s.group, Math.min(cur, s.sortOrder ?? 0));
+        }
+        // Inclui o grupo atual no mapa
+        if (!groupMinOrder.has(currentStageRecord.group)) {
+          groupMinOrder.set(currentStageRecord.group, currentStageRecord.sortOrder ?? 0);
+        }
+
+        const groupOrder = [...groupMinOrder.entries()]
+          .sort((a, b) => a[1] - b[1])
+          .map(([g]) => g);
+
+        const currentGroupIdx = groupOrder.indexOf(currentStageRecord.group);
+        const prevGroupKey = currentGroupIdx > 0 ? groupOrder[currentGroupIdx - 1] : null;
+
+        if (prevGroupKey) {
+          const prevGroupStages = allCustomStages.filter((s) => s.group === prevGroupKey);
+          const prevGroupNames = prevGroupStages.map((s) => s.name);
+
+          // Busca o log mais recente em que o lead saiu de um stage da etapa anterior
+          const lastLog = await this.prisma.leadTransitionLog.findFirst({
+            where: { tenantId: user.tenantId, leadId, fromStage: { in: prevGroupNames } },
+            orderBy: { createdAt: 'desc' },
+            select: { fromStage: true },
+          });
+
+          if (lastLog?.fromStage) {
+            const match = prevGroupStages.find((s) => s.name === lastLog.fromStage);
+            prevGroupLastStageId = match?.id ?? null;
+          }
+        }
+      }
 
       return {
         leadId,
         currentStageId: effectiveCurrentStageId,
         currentStageKey: fromStageKey,
+        currentRequiresEvidence,
+        currentRequiresReason,
+        currentUnitAction,
         allowedStages: allCustomStages,
+        prevGroupLastStageId,
       };
     }
 
@@ -1732,6 +1956,9 @@ async getById(user: any, id: string) {
           leadId,
           currentStageId: effectiveCurrentStageId,
           currentStageKey: fromStageKey,
+          currentRequiresEvidence,
+          currentRequiresReason,
+          currentUnitAction,
           allowedStages: [],
         };
       }
@@ -1830,6 +2057,8 @@ async getById(user: any, id: string) {
               name: true,
               sortOrder: true,
               requiresEvidence: true,
+              requiresReason: true,
+              unitAction: true,
               ownerOnly: true,
             },
             orderBy: { sortOrder: 'asc' },
@@ -1840,6 +2069,9 @@ async getById(user: any, id: string) {
       leadId,
       currentStageId: effectiveCurrentStageId,
       currentStageKey: fromStageKey,
+      currentRequiresEvidence,
+      currentRequiresReason,
+      currentUnitAction,
       allowedStages,
     };
   }
@@ -1868,6 +2100,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
   qualCorretorImobiliaria?: string | null;
   perfilImovel?: string | null;
   produtoInteresseId?: string | null;
+  empreendimentoInteresseId?: string | null;
   resumoLead?: string | null;
   // Cadastro pessoal
   cpf?: string | null;
@@ -1879,15 +2112,28 @@ async updateQualification(tenantId: string, leadId: string, data: {
   cep?: string | null;
   cidade?: string | null;
   uf?: string | null;
+  telefone?: string | null;
+  email?: string | null;
 }) {
+  // Campos monetários: o front envia string (input type="number") — converter para Float (vazio → null)
+  const toFloat = (v: any): number | null => {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  // CPF: bloqueia salvar valor inválido (vazio/null é permitido)
+  if (data.cpf !== undefined && data.cpf !== null && String(data.cpf).trim() !== '' && !isValidCPF(data.cpf)) {
+    throw new BadRequestException('CPF inválido');
+  }
+
   const updateData: any = {};
   if (data.nomeCorreto !== undefined) {
     updateData.nomeCorreto = data.nomeCorreto;
     updateData.nomeCorretoOrigem = data.nomeCorreto ? 'MANUAL' : null;
   }
-  if (data.rendaBrutaFamiliar !== undefined) updateData.rendaBrutaFamiliar = data.rendaBrutaFamiliar;
-  if (data.fgts !== undefined) updateData.fgts = data.fgts;
-  if (data.valorEntrada !== undefined) updateData.valorEntrada = data.valorEntrada;
+  if (data.rendaBrutaFamiliar !== undefined) updateData.rendaBrutaFamiliar = toFloat(data.rendaBrutaFamiliar);
+  if (data.fgts !== undefined) updateData.fgts = toFloat(data.fgts);
+  if (data.valorEntrada !== undefined) updateData.valorEntrada = toFloat(data.valorEntrada);
   if (data.estadoCivil !== undefined) updateData.estadoCivil = data.estadoCivil;
   if (data.dataNascimento !== undefined) updateData.dataNascimento = data.dataNascimento ? new Date(data.dataNascimento) : null;
   if (data.tempoProcurandoImovel !== undefined) updateData.tempoProcurandoImovel = data.tempoProcurandoImovel;
@@ -1895,9 +2141,10 @@ async updateQualification(tenantId: string, leadId: string, data: {
   if (data.qualCorretorImobiliaria !== undefined) updateData.qualCorretorImobiliaria = data.qualCorretorImobiliaria;
   if (data.perfilImovel !== undefined) updateData.perfilImovel = data.perfilImovel;
   if (data.produtoInteresseId !== undefined) updateData.produtoInteresseId = data.produtoInteresseId;
+  if (data.empreendimentoInteresseId !== undefined) updateData.empreendimentoInteresseId = data.empreendimentoInteresseId;
   if (data.resumoLead !== undefined) updateData.resumoLead = data.resumoLead;
-  // Cadastro pessoal
-  const pessoalFields = ['cpf', 'rg', 'profissao', 'empresa', 'naturalidade', 'endereco', 'cep', 'cidade', 'uf'] as const;
+  // Cadastro pessoal (campos string)
+  const pessoalFields = ['cpf', 'rg', 'profissao', 'empresa', 'naturalidade', 'endereco', 'cep', 'cidade', 'uf', 'telefone', 'email'] as const;
   for (const f of pessoalFields) {
     if (data[f] !== undefined) updateData[f] = data[f];
   }
@@ -1911,12 +2158,17 @@ async updateQualification(tenantId: string, leadId: string, data: {
       fgts: true, valorEntrada: true, estadoCivil: true, dataNascimento: true,
       tempoProcurandoImovel: true, conversouComCorretor: true,
       qualCorretorImobiliaria: true, perfilImovel: true,
-      produtoInteresseId: true, resumoLead: true,
+      produtoInteresseId: true, empreendimentoInteresseId: true, resumoLead: true,
     },
   });
 }
 
-async updateStage(user: any, leadId: string, stageId: string) {
+async updateStage(
+  user: any,
+  leadId: string,
+  stageId: string,
+  opts: { evidenceDocumentId?: string; motivo?: string; ipAddress?: string } = {},
+) {
   if (!leadId) throw new BadRequestException('leadId ausente');
   if (!stageId) throw new BadRequestException('stageId ausente');
 
@@ -1937,19 +2189,25 @@ async updateStage(user: any, leadId: string, stageId: string) {
   let fromStageKey: string | null = null;
   let effectiveCurrentStageId: string | null = lead.stageId ?? null;
 
+  let fromStageGroup: string | null = null;
+  let fromStageRequiresEvidence = false;
+  let fromStageRequiresReason = false;
+
   if (lead.stageId) {
     const from = await this.prisma.pipelineStage.findFirst({
       where: { id: lead.stageId, tenantId: user.tenantId },
-      select: { key: true, name: true },
+      select: { key: true, name: true, group: true, requiresEvidence: true, requiresReason: true },
     });
 
     fromStageKey = from?.key ?? null;
     fromStageName = from?.name ?? null;
+    fromStageGroup = from?.group ?? null;
+    fromStageRequiresEvidence = from?.requiresEvidence ?? false;
+    fromStageRequiresReason = from?.requiresReason ?? false;
   } else {
     const defaultStage = await this.prisma.pipelineStage.findFirst({
       where: {
         tenantId: user.tenantId,
-        key: 'NOVO_LEAD',
         isActive: true,
       },
       orderBy: { sortOrder: 'asc' },
@@ -1972,6 +2230,102 @@ async updateStage(user: any, leadId: string, stageId: string) {
   if (toStage.ownerOnly && user?.role !== 'OWNER') {
     throw new ForbiddenException('Apenas o OWNER pode mover para esta etapa.');
   }
+
+  // ── Evidência obrigatória (requiresEvidence) ──────────────────────────────
+  // Exigida ao ENTRAR num status com requiresEvidence E ao SAIR de um status
+  // com requiresEvidence (ex.: reativar um lead suspenso/excluído/desistente).
+  // Não-OWNER: precisa anexar um documento (upload concluído) vinculado a este lead.
+  // OWNER: dispensa documento, mas exige texto de justificativa.
+  const motivo = typeof opts.motivo === 'string' ? opts.motivo.trim() : '';
+  let evidenceDocumentId: string | null = null;
+  // needsEvidence = exige documento (não-OWNER); needsReason = exige justificativa em texto (todos)
+  const needsEvidence = toStage.requiresEvidence || fromStageRequiresEvidence;
+  const needsReason = toStage.requiresReason || fromStageRequiresReason;
+
+  if (needsEvidence || needsReason) {
+    const isOwner = user?.role === 'OWNER';
+
+    if (opts.evidenceDocumentId) {
+      const doc = await this.prisma.leadDocument.findFirst({
+        where: { id: opts.evidenceDocumentId, leadId, tenantId: user.tenantId },
+        select: { id: true, status: true, url: true, publicId: true },
+      });
+      if (!doc) {
+        throw new BadRequestException('Evidência inválida: documento não encontrado para este lead.');
+      }
+      if (doc.status !== 'ENVIADO' && !doc.publicId && !doc.url) {
+        throw new BadRequestException('Evidência inválida: o upload do documento não foi concluído.');
+      }
+      evidenceDocumentId = doc.id;
+    }
+
+    // Justificativa em texto: obrigatória para TODOS quando o status exige motivo.
+    if (needsReason && !motivo) {
+      throw new BadRequestException(
+        'Esta etapa exige uma justificativa. Descreva o motivo para continuar.',
+      );
+    }
+
+    // Documento: obrigatório para não-OWNER quando o status exige evidência.
+    if (needsEvidence && !isOwner && !evidenceDocumentId) {
+      throw new BadRequestException(
+        'Esta etapa exige uma evidência. Anexe um documento (print, arquivo ou e-mail) para continuar.',
+      );
+    }
+
+    // OWNER em status que exige evidência (sem motivo já cobrir): precisa de documento OU justificativa.
+    if (needsEvidence && isOwner && !evidenceDocumentId && !motivo) {
+      throw new BadRequestException(
+        'Esta etapa exige evidência. Anexe um documento ou informe uma justificativa para continuar.',
+      );
+    }
+  }
+
+  // Registra a movimentação na trilha de auditoria (LGPD). Silencioso, nunca quebra o fluxo.
+  const auditMove = (
+    fromName: string | null,
+    toName: string,
+    group: string | null,
+    cascade: boolean,
+  ) =>
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user?.id,
+      action: 'MOVE_PIPELINE',
+      resourceType: 'lead',
+      resourceId: leadId,
+      ipAddress: opts.ipAddress,
+      metadata: {
+        fromStage: fromName,
+        toStage: toName,
+        group,
+        role: user?.role ?? null,
+        cascade,
+        ...(cascade ? {} : { motivo: motivo || null, evidenceDocumentId }),
+      },
+    });
+
+  // Efeitos no espelho ao ENTRAR numa etapa (sensível ao pipeline via unitAction):
+  //   PROPOSTA → converte unidade RESERVADO do lead em PROPOSTA
+  //   VENDA    → converte unidade PROPOSTA do lead em VENDIDO
+  // Best-effort: nunca quebra a mudança de etapa (já efetivada).
+  const applyUnitSideEffects = async (unitAction: string | null | undefined) => {
+    try {
+      if (unitAction === 'PROPOSTA') {
+        await this.prisma.developmentUnit.updateMany({
+          where: { tenantId: user.tenantId, leadId, status: 'RESERVADO' },
+          data: { status: 'PROPOSTA' },
+        });
+      } else if (unitAction === 'VENDA') {
+        await this.prisma.developmentUnit.updateMany({
+          where: { tenantId: user.tenantId, leadId, status: 'PROPOSTA' },
+          data: { status: 'VENDIDO', soldAt: new Date() },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`applyUnitSideEffects falhou (lead ${leadId}): ${(e as Error).message}`);
+    }
+  };
 
   const allowedTransitions: Record<string, string[]> = {
     NOVO_LEAD: ['EM_CONTATO'],
@@ -2051,9 +2405,43 @@ async updateStage(user: any, leadId: string, stageId: string) {
           fromStage: fromStageName,
           toStage: toStage.name,
           changedBy: user?.id || 'USER',
+          evidenceDocumentId,
+          motivo: motivo || null,
         },
       }),
     ]);
+
+    await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
+    await applyUnitSideEffects(toStage.unitAction);
+
+    const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
+    // Só faz cascade se o grupo destino for diferente do grupo atual do lead
+    // (evita loop: clicar em stage gateway ao voltar re-empurraria para o grupo de origem)
+    if (targetGroup && targetGroup !== fromStageGroup) {
+      const firstStageOfGroup = await this.prisma.pipelineStage.findFirst({
+        where: { tenantId: user.tenantId, group: targetGroup, isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true, unitAction: true },
+      });
+      if (firstStageOfGroup) {
+        await this.prisma.$transaction([
+          this.prisma.lead.update({ where: { id: leadId }, data: { stageId: firstStageOfGroup.id } }),
+          this.prisma.leadTransitionLog.create({
+            data: {
+              tenantId: user.tenantId,
+              leadId,
+              fromStage: toStage.name,
+              toStage: firstStageOfGroup.name,
+              changedBy: user?.id || 'USER',
+              cascade: true,
+            },
+          }),
+        ]);
+        await auditMove(toStage.name, firstStageOfGroup.name, targetGroup, true);
+        await applyUnitSideEffects(firstStageOfGroup.unitAction);
+      }
+    }
+
     return updated;
   }
 
@@ -2177,12 +2565,133 @@ async updateStage(user: any, leadId: string, stageId: string) {
         fromStage: fromStageName,
         toStage: toStage.name,
         changedBy: user?.id || 'USER',
+        evidenceDocumentId,
+        motivo: motivo || null,
       },
     }),
   ]);
 
+  await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
+  await applyUnitSideEffects(toStage.unitAction);
+
   return updated;
 }
+
+/**
+ * Lista as evidências/justificativas registradas em transições de status do lead.
+ * Retorna apenas transições que exigiram evidência (documento anexado ou justificativa).
+ */
+async listStatusEvidences(user: any, leadId: string) {
+  const lead = await this.prisma.lead.findFirst({
+    where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!lead) throw new NotFoundException('Lead não encontrado');
+
+  const logs = await this.prisma.leadTransitionLog.findMany({
+    where: {
+      tenantId: user.tenantId,
+      leadId,
+      OR: [
+        { evidenceDocumentId: { not: null } },
+        { motivo: { not: null } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      fromStage: true,
+      toStage: true,
+      changedBy: true,
+      evidenceDocumentId: true,
+      motivo: true,
+      createdAt: true,
+    },
+  });
+
+  if (logs.length === 0) return [];
+
+  // Resolve documentos e nomes de quem moveu, em lote
+  const docIds = logs.map((l) => l.evidenceDocumentId).filter((d): d is string => !!d);
+  const userIds = logs.map((l) => l.changedBy).filter((u): u is string => !!u);
+
+  const [docs, users] = await Promise.all([
+    docIds.length
+      ? this.prisma.leadDocument.findMany({
+          where: { id: { in: docIds }, tenantId: user.tenantId },
+          select: { id: true, nome: true, filename: true, mimeType: true },
+        })
+      : Promise.resolve([]),
+    userIds.length
+      ? this.prisma.user.findMany({
+          where: { id: { in: userIds }, tenantId: user.tenantId },
+          select: { id: true, nome: true, apelido: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const docMap = new Map(docs.map((d) => [d.id, d] as const));
+  const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome] as const));
+
+  return logs.map((l) => ({
+    id: l.id,
+    fromStage: l.fromStage,
+    toStage: l.toStage,
+    motivo: l.motivo,
+    changedByName: l.changedBy ? userMap.get(l.changedBy) ?? null : null,
+    createdAt: l.createdAt,
+    document: l.evidenceDocumentId ? docMap.get(l.evidenceDocumentId) ?? null : null,
+  }));
+}
+
+/**
+ * Histórico completo de movimentações de etapa/status do lead (mais recentes primeiro).
+ * Marca movimentos automáticos (cascade) e resolve o nome de quem moveu.
+ */
+async listTransitions(user: any, leadId: string) {
+  const lead = await this.prisma.lead.findFirst({
+    where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!lead) throw new NotFoundException('Lead não encontrado');
+
+  const logs = await this.prisma.leadTransitionLog.findMany({
+    where: { tenantId: user.tenantId, leadId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      fromStage: true,
+      toStage: true,
+      changedBy: true,
+      cascade: true,
+      createdAt: true,
+    },
+  });
+
+  if (logs.length === 0) return [];
+
+  const userIds = logs
+    .map((l) => l.changedBy)
+    .filter((u): u is string => !!u && u !== 'USER' && u !== 'SYSTEM');
+
+  const users = userIds.length
+    ? await this.prisma.user.findMany({
+        where: { id: { in: userIds }, tenantId: user.tenantId },
+        select: { id: true, nome: true, apelido: true },
+      })
+    : [];
+  const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome] as const));
+
+  return logs.map((l) => ({
+    id: l.id,
+    fromStage: l.fromStage,
+    toStage: l.toStage,
+    cascade: l.cascade,
+    changedByName: l.changedBy ? userMap.get(l.changedBy) ?? null : null,
+    createdAt: l.createdAt,
+  }));
+}
+
   async getMyLeads(user: any) {
     const leads = await this.prisma.lead.findMany({
       where: {
@@ -2191,13 +2700,35 @@ async updateStage(user: any, leadId: string, stageId: string) {
         deletedAt: null,
       },
       orderBy: { criadoEm: 'desc' },
+      include: {
+        stage: { select: { id: true, name: true, key: true, group: true } },
+      },
     });
 
-    return this.attachLastInboundPreview(user.tenantId, leads);
+    const userInfo = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { nome: true, apelido: true },
+    });
+    const myName = userInfo?.apelido || userInfo?.nome || null;
+    const enriched = leads.map((l) => ({ ...l, assignedUserName: myName }));
+
+    // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
+    enriched.sort((a, b) => {
+      if (a.conversaAberta && !b.conversaAberta) return -1;
+      if (!a.conversaAberta && b.conversaAberta) return 1;
+      if (a.conversaAberta && b.conversaAberta) {
+        const ta = a.lastInboundAt ? new Date(a.lastInboundAt as any).getTime() : 0;
+        const tb = b.lastInboundAt ? new Date(b.lastInboundAt as any).getTime() : 0;
+        return tb - ta;
+      }
+      return new Date(b.criadoEm as any).getTime() - new Date(a.criadoEm as any).getTime();
+    });
+
+    return this.attachLastInboundPreview(user.tenantId, enriched);
   }
 
   async getBranchLeads(user: any, branchId?: string) {
-    if (user.role === 'AGENT') {
+    if (user.role === 'AGENT' || user.role === 'PARTNER') {
       throw new ForbiddenException('Sem permissão');
     }
 
@@ -2323,13 +2854,14 @@ const aiAssistanceLabel =
         },
       });
 
-      // Fixa o canal no lead na primeira mensagem outbound
-      if (!lead.conversaCanal) {
-        await this.prisma.lead.update({
-          where: { id: leadId },
-          data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: activeSessionId },
-        });
-      }
+      // Fixa o canal no lead na primeira mensagem outbound e marca conversa aberta
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          conversaAberta: true,
+          ...(!lead.conversaCanal ? { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: activeSessionId } : {}),
+        },
+      });
 
       return { ok: true };
     }
@@ -2381,14 +2913,23 @@ const aiAssistanceLabel =
       },
     });
 
-    // Fixa o canal no lead na primeira mensagem outbound
-    if (!lead.conversaCanal) {
-      await this.prisma.lead.update({
-        where: { id: leadId },
-        data: { conversaCanal: 'WHATSAPP_OFICIAL' },
-      });
-    }
+    // Fixa o canal no lead na primeira mensagem outbound e marca conversa aberta
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        conversaAberta: true,
+        ...(!lead.conversaCanal ? { conversaCanal: 'WHATSAPP_OFICIAL' } : {}),
+      },
+    });
 
+    return { ok: true };
+  }
+
+  async endConversation(tenantId: string, leadId: string): Promise<{ ok: boolean }> {
+    await this.prisma.lead.update({
+      where: { id: leadId, tenantId },
+      data: { conversaAberta: false, lastReadAt: new Date() },
+    });
     return { ok: true };
   }
 
@@ -2460,10 +3001,16 @@ const aiAssistanceLabel =
   }
 
   async exportCsv(user: { tenantId: string; role: string; branchId?: string; id?: string; sub?: string }, filters: { from?: string; to?: string; stageId?: string }): Promise<string> {
+    if (user.role !== 'OWNER' && user.role !== 'MANAGER') {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { permissionsConfig: true } });
+      const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+      const roleKey = user.role.toLowerCase() as 'agent' | 'partner';
+      if (!perms[roleKey]?.exportacao?.export) throw new ForbiddenException('Sem permissão para exportar');
+    }
+
     const where: any = { tenantId: user.tenantId, deletedAt: null };
-    if (user.role === 'AGENT') {
-      if (user.branchId) where.branchId = user.branchId;
-      else where.assignedUserId = user.id ?? user.sub;
+    if (user.role === 'AGENT' || user.role === 'PARTNER') {
+      where.assignedUserId = user.id ?? user.sub;
     }
     if (filters.from) where.criadoEm = { ...(where.criadoEm || {}), gte: new Date(filters.from) };
     if (filters.to) where.criadoEm = { ...(where.criadoEm || {}), lte: new Date(filters.to) };
@@ -2536,15 +3083,28 @@ const aiAssistanceLabel =
 
   async updateParticipante(tenantId: string, leadId: string, partId: string, data: Record<string, any>) {
     await this.assertLeadAccess(tenantId, leadId);
+    // CPF: bloqueia salvar valor inválido (vazio/null é permitido)
+    if (data.cpf !== undefined && data.cpf !== null && String(data.cpf).trim() !== '' && !isValidCPF(data.cpf)) {
+      throw new BadRequestException('CPF inválido');
+    }
     const allowed = ['nome', 'classificacao', 'cpf', 'rg', 'dataNascimento', 'estadoCivil', 'naturalidade', 'profissao', 'empresa', 'renda', 'telefone', 'email', 'endereco', 'cep', 'cidade', 'uf', 'sortOrder'];
     const updateData: any = {};
     for (const f of allowed) {
       if (data[f] !== undefined) updateData[f] = data[f];
     }
+    // renda é Float no banco — o front envia string (input type="number")
+    if (data.renda !== undefined) {
+      if (data.renda === '' || data.renda === null) {
+        updateData.renda = null;
+      } else {
+        const n = Number(data.renda);
+        updateData.renda = Number.isFinite(n) ? n : null;
+      }
+    }
     if (data.dataNascimento !== undefined) {
       updateData.dataNascimento = data.dataNascimento ? new Date(data.dataNascimento) : null;
     }
-    const existing = await (this.prisma as any).leadParticipante.findFirst({ where: { id: partId, leadId } });
+    const existing = await (this.prisma as any).leadParticipante.findFirst({ where: { id: partId, leadId, tenantId } });
     if (!existing) throw new NotFoundException('Participante não encontrado neste lead');
     return (this.prisma as any).leadParticipante.update({
       where: { id: partId },
@@ -2566,7 +3126,8 @@ const aiAssistanceLabel =
         this.ensureCloudinaryConfigured();
         await Promise.all(docsToDelete.map(d => {
           const rt = d.mimeType?.startsWith('image/') ? 'image' : 'raw';
-          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, type: 'authenticated', invalidate: true }).catch(() => {});
+          return cloudinary.uploader.destroy(d.publicId!, { resource_type: rt, type: 'authenticated', invalidate: true })
+            .catch((err: any) => this.logger.warn(`deleteParticipante: falha ao remover asset ${d.publicId}: ${err?.message}`));
         }));
       } catch { /* não bloqueia o fluxo se Cloudinary não estiver configurado */ }
     }
@@ -2666,7 +3227,16 @@ const aiAssistanceLabel =
       .trim();
   }
 
-  async findDuplicates(tenantId: string) {
+  async findDuplicates(user: { tenantId: string; role: string }) {
+    const { tenantId, role } = user;
+
+    if (role !== 'OWNER' && role !== 'MANAGER') {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { permissionsConfig: true } });
+      const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+      const roleKey = role.toLowerCase() as 'agent' | 'partner';
+      if (!perms[roleKey]?.duplicados?.view) throw new ForbiddenException('Sem permissão para ver duplicados');
+    }
+
     const leads = await this.prisma.lead.findMany({
       where: { tenantId, deletedAt: null },
       select: {
@@ -2815,8 +3385,8 @@ const aiAssistanceLabel =
     if (trimmed.length < 2) return [];
 
     let extraFilter: Record<string, unknown> = {};
-    if (role === 'AGENT') {
-      const canViewAll = await this.agentCanViewPipeline(tenantId);
+    if (role === 'AGENT' || role === 'PARTNER') {
+      const canViewAll = await this.canViewPipeline(tenantId, role);
       if (!canViewAll) extraFilter = { assignedUserId: userId };
     } else if (role === 'MANAGER' && branchId) {
       extraFilter = { branchId };

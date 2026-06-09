@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Post, Patch, Delete, Put, Body, Param, Request, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Post, Patch, Delete, Put, Body, Param, Query, Request, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DevelopmentsService } from './developments.service';
@@ -125,5 +125,61 @@ export class DevelopmentsController {
   uploadModel(@Request() req: any, @Param('id') id: string, @UploadedFile() file: any) {
     requireOwner(req);
     return this.svc.uploadModel(req.user.tenantId, id, file);
+  }
+
+  // ─── Mídia ────────────────────────────────────────────────────────────────
+
+  @Get(':id/media')
+  listMedia(@Request() req: any, @Param('id') id: string, @Query('categoria') categoria?: string) {
+    return this.svc.listMedia(req.user.tenantId, id, categoria);
+  }
+
+  @Post(':id/media')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadMedia(@Request() req: any, @Param('id') id: string, @UploadedFile() file: any, @Body('categoria') categoria: string, @Body('titulo') titulo?: string) {
+    return this.svc.uploadMedia(req.user.tenantId, id, file, categoria, titulo);
+  }
+
+  @Patch(':id/media/:mediaId')
+  patchMedia(@Request() req: any, @Param('id') id: string, @Param('mediaId') mediaId: string, @Body() body: any) {
+    return this.svc.patchMedia(req.user.tenantId, id, mediaId, body);
+  }
+
+  @Delete(':id/media/:mediaId')
+  deleteMedia(@Request() req: any, @Param('id') id: string, @Param('mediaId') mediaId: string) {
+    return this.svc.deleteMedia(req.user.tenantId, id, mediaId);
+  }
+
+  // ─── Evolução de Obra ─────────────────────────────────────────────────────
+
+  @Get(':id/obra-updates')
+  listObraUpdates(@Request() req: any, @Param('id') id: string) {
+    return this.svc.listObraUpdates(req.user.tenantId, id);
+  }
+
+  @Post(':id/obra-updates')
+  createObraUpdate(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.svc.createObraUpdate(req.user.tenantId, id, body);
+  }
+
+  @Patch(':id/obra-updates/:updateId')
+  updateObraUpdate(@Request() req: any, @Param('id') id: string, @Param('updateId') updateId: string, @Body() body: any) {
+    return this.svc.updateObraUpdate(req.user.tenantId, id, updateId, body);
+  }
+
+  @Delete(':id/obra-updates/:updateId')
+  deleteObraUpdate(@Request() req: any, @Param('id') id: string, @Param('updateId') updateId: string) {
+    return this.svc.deleteObraUpdate(req.user.tenantId, id, updateId);
+  }
+
+  @Post(':id/obra-updates/:updateId/fotos')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadObraFoto(@Request() req: any, @Param('id') id: string, @Param('updateId') updateId: string, @UploadedFile() file: any, @Body('legenda') legenda?: string) {
+    return this.svc.uploadObraFoto(req.user.tenantId, id, updateId, file, legenda);
+  }
+
+  @Delete(':id/obra-updates/:updateId/fotos/:fotoId')
+  deleteObraFoto(@Request() req: any, @Param('id') id: string, @Param('updateId') updateId: string, @Param('fotoId') fotoId: string) {
+    return this.svc.deleteObraFoto(req.user.tenantId, id, updateId, fotoId);
   }
 }

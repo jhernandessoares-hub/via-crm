@@ -5,6 +5,7 @@ import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import QuickReplies from "@/components/leads/QuickReplies";
 import { apiFetch } from "@/lib/api";
 import {
   listCorrespondents, listCreditRequests, createCreditRequest, cancelCreditRequest,
@@ -12,7 +13,7 @@ import {
   type Correspondent, type CreditRequest,
 } from "@/lib/correspondente.service";
 import { formatLeadNumber } from "@/lib/format-lead-number";
-import { unlinkUnit } from "@/lib/developments.service";
+import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 
 type Role = "OWNER" | "MANAGER" | "AGENT";
 
@@ -99,6 +100,7 @@ type Lead = {
   developmentUnits?: DevUnit[];
   conversaCanal?: string | null;
   conversaSessionId?: string | null;
+  conversaAberta?: boolean;
   // Qualificação IA
   nomeCorreto?: string | null;
   nomeCorretoOrigem?: string | null; // "IA" | "MANUAL"
@@ -113,6 +115,8 @@ type Lead = {
   qualCorretorImobiliaria?: string | null;
   perfilImovel?: string | null;
   produtoInteresseId?: string | null;
+  empreendimentoInteresseId?: string | null;
+  empreendimentoInteresse?: { id: string; nome: string; capaUrl?: string | null } | null;
   resumoLead?: string | null;
   cadastroOrigem?: {
     codigoOcorrencia?: string | null;
@@ -153,6 +157,38 @@ type LeadEvent = {
   channel?: string;
   criadoEm?: string;
   payloadRaw?: any;
+};
+
+type LeadCalendarEvent = {
+  id: string;
+  title: string;
+  startAt: string;
+  endAt: string;
+  eventType: string;
+  status: string;
+  color: string;
+  visibility: string;
+  userId: string;
+  user: { id: string; nome: string; apelido?: string | null; role: string };
+};
+
+type StatusEvidence = {
+  id: string;
+  fromStage: string | null;
+  toStage: string;
+  motivo: string | null;
+  changedByName: string | null;
+  createdAt: string;
+  document: { id: string; nome: string; filename: string | null; mimeType: string | null } | null;
+};
+
+type LeadTransition = {
+  id: string;
+  fromStage: string | null;
+  toStage: string;
+  cascade: boolean;
+  changedByName: string | null;
+  createdAt: string;
 };
 
 type AiSuggestedAttachment = {
@@ -865,7 +901,6 @@ function MediaBlock({
 
   const openModal = async () => {
     try {
-      // —S& Para PDF/documentos: SEMPRE abrir via blob do /download com Bearer
       const mt = String(m?.mimeType || "").toLowerCase();
       const looksPdf =
         mt.indexOf("pdf") >= 0 ||
@@ -873,45 +908,60 @@ function MediaBlock({
         kind === "document";
 
       if (looksPdf) {
+        // Tenta URL direta primeiro (igual ao fluxo de JPEG) — funciona para assets públicos
+        const directSrc = publicUrl || blobUrl;
+        if (directSrc) {
+          try {
+            const resp = await fetch(directSrc);
+            if (resp.ok) {
+              const b = await resp.blob();
+              const finalBlob = b.type.includes("pdf") ? b : new Blob([b], { type: "application/pdf" });
+              onOpenModal("document", filename, URL.createObjectURL(finalBlob), "application/pdf");
+              return;
+            }
+          } catch { /* cai no proxy abaixo */ }
+        }
+        // Fallback: proxy autenticado do backend
         const blob0 = await authFetchBlob(downloadUrl);
-
-        // —S& Se o backend não manda Content-Type correto, o iframe fica branco.
         const isPdfBlob = String((blob0 as any)?.type || "").toLowerCase().indexOf("pdf") >= 0;
         const blob = isPdfBlob ? blob0 : new Blob([blob0], { type: "application/pdf" });
-
-        const objectUrl = URL.createObjectURL(blob);
-        onOpenModal("document", filename, objectUrl, "application/pdf");
+        onOpenModal("document", filename, URL.createObjectURL(blob), "application/pdf");
         return;
       }
 
-      // —S& Para imagem/vídeo/áudio: usa o src já resolvido (publicUrl ou blobUrl)
+      // Para imagem/vídeo/áudio: usa o src já resolvido (publicUrl ou blobUrl)
       if (!effectiveSrc && needsAuthBlob) await ensureBlob();
       onOpenModal(kind, filename, publicUrl || blobUrl || effectiveSrc, m?.mimeType || undefined);
     } catch (e: any) {
-      // fallback: tenta abrir do jeito que der
-      onOpenModal(kind, filename, publicUrl || blobUrl || effectiveSrc, m?.mimeType || undefined);
+      setLoadErr(e?.message || "Falha ao carregar arquivo.");
     }
   };
 
   const onDownload = async () => {
-    if (publicUrl) {
-      try {
-        const res = await fetch(publicUrl);
-        if (res.ok) {
-          const blob = await res.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = objectUrl;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
-          return;
-        }
-      } catch {}
+    try {
+      await downloadWithAuth(downloadUrl, filename);
+    } catch {
+      // Backend falhou — tenta fetch direto e cria blob (evita navigation guard)
+      if (publicUrl) {
+        try {
+          const resp = await fetch(publicUrl);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const objUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = objUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(objUrl), 100);
+            setLoadErr(null);
+            return;
+          }
+        } catch { /* ignora */ }
+      }
+      setLoadErr("Falha ao baixar arquivo.");
     }
-    await downloadWithAuth(downloadUrl, filename);
   };
 
   const PreviewControl = () => {
@@ -1104,6 +1154,9 @@ function MediaBlock({
         </button>
       </div>
 
+      {loadErr && (
+        <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{loadErr}</div>
+      )}
       <PreviewControl />
     </div>
   );
@@ -1200,6 +1253,22 @@ function Bubble({
 
 // ─── Espelho Selector Modal ───────────────────────────────────────────────────
 
+const AGENDA_TYPE_LABEL: Record<string, string> = {
+  VISITA: "Visita", TAREFA: "Tarefa", CAPTACAO: "Captação",
+  REUNIAO: "Reunião", FOLLOW_UP: "Follow-up",
+};
+const AGENDA_TYPE_COLOR: Record<string, string> = {
+  VISITA: "bg-emerald-100 text-emerald-700",
+  TAREFA: "bg-blue-100 text-blue-700",
+  CAPTACAO: "bg-amber-100 text-amber-700",
+  REUNIAO: "bg-purple-100 text-purple-700",
+  FOLLOW_UP: "bg-gray-100 text-gray-600",
+};
+const AGENDA_STATUS_LABEL: Record<string, string> = {
+  AGENDADO: "Agendado", CONFIRMADO: "Confirmado", REALIZADO: "Realizado",
+  NO_SHOW: "No-show", CANCELADO: "Cancelado",
+};
+
 const ESPELHO_STATUS_COLOR: Record<string, string> = {
   DISPONIVEL: "#22c55e", PROPOSTA: "#f97316", RESERVADO: "#f59e0b",
   VENDIDO: "#ef4444", BLOQUEADO: "#9ca3af",
@@ -1209,9 +1278,10 @@ const ESPELHO_STATUS_LABEL: Record<string, string> = {
   VENDIDO: "Vendido", BLOQUEADO: "Bloqueado",
 };
 
-function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, onClose, onDone }: {
+function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, linkStatus = "PROPOSTA", onClose, onDone }: {
   devId: string; leadId: string;
   trocandoUnitId?: string; trocandoUnitNome?: string;
+  linkStatus?: "PROPOSTA" | "RESERVADO";
   onClose: () => void; onDone: () => void;
 }) {
   const [dev, setDev] = useState<any>(null);
@@ -1241,7 +1311,7 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
       }
       await apiFetch(`/developments/${devId}/units/${confirming.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ leadId, status: "PROPOSTA" }),
+        body: JSON.stringify({ leadId, status: linkStatus }),
       });
       onDone();
     } catch (e: any) {
@@ -1265,7 +1335,9 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
             <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
               {trocandoUnitId
                 ? "Clique em uma unidade Disponível para selecionar a nova unidade (PARA)"
-                : "Clique em uma unidade Disponível para vincular ao lead"}
+                : linkStatus === "RESERVADO"
+                ? "Clique em uma unidade Disponível para RESERVAR para o lead"
+                : "Clique em uma unidade Disponível para vincular como PROPOSTA"}
               {" · "}<span className="text-green-600 font-semibold">{allDisponivel} disponíveis</span>
             </p>
           </div>
@@ -1388,6 +1460,369 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
   );
 }
 
+function DevMediaModal({
+  devId, devNome, onClose,
+  prepareAttachmentFromUrl, onSendMultiple, insertIntoChat, handleCopyLink,
+}: {
+  devId: string; devNome: string; onClose: () => void;
+  prepareAttachmentFromUrl: (kind: "image" | "video" | "document", url: string, name: string) => Promise<void>;
+  onSendMultiple: (urls: string[], kind: "image" | "document") => Promise<void>;
+  insertIntoChat: (s: string) => void;
+  handleCopyLink: (url: string) => Promise<void>;
+}) {
+  type Tab = "FOTO_COMERCIAL" | "PANFLETO" | "BOOK" | "OBRA";
+  const [tab, setTab] = useState<Tab>("FOTO_COMERCIAL");
+  const [media, setMedia] = useState<DevMedia[]>([]);
+  const [obra, setObra] = useState<DevObraUpdate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState<{ items: string[]; idx: number } | null>(null);
+  const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkNotice] = useState<string | null>(null);
+
+  function toggleSelect(url: string) {
+    setSelectedUrls(prev => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url); else next.add(url);
+      return next;
+    });
+  }
+
+  async function sendSelected() {
+    if (selectedUrls.size === 0 || bulkSending) return;
+    setBulkSending(true);
+    const kind: "image" | "document" = (tab === "FOTO_COMERCIAL" || tab === "OBRA") ? "image" : "document";
+    await onSendMultiple(Array.from(selectedUrls), kind);
+    // onSendMultiple fecha o modal (setDevMediaModal(null)) — não precisa de mais ação aqui
+    setBulkSending(false);
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    setSelectedUrls(new Set());
+    if (tab === "OBRA") {
+      listObraUpdates(devId).then(r => { setObra(r); setLoading(false); }).catch(() => setLoading(false));
+    } else {
+      listMedia(devId, tab).then(r => { setMedia(r); setLoading(false); }).catch(() => setLoading(false));
+    }
+  }, [devId, tab]);
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "FOTO_COMERCIAL", label: "Fotos" },
+    { key: "PANFLETO", label: "Panfletos" },
+    { key: "BOOK", label: "Book" },
+    { key: "OBRA", label: "Evolução de Obra" },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+    >
+      <div className="relative w-full max-w-3xl rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--shell-card-border)] px-6 py-4">
+          <div>
+            <div className="text-xs text-[var(--shell-subtext)] uppercase tracking-wide font-semibold">Mídia do Empreendimento</div>
+            <div className="text-base font-bold text-[var(--shell-text)]">{devNome}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)] transition-colors"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-0 border-b border-[var(--shell-card-border)] px-6">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className="px-4 py-3 text-sm font-medium transition-colors border-b-2"
+              style={{
+                borderColor: tab === t.key ? "var(--brand-accent)" : "transparent",
+                color: tab === t.key ? "var(--brand-accent)" : "var(--shell-subtext)",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="p-6 min-h-[300px]">
+          {loading && (
+            <div className="flex items-center justify-center py-16 text-[var(--shell-subtext)] text-sm">Carregando...</div>
+          )}
+
+          {!loading && tab !== "OBRA" && (
+            <>
+              {media.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-[var(--shell-subtext)] text-sm">
+                  Nenhum arquivo nesta categoria.
+                </div>
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-xs text-[var(--shell-subtext)]">
+                      Clique na caixa para selecionar · Clique na foto para ampliar
+                    </span>
+                    {selectedUrls.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUrls(new Set())}
+                        className="text-xs text-[var(--shell-subtext)] underline"
+                      >
+                        Limpar seleção
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {media.map((item, idx) => {
+                      const isImage = tab === "FOTO_COMERCIAL";
+                      const allUrls = media.map(m => m.url);
+                      const isSelected = selectedUrls.has(item.url);
+                      return (
+                        <div
+                          key={item.id}
+                          className={`relative rounded-xl border overflow-hidden bg-[var(--shell-bg)] transition-all ${isSelected ? "border-[var(--brand-accent)] ring-2 ring-[var(--brand-accent)]/30" : "border-[var(--shell-card-border)]"}`}
+                        >
+                          {/* Checkbox */}
+                          <button
+                            type="button"
+                            onClick={() => toggleSelect(item.url)}
+                            className="absolute top-2 left-2 z-10 flex h-5 w-5 items-center justify-center rounded border-2 transition-colors shadow-sm"
+                            style={{
+                              backgroundColor: isSelected ? "var(--brand-accent)" : "rgba(255,255,255,0.9)",
+                              borderColor: isSelected ? "var(--brand-accent)" : "#d1d5db",
+                            }}
+                          >
+                            {isSelected && <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="currentColor"><path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>}
+                          </button>
+
+                          {isImage ? (
+                            <button type="button" className="w-full" onClick={() => setLightbox({ items: allUrls, idx })}>
+                              <img src={item.url} alt={item.titulo ?? ""} className="w-full h-36 object-cover hover:opacity-90 transition-opacity" />
+                            </button>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-36 gap-2">
+                              <span className="text-4xl">📄</span>
+                              <a href={item.url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 underline">Abrir</a>
+                            </div>
+                          )}
+                          {item.titulo && (
+                            <div className="px-2 py-1 text-[11px] text-[var(--shell-text)] truncate">{item.titulo}</div>
+                          )}
+                          <div className="flex gap-1 p-2 border-t border-[var(--shell-card-border)]">
+                            <button
+                              type="button"
+                              onClick={() => prepareAttachmentFromUrl(isImage ? "image" : "document", item.url, item.titulo || "arquivo")}
+                              className="flex-1 rounded px-2 py-1 text-[10px] font-semibold text-white transition-colors"
+                              style={{ background: "var(--brand-accent)" }}
+                              title="Preparar 1 arquivo para envio"
+                            >
+                              Enviar 1
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => insertIntoChat(item.url)}
+                              className="flex-1 rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
+                              title="Inserir link no chat"
+                            >
+                              Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLink(item.url)}
+                              className="rounded px-2 py-1 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors hover:bg-[var(--shell-card-bg)]"
+                              title="Copiar link"
+                            >
+                              📋
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {!loading && tab === "OBRA" && (
+            <>
+              {obra.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-[var(--shell-subtext)] text-sm">
+                  Nenhuma atualização de obra cadastrada.
+                </div>
+              ) : (
+                <>
+                  {selectedUrls.size > 0 && (
+                    <div className="mb-3 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUrls(new Set())}
+                        className="text-xs text-[var(--shell-subtext)] underline"
+                      >
+                        Limpar seleção
+                      </button>
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    {obra.map(update => {
+                      const allFotoUrls = update.fotos.map(f => f.url);
+                      return (
+                        <div key={update.id} className="rounded-xl border border-[var(--shell-card-border)] p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <div className="text-sm font-semibold text-[var(--shell-text)]">
+                                {update.titulo ?? new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
+                              </div>
+                              <div className="text-xs text-[var(--shell-subtext)]">
+                                {new Date(update.dataAtualizacao).toLocaleDateString("pt-BR")}
+                              </div>
+                              {update.observacoes && (
+                                <div className="mt-1 text-xs text-[var(--shell-text)] leading-relaxed">{update.observacoes}</div>
+                              )}
+                            </div>
+                            {update.percentualAvanco != null && (
+                              <div className="flex flex-col items-center gap-1 ml-4">
+                                <div className="text-lg font-bold text-[var(--brand-accent)]">{update.percentualAvanco}%</div>
+                                <div className="text-[10px] text-[var(--shell-subtext)]">avanço</div>
+                              </div>
+                            )}
+                          </div>
+                          {update.fotos.length > 0 && (
+                            <div className="grid grid-cols-3 gap-2">
+                              {update.fotos.map((foto, fIdx) => {
+                                const isSelected = selectedUrls.has(foto.url);
+                                return (
+                                  <div
+                                    key={foto.id}
+                                    className={`relative rounded-lg overflow-hidden border transition-all ${isSelected ? "border-[var(--brand-accent)] ring-2 ring-[var(--brand-accent)]/30" : "border-[var(--shell-card-border)]"}`}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleSelect(foto.url)}
+                                      className="absolute top-1.5 left-1.5 z-10 flex h-5 w-5 items-center justify-center rounded border-2 shadow-sm transition-colors"
+                                      style={{
+                                        backgroundColor: isSelected ? "var(--brand-accent)" : "rgba(255,255,255,0.9)",
+                                        borderColor: isSelected ? "var(--brand-accent)" : "#d1d5db",
+                                      }}
+                                    >
+                                      {isSelected && <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="currentColor"><path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>}
+                                    </button>
+                                    <button type="button" className="w-full" onClick={() => setLightbox({ items: allFotoUrls, idx: fIdx })}>
+                                      <img src={foto.url} alt={foto.legenda ?? ""} className="w-full h-24 object-cover hover:opacity-90 transition-opacity" />
+                                    </button>
+                                    <div className="flex gap-1 p-1 bg-[var(--shell-bg)]">
+                                      <button
+                                        type="button"
+                                        onClick={() => prepareAttachmentFromUrl("image", foto.url, foto.legenda || "foto-obra")}
+                                        className="flex-1 rounded px-1 py-0.5 text-[10px] font-semibold text-white"
+                                        style={{ background: "var(--brand-accent)" }}
+                                      >
+                                        Enviar 1
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyLink(foto.url)}
+                                        className="rounded px-1 py-0.5 text-[10px] font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)]"
+                                      >
+                                        📋
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer de envio em lote */}
+        {(selectedUrls.size > 0 || bulkNotice) && (
+          <div className="sticky bottom-0 border-t border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-6 py-4 flex items-center gap-3 rounded-b-2xl">
+            {bulkNotice ? (
+              <span className="flex-1 text-sm font-semibold text-green-600">{bulkNotice}</span>
+            ) : (
+              <>
+                <span className="flex-1 text-sm text-[var(--shell-text)]">
+                  <span className="font-bold">{selectedUrls.size}</span> arquivo(s) selecionado(s)
+                </span>
+                <button
+                  type="button"
+                  disabled={bulkSending}
+                  onClick={sendSelected}
+                  className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                  style={{ background: "var(--brand-accent)" }}
+                >
+                  {bulkSending ? "Enviando..." : `Enviar ${selectedUrls.size} selecionada(s)`}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.92)" }}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 text-white text-2xl font-bold z-[61] rounded-full w-10 h-10 flex items-center justify-center hover:bg-white/10 transition-colors"
+          >
+            ✕
+          </button>
+          {lightbox.idx > 0 && (
+            <button
+              type="button"
+              onClick={() => setLightbox(l => l ? { ...l, idx: l.idx - 1 } : null)}
+              className="absolute left-4 text-white text-3xl font-bold z-[61] rounded-full w-12 h-12 flex items-center justify-center hover:bg-white/10 transition-colors"
+            >
+              ‹
+            </button>
+          )}
+          <img
+            src={lightbox.items[lightbox.idx]}
+            alt=""
+            className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain"
+          />
+          {lightbox.idx < lightbox.items.length - 1 && (
+            <button
+              type="button"
+              onClick={() => setLightbox(l => l ? { ...l, idx: l.idx + 1 } : null)}
+              className="absolute right-4 text-white text-3xl font-bold z-[61] rounded-full w-12 h-12 flex items-center justify-center hover:bg-white/10 transition-colors"
+            >
+              ›
+            </button>
+          )}
+          <div className="absolute bottom-4 text-white text-sm opacity-70">
+            {lightbox.idx + 1} / {lightbox.items.length}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LeadDetailChatPage() {
@@ -1411,8 +1846,18 @@ export default function LeadDetailChatPage() {
   const [pipelineErr, setPipelineErr] = useState<string | null>(null);
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
+  const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
+  const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
+  const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
+  const [currentStageUnitAction, setCurrentStageUnitAction] = useState<string | null>(null);
+  const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
+  const [evidencesOpen, setEvidencesOpen] = useState(false);
+  const [transitions, setTransitions] = useState<LeadTransition[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [evidencePreview, setEvidencePreview] = useState<{ url: string; mime: string; nome: string } | null>(null);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
+  const [unitConfirm, setUnitConfirm] = useState<{ stage: PipelineStage; message: string } | null>(null);
 
   // (preparação pro futuro) etapa —Sfinal⬝ pode sugerir minimizar chat
 
@@ -1420,6 +1865,7 @@ export default function LeadDetailChatPage() {
   const [sending, setSending] = useState(false);
   const [dismissedAiSuggestionIds, setDismissedAiSuggestionIds] = useState<string[]>([]);
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+  const [tenantAiEnabled, setTenantAiEnabled] = useState(true);
   const [aiTeachNotice, setAiTeachNotice] = useState<string | null>(null);
   const [manualAiSuggestionText, setManualAiSuggestionText] = useState("");
   const [manualAiResponseFormat, setManualAiResponseFormat] = useState<string | null>(null);
@@ -1486,21 +1932,37 @@ export default function LeadDetailChatPage() {
   const [waLightSessions, setWaLightSessions] = useState<WaSession[]>([]);
   const [waOficialConfigured, setWaOficialConfigured] = useState(false);
   const [selectedCanalOut, setSelectedCanalOut] = useState<CanalOut | null>(null);
-  const [alterandoCanal, setAlterandoCanal] = useState(false);
+  const [pendingCanalChange, setPendingCanalChange] = useState<CanalOut | null>(null);
   const [savingCanal, setSavingCanal] = useState(false);
   const [desvinculandoUnitId, setDesvinculandoUnitId] = useState<string | null>(null);
   const [trocandoUnit, setTrocandoUnit] = useState<string | null>(null);
   const [developments, setDevelopments] = useState<Development[]>([]);
   const [selectedDevId, setSelectedDevId] = useState<string>("");
   const [espelhoModal, setEspelhoModal] = useState<{ devId: string; trocandoUnitId?: string; trocandoUnitNome?: string } | null>(null);
+  const [devInteresseConfirm, setDevInteresseConfirm] = useState<{ devId: string; devNome: string; action: "espelho" | "midia" } | null>(null);
+  const [devInteresseSaving, setDevInteresseSaving] = useState(false);
+  const [devMediaModal, setDevMediaModal] = useState<{ devId: string; devNome: string } | null>(null);
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
   const [devUnitsLoading, setDevUnitsLoading] = useState(false);
   const [propostaModal, setPropostaModal] = useState<{ unit: DevUnit; devId: string } | null>(null);
   const [propostaForm, setPropostaForm] = useState({ valor: "", pagamento: "FINANCIAMENTO", obs: "" });
   const [propostaSaving, setPropostaSaving] = useState(false);
 
+  const [agendaEvents, setAgendaEvents] = useState<LeadCalendarEvent[]>([]);
+  const [agendaOpen, setAgendaOpen] = useState(true);
+  const [slaOpen, setSlaOpen] = useState(true);
+  const [editingAgendaEvent, setEditingAgendaEvent] = useState<LeadCalendarEvent | null>(null);
+  const [agendaEditForm, setAgendaEditForm] = useState({ title: "", startAt: "", endAt: "", status: "", visibility: "" });
+  const [agendaEditSaving, setAgendaEditSaving] = useState(false);
+  const [agendaEditError, setAgendaEditError] = useState<string | null>(null);
+  const [currentAgendaUserId, setCurrentAgendaUserId] = useState("");
+  const [currentAgendaUserRole, setCurrentAgendaUserRole] = useState("");
+
   const filePickerRef = useRef<HTMLInputElement | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [attachQueue, setAttachQueue] = useState<File[]>([]);
+  const [attachFiles, setAttachFiles] = useState<Array<{ file: File; previewUrl: string }>>([]);
+  const [attachSendProgress, setAttachSendProgress] = useState<{ current: number; total: number } | null>(null);
   const [attachSending, setAttachSending] = useState(false);
   const [attachErr, setAttachErr] = useState<string | null>(null);
   const [attachPreviewUrl, setAttachPreviewUrl] = useState<string | null>(null);
@@ -1544,6 +2006,10 @@ export default function LeadDetailChatPage() {
   const [savingCredit,      setSavingCredit]      = useState(false);
   const [slaLoading, setSlaLoading] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showCanalModal, setShowCanalModal] = useState(false);
+  const [showExitDialog, setShowExitDialog] = useState(false);
+  const [showEndConvDialog, setShowEndConvDialog] = useState(false);
+  const pendingNavRef = useRef<string | null>(null);
 
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -1619,9 +2085,55 @@ export default function LeadDetailChatPage() {
       const data = await apiFetch("/leads/" + leadId + "/allowed-stage-transitions", { method: "GET" });
       const list: PipelineStage[] = Array.isArray(data?.allowedStages) ? data.allowedStages : [];
       setAllowedStages(list);
+      setPrevGroupLastStageId(data?.prevGroupLastStageId ?? null);
+      setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
+      setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
+      setCurrentStageUnitAction(data?.currentUnitAction ?? null);
     } catch {
       setAllowedStages([]);
+      setPrevGroupLastStageId(null);
+      setCurrentStageRequiresEvidence(false);
+      setCurrentStageRequiresReason(false);
+      setCurrentStageUnitAction(null);
     }
+  }
+
+  async function loadStatusEvidences(leadId: string) {
+    try {
+      const data = await apiFetch("/leads/" + leadId + "/status-evidences", { method: "GET" });
+      setStatusEvidences(Array.isArray(data) ? data : []);
+    } catch {
+      setStatusEvidences([]);
+    }
+  }
+
+  async function loadTransitions(leadId: string) {
+    try {
+      const data = await apiFetch("/leads/" + leadId + "/transitions", { method: "GET" });
+      setTransitions(Array.isArray(data) ? data : []);
+    } catch {
+      setTransitions([]);
+    }
+  }
+
+  async function openStatusEvidenceDoc(docId: string, nome: string) {
+    try {
+      const blob = await authFetchBlob(absApiUrl(`/leads/${id}/documents/${docId}/view`));
+      const url = URL.createObjectURL(blob);
+      setEvidencePreview((prev) => {
+        if (prev?.url) URL.revokeObjectURL(prev.url);
+        return { url, mime: blob.type || "", nome };
+      });
+    } catch (e: any) {
+      alert(e?.message || "Não foi possível abrir a evidência.");
+    }
+  }
+
+  function closeEvidencePreview() {
+    setEvidencePreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return null;
+    });
   }
 
   async function loadCreditData() {
@@ -1651,6 +2163,9 @@ export default function LeadDetailChatPage() {
     setLead(l);
     setNomeConfirmadoEdit(l?.nomeCorreto ?? "");
     await loadAllowedStages(id);
+    await loadStatusEvidences(id);
+    await loadTransitions(id);
+    return l;
   }
 
   async function loadEvents(opts?: { silent?: boolean }) {
@@ -1760,15 +2275,83 @@ export default function LeadDetailChatPage() {
       setWaLightSessions(list);
       const hasOficial = !!(waConfig?.whatsappPhoneNumberId && waConfig?.whatsappTokenConfigured);
       setWaOficialConfigured(hasOficial);
-      // Auto-seleciona: primeiro CONNECTED, depois Oficial, senão null
+      // Auto-seleciona: Oficial tem prioridade quando configurado, Light como fallback
       setSelectedCanalOut(prev => {
         if (prev) return prev;
+        if (hasOficial) return { type: "oficial" };
         const connected = list.find(s => s.status === "CONNECTED");
         if (connected) return { type: "light", sessionId: connected.id };
-        if (hasOficial) return { type: "oficial" };
         return null;
       });
     } catch {}
+  }
+
+  async function loadAgendaEvents() {
+    if (!id) return;
+    try {
+      const data = await apiFetch(`/calendar/events?leadId=${id}`);
+      setAgendaEvents(Array.isArray(data) ? data : []);
+    } catch {
+      setAgendaEvents([]);
+    }
+  }
+
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      setCurrentAgendaUserId(u.id || u.sub || "");
+      setCurrentAgendaUserRole(u.role || "AGENT");
+    } catch {}
+  }, []);
+
+  const AGENDA_ROLE_LEVEL: Record<string, number> = { OWNER: 4, MANAGER: 3, AGENT: 2, PARTNER: 1 };
+
+  function canEditAgendaEvent(ev: LeadCalendarEvent): boolean {
+    if (ev.userId === currentAgendaUserId) return true;
+    return (AGENDA_ROLE_LEVEL[currentAgendaUserRole] ?? 0) > (AGENDA_ROLE_LEVEL[ev.user?.role] ?? 0);
+  }
+
+  function toAgendaInputDateTime(iso: string) {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function openAgendaEdit(ev: LeadCalendarEvent) {
+    setAgendaEditError(null);
+    setEditingAgendaEvent(ev);
+    setAgendaEditForm({
+      title: ev.title,
+      startAt: toAgendaInputDateTime(ev.startAt),
+      endAt: ev.endAt ? toAgendaInputDateTime(ev.endAt) : "",
+      status: ev.status,
+      visibility: ev.visibility,
+    });
+  }
+
+  async function saveAgendaEdit() {
+    if (!editingAgendaEvent) return;
+    if (!agendaEditForm.title.trim()) { setAgendaEditError("Título obrigatório."); return; }
+    setAgendaEditSaving(true);
+    setAgendaEditError(null);
+    try {
+      await apiFetch(`/calendar/events/${editingAgendaEvent.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: agendaEditForm.title.trim(),
+          startAt: new Date(agendaEditForm.startAt).toISOString(),
+          endAt: agendaEditForm.endAt ? new Date(agendaEditForm.endAt).toISOString() : undefined,
+          status: agendaEditForm.status,
+          visibility: agendaEditForm.visibility,
+        }),
+      });
+      setEditingAgendaEvent(null);
+      loadAgendaEvents();
+    } catch (e: any) {
+      setAgendaEditError(e?.message || "Erro ao salvar.");
+    } finally {
+      setAgendaEditSaving(false);
+    }
   }
 
   async function loadAll() {
@@ -1776,7 +2359,9 @@ export default function LeadDetailChatPage() {
     setLoadingLead(true);
     setLoadingEvents(true);
     try {
-      await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels()]);
+      const [,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
+      if (aiStatus) setTenantAiEnabled((aiStatus as any).autopilotEnabled ?? true);
+      loadAgendaEvents();
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -1834,6 +2419,29 @@ export default function LeadDetailChatPage() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Interceptor de navegação: pergunta se quer encerrar conversa aberta
+  useEffect(() => {
+    if (!lead?.conversaAberta) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement).closest('a');
+      if (!link) return;
+      // blob: URLs são downloads programáticos — nunca são navegação para fora do lead
+      if (link.href.startsWith('blob:')) return;
+      try {
+        const url = new URL(link.href);
+        if (url.pathname.startsWith(`/leads/${id}`)) return;
+      } catch { return; }
+      e.preventDefault();
+      e.stopPropagation();
+      pendingNavRef.current = link.href;
+      setShowExitDialog(true);
+    };
+
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, [lead?.conversaAberta, id]);
 
 const orderedEvents = useMemo(() => {
   return [...events].sort((a, b) => {
@@ -2519,6 +3127,26 @@ function discardAiSuggestion() {
     const msg = String(message || "").trim();
     if (!msg) return;
 
+    if (!lead?.conversaCanal) {
+      if (!selectedCanalOut) {
+        alert("Defina o canal de saída antes de enviar.");
+        return;
+      }
+      if (selectedCanalOut.type === "light") {
+        const session = waLightSessions.find(s => s.id === selectedCanalOut.sessionId);
+        if (session && session.status !== "CONNECTED") {
+          alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
+          return;
+        }
+      }
+    } else if (lead.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) {
+      const session = waLightSessions.find(s => s.id === lead.conversaSessionId);
+      if (session && session.status !== "CONNECTED") {
+        alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
+        return;
+      }
+    }
+
     setSending(true);
     setErr(null);
 
@@ -2562,6 +3190,26 @@ function discardAiSuggestion() {
 
   async function sendRecordedAudio() {
     if (!audioBlob) return;
+
+    if (!lead?.conversaCanal) {
+      if (!selectedCanalOut) {
+        alert("Defina o canal de saída antes de enviar.");
+        return;
+      }
+      if (selectedCanalOut.type === "light") {
+        const session = waLightSessions.find(s => s.id === selectedCanalOut.sessionId);
+        if (session && session.status !== "CONNECTED") {
+          alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
+          return;
+        }
+      }
+    } else if (lead.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) {
+      const session = waLightSessions.find(s => s.id === lead.conversaSessionId);
+      if (session && session.status !== "CONNECTED") {
+        alert("Canal desconectado. Verifique o canal no cadastro do WhatsApp.");
+        return;
+      }
+    }
 
     setSending(true);
     setErr(null);
@@ -2637,6 +3285,48 @@ function discardAiSuggestion() {
     requestAnimationFrame(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
+  }
+
+  async function queueMediaSend(urls: string[], kind: "image" | "document") {
+    const ext = kind === "image" ? "jpg" : "pdf";
+    const mime = kind === "image" ? "image/jpeg" : "application/pdf";
+    const items: Array<{ file: File; previewUrl: string }> = [];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const file = new File([blob], `midia-${items.length + 1}.${ext}`, { type: blob.type || mime });
+        items.push({ file, previewUrl: url });
+      } catch { /* skip */ }
+    }
+    if (items.length === 0) return;
+    setDevMediaModal(null);
+    setAttachFile(null);
+    setAttachQueue([]);
+    setAttachFiles(items);
+    setAttachSendProgress(null);
+    setAttachErr(null);
+    requestAnimationFrame(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); });
+  }
+
+  async function sendAllAttachFiles() {
+    const items = attachFiles;
+    if (items.length === 0) return;
+    setAttachErr(null);
+    for (let i = 0; i < items.length; i++) {
+      setAttachSendProgress({ current: i + 1, total: items.length });
+      const r = await sendAttachmentFile(items[i].file);
+      if (!r.ok) {
+        setAttachErr(r.error);
+        setAttachSendProgress(null);
+        return;
+      }
+      setHasNewInbound(false);
+      await loadEvents({ silent: true });
+    }
+    setAttachFiles([]);
+    setAttachSendProgress(null);
+    setAttachErr(null);
   }
 
   function pushOptimisticOutgoingMedia(_file: File) {
@@ -2722,6 +3412,7 @@ function discardAiSuggestion() {
   return (
     <AppShell title="Lead">
       <div className="h-screen flex flex-col overflow-hidden">
+
             {/* STEPPER DO FUNIL (ETAPA 4) */}
         <div className="mb-4 rounded-xl border bg-[var(--shell-card-bg)] p-3">
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -2736,6 +3427,8 @@ function discardAiSuggestion() {
 
           {pipelineStages.length ? (() => {
             const currentStageId = (lead as any)?.stageId || null;
+            // Se não veio ?group= na URL, usa o grupo da etapa atual do lead
+            const effectiveGroup = currentGroup || (lead as any)?.stageGroup || null;
 
             async function moveToStage(stageId: string) {
               try {
@@ -2744,11 +3437,12 @@ function discardAiSuggestion() {
                   method: "PATCH",
                   body: JSON.stringify({ stageId }),
                 });
-                await loadLead();
+                const updatedLead = await loadLead();
 
-                const newStage = pipelineStages.find((s) => s.id === stageId);
-                if (newStage?.group && newStage.group !== currentGroup) {
-                  router.replace(`/leads/${id}?group=${newStage.group}`);
+                // Usa o stageGroup real do lead após a movimentação (inclui cascade)
+                const actualGroup = updatedLead?.stageGroup ?? null;
+                if (actualGroup && actualGroup !== effectiveGroup) {
+                  router.replace(`/leads/${id}?group=${actualGroup}`);
                 }
               } catch (e: any) {
                 alert(e?.message || "Erro ao mover etapa");
@@ -2757,8 +3451,13 @@ function discardAiSuggestion() {
               }
             }
 
-            function handleSelectStage(stage: PipelineStage) {
-              if (stage.requiresEvidence) {
+            function proceedSelectStage(stage: PipelineStage) {
+              // Abre o modal ao ENTRAR num status que exige evidência/justificativa
+              // ou ao SAIR de um (ex.: reativar lead suspenso/excluído). Os flags
+              // current* vêm do backend (allowed-stage-transitions), determinísticos.
+              const needsDocument = Boolean(stage.requiresEvidence) || currentStageRequiresEvidence;
+              const needsReason = Boolean(stage.requiresReason) || currentStageRequiresReason;
+              if (needsDocument || needsReason) {
                 setPendingStage(stage);
                 setEvidenceModalOpen(true);
               } else {
@@ -2766,22 +3465,68 @@ function discardAiSuggestion() {
               }
             }
 
-            async function handleEvidenceConfirm(file: File) {
+            function unitLabel(u: any) {
+              return [u?.development?.nome, u?.tower?.nome, u?.nome].filter(Boolean).join(" · ");
+            }
+
+            // Antes de mover: avisa quando a unidade vinculada vai mudar de status pela etapa.
+            function handleSelectStage(stage: PipelineStage) {
+              const units = (lead as any)?.developmentUnits ?? [];
+              const reservedUnit = units.find((u: any) => u.status === "RESERVADO");
+              const propostaUnit = units.find((u: any) => u.status === "PROPOSTA");
+              const willPropose = !!reservedUnit && (stage.unitAction === "PROPOSTA" || stage.advancesToGroup === "ESCOLHA_UNIDADE");
+              const willSell = !!propostaUnit && stage.unitAction === "VENDA";
+
+              if (willPropose) {
+                setUnitConfirm({
+                  stage,
+                  message: `Este lead tem a unidade ${unitLabel(reservedUnit)} reservada. Ao avançar para a Escolha da Unidade, ela passará para Proposta.`,
+                });
+                return;
+              }
+              if (willSell) {
+                setUnitConfirm({
+                  stage,
+                  message: `A unidade ${unitLabel(propostaUnit)} será marcada como Vendida ao confirmar o contrato.`,
+                });
+                return;
+              }
+              proceedSelectStage(stage);
+            }
+
+            async function handleEvidenceConfirm(payload: { file?: File; motivo?: string }) {
               if (!pendingStage || !id) return;
-              const docRes = await apiFetch(`/leads/${id}/documents`, {
-                method: "POST",
-                body: JSON.stringify({ tipo: "EVIDENCIA_TRANSICAO", nome: `Evidência — ${pendingStage.name}` }),
-              });
-              if (docRes?.id) {
+              let evidenceDocumentId: string | undefined;
+
+              if (payload.file) {
+                const docRes = await apiFetch(`/leads/${id}/documents`, {
+                  method: "POST",
+                  body: JSON.stringify({ tipo: "EVIDENCIA_TRANSICAO", nome: `Evidência — ${pendingStage.name}` }),
+                });
+                if (!docRes?.id) {
+                  throw new Error("Não foi possível registrar a evidência. Tente novamente.");
+                }
                 const uploadForm = new FormData();
-                uploadForm.append("file", file);
+                uploadForm.append("file", payload.file);
                 await apiFetch(`/leads/${id}/documents/${docRes.id}/upload`, {
                   method: "POST",
                   body: uploadForm,
                 });
+                evidenceDocumentId = docRes.id;
               }
+
+              // Só move após upload (quando há arquivo) confirmado; backend valida a regra.
+              await apiFetch("/leads/" + id + "/stage", {
+                method: "PATCH",
+                body: JSON.stringify({ stageId: pendingStage.id, evidenceDocumentId, motivo: payload.motivo }),
+              });
+              const updatedLead = await loadLead();
+              const actualGroup = updatedLead?.stageGroup ?? null;
+              if (actualGroup && actualGroup !== effectiveGroup) {
+                router.replace(`/leads/${id}?group=${actualGroup}`);
+              }
+              await loadStatusEvidences(id);
               setEvidenceModalOpen(false);
-              await moveToStage(pendingStage.id);
               setPendingStage(null);
             }
 
@@ -2790,17 +3535,45 @@ function discardAiSuggestion() {
                 <PipelineStepper
                   stages={pipelineStages}
                   currentStageId={currentStageId}
-                  currentGroup={currentGroup}
+                  currentGroup={effectiveGroup}
                   allowedStageIds={allowedStages.map((s) => s.id)}
+                  prevGroupActualStageId={prevGroupLastStageId}
                   disabled={movingStage}
                   onSelectStage={handleSelectStage}
                 />
                 <EvidenceUploadModal
                   isOpen={evidenceModalOpen}
                   stageName={pendingStage?.name ?? ""}
+                  isOwner={user?.role === "OWNER"}
+                  needsDocument={Boolean(pendingStage?.requiresEvidence) || currentStageRequiresEvidence}
+                  needsReason={Boolean(pendingStage?.requiresReason) || currentStageRequiresReason}
                   onClose={() => { setEvidenceModalOpen(false); setPendingStage(null); }}
                   onConfirm={handleEvidenceConfirm}
                 />
+                {unitConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
+                      <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Unidade vinculada</h2>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{unitConfirm.message}</p>
+                      <div className="mt-5 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setUnitConfirm(null)}
+                          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { const s = unitConfirm.stage; setUnitConfirm(null); proceedSelectStage(s); }}
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                        >
+                          Confirmar e avançar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             );
           })() : loadingPipeline ? (
@@ -3246,6 +4019,18 @@ function discardAiSuggestion() {
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">Perfil do imóvel</div>
                           <div className="text-[var(--shell-text)]">{perfilLabels[lead.perfilImovel] ?? lead.perfilImovel}</div>
+                        </div>
+                      )}
+
+                      {lead.empreendimentoInteresse && (
+                        <div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Empreendimento de interesse</div>
+                          <div className="flex items-center gap-2">
+                            {lead.empreendimentoInteresse.capaUrl && (
+                              <img src={lead.empreendimentoInteresse.capaUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
+                            )}
+                            <span className="text-[var(--shell-text)] text-sm font-medium">{lead.empreendimentoInteresse.nome}</span>
+                          </div>
                         </div>
                       )}
 
@@ -3776,27 +4561,55 @@ function discardAiSuggestion() {
               {/* Aba Gestão de Empreendimento */}
               {prodTab === "empreendimentos" && (
                 <div className="mt-3 space-y-3">
-                  {/* Selecionar empreendimento e abrir espelho */}
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Abrir espelho de vendas</div>
-                  <div className="flex gap-2">
-                    <select
-                      className="flex-1 rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
-                      value={selectedDevId}
-                      onChange={(e) => setSelectedDevId(e.target.value)}
-                    >
-                      <option value="">(Selecione um empreendimento)</option>
-                      {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={!selectedDevId}
-                      onClick={() => { setEspelhoModal({ devId: selectedDevId }); }}
-                      className="rounded-md px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ background: "var(--brand-accent)" }}
-                    >
-                      Abrir Espelho
-                    </button>
-                  </div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Selecionar empreendimento</div>
+                  <select
+                    className="w-full rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm"
+                    value={selectedDevId}
+                    onChange={(e) => setSelectedDevId(e.target.value)}
+                  >
+                    <option value="">(Selecione um empreendimento)</option>
+                    {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                  </select>
+                  {selectedDevId && (
+                    <div className="flex gap-2">
+                      {(() => {
+                        // Reserva na Documentação (RESERVA) e proposta na Escolha (PROPOSTA); OWNER sempre.
+                        const canReserva = currentStageUnitAction === "RESERVA";
+                        const canProposta = currentStageUnitAction === "PROPOSTA" || lead?.stageGroup === "ESCOLHA_UNIDADE";
+                        const canOpenEspelho = canReserva || canProposta || user?.role === "OWNER";
+                        const label = canReserva && !canProposta ? "🏗️ Abrir Espelho (Reservar)" : "🏗️ Abrir Espelho";
+                        return (
+                          <button
+                            type="button"
+                            disabled={!canOpenEspelho}
+                            onClick={() => setEspelhoModal({ devId: selectedDevId })}
+                            title={canOpenEspelho ? undefined : "Disponível nas etapas Documentação (reserva) e Escolha da Unidade (proposta)"}
+                            className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ background: "var(--brand-accent)" }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const dev = developments.find(d => d.id === selectedDevId);
+                          const devNome = dev?.nome ?? "Empreendimento";
+                          // Só pede confirmação se for um empreendimento diferente do já salvo
+                          if (lead?.empreendimentoInteresseId === selectedDevId) {
+                            setDevMediaModal({ devId: selectedDevId, devNome });
+                          } else {
+                            setDevInteresseConfirm({ devId: selectedDevId, devNome, action: "midia" });
+                          }
+                        }}
+                        className="flex-1 rounded-md px-3 py-2 text-xs font-semibold text-white transition-colors"
+                        style={{ background: "#6366f1" }}
+                      >
+                        🖼️ Ver Mídia
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               </>}
@@ -3814,6 +4627,54 @@ function discardAiSuggestion() {
                 </span>
                 <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
               </a>
+            )}
+
+            {/* Evidências de Status — só aparece quando há evidência/justificativa registrada */}
+            {statusEvidences.length > 0 && (
+              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setEvidencesOpen((o) => !o)}
+                  className="flex w-full items-center justify-between px-4 py-3 border-b border-[var(--shell-card-border)]"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📎</span>
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">Evidências de Status</span>
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{statusEvidences.length}</span>
+                  </div>
+                  <span className="text-[var(--shell-subtext)]">{evidencesOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {evidencesOpen && (
+                  <ul className="divide-y divide-[var(--shell-card-border)]">
+                    {statusEvidences.map((ev) => (
+                      <li key={ev.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-[var(--shell-text)]">
+                            {ev.fromStage ? `${ev.fromStage} → ` : ""}{ev.toStage}
+                          </div>
+                          {ev.motivo && (
+                            <div className="mt-0.5 text-[var(--shell-subtext)]">{ev.motivo}</div>
+                          )}
+                          <div className="mt-0.5 text-xs text-[var(--shell-subtext)]">
+                            {ev.changedByName ? `${ev.changedByName} · ` : ""}
+                            {new Date(ev.createdAt).toLocaleString("pt-BR")}
+                          </div>
+                        </div>
+                        {ev.document && (
+                          <button
+                            type="button"
+                            onClick={() => openStatusEvidenceDoc(ev.document!.id, ev.document!.filename || ev.document!.nome)}
+                            className="shrink-0 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+                          >
+                            Ver evidência
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
 
             {/* Análise de Crédito */}
@@ -3942,116 +4803,335 @@ function discardAiSuggestion() {
               </div>
             )}
 
+            {/* Agenda */}
+            <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <button
+                type="button"
+                onClick={() => setAgendaOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-2"
+              >
+                <span className="text-sm font-semibold text-[var(--shell-text)]">Agenda</span>
+                <div className="flex items-center gap-2">
+                  {agendaEvents.length > 0 && (
+                    <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                      {agendaEvents.length}
+                    </span>
+                  )}
+                  <svg
+                    className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${agendaOpen ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {agendaOpen && (
+                <div className="mt-3 space-y-2">
+                  {agendaEvents.length === 0 ? (
+                    <p className="text-xs text-[var(--shell-subtext)]">Nenhum evento agendado.</p>
+                  ) : (
+                    agendaEvents.slice(0, 5).map((ev) => {
+                      const editable = canEditAgendaEvent(ev);
+                      return (
+                        <div
+                          key={ev.id}
+                          className={`rounded-lg border p-2.5 text-xs space-y-0.5 ${editable ? "cursor-pointer hover:bg-[var(--shell-hover)] transition" : ""}`}
+                          style={{ borderColor: "var(--shell-card-border)" }}
+                          onClick={() => editable && openAgendaEdit(ev)}
+                        >
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${AGENDA_TYPE_COLOR[ev.eventType] ?? "bg-gray-100 text-gray-600"}`}>
+                              {AGENDA_TYPE_LABEL[ev.eventType] ?? ev.eventType}
+                            </span>
+                            {ev.visibility === "PRIVATE" && (
+                              <span className="text-[10px] text-[var(--shell-subtext)]">🔒</span>
+                            )}
+                            <span className="font-medium text-[var(--shell-text)] truncate flex-1">{ev.title}</span>
+                            <span className="text-[10px] font-medium text-[var(--shell-subtext)] shrink-0">
+                              👤 {ev.user?.apelido || (ev.user?.nome?.trim().split(" ")[0]) || "—"}
+                            </span>
+                            {editable && (
+                              <span className="text-[10px] text-blue-500 shrink-0">✏️</span>
+                            )}
+                          </div>
+                          <div className="text-[var(--shell-subtext)]">
+                            {new Date(ev.startAt).toLocaleString("pt-BR", {
+                              day: "2-digit", month: "2-digit", year: "numeric",
+                              hour: "2-digit", minute: "2-digit",
+                            })}
+                          </div>
+                          <div className="text-[var(--shell-subtext)]">
+                            {AGENDA_STATUS_LABEL[ev.status] ?? ev.status}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <a
+                      href={`/calendar?leadId=${id}&leadName=${encodeURIComponent(lead?.nomeCorreto ?? lead?.nome ?? "")}`}
+                      className="flex-1 rounded-md border py-1.5 text-center text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition"
+                      style={{ borderColor: "var(--shell-card-border)" }}
+                    >
+                      + Novo evento
+                    </a>
+                    {agendaEvents.length > 5 && (
+                      <a
+                        href={`/calendar?leadId=${id}&leadName=${encodeURIComponent(lead?.nomeCorreto ?? lead?.nome ?? "")}`}
+                        className="text-xs text-[var(--shell-subtext)] underline hover:text-[var(--shell-text)]"
+                      >
+                        Ver tudo
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Painel SLA */}
             {slaData && (
               <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="text-sm font-semibold text-[var(--shell-text)]">SLA</div>
-                  {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSlaOpen((v) => !v)}
+                  className="flex w-full items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">SLA</span>
+                    {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
+                  </div>
+                  <svg
+                    className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${slaOpen ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
 
-                {/* Stage group badge */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    slaData.stageGroup === 'PRE_ATENDIMENTO'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
-                  }`}>
-                    {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
-                  </span>
-                  {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
-                    <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
-                  )}
-                </div>
+                {slaOpen && (
+                  <div className="mt-3">
+                    {/* Stage group badge */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        slaData.stageGroup === 'PRE_ATENDIMENTO'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
+                      }`}>
+                        {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
+                      </span>
+                      {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
+                        <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
+                      )}
+                    </div>
 
-                {/* 23h window */}
-                {slaData.lastInboundAt && (
-                  <div className={`rounded-md border p-2 mb-3 text-xs ${
-                    slaData.windowExpired
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : slaData.windowRemainingMinutes < 120
-                        ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  }`}>
-                    <div className="font-medium mb-0.5">Janela WhatsApp (23h)</div>
-                    {slaData.windowExpired ? (
-                      <div>Janela expirada</div>
-                    ) : (
+                    {/* 23h window */}
+                    {slaData.lastInboundAt && (
+                      <div className={`rounded-md border p-2 mb-3 text-xs ${
+                        slaData.windowExpired
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : slaData.windowRemainingMinutes < 120
+                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}>
+                        <div className="font-medium mb-0.5">Janela WhatsApp (23h)</div>
+                        {slaData.windowExpired ? (
+                          <div>Janela expirada</div>
+                        ) : (
+                          <div>
+                            Fecha em{' '}
+                            {slaData.windowRemainingMinutes >= 60
+                              ? `${Math.floor(slaData.windowRemainingMinutes / 60)}h ${slaData.windowRemainingMinutes % 60}min`
+                              : `${slaData.windowRemainingMinutes}min`}
+                            {' '}· {new Date(slaData.windowCloseAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Scheduled jobs */}
+                    {slaData.scheduledJobs?.length > 0 ? (
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
+                        <div className="space-y-1">
+                          {slaData.scheduledJobs.map((job: any) => {
+                            const urgencyColor: Record<string, string> = {
+                              BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                              MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
+                              ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
+                              CRITICA: 'text-red-700 bg-red-50 border-red-200',
+                            };
+                            const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
+                            return (
+                              <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
+                                <span className="font-medium">{job.name}</span>
+                                <span>
+                                  {new Date(job.scheduledFor).toLocaleString('pt-BR', {
+                                    day: '2-digit', month: '2-digit',
+                                    hour: '2-digit', minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
+                      <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
+                    ) : null}
+
+                    {/* Recent history */}
+                    {slaData.history?.length > 0 && (
                       <div>
-                        Fecha em{' '}
-                        {slaData.windowRemainingMinutes >= 60
-                          ? `${Math.floor(slaData.windowRemainingMinutes / 60)}h ${slaData.windowRemainingMinutes % 60}min`
-                          : `${slaData.windowRemainingMinutes}min`}
-                        {' '}· {new Date(slaData.windowCloseAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Histórico recente</div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {slaData.history.slice(0, 8).map((ev: any) => {
+                            const p = ev.payload || {};
+                            const isBlocked = p.outcome === 'BLOCKED';
+                            const isDue = p.outcome === 'DUE';
+                            const isSuggestion = ev.channel === 'ai.suggestion';
+                            return (
+                              <div key={ev.id} className="flex items-start gap-1.5 text-xs text-[var(--shell-subtext)]">
+                                <span className="mt-0.5 shrink-0">
+                                  {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
+                                </span>
+                                <span className="flex-1 min-w-0">
+                                  <span className="font-medium">
+                                    {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
+                                  </span>
+                                  {' · '}
+                                  <span className="text-[var(--shell-subtext)]">
+                                    {new Date(ev.criadoEm).toLocaleString('pt-BR', {
+                                      day: '2-digit', month: '2-digit',
+                                      hour: '2-digit', minute: '2-digit',
+                                    })}
+                                  </span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
+              </div>
+            )}
 
-                {/* Scheduled jobs */}
-                {slaData.scheduledJobs?.length > 0 ? (
-                  <div className="mb-3">
-                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
-                    <div className="space-y-1">
-                      {slaData.scheduledJobs.map((job: any) => {
-                        const urgencyColor: Record<string, string> = {
-                          BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-                          MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
-                          ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
-                          CRITICA: 'text-red-700 bg-red-50 border-red-200',
-                        };
-                        const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
-                        return (
-                          <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
-                            <span className="font-medium">{job.name}</span>
-                            <span>
-                              {new Date(job.scheduledFor).toLocaleString('pt-BR', {
-                                day: '2-digit', month: '2-digit',
-                                hour: '2-digit', minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
-                  <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
-                ) : null}
+            {/* Histórico de Movimentações — botão que abre popup de consulta (abaixo do SLA) */}
+            {transitions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                className="flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+              >
+                <span className="flex items-center gap-2">
+                  <span>🕑</span>
+                  Histórico de Movimentações
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{transitions.length}</span>
+                </span>
+                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+              </button>
+            )}
 
-                {/* Recent history */}
-                {slaData.history?.length > 0 && (
-                  <div>
-                    <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Histórico recente</div>
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {slaData.history.slice(0, 8).map((ev: any) => {
-                        const p = ev.payload || {};
-                        const isBlocked = p.outcome === 'BLOCKED';
-                        const isDue = p.outcome === 'DUE';
-                        const isSuggestion = ev.channel === 'ai.suggestion';
-                        return (
-                          <div key={ev.id} className="flex items-start gap-1.5 text-xs text-[var(--shell-subtext)]">
-                            <span className="mt-0.5 shrink-0">
-                              {isSuggestion ? '🤖' : isDue ? '⏰' : isBlocked ? '⛔' : '•'}
-                            </span>
-                            <span className="flex-1 min-w-0">
-                              <span className="font-medium">
-                                {isSuggestion ? 'Sugestão IA' : p.reason ?? p.outcome ?? ev.channel}
-                              </span>
-                              {' · '}
-                              <span className="text-[var(--shell-subtext)]">
-                                {new Date(ev.criadoEm).toLocaleString('pt-BR', {
-                                  day: '2-digit', month: '2-digit',
-                                  hour: '2-digit', minute: '2-digit',
-                                })}
-                              </span>
-                            </span>
-                          </div>
-                        );
-                      })}
+            {/* Modal de edição inline de evento da agenda */}
+            {editingAgendaEvent && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+                <div className="w-full max-w-sm rounded-xl shadow-xl bg-[var(--shell-card-bg)]">
+                  <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                    <div>
+                      <h2 className="text-base font-semibold text-[var(--shell-text)]">Editar evento</h2>
+                      <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{AGENDA_TYPE_LABEL[editingAgendaEvent.eventType] ?? editingAgendaEvent.eventType}</p>
                     </div>
+                    <button type="button" onClick={() => setEditingAgendaEvent(null)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)] text-xl leading-none">×</button>
                   </div>
-                )}
+
+                  <div className="px-5 py-4 space-y-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Título</label>
+                      <input
+                        value={agendaEditForm.title}
+                        onChange={(e) => setAgendaEditForm((p) => ({ ...p, title: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Início</label>
+                        <input
+                          type="datetime-local"
+                          value={agendaEditForm.startAt}
+                          onChange={(e) => setAgendaEditForm((p) => ({ ...p, startAt: e.target.value }))}
+                          className="w-full rounded-md border px-2 py-2 text-xs outline-none focus:border-slate-400"
+                          style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Fim</label>
+                        <input
+                          type="datetime-local"
+                          value={agendaEditForm.endAt}
+                          onChange={(e) => setAgendaEditForm((p) => ({ ...p, endAt: e.target.value }))}
+                          className="w-full rounded-md border px-2 py-2 text-xs outline-none focus:border-slate-400"
+                          style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-[var(--shell-subtext)]">Status</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(["AGENDADO","CONFIRMADO","REALIZADO","NO_SHOW","CANCELADO"] as const).map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setAgendaEditForm((p) => ({ ...p, status: s }))}
+                            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                              agendaEditForm.status === s
+                                ? "bg-slate-800 text-white"
+                                : "bg-[var(--shell-hover)] text-[var(--shell-subtext)] hover:opacity-80"
+                            }`}
+                          >
+                            {AGENDA_STATUS_LABEL[s]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[var(--shell-subtext)]">Visibilidade</span>
+                      <div className="flex rounded-lg border overflow-hidden text-xs" style={{ borderColor: "var(--shell-card-border)" }}>
+                        <button type="button" onClick={() => setAgendaEditForm((p) => ({ ...p, visibility: "PUBLIC" }))}
+                          className={`px-3 py-1.5 transition ${agendaEditForm.visibility === "PUBLIC" ? "bg-blue-600 text-white font-medium" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                          🌐 Público
+                        </button>
+                        <button type="button" onClick={() => setAgendaEditForm((p) => ({ ...p, visibility: "PRIVATE" }))}
+                          className={`px-3 py-1.5 transition ${agendaEditForm.visibility === "PRIVATE" ? "bg-slate-600 text-white font-medium" : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"}`}>
+                          🔒 Privado
+                        </button>
+                      </div>
+                    </div>
+
+                    {agendaEditError && (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{agendaEditError}</div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2 border-t px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                    <button type="button" onClick={() => setEditingAgendaEvent(null)}
+                      className="rounded-md border px-4 py-2 text-sm text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                      style={{ borderColor: "var(--shell-card-border)" }}>
+                      Cancelar
+                    </button>
+                    <button type="button" onClick={saveAgendaEdit} disabled={agendaEditSaving}
+                      className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
+                      {agendaEditSaving ? "Salvando..." : "Salvar"}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -4100,97 +5180,50 @@ function discardAiSuggestion() {
                         lastInboundAgoLabel}
                     </span>
                     {lead?.telefone ? <span>{"Tel: " + lead.telefone}</span> : null}
-                    {/* Canal indicator */}
-                    {lead?.conversaCanal && !alterandoCanal && (
-                      <span className="flex items-center gap-1">
-                        {lead.conversaCanal === "WHATSAPP_LIGHT"
-                          ? ("📱 " + (waLightSessions.find(s => s.id === lead.conversaSessionId)?.nome ?? "WA Light"))
-                          : "✅ WA Oficial"}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) {
-                              setSelectedCanalOut({ type: "light", sessionId: lead.conversaSessionId });
-                            } else if (lead?.conversaCanal === "WHATSAPP_OFICIAL") {
-                              setSelectedCanalOut({ type: "oficial" });
+                    {/* Canal de saída — seletor unificado */}
+                    {waLightSessions.length === 0 && !waOficialConfigured ? (
+                      <span className="text-amber-600">
+                        Nenhum número WA cadastrado.{" "}
+                        <a href="/inbox-wa-light" className="underline">Cadastrar</a>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 flex-wrap">
+                        <select
+                          value={(() => {
+                            // Mudança pendente tem prioridade sempre
+                            if (pendingCanalChange) {
+                              return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
                             }
-                            setAlterandoCanal(true);
+                            if (lead?.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
+                            if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
+                            // Sem canal gravado: usa auto-seleção
+                            return selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId
+                              : selectedCanalOut?.type === "oficial" ? "__oficial__" : "";
+                          })()}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
+                            if (newVal) { setPendingCanalChange(newVal); setShowCanalModal(true); }
                           }}
-                          className="ml-1 underline text-[var(--brand-accent)] hover:opacity-80"
+                          className="rounded border bg-[var(--shell-card-bg)] px-2 py-1 text-xs"
+                          style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
                         >
-                          Alterar
-                        </button>
+                          <option value="">(Selecione...)</option>
+                          {waLightSessions.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {"📱 " + s.nome + (s.phoneNumber ? ` (${s.phoneNumber})` : "") + (s.status !== "CONNECTED" ? " • " + (s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status) : "")}
+                            </option>
+                          ))}
+                          {waOficialConfigured && (
+                            <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
+                          )}
+                        </select>
+                        {pendingCanalChange && (
+                          <span className="text-xs text-amber-600 font-medium">Troca pendente — confirme no popup</span>
+                        )}
                       </span>
                     )}
                   </div>
-                  {/* Seletor de alteração de canal */}
-                  {lead?.conversaCanal && alterandoCanal && (
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <select
-                        value={
-                          selectedCanalOut?.type === "light"
-                            ? selectedCanalOut.sessionId
-                            : selectedCanalOut?.type === "oficial"
-                            ? "__oficial__"
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === "__oficial__") setSelectedCanalOut({ type: "oficial" });
-                          else if (v) setSelectedCanalOut({ type: "light", sessionId: v });
-                          else setSelectedCanalOut(null);
-                        }}
-                        className="rounded border bg-[var(--shell-card-bg)] px-2 py-1 text-xs"
-                        style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
-                      >
-                        <option value="">(Selecione...)</option>
-                        {waLightSessions.map(s => (
-                          <option key={s.id} value={s.id}>
-                            {"📱 " + s.nome + (s.phoneNumber ? ` (${s.phoneNumber})` : "") + (s.status !== "CONNECTED" ? " • " + (s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status) : "")}
-                          </option>
-                        ))}
-                        {waOficialConfigured && (
-                          <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
-                        )}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={savingCanal || !selectedCanalOut}
-                        onClick={async () => {
-                          if (!selectedCanalOut) return;
-                          setSavingCanal(true);
-                          try {
-                            const body: Record<string, string | null> = {
-                              conversaCanal: selectedCanalOut.type === "light" ? "WHATSAPP_LIGHT" : "WHATSAPP_OFICIAL",
-                            };
-                            if (selectedCanalOut.type === "light") body.conversaSessionId = selectedCanalOut.sessionId;
-                            await apiFetch(`/leads/${id}/canal`, { method: "PATCH", body: JSON.stringify(body) });
-                            setLead((prev: any) => prev ? {
-                              ...prev,
-                              conversaCanal: body.conversaCanal,
-                              conversaSessionId: selectedCanalOut.type === "light" ? selectedCanalOut.sessionId : null,
-                            } : prev);
-                            setAlterandoCanal(false);
-                          } catch {
-                            alert("Erro ao alterar canal");
-                          } finally {
-                            setSavingCanal(false);
-                          }
-                        }}
-                        className="rounded px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
-                        style={{ background: "var(--brand-accent)" }}
-                      >
-                        {savingCanal ? "Salvando..." : "Confirmar"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAlterandoCanal(false)}
-                        className="rounded px-2 py-1 text-xs font-semibold text-[var(--shell-subtext)] hover:opacity-80"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -4216,7 +5249,7 @@ function discardAiSuggestion() {
 
             <div className="border-t bg-[var(--shell-card-bg)] p-3 space-y-3">
               {/* PAINEL DA IA */}
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
+              {tenantAiEnabled && <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="text-sm font-semibold text-amber-900">Painel da IA</div>
@@ -4441,7 +5474,71 @@ function discardAiSuggestion() {
                     Nenhuma sugestão de IA pendente para este lead no momento.
                   </div>
                 )}
-              </div>
+              </div>}
+
+              {/* MULTI-FILE PREVIEW (de empreendimento) */}
+              {attachFiles.length > 0 && (
+                <div className="rounded-lg border bg-[var(--shell-bg)] p-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-semibold text-[var(--shell-text)]">
+                      📎 {attachFiles.length} arquivo(s) pronto(s) para enviar
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs text-[var(--shell-subtext)] hover:text-red-500"
+                      disabled={!!attachSendProgress}
+                      onClick={() => { setAttachFiles([]); setAttachSendProgress(null); setAttachErr(null); }}
+                    >
+                      Cancelar tudo
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    {attachFiles.map((item, idx) => (
+                      <div key={idx} className="relative group">
+                        {item.file.type.startsWith("image/") ? (
+                          <img
+                            src={item.previewUrl}
+                            alt={item.file.name}
+                            className="w-full h-14 object-cover rounded border bg-[var(--shell-card-bg)]"
+                          />
+                        ) : (
+                          <div className="w-full h-14 flex flex-col items-center justify-center rounded border bg-[var(--shell-card-bg)] gap-0.5">
+                            <span className="text-lg">📄</span>
+                            <span className="text-[9px] text-[var(--shell-subtext)] truncate w-full text-center px-1">{item.file.name}</span>
+                          </div>
+                        )}
+                        {!attachSendProgress && (
+                          <button
+                            type="button"
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setAttachFiles(prev => prev.filter((_, i) => i !== idx))}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {attachErr && (
+                    <div className="mb-2 rounded border border-red-200 bg-red-50 p-1.5 text-xs text-red-700">{attachErr}</div>
+                  )}
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="rounded-md bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:opacity-60"
+                      disabled={!!attachSendProgress || attachFiles.length === 0}
+                      onClick={sendAllAttachFiles}
+                    >
+                      {attachSendProgress
+                        ? `Enviando ${attachSendProgress.current} de ${attachSendProgress.total}...`
+                        : `Enviar ${attachFiles.length} arquivo(s)`}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* PREVIEW DO ANEXO */}
               {attachFile ? (
@@ -4512,6 +5609,18 @@ function discardAiSuggestion() {
                           } catch {}
                           setHasNewInbound(false);
                           await loadEvents({ silent: true });
+                          // Drena fila de multi-envio
+                          setAttachQueue(prev => {
+                            if (prev.length === 0) return prev;
+                            const [next, ...rest] = prev;
+                            setAttachFile(next);
+                            const notice = rest.length === 0
+                              ? "Último arquivo pronto. Clique em \"Enviar anexo\"."
+                              : `Mais ${rest.length + 1} arquivo(s). Próximo pronto para enviar.`;
+                            setProductsNotice(notice);
+                            setTimeout(() => setProductsNotice(null), 3000);
+                            return rest;
+                          });
                         }
 
                         setAttachSending(false);
@@ -4663,50 +5772,14 @@ function discardAiSuggestion() {
                   </div>
                 </div>
 
-                {/* Seletor de canal — só quando o lead ainda não tem canal definido */}
-                {!lead?.conversaCanal && (
-                  <div className="mb-2 rounded-lg border p-3" style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)" }}>
-                    {waLightSessions.length === 0 && !waOficialConfigured ? (
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <div className="text-xs font-semibold text-amber-700">Nenhum número WhatsApp cadastrado</div>
-                          <div className="text-[11px] text-[var(--shell-subtext)]">Cadastre um número para enviar mensagens a este lead</div>
-                        </div>
-                        <a
-                          href="/inbox-wa-light"
-                          className="shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors"
-                          style={{ background: "var(--brand-accent)" }}
-                        >
-                          Cadastrar número
-                        </a>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="shrink-0 text-[11px] font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Canal de saída</span>
-                        <select
-                          value={selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId : selectedCanalOut?.type === "oficial" ? "__oficial__" : ""}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === "__oficial__") setSelectedCanalOut({ type: "oficial" });
-                            else if (v) setSelectedCanalOut({ type: "light", sessionId: v });
-                            else setSelectedCanalOut(null);
-                          }}
-                          className="flex-1 rounded-md border bg-[var(--shell-card-bg)] px-2 py-1.5 text-xs"
-                          style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
-                        >
-                          <option value="">(Selecione...)</option>
-                          {waLightSessions.map(s => (
-                            <option key={s.id} value={s.id}>
-                              📱 {s.nome}{s.phoneNumber ? ` (${s.phoneNumber})` : ""}
-                              {s.status !== "CONNECTED" ? ` • ${s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status}` : ""}
-                            </option>
-                          ))}
-                          {waOficialConfigured && (
-                            <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
-                          )}
-                        </select>
-                      </div>
-                    )}
+                {lead?.conversaAberta && (
+                  <div className="flex items-center justify-end pb-1">
+                    <button
+                      onClick={() => setShowEndConvDialog(true)}
+                      className="text-xs text-amber-600 hover:text-amber-800 border border-amber-300 rounded-md px-2 py-1 bg-amber-50 hover:bg-amber-100 transition-colors"
+                    >
+                      🔒 Encerrar conversa
+                    </button>
                   </div>
                 )}
 
@@ -4726,6 +5799,8 @@ function discardAiSuggestion() {
                   disabled={sending}
                   rows={1}
                 />
+
+                <QuickReplies onInsert={insertIntoChat} />
 
                 <button
                   className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-60"
@@ -5029,9 +6104,212 @@ function discardAiSuggestion() {
           leadId={id}
           trocandoUnitId={espelhoModal.trocandoUnitId}
           trocandoUnitNome={espelhoModal.trocandoUnitNome}
+          linkStatus={currentStageUnitAction === "RESERVA" ? "RESERVADO" : "PROPOSTA"}
           onClose={() => setEspelhoModal(null)}
           onDone={() => { setEspelhoModal(null); loadLead(); }}
         />
+      )}
+
+      {/* Popup de confirmação: registrar empreendimento como interesse antes de abrir espelho/mídia */}
+      {devInteresseConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--shell-card-bg)] p-6 shadow-2xl">
+            <div className="mb-1 text-base font-bold text-[var(--shell-text)]">Definir como produto de interesse</div>
+            <p className="mb-5 text-sm text-[var(--shell-subtext)] leading-relaxed">
+              <span className="font-semibold text-[var(--shell-text)]">{devInteresseConfirm.devNome}</span> será registrado
+              como empreendimento de interesse deste lead. Para alterar, basta selecionar outro empreendimento ou
+              produto do catálogo.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={devInteresseSaving}
+                onClick={async () => {
+                  setDevInteresseSaving(true);
+                  try {
+                    await apiFetch(`/leads/${id}/qualification`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ empreendimentoInteresseId: devInteresseConfirm.devId, produtoInteresseId: null }),
+                    });
+                    await loadLead();
+                    const { devId, devNome, action } = devInteresseConfirm;
+                    setDevInteresseConfirm(null);
+                    if (action === "espelho") setEspelhoModal({ devId });
+                    else setDevMediaModal({ devId, devNome });
+                  } catch {
+                    setDevInteresseSaving(false);
+                  }
+                }}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50"
+                style={{ background: "var(--brand-accent)" }}
+              >
+                {devInteresseSaving ? "Salvando..." : "Confirmar"}
+              </button>
+              <button
+                type="button"
+                disabled={devInteresseSaving}
+                onClick={() => setDevInteresseConfirm(null)}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold bg-[var(--shell-bg)] text-[var(--shell-text)] border border-[var(--shell-card-border)] transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de mídia do empreendimento */}
+      {devMediaModal && (
+        <DevMediaModal
+          devId={devMediaModal.devId}
+          devNome={devMediaModal.devNome}
+          onClose={() => setDevMediaModal(null)}
+          prepareAttachmentFromUrl={prepareAttachmentFromUrl}
+          onSendMultiple={queueMediaSend}
+          insertIntoChat={insertIntoChat}
+          handleCopyLink={handleCopyLink}
+        />
+      )}
+
+      {/* Modal: Encerrou essa conversa? (ao sair da página) */}
+      {showExitDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+        >
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Encerrou essa conversa?</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Esta conversa ainda está aberta. Deseja encerrá-la antes de sair?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowExitDialog(false);
+                  if (pendingNavRef.current) {
+                    startTransition(() => router.push(pendingNavRef.current!));
+                  }
+                }}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Não, só sair
+              </button>
+              <button
+                onClick={async () => {
+                  await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+                  setShowExitDialog(false);
+                  if (pendingNavRef.current) {
+                    startTransition(() => router.push(pendingNavRef.current!));
+                  }
+                }}
+                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+              >
+                Sim, encerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: confirmação de encerrar conversa (pelo botão na área de mensagem) */}
+      {showEndConvDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+        >
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Encerrar conversa?</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              O lead sairá da seção de conversas abertas. Quando o lead mandar uma nova mensagem, a conversa será reaberta automaticamente.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowEndConvDialog(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+                  setShowEndConvDialog(false);
+                  setLead((prev) => prev ? { ...prev, conversaAberta: false } : prev);
+                }}
+                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+              >
+                Sim, encerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCanalModal && pendingCanalChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" style={{ background: "var(--shell-card-bg)", border: "1px solid var(--shell-card-border)" }}>
+            <h2 className="text-base font-bold mb-3" style={{ color: "var(--shell-text)" }}>⚠️ Confirmar troca de canal</h2>
+            <p className="text-sm mb-2" style={{ color: "var(--shell-subtext)" }}>
+              {lead?.conversaCanal ? (
+                <>
+                  Este cliente entrou em contato pelo{" "}
+                  <strong style={{ color: "var(--shell-text)" }}>
+                    {lead.conversaCanal === "WHATSAPP_OFICIAL"
+                      ? "WhatsApp Oficial (Meta)"
+                      : (() => { const s = waLightSessions.find(x => x.id === lead.conversaSessionId); return s ? `${s.nome}${s.phoneNumber ? ` · ${s.phoneNumber}` : ""}` : "WhatsApp Light"; })()}
+                  </strong>.{" "}
+                </>
+              ) : null}
+              Ao confirmar, as próximas mensagens serão enviadas pelo{" "}
+              <strong style={{ color: "var(--shell-text)" }}>
+                {pendingCanalChange.type === "oficial"
+                  ? "WhatsApp Oficial (Meta)"
+                  : (() => { const s = waLightSessions.find(x => x.id === pendingCanalChange.sessionId); return s ? `${s.nome}${s.phoneNumber ? ` · ${s.phoneNumber}` : ""}` : "WhatsApp Light"; })()}
+              </strong>.
+            </p>
+            <p className="text-sm mb-5" style={{ color: "var(--shell-subtext)" }}>
+              O cliente poderá receber mensagens de um número novo e talvez desconhecido para ele.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setPendingCanalChange(null); setShowCanalModal(false); }}
+                className="rounded px-4 py-2 text-sm font-semibold hover:opacity-80"
+                style={{ background: "var(--shell-sidebar-bg)", color: "var(--shell-subtext)" }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={savingCanal}
+                onClick={async () => {
+                  if (!pendingCanalChange) return;
+                  setSavingCanal(true);
+                  try {
+                    const body: Record<string, string | null> = {
+                      conversaCanal: pendingCanalChange.type === "light" ? "WHATSAPP_LIGHT" : "WHATSAPP_OFICIAL",
+                      conversaSessionId: pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : null,
+                    };
+                    await apiFetch(`/leads/${id}/canal`, { method: "PATCH", body: JSON.stringify(body) });
+                    setLead((prev: any) => prev ? { ...prev, ...body } : prev);
+                    setPendingCanalChange(null);
+                    setShowCanalModal(false);
+                  } catch {
+                    alert("Erro ao alterar canal");
+                  } finally {
+                    setSavingCanal(false);
+                  }
+                }}
+                className="rounded px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: "#dc2626" }}
+              >
+                {savingCanal ? "Salvando..." : "Confirmar troca"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showAvatarModal && lead?.avatarUrl && (
@@ -5066,6 +6344,109 @@ function discardAiSuggestion() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Popup — Histórico de Movimentações (somente consulta) */}
+      {historyOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+        >
+          <div className="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-[var(--shell-card-border)] px-5 py-4">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
+                <span>🕑</span> Histórico de Movimentações
+              </h2>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="rounded-full p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-neutral-800"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <ul className="divide-y divide-[var(--shell-card-border)] overflow-y-auto">
+              {transitions.map((t) => (
+                <li key={t.id} className="px-5 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-slate-800 dark:text-slate-100">
+                      {t.fromStage ? `${t.fromStage} → ` : ""}{t.toStage}
+                    </span>
+                    {t.cascade && (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-neutral-800 dark:text-slate-400">automático</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    {t.cascade ? "Sistema" : (t.changedByName || "—")} · {new Date(t.createdAt).toLocaleString("pt-BR")}
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex justify-end border-t border-[var(--shell-card-border)] px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup — Visualização de evidência (imagem/PDF) na mesma tela */}
+      {evidencePreview && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+        >
+          <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl dark:bg-neutral-900">
+            <div className="flex items-center justify-between border-b border-[var(--shell-card-border)] px-5 py-3">
+              <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {evidencePreview.nome || "Evidência"}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={evidencePreview.url}
+                  download={evidencePreview.nome || "evidencia"}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+                >
+                  Baixar
+                </a>
+                <button
+                  type="button"
+                  onClick={closeEvidencePreview}
+                  className="rounded-full p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-neutral-800"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-100 dark:bg-neutral-950 p-3">
+              {evidencePreview.mime.startsWith("image/") ? (
+                <img src={evidencePreview.url} alt={evidencePreview.nome} className="mx-auto max-h-[78vh] object-contain" />
+              ) : evidencePreview.mime === "application/pdf" ? (
+                <iframe src={evidencePreview.url} title={evidencePreview.nome} className="h-[78vh] w-full rounded-md bg-white" />
+              ) : (
+                <div className="py-16 text-center text-sm text-slate-500 dark:text-slate-400">
+                  Pré-visualização não disponível para este tipo de arquivo.
+                  <div className="mt-3">
+                    <a href={evidencePreview.url} download={evidencePreview.nome || "evidencia"} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                      Baixar arquivo
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

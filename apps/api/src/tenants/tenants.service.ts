@@ -43,6 +43,14 @@ export class TenantsService {
     });
   }
 
+  async getAiStatus(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { autopilotEnabled: true },
+    });
+    return { autopilotEnabled: tenant?.autopilotEnabled ?? true };
+  }
+
   async updateWhatsappSettings(tenantId: string, data: { whatsappPhoneNumberId?: string; whatsappToken?: string; whatsappVerifyToken?: string }) {
     let tokenToSave: string | undefined;
     if (data.whatsappToken !== undefined) {

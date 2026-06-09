@@ -10,8 +10,8 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "./api";
 
-export type PermissionAction = "view" | "create" | "edit" | "delete" | "use";
-export type PermissionRole = "manager" | "agent";
+export type PermissionAction = "view" | "create" | "edit" | "delete" | "use" | "export" | "send" | "merge";
+export type PermissionRole = "manager" | "agent" | "partner";
 
 export type PermissionsConfig = Record<
   PermissionRole,
@@ -98,8 +98,42 @@ export const PERMISSION_MODULES = [
     key: "gestao_empreendimentos",
     label: "Gestão de Empreendimentos",
     actions: [
+      { key: "create", label: "Fazer proposta" },
       { key: "edit",   label: "Editar unidades" },
       { key: "delete", label: "Bloquear unidades" },
+    ],
+  },
+  {
+    key: "inbox",
+    label: "Inbox WhatsApp",
+    actions: [
+      { key: "view", label: "Ver conversas" },
+      { key: "send", label: "Enviar mensagens" },
+    ],
+  },
+  {
+    key: "campanhas",
+    label: "Campanhas",
+    actions: [
+      { key: "view",   label: "Ver" },
+      { key: "create", label: "Criar" },
+      { key: "edit",   label: "Editar" },
+      { key: "delete", label: "Excluir" },
+    ],
+  },
+  {
+    key: "duplicados",
+    label: "Duplicados",
+    actions: [
+      { key: "view",  label: "Ver" },
+      { key: "merge", label: "Mesclar" },
+    ],
+  },
+  {
+    key: "exportacao",
+    label: "Exportação de Dados",
+    actions: [
+      { key: "export", label: "Exportar leads (CSV)" },
     ],
   },
 ] as const;

@@ -130,6 +130,7 @@ export class DevelopmentsService {
       }
       if (data.terrainDesign !== undefined) updateData.terrainDesign = data.terrainDesign;
       if (data.areasComuns !== undefined) updateData.areasComuns = data.areasComuns;
+      if (data.capaUrl !== undefined) updateData.capaUrl = data.capaUrl || null;
     }
 
     try {
@@ -499,15 +500,17 @@ export class DevelopmentsService {
     if (updateData.ativo !== undefined) updateData.ativo = Boolean(updateData.ativo);
     delete updateData.lead;
 
-    // PROPOSTA: validações
+    // PROPOSTA / RESERVADO: validações sensíveis à etapa do lead
     const newStatus = updateData.status;
     if (newStatus && newStatus !== unit.status) {
-      if (newStatus === 'PROPOSTA') {
-        const leadIdToUse = updateData.leadId || unit.leadId;
-        if (!leadIdToUse) throw new BadRequestException('PROPOSTA requer um lead vinculado.');
+      const isOwner = actor?.role === 'OWNER';
 
-        // OWNER pode vincular proposta independente do stage do lead (ajustes administrativos)
-        if (actor?.role !== 'OWNER') {
+      // Resolve grupo + unitAction da etapa atual do lead (quando há lead envolvido)
+      let leadStageGroup: string | null = null;
+      let leadUnitAction: string | null = null;
+      if (newStatus === 'PROPOSTA' || newStatus === 'RESERVADO') {
+        const leadIdToUse = updateData.leadId || unit.leadId;
+        if (leadIdToUse) {
           const leadRecord = await this.prisma.lead.findFirst({
             where: { id: leadIdToUse },
             select: { stageId: true },
@@ -515,21 +518,51 @@ export class DevelopmentsService {
           if (leadRecord?.stageId) {
             const stage = await this.prisma.pipelineStage.findFirst({
               where: { id: leadRecord.stageId },
-              select: { group: true },
+              select: { group: true, unitAction: true },
             });
+            leadStageGroup = stage?.group ?? null;
+            leadUnitAction = stage?.unitAction ?? null;
+          }
+        }
+      }
+
+      if (newStatus === 'PROPOSTA') {
+        const leadIdToUse = updateData.leadId || unit.leadId;
+        if (!leadIdToUse) throw new BadRequestException('PROPOSTA requer um lead vinculado.');
+
+        // OWNER pode vincular proposta independente do stage do lead (ajustes administrativos)
+        if (!isOwner) {
+          if (leadUnitAction != null) {
+            // Pipeline com regra por etapa (ex.: SP9): proposta só na etapa de Escolha da Unidade
+            if (leadUnitAction !== 'PROPOSTA') {
+              throw new BadRequestException('A proposta só pode ser feita na etapa de Escolha da Unidade.');
+            }
+          } else if (leadStageGroup) {
+            // Pipeline padrão (sem unitAction): comportamento atual
             const ALLOWED = ['NEGOCIACOES', 'CREDITO_IMOBILIARIO', 'NEGOCIO_FECHADO', 'POS_VENDA'];
-            if (stage && !ALLOWED.includes(stage.group ?? '')) {
+            if (!ALLOWED.includes(leadStageGroup)) {
               throw new BadRequestException('O lead precisa estar em Negociações ou etapa posterior para fazer uma proposta.');
             }
           }
         }
       }
 
-      // RESERVADO a partir de PROPOSTA: só OWNER/MANAGER
-      if (newStatus === 'RESERVADO' && unit.status === 'PROPOSTA') {
-        if (actor?.role && !['OWNER', 'MANAGER'].includes(actor.role)) {
-          throw new ForbiddenException('Apenas OWNER ou MANAGER podem confirmar uma proposta como reserva.');
+      if (newStatus === 'RESERVADO') {
+        if (unit.status === 'PROPOSTA') {
+          // Fluxo padrão: confirmar uma proposta como reserva — só OWNER/MANAGER
+          if (actor?.role && !['OWNER', 'MANAGER'].includes(actor.role)) {
+            throw new ForbiddenException('Apenas OWNER ou MANAGER podem confirmar uma proposta como reserva.');
+          }
+        } else if (leadUnitAction != null && !isOwner) {
+          // Reserva direta (ex.: SP9 Documentação): exige etapa marcada como RESERVA
+          if (leadUnitAction !== 'RESERVA') {
+            throw new BadRequestException('A reserva só pode ser feita na etapa Documentação.');
+          }
+          if (!(updateData.leadId || unit.leadId)) {
+            throw new BadRequestException('RESERVA requer um lead vinculado.');
+          }
         }
+        // Tenants sem unitAction reservando a partir de DISPONÍVEL: comportamento atual (sem trava extra)
       }
 
       // Ao voltar para DISPONIVEL: limpar campos da proposta/venda
@@ -697,5 +730,158 @@ export class DevelopmentsService {
       where: { id },
       data: { implantacaoUrl: result.secure_url, implantacaoPublicId: result.public_id } as any,
     });
+  }
+
+  // ─── Mídia (Fotos Comerciais / Panfletos / Book) ──────────────────────────
+
+  async listMedia(tenantId: string, devId: string, categoria?: string) {
+    const dev = await this.prisma.development.findFirst({ where: { id: devId, tenantId } });
+    if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+    return (this.prisma as any).developmentMedia.findMany({
+      where: { developmentId: devId, tenantId, ...(categoria ? { categoria } : {}) },
+      orderBy: [{ ordem: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async uploadMedia(tenantId: string, devId: string, file: any, categoria: string, titulo?: string) {
+    if (!file?.buffer) throw new BadRequestException('Arquivo inválido');
+    const validCategorias = ['FOTO_COMERCIAL', 'PANFLETO', 'BOOK'];
+    if (!validCategorias.includes(categoria)) throw new BadRequestException('Categoria inválida');
+    const dev = await this.prisma.development.findFirst({ where: { id: devId, tenantId } });
+    if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+
+    const isPdf = file.mimetype === 'application/pdf';
+    const resourceType = isPdf ? 'raw' : 'image';
+    const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder: `via-crm/developments/${tenantId}/media`, resource_type: resourceType },
+        (err, res) => { if (err) return reject(err); resolve(res as any); },
+      ).end(file.buffer);
+    });
+
+    const count = await (this.prisma as any).developmentMedia.count({ where: { developmentId: devId, categoria } });
+    return (this.prisma as any).developmentMedia.create({
+      data: {
+        developmentId: devId,
+        tenantId,
+        url: result.secure_url,
+        publicId: result.public_id,
+        categoria,
+        titulo: titulo || null,
+        ordem: count,
+      },
+    });
+  }
+
+  async patchMedia(tenantId: string, devId: string, mediaId: string, data: { titulo?: string }) {
+    const media = await (this.prisma as any).developmentMedia.findFirst({ where: { id: mediaId, developmentId: devId, tenantId } });
+    if (!media) throw new NotFoundException('Mídia não encontrada');
+    return (this.prisma as any).developmentMedia.update({
+      where: { id: mediaId },
+      data: { titulo: data.titulo !== undefined ? (data.titulo || null) : undefined },
+    });
+  }
+
+  async deleteMedia(tenantId: string, devId: string, mediaId: string) {
+    const media = await (this.prisma as any).developmentMedia.findFirst({ where: { id: mediaId, developmentId: devId, tenantId } });
+    if (!media) throw new NotFoundException('Mídia não encontrada');
+    await cloudinary.uploader.destroy(media.publicId, { resource_type: 'raw' }).catch(() => {});
+    await cloudinary.uploader.destroy(media.publicId, { resource_type: 'image' }).catch(() => {});
+    await (this.prisma as any).developmentMedia.delete({ where: { id: mediaId } });
+    return { message: 'Mídia removida' };
+  }
+
+  // ─── Evolução de Obra ─────────────────────────────────────────────────────
+
+  async listObraUpdates(tenantId: string, devId: string) {
+    const dev = await this.prisma.development.findFirst({ where: { id: devId, tenantId } });
+    if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+    return (this.prisma as any).developmentObraUpdate.findMany({
+      where: { developmentId: devId, tenantId },
+      include: { fotos: { orderBy: [{ ordem: 'asc' }, { createdAt: 'asc' }] } },
+      orderBy: { dataAtualizacao: 'desc' },
+    });
+  }
+
+  async createObraUpdate(tenantId: string, devId: string, data: { dataAtualizacao: string; titulo?: string; observacoes?: string; percentualAvanco?: number }) {
+    const dev = await this.prisma.development.findFirst({ where: { id: devId, tenantId } });
+    if (!dev) throw new NotFoundException('Empreendimento não encontrado');
+    if (!data.dataAtualizacao) throw new BadRequestException('Data obrigatória');
+    return (this.prisma as any).developmentObraUpdate.create({
+      data: {
+        developmentId: devId,
+        tenantId,
+        dataAtualizacao: new Date(data.dataAtualizacao),
+        titulo: data.titulo || null,
+        observacoes: data.observacoes || null,
+        percentualAvanco: data.percentualAvanco != null ? Math.min(100, Math.max(0, Number(data.percentualAvanco))) : null,
+      },
+      include: { fotos: true },
+    });
+  }
+
+  async updateObraUpdate(tenantId: string, devId: string, updateId: string, data: { dataAtualizacao?: string; titulo?: string; observacoes?: string; percentualAvanco?: number }) {
+    const existing = await (this.prisma as any).developmentObraUpdate.findFirst({ where: { id: updateId, developmentId: devId, tenantId } });
+    if (!existing) throw new NotFoundException('Atualização não encontrada');
+    const payload: any = {};
+    if (data.dataAtualizacao !== undefined) payload.dataAtualizacao = new Date(data.dataAtualizacao);
+    if (data.titulo !== undefined) payload.titulo = data.titulo || null;
+    if (data.observacoes !== undefined) payload.observacoes = data.observacoes || null;
+    if (data.percentualAvanco !== undefined) payload.percentualAvanco = data.percentualAvanco != null ? Math.min(100, Math.max(0, Number(data.percentualAvanco))) : null;
+    return (this.prisma as any).developmentObraUpdate.update({
+      where: { id: updateId },
+      data: payload,
+      include: { fotos: { orderBy: [{ ordem: 'asc' }, { createdAt: 'asc' }] } },
+    });
+  }
+
+  async deleteObraUpdate(tenantId: string, devId: string, updateId: string) {
+    const existing = await (this.prisma as any).developmentObraUpdate.findFirst({
+      where: { id: updateId, developmentId: devId, tenantId },
+      include: { fotos: true },
+    });
+    if (!existing) throw new NotFoundException('Atualização não encontrada');
+    for (const foto of existing.fotos) {
+      await cloudinary.uploader.destroy(foto.publicId, { resource_type: 'image' }).catch(() => {});
+    }
+    await (this.prisma as any).developmentObraUpdate.delete({ where: { id: updateId } });
+    return { message: 'Atualização removida' };
+  }
+
+  async uploadObraFoto(tenantId: string, devId: string, updateId: string, file: any, legenda?: string) {
+    if (!file?.buffer) throw new BadRequestException('Arquivo inválido');
+    const existing = await (this.prisma as any).developmentObraUpdate.findFirst({ where: { id: updateId, developmentId: devId, tenantId } });
+    if (!existing) throw new NotFoundException('Atualização não encontrada');
+
+    const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { folder: `via-crm/developments/${tenantId}/obra`, resource_type: 'image' },
+        (err, res) => { if (err) return reject(err); resolve(res as any); },
+      ).end(file.buffer);
+    });
+
+    const count = await (this.prisma as any).developmentObraFoto.count({ where: { updateId } });
+    return (this.prisma as any).developmentObraFoto.create({
+      data: {
+        updateId,
+        url: result.secure_url,
+        publicId: result.public_id,
+        legenda: legenda || null,
+        ordem: count,
+      },
+    });
+  }
+
+  async deleteObraFoto(tenantId: string, devId: string, updateId: string, fotoId: string) {
+    const foto = await (this.prisma as any).developmentObraFoto.findFirst({
+      where: { id: fotoId, updateId },
+      include: { obraUpdate: { select: { developmentId: true, tenantId: true } } },
+    });
+    if (!foto || foto.obraUpdate.developmentId !== devId || foto.obraUpdate.tenantId !== tenantId) {
+      throw new NotFoundException('Foto não encontrada');
+    }
+    await cloudinary.uploader.destroy(foto.publicId, { resource_type: 'image' }).catch(() => {});
+    await (this.prisma as any).developmentObraFoto.delete({ where: { id: fotoId } });
+    return { message: 'Foto removida' };
   }
 }

@@ -5,9 +5,9 @@
  * Adicionar novos módulos/ações aqui os torna configuráveis sem alterar mais código.
  */
 
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'use';
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'use' | 'export' | 'send' | 'merge';
 
-export type PermissionRole = 'manager' | 'agent';
+export type PermissionRole = 'manager' | 'agent' | 'partner';
 
 export interface ModulePermissions {
   key: string;
@@ -103,33 +103,90 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
       { key: 'delete', label: 'Bloquear unidades' },
     ],
   },
+  {
+    key: 'inbox',
+    label: 'Inbox WhatsApp',
+    actions: [
+      { key: 'view', label: 'Ver conversas' },
+      { key: 'send', label: 'Enviar mensagens' },
+    ],
+  },
+  {
+    key: 'campanhas',
+    label: 'Campanhas',
+    actions: [
+      { key: 'view',   label: 'Ver' },
+      { key: 'create', label: 'Criar' },
+      { key: 'edit',   label: 'Editar' },
+      { key: 'delete', label: 'Excluir' },
+    ],
+  },
+  {
+    key: 'duplicados',
+    label: 'Duplicados',
+    actions: [
+      { key: 'view',  label: 'Ver' },
+      { key: 'merge', label: 'Mesclar' },
+    ],
+  },
+  {
+    key: 'exportacao',
+    label: 'Exportação de Dados',
+    actions: [
+      { key: 'export', label: 'Exportar leads (CSV)' },
+    ],
+  },
 ];
 
 /** Permissões padrão quando o tenant não tem config salva. */
 export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<string, boolean>>> = {
   manager: {
-    leads:         { view: true,  create: true,  edit: true,  delete: true  },
-    products:      { view: true,  create: true,  edit: true,  delete: true  },
-    calendar:      { view: true,  create: true,  edit: true,  delete: true  },
-    secretary:     { use: true  },
-    channels:      { view: false, edit: false },
-    botConfig:     { view: false, edit: false },
-    settings:      { view: false, edit: false },
-    pipeline:      { view: true  },
-    knowledgeBase: { view: true,  create: true,  edit: true,  delete: true  },
-    gestao_empreendimentos: { create: true, edit: true, delete: false },
+    leads:                  { view: true,  create: true,  edit: true,  delete: true  },
+    products:               { view: true,  create: true,  edit: true,  delete: true  },
+    calendar:               { view: true,  create: true,  edit: true,  delete: true  },
+    secretary:              { use: true  },
+    channels:               { view: false, edit: false },
+    botConfig:              { view: false, edit: false },
+    settings:               { view: false, edit: false },
+    pipeline:               { view: true  },
+    knowledgeBase:          { view: true,  create: true,  edit: true,  delete: true  },
+    gestao_empreendimentos: { create: true,  edit: true,  delete: false },
+    inbox:                  { view: true,  send: true  },
+    campanhas:              { view: true,  create: true,  edit: true,  delete: true  },
+    duplicados:             { view: true,  merge: true  },
+    exportacao:             { export: true  },
   },
   agent: {
-    leads:         { view: true,  create: true,  edit: true,  delete: false },
-    products:      { view: true,  create: true,  edit: true,  delete: false },
-    calendar:      { view: true,  create: true,  edit: true,  delete: true  },
-    secretary:     { use: true  },
-    channels:      { view: false, edit: false },
-    botConfig:     { view: false, edit: false },
-    settings:      { view: false, edit: false },
-    pipeline:      { view: true  },
-    knowledgeBase: { view: true,  create: false, edit: false, delete: false },
+    leads:                  { view: true,  create: true,  edit: true,  delete: false },
+    products:               { view: true,  create: true,  edit: true,  delete: false },
+    calendar:               { view: true,  create: true,  edit: true,  delete: true  },
+    secretary:              { use: true  },
+    channels:               { view: false, edit: false },
+    botConfig:              { view: false, edit: false },
+    settings:               { view: false, edit: false },
+    pipeline:               { view: true  },
+    knowledgeBase:          { view: true,  create: false, edit: false, delete: false },
     gestao_empreendimentos: { create: false, edit: false, delete: false },
+    inbox:                  { view: true,  send: true  },
+    campanhas:              { view: false, create: false, edit: false, delete: false },
+    duplicados:             { view: false, merge: false },
+    exportacao:             { export: false },
+  },
+  partner: {
+    leads:                  { view: true,  create: true,  edit: false, delete: false },
+    products:               { view: true,  create: false, edit: false, delete: false },
+    calendar:               { view: false, create: false, edit: false, delete: false },
+    secretary:              { use: false },
+    channels:               { view: false, edit: false },
+    botConfig:              { view: false, edit: false },
+    settings:               { view: false, edit: false },
+    pipeline:               { view: false },
+    knowledgeBase:          { view: true,  create: false, edit: false, delete: false },
+    gestao_empreendimentos: { create: false, edit: false, delete: false },
+    inbox:                  { view: false, send: false },
+    campanhas:              { view: false, create: false, edit: false, delete: false },
+    duplicados:             { view: false, merge: false },
+    exportacao:             { export: false },
   },
 };
 
@@ -140,7 +197,7 @@ export function resolvePermissions(
   if (!saved) return DEFAULT_PERMISSIONS;
 
   const result: any = {};
-  for (const role of ['manager', 'agent'] as PermissionRole[]) {
+  for (const role of ['manager', 'agent', 'partner'] as PermissionRole[]) {
     result[role] = {};
     for (const mod of PERMISSION_MODULES) {
       result[role][mod.key] = {};
