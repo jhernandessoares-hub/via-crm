@@ -95,6 +95,21 @@ const STAGE_BADGE = "bg-slate-100 text-slate-700";
 const SP9_GROUPS = new Set(["DOCUMENTACAO", "ESCOLHA_UNIDADE", "CONTRATO", "REGISTRO"]);
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
 
+// Colunas da lista — cada uma tem seu próprio filtro de texto (igual ao dashboard)
+const FILTER_COLS = [
+  { key: "numero", label: "Número" },
+  { key: "nome", label: "Nome" },
+  { key: "telefone", label: "Telefone" },
+  { key: "origem", label: "Origem" },
+  { key: "etapa", label: "Etapa" },
+  { key: "status", label: "Status" },
+  { key: "interesse", label: "Interesse" },
+  { key: "indicacao", label: "Indicação" },
+  { key: "responsavel", label: "Responsável" },
+  { key: "criadoEm", label: "Criado em" },
+] as const;
+const EMPTY_LEAD_FILTERS = Object.fromEntries(FILTER_COLS.map((c) => [c.key, ""])) as Record<string, string>;
+
 export default function LeadsPage() {
   const searchParams = useSearchParams();
   const activeGroup = searchParams.get("group");
@@ -107,9 +122,7 @@ export default function LeadsPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [q, setQ] = useState("");
 
-  const [showFilters, setShowFilters] = useState(false);
-  const [colFilters, setColFilters] = useState({ etapa: "", status: "", origem: "", interesse: "", indicacao: "" });
-  const [numRange, setNumRange] = useState({ min: "", max: "" });
+  const [colFilters, setColFilters] = useState<Record<string, string>>({ ...EMPTY_LEAD_FILTERS });
   const [visibleCount, setVisibleCount] = useState(10);
   const [loadMoreN, setLoadMoreN] = useState(10);
   const [reportOpen, setReportOpen] = useState(false);
@@ -184,17 +197,13 @@ export default function LeadsPage() {
     }
   }
 
-  const activeFilterCount =
-    (colFilters.etapa ? 1 : 0) + (colFilters.status ? 1 : 0) + (colFilters.origem ? 1 : 0) +
-    (colFilters.interesse ? 1 : 0) + (colFilters.indicacao ? 1 : 0) +
-    (numRange.min || numRange.max ? 1 : 0);
+  const activeFilterCount = Object.values(colFilters).filter((v) => v.trim()).length;
 
   function clearFilters() {
-    setColFilters({ etapa: "", status: "", origem: "", interesse: "", indicacao: "" });
-    setNumRange({ min: "", max: "" });
+    setColFilters({ ...EMPTY_LEAD_FILTERS });
   }
 
-  function setCF(k: keyof typeof colFilters, v: string) {
+  function setCF(k: string, v: string) {
     setColFilters((f) => ({ ...f, [k]: v }));
   }
 
@@ -282,29 +291,26 @@ export default function LeadsPage() {
     [leads]
   );
 
-  const uniqueValues = useMemo(() => {
-    const etapa = new Set<string>(), status = new Set<string>(), origem = new Set<string>();
-    const interesse = new Set<string>(), indicacao = new Set<string>();
-    for (const l of leads) {
-      const sn = l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name;
-      if (isGroupedPipeline) {
-        const g = l.stage?.group;
-        if (g) etapa.add(GROUP_LABEL[g] ?? g);
-        if (sn) status.add(sn);
-      } else {
-        if (sn) etapa.add(sn);
-        if (l.status) status.add(l.status);
-      }
-      if (l.origem) origem.add(l.origem);
-      if (l.perfilImovel) interesse.add(l.perfilImovel);
-      const ind = (l.cadastroOrigem as any)?.indicacao;
-      if (ind) indicacao.add(ind);
-    }
-    return { etapa: [...etapa].sort(), status: [...status].sort(), origem: [...origem].sort(), interesse: [...interesse].sort(), indicacao: [...indicacao].sort() };
-  }, [leads, pipelineStages, isGroupedPipeline]);
-
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
+    // Texto exibido em cada coluna (igual ao que aparece na tabela) — base dos filtros
+    const text = (l: Lead, key: string): string => {
+      const stageName = l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name ?? "—";
+      switch (key) {
+        case "numero": return formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "";
+        case "nome": return displayName(l);
+        case "telefone": return l.telefone || l.whatsapp || "";
+        case "origem": return l.origem || "";
+        case "etapa": return isGroupedPipeline ? (GROUP_LABEL[l.stage?.group ?? ""] ?? l.stage?.group ?? "") : stageName;
+        case "status": return isGroupedPipeline ? stageName : (STATUS_LABEL[l.status ?? ""] ?? l.status ?? "");
+        case "interesse": return l.perfilImovel || "";
+        case "indicacao": return (l.cadastroOrigem as any)?.indicacao || "";
+        case "responsavel": return l.assignedUserName || "";
+        case "criadoEm": return formatDateTime(l.criadoEm);
+        default: return "";
+      }
+    };
+    const active = Object.entries(colFilters).filter(([, v]) => v.trim());
     return leads.filter((l) => {
       if (activeGroup && !visibleStageIds.has(l.stageId ?? "")) return false;
       if (qq) {
@@ -314,25 +320,14 @@ export default function LeadsPage() {
         if (![l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.observacao, l.origem, l.status, l.perfilImovel, sn, ind, num, l.assignedUserName]
           .join(" ").toLowerCase().includes(qq)) return false;
       }
-      const sn = l.stage?.name ?? l.stageName ?? pipelineStages.find((s) => s.id === l.stageId)?.name ?? "";
-      if (isGroupedPipeline) {
-        const gl = GROUP_LABEL[l.stage?.group ?? ""] ?? l.stage?.group ?? "";
-        if (colFilters.etapa && gl !== colFilters.etapa) return false;
-        if (colFilters.status && sn !== colFilters.status) return false;
-      } else {
-        if (colFilters.etapa && sn !== colFilters.etapa) return false;
-        if (colFilters.status && l.status !== colFilters.status) return false;
+      for (const [k, v] of active) {
+        if (!text(l, k).toLowerCase().includes(v.trim().toLowerCase())) return false;
       }
-      if (colFilters.origem && l.origem !== colFilters.origem) return false;
-      if (colFilters.interesse && l.perfilImovel !== colFilters.interesse) return false;
-      if (colFilters.indicacao && (l.cadastroOrigem as any)?.indicacao !== colFilters.indicacao) return false;
-      if (numRange.min && (l.numero ?? 0) < parseInt(numRange.min)) return false;
-      if (numRange.max && (l.numero ?? 0) > parseInt(numRange.max)) return false;
       return true;
     });
-  }, [leads, q, activeGroup, visibleStageIds, pipelineStages, colFilters, numRange, isGroupedPipeline]);
+  }, [leads, q, activeGroup, visibleStageIds, pipelineStages, colFilters, isGroupedPipeline]);
 
-  useEffect(() => { setVisibleCount(loadMoreN); }, [q, activeGroup, leads, colFilters, numRange]);
+  useEffect(() => { setVisibleCount(loadMoreN); }, [q, activeGroup, leads, colFilters]);
 
   const pendingLeads = useMemo(() => filtered.filter((l) => l.conversaAberta), [filtered]);
   const normalLeads  = useMemo(() => filtered.filter((l) => !l.conversaAberta), [filtered]);
@@ -437,13 +432,12 @@ export default function LeadsPage() {
           <Input className="w-56" placeholder="Buscar..." value={q} onChange={(e) => setQ(e.target.value)} />
           {view === "LISTA" && (
             <>
-              <button onClick={() => setShowFilters((v) => !v)}
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-                style={{ borderColor: activeFilterCount ? "var(--brand-accent)" : "var(--shell-card-border)", color: activeFilterCount ? "var(--brand-accent)" : "var(--shell-text)", background: showFilters ? "var(--shell-hover)" : "transparent" }}>
-                ▼ Filtros{activeFilterCount > 0 && ` (${activeFilterCount})`}
-              </button>
               {activeFilterCount > 0 && (
-                <button onClick={clearFilters} className="text-xs text-[var(--shell-subtext)] hover:text-[var(--shell-text)] underline">Limpar</button>
+                <button onClick={clearFilters}
+                  className="rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+                  style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}>
+                  Limpar filtros ({activeFilterCount})
+                </button>
               )}
               <button onClick={exportCSVFiltered} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>↓ Excel</button>
               <button onClick={exportPDF} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)] transition-colors" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>↓ PDF</button>
@@ -495,23 +489,14 @@ export default function LeadsPage() {
             <div>Responsável</div><div>Criado em</div>
           </div>
 
-          {/* Filtros */}
-          {showFilters && (
-            <div className="grid gap-2 border-b px-4 py-2 items-center"
-              style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)", gridTemplateColumns: COL }}>
-              <div className="flex gap-1">
-                <input style={S} placeholder="De" value={numRange.min} onChange={(e) => setNumRange((r) => ({ ...r, min: e.target.value }))} />
-                <input style={S} placeholder="Até" value={numRange.max} onChange={(e) => setNumRange((r) => ({ ...r, max: e.target.value }))} />
-              </div>
-              <div /><div />
-              <select style={S} value={colFilters.origem} onChange={(e) => setCF("origem", e.target.value)}><option value="">Todas</option>{uniqueValues.origem.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-              <select style={S} value={colFilters.etapa} onChange={(e) => setCF("etapa", e.target.value)}><option value="">Todas</option>{uniqueValues.etapa.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-              <select style={S} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}><option value="">Todos</option>{uniqueValues.status.map((v) => <option key={v} value={v}>{isGroupedPipeline ? v : (STATUS_LABEL[v] ?? v)}</option>)}</select>
-              <select style={S} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}><option value="">Todos</option>{uniqueValues.interesse.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-              <select style={S} value={colFilters.indicacao} onChange={(e) => setCF("indicacao", e.target.value)}><option value="">Todas</option>{uniqueValues.indicacao.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-              <div /><div />
-            </div>
-          )}
+          {/* Filtros por coluna (sempre visíveis, igual ao dashboard) */}
+          <div className="grid gap-2 border-b px-4 py-2 items-center"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)", gridTemplateColumns: COL }}>
+            {FILTER_COLS.map((c) => (
+              <input key={c.key} style={S} placeholder="Filtrar"
+                value={colFilters[c.key] ?? ""} onChange={(e) => setCF(c.key, e.target.value)} />
+            ))}
+          </div>
 
           {filtered.length === 0 ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum lead.</div>
