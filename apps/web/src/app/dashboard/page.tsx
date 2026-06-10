@@ -296,8 +296,7 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
   const router = useRouter();
   const [rows, setRows] = useState<UnidadeRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cpfFilter, setCpfFilter] = useState<"all" | "com" | "sem">("all");
-  const [search, setSearch] = useState("");
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const isAvulso = source === "avulso";
 
   useEffect(() => {
@@ -315,23 +314,43 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
   const col1 = isAvulso ? "Imóvel" : "Empreendimento";
   const col2 = isAvulso ? "Produto" : "Unidade";
 
+  // Valor textual de cada coluna (usado por filtro e busca)
+  function cellText(r: UnidadeRow, key: string): string {
+    switch (key) {
+      case "numero": return formatLeadNumber(r.numero, r.reentradaCount);
+      case "cpf": return r.cpf ?? "";
+      case "empreendimento": return r.empreendimento ?? "";
+      case "torreUnidade": return r.torreUnidade ?? "";
+      case "comprador": return r.comprador ?? "";
+      case "valor": return brl(r.valor);
+      case "etapa": return r.etapa ?? "";
+      case "leadStatus": return r.leadStatus ? (STATUS_LABEL[r.leadStatus] ?? r.leadStatus) : "";
+      case "corretor": return r.corretor ?? "";
+      case "data": return r.data ? new Date(r.data).toLocaleDateString("pt-BR") : "";
+      default: return "";
+    }
+  }
+
+  const hasFilters = Object.values(colFilters).some((v) => v.trim());
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      const temCpf = !!(r.cpf && r.cpf.trim());
-      if (cpfFilter === "com" && !temCpf) return false;
-      if (cpfFilter === "sem" && temCpf) return false;
-      if (q) {
-        const hay = [
-          formatLeadNumber(r.numero, r.reentradaCount), r.cpf, r.comprador,
-          r.empreendimento, r.torreUnidade, r.corretor, r.etapa,
-          r.leadStatus ? (STATUS_LABEL[r.leadStatus] ?? r.leadStatus) : "",
-        ].filter(Boolean).join(" ").toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [rows, cpfFilter, search]);
+    const active = Object.entries(colFilters).filter(([, v]) => v.trim());
+    if (active.length === 0) return rows;
+    return rows.filter((r) => active.every(([k, v]) => cellText(r, k).toLowerCase().includes(v.trim().toLowerCase())));
+  }, [rows, colFilters]);
+
+  // Colunas na ordem da tabela: cada uma com seu filtro próprio
+  const columns: { key: string; label: string; align?: "right" }[] = [
+    { key: "numero", label: "Nº" },
+    { key: "cpf", label: "CPF" },
+    { key: "empreendimento", label: col1 },
+    { key: "torreUnidade", label: col2 },
+    { key: "comprador", label: "Comprador" },
+    { key: "valor", label: "Valor", align: "right" },
+    { key: "etapa", label: "Etapa" },
+    { key: "leadStatus", label: "Status" },
+    { key: "corretor", label: "Corretor" },
+    ...(isSold ? [{ key: "data", label: "Data" }] : []),
+  ];
 
   function exportCsv() {
     const header = ["Nº Lead", "CPF", col1, col2, "Comprador", "Valor", "Etapa", "Status", "Corretor", ...(isSold ? ["Data"] : [])];
@@ -373,49 +392,21 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
             </span>
           </h1>
         </div>
-        <button onClick={exportCsv} disabled={loading || filteredRows.length === 0}
-          className="rounded-lg px-4 h-9 text-sm font-medium text-white disabled:opacity-40 transition-colors"
-          style={{ background: "var(--brand-accent)" }}>
-          Extrair relatório (CSV)
-        </button>
-      </div>
-
-      {/* Barra de filtros */}
-      {!loading && rows.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nº, CPF, comprador, corretor, etapa..."
-            className="rounded-lg border px-3 h-9 text-sm text-[var(--shell-text)] flex-1 min-w-[220px] max-w-md"
-            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-input-bg)" }}
-          />
-          <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--shell-card-border)" }}>
-            {([
-              ["all", "CPF: todos"],
-              ["com", "Com CPF"],
-              ["sem", "Sem CPF"],
-            ] as const).map(([v, label]) => (
-              <button key={v} onClick={() => setCpfFilter(v)}
-                className="px-3 h-9 text-xs font-medium transition-colors"
-                style={{
-                  background: cpfFilter === v ? "var(--brand-accent)" : "var(--shell-input-bg)",
-                  color: cpfFilter === v ? "#fff" : "var(--shell-subtext)",
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {(search || cpfFilter !== "all") && (
-            <button onClick={() => { setSearch(""); setCpfFilter("all"); }}
+        <div className="flex items-center gap-2">
+          {hasFilters && (
+            <button onClick={() => setColFilters({})}
               className="px-3 h-9 text-xs font-medium rounded-lg border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors"
               style={{ borderColor: "var(--shell-card-border)" }}>
-              Limpar
+              Limpar filtros
             </button>
           )}
+          <button onClick={exportCsv} disabled={loading || filteredRows.length === 0}
+            className="rounded-lg px-4 h-9 text-sm font-medium text-white disabled:opacity-40 transition-colors"
+            style={{ background: "var(--brand-accent)" }}>
+            Extrair relatório (CSV)
+          </button>
         </div>
-      )}
+      </div>
 
       <Card>
         <CardBody className="p-0">
@@ -423,26 +414,38 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Carregando...</div>
           ) : rows.length === 0 ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum registro neste status.</div>
-          ) : filteredRows.length === 0 ? (
-            <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum registro com esse filtro.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-[var(--shell-subtext)] border-b" style={{ borderColor: "var(--shell-card-border)" }}>
-                    <th className="px-3 py-2 font-medium">Nº</th>
-                    <th className="px-3 py-2 font-medium">CPF</th>
-                    <th className="px-3 py-2 font-medium">{col1}</th>
-                    <th className="px-3 py-2 font-medium">{col2}</th>
-                    <th className="px-3 py-2 font-medium">Comprador</th>
-                    <th className="px-3 py-2 font-medium text-right">Valor</th>
-                    <th className="px-3 py-2 font-medium">Etapa</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">Corretor</th>
-                    {isSold && <th className="px-3 py-2 font-medium">Data</th>}
+                    {columns.map((c) => (
+                      <th key={c.key} className={`px-3 pt-2 pb-1 font-medium ${c.align === "right" ? "text-right" : ""}`}>{c.label}</th>
+                    ))}
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: "var(--shell-card-border)" }}>
+                    {columns.map((c) => (
+                      <th key={c.key} className="px-2 pb-2 align-top">
+                        <input
+                          value={colFilters[c.key] ?? ""}
+                          onChange={(e) => setColFilters((p) => ({ ...p, [c.key]: e.target.value }))}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="Filtrar"
+                          className="w-full min-w-[64px] rounded border px-2 h-7 text-xs font-normal text-[var(--shell-text)]"
+                          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-input-bg)" }}
+                        />
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
+                  {filteredRows.length === 0 && (
+                    <tr>
+                      <td colSpan={columns.length} className="px-3 py-6 text-center text-sm text-[var(--shell-subtext)]">
+                        Nenhum registro com esse filtro.
+                      </td>
+                    </tr>
+                  )}
                   {filteredRows.map((r, i) => (
                     <tr key={(r.unitId ?? r.leadId ?? i) + "-" + i}
                       onClick={() => openLead(r.leadId)}
