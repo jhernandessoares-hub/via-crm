@@ -72,13 +72,14 @@ const FUNNEL_COLORS = ["#38BDF8","#818CF8","#F59E0B","#FB923C","#1D9E75"];
 const ORIGIN_COLORS = ["#1D9E75","#2563EB","#7C3AED","#BE123C","#F59E0B","#38BDF8","#F87171","#A3E635"];
 
 // Status do espelho (resumo gerencial). Total não abre drill-down.
+// Cada status tem fundo colorido próprio (cor cheia + texto branco).
 const ESPELHO_CARDS: { key: string; label: string; color: string; drill: boolean }[] = [
-  { key: "TOTAL",      label: "Total",      color: "#64748B", drill: false },
-  { key: "DISPONIVEL", label: "Disponível", color: "#1D9E75", drill: true },
-  { key: "PROPOSTA",   label: "Proposta",   color: "#F59E0B", drill: true },
-  { key: "RESERVADO",  label: "Reservado",  color: "#38BDF8", drill: true },
-  { key: "VENDIDO",    label: "Vendido",    color: "#2563EB", drill: true },
-  { key: "BLOQUEADO",  label: "Bloqueado",  color: "#F87171", drill: true },
+  { key: "TOTAL",      label: "Total",      color: "#475569", drill: false }, // slate
+  { key: "DISPONIVEL", label: "Disponível", color: "#10B981", drill: true },  // emerald
+  { key: "PROPOSTA",   label: "Proposta",   color: "#F59E0B", drill: true },  // amber
+  { key: "RESERVADO",  label: "Reservado",  color: "#0EA5E9", drill: true },  // sky
+  { key: "VENDIDO",    label: "Vendido",    color: "#2563EB", drill: true },  // blue
+  { key: "BLOQUEADO",  label: "Bloqueado",  color: "#EF4444", drill: true },  // red
 ];
 const DRILL_LABEL: Record<string, string> = {
   DISPONIVEL: "Disponível", PROPOSTA: "Proposta", RESERVADO: "Reservado",
@@ -572,14 +573,11 @@ function GerencialView({ from, to }: { from: string; to: string }) {
                     tabIndex={clickable ? 0 : undefined}
                     onClick={clickable ? () => openDrill(s.key, "empreendimento") : undefined}
                     onKeyDown={clickable ? (e) => { if (e.key === "Enter") openDrill(s.key, "empreendimento"); } : undefined}
-                    className={`rounded-xl border p-3 ${clickable ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                    style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color }} />
-                      <span className="text-xs text-[var(--shell-subtext)]">{s.label}</span>
-                    </div>
-                    <p className="text-2xl font-bold mt-1" style={{ color: s.color }}>{qtd}</p>
-                    {valor != null && <p className="text-[11px] text-[var(--shell-subtext)] mt-0.5">{brl(valor)}</p>}
+                    className={`rounded-xl p-3 text-white shadow-sm transition-all ${clickable ? "cursor-pointer hover:brightness-110 hover:shadow-lg hover:-translate-y-0.5" : ""}`}
+                    style={{ background: s.color }}>
+                    <span className="text-xs font-medium text-white/85">{s.label}</span>
+                    <p className="text-3xl font-extrabold mt-1 leading-none">{qtd}</p>
+                    {valor != null && <p className="text-[11px] text-white/85 mt-1">{brl(valor)}</p>}
                   </div>
                 );
               })}
@@ -683,7 +681,7 @@ export default function DashboardPage() {
   const { can, userRole } = usePermissions();
   const canGerencial = userRole === "OWNER" || can("relatorios", "view");
 
-  const [mode, setMode] = useState<"mes" | "custom">("mes");
+  const [mode, setMode] = useState<"geral" | "mes" | "ano" | "custom">("geral");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [customFrom, setCustomFrom] = useState(toDateInput(new Date(now.getFullYear(), now.getMonth(), 1)));
@@ -703,6 +701,20 @@ export default function DashboardPage() {
   }
 
   const { fromISO, toISO } = useMemo(() => {
+    if (mode === "geral") {
+      // Sem recorte de data — abrange tudo.
+      return {
+        fromISO: new Date(Date.UTC(1970, 0, 1)).toISOString(),
+        toISO: new Date(Date.UTC(2999, 11, 31, 23, 59, 59)).toISOString(),
+      };
+    }
+    if (mode === "ano") {
+      // Últimos 12 meses.
+      return {
+        fromISO: new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), 0, 0, 0).toISOString(),
+        toISO: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString(),
+      };
+    }
     if (mode === "mes") {
       return {
         fromISO: new Date(year, month, 1, 0, 0, 0).toISOString(),
@@ -715,7 +727,11 @@ export default function DashboardPage() {
     };
   }, [mode, year, month, customFrom, customTo]);
 
-  const periodLabel = useMemo(() => `${fromISO.slice(0, 10)}_a_${toISO.slice(0, 10)}`, [fromISO, toISO]);
+  const periodLabel = useMemo(() => {
+    if (mode === "geral") return "geral";
+    if (mode === "ano") return "ultimo-ano";
+    return `${fromISO.slice(0, 10)}_a_${toISO.slice(0, 10)}`;
+  }, [mode, fromISO, toISO]);
 
   function prevMonth() {
     if (month === 0) { setMonth(11); setYear((y) => y - 1); }
@@ -788,14 +804,19 @@ export default function DashboardPage() {
 
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--shell-card-border)" }}>
-              {(["mes", "custom"] as const).map((m) => (
+              {([
+                ["geral", "Geral"],
+                ["mes", "Mês atual"],
+                ["ano", "Último ano"],
+                ["custom", "Personalizado"],
+              ] as const).map(([m, label]) => (
                 <button key={m} onClick={() => setMode(m)}
                   className="px-3 h-8 text-xs font-medium transition-colors"
                   style={{
                     background: mode === m ? "var(--brand-accent)" : "var(--shell-input-bg)",
                     color: mode === m ? "#fff" : "var(--shell-subtext)",
                   }}>
-                  {m === "mes" ? "Mês" : "Personalizado"}
+                  {label}
                 </button>
               ))}
             </div>
@@ -812,7 +833,7 @@ export default function DashboardPage() {
                   className="h-8 w-8 flex items-center justify-center rounded-lg border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   style={{ borderColor: "var(--shell-card-border)" }}>›</button>
               </>
-            ) : (
+            ) : mode === "custom" ? (
               <div className="flex items-center gap-2">
                 <input type="date" value={customFrom} max={customTo}
                   onChange={(e) => setCustomFrom(e.target.value)} style={inputStyle} />
@@ -820,6 +841,10 @@ export default function DashboardPage() {
                 <input type="date" value={customTo} min={customFrom} max={toDateInput(now)}
                   onChange={(e) => setCustomTo(e.target.value)} style={inputStyle} />
               </div>
+            ) : mode === "ano" ? (
+              <span className="text-sm font-semibold text-[var(--shell-text)]">Últimos 12 meses</span>
+            ) : (
+              <span className="text-sm font-semibold text-[var(--shell-text)]">Todo o período</span>
             )}
           </div>
         </div>
