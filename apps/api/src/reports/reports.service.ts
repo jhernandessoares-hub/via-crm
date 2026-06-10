@@ -251,6 +251,7 @@ export class ReportsService {
       valor: number;
       corretor: string | null;
       etapa: string | null;
+      stageGroup: string | null;
       leadStatus: string | null;
       data: Date | null;
     };
@@ -269,7 +270,7 @@ export class ReportsService {
         select: {
           id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true, cpf: true,
           valorVenda: true, dataVenda: true, assignedUserId: true, produtoInteresseId: true, status: true,
-          stage: { select: { name: true } },
+          stage: { select: { name: true, group: true } },
         },
       });
       const prodInfo = new Map<string, { price: number; title: string }>();
@@ -293,6 +294,7 @@ export class ReportsService {
           valor: a.valorVenda != null ? a.valorVenda : pinfo?.price ?? 0,
           corretor: a.assignedUserId ? userMap.get(a.assignedUserId) ?? null : null,
           etapa: a.stage?.name ?? null,
+          stageGroup: a.stage?.group ?? null,
           leadStatus: a.status ?? null,
           data: a.dataVenda,
         });
@@ -308,7 +310,7 @@ export class ReportsService {
         id: true, nome: true, status: true, valorVenda: true, finalPrice: true, soldAt: true, comprador: true, leadId: true,
         development: { select: { nome: true } },
         tower: { select: { nome: true } },
-        lead: { select: { id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true, cpf: true, status: true, stage: { select: { name: true } } } },
+        lead: { select: { id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true, cpf: true, status: true, stage: { select: { name: true, group: true } } } },
       },
     });
     for (const u of units) {
@@ -326,6 +328,7 @@ export class ReportsService {
         valor: isSold ? u.finalPrice || u.valorVenda || 0 : u.valorVenda || 0,
         corretor: null,
         etapa: u.lead?.stage?.name ?? null,
+        stageGroup: u.lead?.stage?.group ?? null,
         leadStatus: u.lead?.status ?? null,
         data: isSold ? u.soldAt : null,
       });
