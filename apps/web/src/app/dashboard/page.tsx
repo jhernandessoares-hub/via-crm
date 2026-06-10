@@ -494,7 +494,6 @@ function GerencialView({ from, to }: { from: string; to: string }) {
   const emp = rep?.empreendimento;
   const avu = rep?.avulso;
   const devs = rep?.developments ?? [];
-  const showDevSelector = devs.length >= 2;
   const showEmpTable = emp && selectedDev === "all" && (emp.porEmpreendimento.length > 1);
 
   const bucketFor = (key: string): Bucket | null => {
@@ -532,18 +531,23 @@ function GerencialView({ from, to }: { from: string; to: string }) {
       {emp && (
         <section className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="h-5 w-1 rounded-full" style={{ background: "#2563EB" }} />
               <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--shell-text)]">Gestão — Empreendimentos</h2>
+              {devs.length >= 2 ? (
+                <select value={selectedDev} onChange={(e) => setSelectedDev(e.target.value)}
+                  className="rounded-lg border px-3 h-8 text-xs font-medium text-[var(--shell-text)]"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-input-bg)" }}>
+                  <option value="all">Todos os empreendimentos</option>
+                  {devs.map((d) => (<option key={d.id} value={d.id}>{d.nome}</option>))}
+                </select>
+              ) : devs.length === 1 ? (
+                <span className="rounded-lg border px-3 h-8 inline-flex items-center text-xs font-medium text-[var(--shell-text)]"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-input-bg)" }}>
+                  {devs[0].nome}
+                </span>
+              ) : null}
             </div>
-            {showDevSelector && (
-              <select value={selectedDev} onChange={(e) => setSelectedDev(e.target.value)}
-                className="rounded-lg border px-3 h-8 text-xs font-medium text-[var(--shell-text)]"
-                style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-input-bg)" }}>
-                <option value="all">Todos os empreendimentos</option>
-                {devs.map((d) => (<option key={d.id} value={d.id}>{d.nome}</option>))}
-              </select>
-            )}
           </div>
 
           {/* Cards financeiros */}
