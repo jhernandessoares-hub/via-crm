@@ -296,6 +296,8 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
   const router = useRouter();
   const [rows, setRows] = useState<UnidadeRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cpfFilter, setCpfFilter] = useState<"all" | "com" | "sem">("all");
+  const [search, setSearch] = useState("");
   const isAvulso = source === "avulso";
 
   useEffect(() => {
@@ -313,9 +315,27 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
   const col1 = isAvulso ? "Imóvel" : "Empreendimento";
   const col2 = isAvulso ? "Produto" : "Unidade";
 
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      const temCpf = !!(r.cpf && r.cpf.trim());
+      if (cpfFilter === "com" && !temCpf) return false;
+      if (cpfFilter === "sem" && temCpf) return false;
+      if (q) {
+        const hay = [
+          formatLeadNumber(r.numero, r.reentradaCount), r.cpf, r.comprador,
+          r.empreendimento, r.torreUnidade, r.corretor, r.etapa,
+          r.leadStatus ? (STATUS_LABEL[r.leadStatus] ?? r.leadStatus) : "",
+        ].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [rows, cpfFilter, search]);
+
   function exportCsv() {
     const header = ["Nº Lead", "CPF", col1, col2, "Comprador", "Valor", "Etapa", "Status", "Corretor", ...(isSold ? ["Data"] : [])];
-    const lines = rows.map((r) => [
+    const lines = filteredRows.map((r) => [
       formatLeadNumber(r.numero, r.reentradaCount), r.cpf ?? "", r.empreendimento, r.torreUnidade,
       r.comprador ?? "", String(r.valor ?? 0), r.etapa ?? "", r.leadStatus ? (STATUS_LABEL[r.leadStatus] ?? r.leadStatus) : "",
       r.corretor ?? "", ...(isSold ? [r.data ? new Date(r.data).toLocaleDateString("pt-BR") : ""] : []),
@@ -347,16 +367,55 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
           <h1 className="text-xl font-bold text-[var(--shell-text)]">
             {isAvulso ? "Vendas avulsas" : (DRILL_LABEL[status] ?? status)}
             <span className="ml-2 text-sm font-normal text-[var(--shell-subtext)]">
-              {loading ? "…" : `${rows.length} ${rows.length === 1 ? "registro" : "registros"}`}
+              {loading ? "…" : filteredRows.length === rows.length
+                ? `${rows.length} ${rows.length === 1 ? "registro" : "registros"}`
+                : `${filteredRows.length} de ${rows.length}`}
             </span>
           </h1>
         </div>
-        <button onClick={exportCsv} disabled={loading || rows.length === 0}
+        <button onClick={exportCsv} disabled={loading || filteredRows.length === 0}
           className="rounded-lg px-4 h-9 text-sm font-medium text-white disabled:opacity-40 transition-colors"
           style={{ background: "var(--brand-accent)" }}>
           Extrair relatório (CSV)
         </button>
       </div>
+
+      {/* Barra de filtros */}
+      {!loading && rows.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nº, CPF, comprador, corretor, etapa..."
+            className="rounded-lg border px-3 h-9 text-sm text-[var(--shell-text)] flex-1 min-w-[220px] max-w-md"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-input-bg)" }}
+          />
+          <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--shell-card-border)" }}>
+            {([
+              ["all", "CPF: todos"],
+              ["com", "Com CPF"],
+              ["sem", "Sem CPF"],
+            ] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setCpfFilter(v)}
+                className="px-3 h-9 text-xs font-medium transition-colors"
+                style={{
+                  background: cpfFilter === v ? "var(--brand-accent)" : "var(--shell-input-bg)",
+                  color: cpfFilter === v ? "#fff" : "var(--shell-subtext)",
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {(search || cpfFilter !== "all") && (
+            <button onClick={() => { setSearch(""); setCpfFilter("all"); }}
+              className="px-3 h-9 text-xs font-medium rounded-lg border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors"
+              style={{ borderColor: "var(--shell-card-border)" }}>
+              Limpar
+            </button>
+          )}
+        </div>
+      )}
 
       <Card>
         <CardBody className="p-0">
@@ -364,6 +423,8 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Carregando...</div>
           ) : rows.length === 0 ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum registro neste status.</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum registro com esse filtro.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -382,7 +443,7 @@ function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => (
+                  {filteredRows.map((r, i) => (
                     <tr key={(r.unitId ?? r.leadId ?? i) + "-" + i}
                       onClick={() => openLead(r.leadId)}
                       className={`border-b transition-colors ${r.leadId ? "cursor-pointer hover:bg-[var(--shell-hover)]" : ""}`}
