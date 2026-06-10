@@ -26,10 +26,13 @@ import {
   Palette,
   LogOut,
   GitMerge,
+  KeyRound,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { apiLogout } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
+import { isSP9 } from "@/lib/sp9";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -48,6 +51,7 @@ type Branding = {
 interface SidebarProps {
   role: Role | undefined;
   tenantNome: string | null;
+  tenantId?: string | null;
   counts: Counts | null;
   branding?: Branding;
   addons?: string[];
@@ -67,7 +71,8 @@ const GROUP_LABEL_MAP: Record<string, string> = {
   REGISTRO:           "Registro",
 };
 
-export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan = '' }: SidebarProps) {
+export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons = [], plan = '' }: SidebarProps) {
+  const showSP9 = isSP9(tenantId);
   const hasDevelopments = addons.includes('DEVELOPMENTS');
   const isBusiness = plan === 'BUSINESS';
   const logoSrc = branding?.logoUrl || "/Novo%20modelo%20de%20Logo.png";
@@ -304,6 +309,12 @@ export function Sidebar({ role, tenantNome, counts, branding, addons = [], plan 
 
         <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
         <NavItem href="/gestao-empreendimentos" label="Gestão de Empreendimentos" icon={Landmark} mode="prefix" />
+        {showSP9 && (role === "OWNER" || can("pre_ocupacao", "view")) && (
+          <NavItem href="/pre-ocupacao" label="Pré-Ocupação" icon={KeyRound} />
+        )}
+        {showSP9 && (role === "OWNER" || can("pos_ocupacao", "view")) && (
+          <NavItem href="/pos-ocupacao" label="Pós-Ocupação" icon={ClipboardCheck} />
+        )}
         {role === "OWNER" && <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
         <NavItem href="/secretary" label="Secretaria" icon={Headphones} />

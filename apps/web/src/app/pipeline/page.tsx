@@ -9,6 +9,7 @@ import { apiFetch } from "@/lib/api";
 import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { ReportModal } from "@/components/ReportModal";
+import { MaskedField } from "@/components/MaskedValue";
 
 type PipelineStage = {
   id: string;
@@ -424,7 +425,7 @@ export default function PipelinePage() {
                             {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
                             <div className="text-sm font-medium text-[var(--shell-text)] truncate">{displayName(l)}</div>
                             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
-                              <span className="truncate">{l.telefone || l.whatsapp || "—"}</span>
+                              <MaskedField field="lead.telefone"><span className="truncate">{l.telefone || l.whatsapp || "—"}</span></MaskedField>
                               <span className="opacity-50">·</span>
                               <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${GROUP_BADGE_MAP[g.key]}`}>{stageName}</span>
                             </div>
@@ -432,7 +433,7 @@ export default function PipelinePage() {
                               {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
                               {!isGroupedPipeline && st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
                               {l.perfilImovel && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>{l.perfilImovel}</span>}
-                              {l.assignedUserName && <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span>}
+                              <MaskedField field="lead.responsavel">{l.assignedUserName ? <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span> : null}</MaskedField>
                             </div>
                           </Link>
                         );
@@ -513,7 +514,7 @@ export default function PipelinePage() {
                         <div className="min-w-0">
                           <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
                         </div>
-                        <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                         <div className="min-w-0">
                           <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
@@ -529,7 +530,7 @@ export default function PipelinePage() {
                         </div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
-                        <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                         <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
                       </div>
                     );
@@ -560,7 +561,7 @@ export default function PipelinePage() {
                     <div className="min-w-0">
                       <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
                     </div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.telefone || l.whatsapp || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                     <div className="min-w-0">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
@@ -576,7 +577,7 @@ export default function PipelinePage() {
                     </div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate">{l.assignedUserName || "—"}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                     <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
                   </div>
                 );

@@ -15,8 +15,9 @@ import {
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
+import { MaskedField } from "@/components/MaskedValue";
 
-type Role = "OWNER" | "MANAGER" | "AGENT";
+type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
 type StoredUser = {
   id: string;
@@ -2873,6 +2874,8 @@ function discardAiSuggestion() {
   // TEMP-EDIT-TEL-CPF (temporário — remover depois)
   function startContactEdit(field: 'telefone' | 'cpf') {
     if (!lead) return;
+    // Externo Consultivo não edita dados de contato (campo pode estar oculto)
+    if (user?.role === "PARTNER") return;
     setContactFieldErr(null);
     setContactEditField(field);
     if (field === 'telefone') setContactEditValue(maskPhone(lead.telefone ?? ''));
@@ -3786,7 +3789,7 @@ function discardAiSuggestion() {
                         </div>
                       ) : (
                         <div className="group flex items-center gap-1 cursor-pointer" onClick={() => startContactEdit('telefone')}>
-                          <span className="text-[var(--shell-text)] truncate">{lead.telefone ? maskPhone(lead.telefone) : "—"}</span>
+                          <span className="text-[var(--shell-text)] truncate"><MaskedField field="lead.telefone">{lead.telefone ? maskPhone(lead.telefone) : "—"}</MaskedField></span>
                           <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)] shrink-0">✏️</span>
                         </div>
                       )}
@@ -3811,9 +3814,11 @@ function discardAiSuggestion() {
                       ) : (
                         <div className="group flex items-center gap-1 cursor-pointer" onClick={() => startContactEdit('cpf')}>
                           <span className="text-sm text-[var(--shell-text)] truncate font-mono">
-                            {lead.cpf
-                              ? lead.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') || lead.cpf
-                              : "—"}
+                            <MaskedField field="lead.cpf">
+                              {lead.cpf
+                                ? lead.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') || lead.cpf
+                                : "—"}
+                            </MaskedField>
                           </span>
                           <span className="hidden group-hover:inline text-[10px] text-[var(--shell-subtext)] shrink-0">✏️</span>
                         </div>
@@ -3937,7 +3942,7 @@ function discardAiSuggestion() {
                   {/* Responsável — select para OWNER/MANAGER */}
                   <div>
                     <div className="text-xs text-[var(--shell-subtext)] mb-1">Responsável</div>
-                    {user?.role !== "AGENT" ? (
+                    {user?.role === "OWNER" || user?.role === "MANAGER" ? (
                       <select
                         className="w-full rounded border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] px-2 py-1.5 text-sm text-[var(--shell-text)] disabled:opacity-60"
                         value={lead.assignedUserId ?? ""}
@@ -3966,7 +3971,9 @@ function discardAiSuggestion() {
                       </select>
                     ) : (
                       <div className="text-[var(--shell-text)]">
-                        {teamMembers.find((m) => m.id === lead.assignedUserId)?.nome ?? "—"}
+                        <MaskedField field="lead.responsavel">
+                          {teamMembers.find((m) => m.id === lead.assignedUserId)?.nome ?? "—"}
+                        </MaskedField>
                       </div>
                     )}
                   </div>
@@ -4246,9 +4253,11 @@ function discardAiSuggestion() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
-                            <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
-                            {u.tower?.nome && <span className="text-[var(--shell-subtext)]">{"\u00b7 " + u.tower.nome}</span>}
-                            <span className="text-[var(--shell-subtext)]">{"\u2014 " + u.nome}</span>
+                            <MaskedField field="unit.identificacao">
+                              <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
+                              {u.tower?.nome && <span className="text-[var(--shell-subtext)]">{"\u00b7 " + u.tower.nome}</span>}
+                              <span className="text-[var(--shell-subtext)]">{"\u2014 " + u.nome}</span>
+                            </MaskedField>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <button
@@ -4275,7 +4284,7 @@ function discardAiSuggestion() {
                         </div>
                         {u.finalPrice && (
                           <div className="mt-1 text-[var(--shell-text)]">
-                            {"Valor: R$ " + u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            <MaskedField field="unit.valores">{"Valor: R$ " + u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</MaskedField>
                           </div>
                         )}
                         {u.propostaPagamento && <div className="text-[var(--shell-subtext)]">{"Pagamento: " + u.propostaPagamento.replace(/_/g, " ")}</div>}
@@ -5392,7 +5401,13 @@ function discardAiSuggestion() {
             </div>
 
             <div className="flex-1 overflow-auto p-4 space-y-5">
-              {loadingEvents ? (
+              {(lead as any)?.conversaRestricted ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="select-none rounded-lg border border-dashed border-[var(--shell-card-border)] px-6 py-4 text-center text-sm font-medium text-[var(--shell-subtext)]">
+                    Permissão Não Concedida
+                  </div>
+                </div>
+              ) : loadingEvents ? (
                 <div className="text-sm text-[var(--shell-subtext)]">Carregando historico...</div>
               ) : viewEvents.length === 0 ? (
                 <div className="text-sm text-[var(--shell-subtext)]">Sem mensagens ainda.</div>
@@ -5404,6 +5419,7 @@ function discardAiSuggestion() {
               <div ref={bottomRef} />
             </div>
 
+            {!(lead as any)?.conversaRestricted && (
             <div className="border-t bg-[var(--shell-card-bg)] p-3 space-y-3">
               {/* PAINEL DA IA */}
               {tenantAiEnabled && <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
@@ -5972,6 +5988,7 @@ function discardAiSuggestion() {
                 <div className="text-[11px] text-[var(--shell-subtext)]">—a—️ Seu navegador não suporta gravação (MediaRecorder). Teste no Chrome/Edge.</div>
               ) : null}
             </div>
+            )}
 
             {/* MODAL DE MÍDIA */}
             <MediaModal
@@ -6487,8 +6504,10 @@ function discardAiSuggestion() {
               style={{ background: "rgba(0,0,0,0.6)" }}
             >
               <p className="text-sm font-semibold text-white">{lead.nomeCorreto ?? lead.nome}</p>
-              {lead.telefone && (
-                <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>{lead.telefone}</p>
+              {(lead.telefone || (lead as any).restrictedFields?.includes("lead.telefone")) && (
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
+                  <MaskedField field="lead.telefone">{lead.telefone || "—"}</MaskedField>
+                </p>
               )}
             </div>
             <button

@@ -478,6 +478,7 @@ export class LeadsController {
     @Param('id') id: string,
     @UploadedFiles() files: any[],
   ) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
     if (!files || files.length === 0) throw new BadRequestException('Nenhum arquivo enviado');
     return this.leadsService.classifyBulkDocuments(req.user.tenantId, id, files, req.user.sub);
   }
@@ -488,6 +489,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Body() body: { participanteNome: string | null },
   ) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
     return this.leadsService.aiCadastroFill(req.user.tenantId, id, body.participanteNome ?? null);
   }
 
@@ -498,11 +500,15 @@ export class LeadsController {
     @Param('docId') docId: string,
     @Body() body: { tipo?: string; nome?: string; participanteNome?: string | null; observacao?: string | null; pendingReview?: boolean },
   ) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
     return this.leadsService.updateDocument(req.user.tenantId, id, docId, body);
   }
 
   @Get(':id/documents')
   async listDocuments(@Req() req: any, @Param('id') id: string) {
+    // Externo Consultivo sem acesso a documentos: lista vazia
+    const acc = await this.leadsService.getPartnerDocumentAccess(req.user.tenantId, req.user.role);
+    if (acc === 'none') return [];
     return this.leadsService.listDocuments(req.user.tenantId, id);
   }
 
@@ -512,6 +518,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Body() body: { tipo: string; nome: string; participanteNome?: string; participanteClassificacao?: string; observacao?: string },
   ) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
     return this.leadsService.createDocument(req.user.tenantId, id, body, req.user.sub);
   }
 
@@ -521,6 +528,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Body() body: { tipo: string; naoAplicavel: boolean; participanteNome?: string | null },
   ) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
     return this.leadsService.toggleNaoAplicavel(req.user.tenantId, id, body.tipo, body.naoAplicavel, body.participanteNome ?? null);
   }
 
@@ -532,6 +540,7 @@ export class LeadsController {
     @Param('docId') docId: string,
     @UploadedFile() file?: any,
   ) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
     if (!file) throw new BadRequestException('Arquivo não enviado');
     return this.leadsService.uploadDocument(req.user.tenantId, id, docId, file);
   }
@@ -543,6 +552,8 @@ export class LeadsController {
     @Param('docId') docId: string,
     @Res() res: any,
   ) {
+    const acc = await this.leadsService.getPartnerDocumentAccess(req.user.tenantId, req.user.role);
+    if (acc === 'none') throw new ForbiddenException('Sem permissão para visualizar documentos');
     const out = await this.leadsService.viewDocument(req.user.tenantId, id, docId);
     res.setHeader('Content-Type', out.mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${out.filename}"`);
@@ -556,6 +567,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Param('docId') docId: string,
   ) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
     return this.leadsService.deleteDocument(req.user.tenantId, id, docId);
   }
 }

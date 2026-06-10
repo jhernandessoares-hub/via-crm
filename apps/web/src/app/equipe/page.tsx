@@ -28,7 +28,7 @@ const ROLE_LABELS: Record<Role, string> = {
   OWNER: "Proprietário",
   MANAGER: "Gerente",
   AGENT: "Corretor",
-  PARTNER: "Parceiro",
+  PARTNER: "Externo Consultivo",
 };
 
 const ROLE_COLORS: Record<Role, string> = {
@@ -401,7 +401,7 @@ export default function EquipePage() {
                     onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}>
                     <option value="AGENT">Corretor</option>
                     <option value="MANAGER">Gerente</option>
-                    <option value="PARTNER">Parceiro</option>
+                    <option value="PARTNER">Externo Consultivo</option>
                   </select>
                 </div>
                 <div>
@@ -460,7 +460,7 @@ export default function EquipePage() {
                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
                     <option value="AGENT">Corretor</option>
                     <option value="MANAGER">Gerente</option>
-                    <option value="PARTNER">Parceiro</option>
+                    <option value="PARTNER">Externo Consultivo</option>
                   </select>
                 </div>
                 <div>

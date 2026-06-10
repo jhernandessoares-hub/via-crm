@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolvePermissions } from '../tenants/permissions.config';
+import { resolvePermissions, resolveFieldVisibility } from '../tenants/permissions.config';
 
 type Bucket = { qtd: number; valor: number };
 const emptyBucket = (): Bucket => ({ qtd: 0, valor: 0 });
@@ -27,6 +27,27 @@ export class ReportsService {
     const roleKey = String(role).toLowerCase();
     const allowed = perms?.[roleKey as 'manager' | 'agent' | 'partner']?.relatorios?.view ?? false;
     if (!allowed) throw new ForbiddenException('Sem permissão para ver relatórios gerenciais.');
+  }
+
+  /** Externo Consultivo: oculta corretor/cpf/valores nas linhas conforme config do tenant. */
+  private async sanitizeRowsForPartner<T extends Record<string, any>>(
+    tenantId: string,
+    role: string,
+    rows: T[],
+  ): Promise<T[]> {
+    if (role !== 'PARTNER') return rows;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    const fv = resolveFieldVisibility((tenant?.permissionsConfig as any)?.fieldVisibility);
+    for (const r of rows) {
+      if (fv['lead.responsavel'] === false) (r as any).corretor = null;
+      if (fv['lead.cpf'] === false) (r as any).cpf = null;
+      if (fv['unit.valores'] === false) (r as any).valor = null;
+      if (fv['unit.comprador'] === false) (r as any).comprador = null;
+    }
+    return rows;
   }
 
   private inPeriod(d: Date | null | undefined, from: Date | null, to: Date | null): boolean {
@@ -300,7 +321,7 @@ export class ReportsService {
         });
       }
       rows.sort((x, y) => y.valor - x.valor);
-      return rows;
+      return this.sanitizeRowsForPartner(tenantId, role, rows);
     }
 
     // ── Empreendimento (unidades) ──
@@ -347,6 +368,6 @@ export class ReportsService {
     }
 
     rows.sort((a, b) => b.valor - a.valor);
-    return rows;
+    return this.sanitizeRowsForPartner(tenantId, role, rows);
   }
 }

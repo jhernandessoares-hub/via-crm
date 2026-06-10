@@ -138,11 +138,26 @@ function AppShellInner({
   }, []);
 
   const handleSessionWarning = useCallback(() => {
-    setTimeoutModalSeconds(10);
+    setTimeoutModalSeconds(60);
     setShowTimeoutModal(true);
   }, []);
 
   const handleSessionExpired = useCallback(async () => {
+    // Defesa: se o token foi renovado em outra aba, não desloga — só fecha o modal
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("accessToken");
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          if (typeof payload.exp === "number" && payload.exp * 1000 - Date.now() > 60_000) {
+            setShowTimeoutModal(false);
+            return;
+          }
+        } catch {
+          /* token inválido — segue para logout */
+        }
+      }
+    }
     setShowTimeoutModal(false);
     await apiLogout();
     window.location.href = "/login";
@@ -161,8 +176,16 @@ function AppShellInner({
   const { secondsLeft } = useSessionTimer({
     onWarning: handleSessionWarning,
     onExpired: handleSessionExpired,
-    warningAt: 10,
+    warningAt: 60,
   });
+
+  // Fecha o modal automaticamente quando o tempo restante se recupera
+  // (token renovado nesta aba via refresh de background ou em outra aba)
+  useEffect(() => {
+    if (showTimeoutModal && secondsLeft != null && secondsLeft > 60) {
+      setShowTimeoutModal(false);
+    }
+  }, [showTimeoutModal, secondsLeft]);
 
   async function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -197,7 +220,7 @@ function AppShellInner({
     >
       <EnvBanner />
       <div className="flex flex-1 min-h-0">
-        <Sidebar role={role} tenantNome={tenantNome} counts={counts} branding={branding} addons={tenantAddons} plan={tenantPlan} />
+        <Sidebar role={role} tenantNome={tenantNome} tenantId={user?.tenantId ?? null} counts={counts} branding={branding} addons={tenantAddons} plan={tenantPlan} />
         <div className="flex-1 flex flex-col min-w-0">
           <Header
             title={title}

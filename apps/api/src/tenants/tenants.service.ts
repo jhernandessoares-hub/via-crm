@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolvePermissions } from './permissions.config';
+import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess } from './permissions.config';
 import { encryptField } from '../crypto/field-crypto.util';
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -192,7 +192,12 @@ export class TenantsService {
       where: { id: tenantId },
       select: { permissionsConfig: true },
     });
-    return resolvePermissions(tenant?.permissionsConfig as any);
+    const saved = tenant?.permissionsConfig as any;
+    return {
+      ...resolvePermissions(saved),
+      fieldVisibility: { partner: resolveFieldVisibility(saved?.fieldVisibility) },
+      documentAccess: { partner: resolveDocumentAccess(saved?.documentAccess) },
+    };
   }
 
   async updatePermissions(tenantId: string, config: Record<string, any>) {
@@ -208,6 +213,9 @@ export class TenantsService {
       where: { id: tenantId },
       data: { permissionsConfig: merged },
     });
-    return resolvePermissions(merged);
+    return {
+      ...resolvePermissions(merged),
+      fieldVisibility: { partner: resolveFieldVisibility((merged as any)?.fieldVisibility) },
+    };
   }
 }

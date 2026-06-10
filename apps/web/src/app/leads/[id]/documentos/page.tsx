@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import { maskCPF, maskCEP, maskPhone, isValidCPF } from "@/lib/format";
+import { usePermissions, useDocumentAccess } from "@/lib/permissions";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -453,6 +454,7 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
   const [mime, setMime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const canDownload = useDocumentAccess() === "download";
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -494,9 +496,11 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
           {!loading && blobUrl && !isImage && !isPdf && (
             <div className="text-white text-center p-10">
               <p className="text-sm mb-4 text-[var(--shell-subtext)]">Visualização não disponível para este formato.</p>
-              <a href={blobUrl} download={nome} className="text-blue-400 hover:underline text-sm">
-                Baixar arquivo
-              </a>
+              {canDownload && (
+                <a href={blobUrl} download={nome} className="text-blue-400 hover:underline text-sm">
+                  Baixar arquivo
+                </a>
+              )}
             </div>
           )}
         </div>
@@ -512,6 +516,7 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
   const [mime, setMime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const canDownload = useDocumentAccess() === "download";
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -539,7 +544,7 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
       {!loading && blobUrl && !isImage && !isPdf && (
         <div className="text-center text-[var(--shell-subtext)] text-xs p-6">
           <p className="mb-2">Visualização não disponível.</p>
-          <a href={blobUrl} download={doc.nome} className="text-blue-400 hover:underline">Baixar arquivo</a>
+          {canDownload && <a href={blobUrl} download={doc.nome} className="text-blue-400 hover:underline">Baixar arquivo</a>}
         </div>
       )}
     </div>
@@ -1077,6 +1082,7 @@ function IdentifyDocModal({ leadId, doc, participantes, onConfirm, onCancel, bus
   const [mime, setMime] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [previewError, setPreviewError] = useState(false);
+  const canDownload = useDocumentAccess() === "download";
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -1136,9 +1142,11 @@ function IdentifyDocModal({ leadId, doc, participantes, onConfirm, onCancel, bus
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <p className="text-sm text-[var(--shell-subtext)] mb-2">{doc.filename || doc.nome}</p>
-                <a href={blobUrl} download={doc.filename || doc.nome} className="text-xs text-blue-600 hover:underline">
-                  Baixar arquivo
-                </a>
+                {canDownload && (
+                  <a href={blobUrl} download={doc.filename || doc.nome} className="text-xs text-blue-600 hover:underline">
+                    Baixar arquivo
+                  </a>
+                )}
               </div>
             )}
           </div>
@@ -1561,6 +1569,9 @@ export default function DocumentosPage() {
   const params = useParams();
   const router = useRouter();
   const leadId = params?.id as string;
+  const { documentAccess, userRole } = usePermissions();
+  const isPartner = userRole === "PARTNER";
+  const canDownloadDocs = documentAccess === "download";
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [docs, setDocs] = useState<DocItem[]>([]);
@@ -2091,6 +2102,23 @@ export default function DocumentosPage() {
 
   if (loading) return <AppShell title="Documentos"><div className="flex items-center justify-center h-64 text-[var(--shell-subtext)] text-sm">Carregando...</div></AppShell>;
   if (error || !lead) return <AppShell title="Documentos"><div className="flex items-center justify-center h-64 text-red-500 text-sm">{error ?? "Lead não encontrado"}</div></AppShell>;
+  if (isPartner && documentAccess === "none") {
+    return (
+      <AppShell title="Documentos">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <button onClick={() => router.push(`/leads/${leadId}`)} className="flex items-center gap-1.5 text-sm text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] mb-6">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            Voltar ao lead
+          </button>
+          <div className="flex items-center justify-center h-64">
+            <div className="select-none rounded-lg border border-dashed border-[var(--shell-card-border)] px-6 py-4 text-center text-sm font-medium text-[var(--shell-subtext)]">
+              Permissão Não Concedida
+            </div>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title={`Documentos — ${leadDisplayName}`}>
@@ -2122,14 +2150,16 @@ export default function DocumentosPage() {
                 <h1 className="text-base font-semibold text-[var(--shell-text)]">Documentos</h1>
                 <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{leadDisplayName}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => setBulkOpen(true)}>
-                  ↑ Subir vários
-                </button>
-                <button className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors" onClick={() => setAddPartOpen(true)}>
-                  + Participante
-                </button>
-              </div>
+              {!isPartner && (
+                <div className="flex items-center gap-2">
+                  <button className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => setBulkOpen(true)}>
+                    ↑ Subir vários
+                  </button>
+                  <button className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors" onClick={() => setAddPartOpen(true)}>
+                    + Participante
+                  </button>
+                </div>
+              )}
             </div>
             <div className="px-6 py-5">
               <ProcessingSection />

@@ -25,7 +25,7 @@ const ROLE_LABEL: Record<Role, string> = {
   OWNER: "Proprietário",
   MANAGER: "Gerente",
   AGENT: "Corretor",
-  PARTNER: "Parceiro",
+  PARTNER: "Externo Consultivo",
 };
 
 const ROLE_COLOR: Record<Role, string> = {

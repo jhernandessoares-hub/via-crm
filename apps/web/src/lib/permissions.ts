@@ -13,10 +13,17 @@ import { apiFetch } from "./api";
 export type PermissionAction = "view" | "create" | "edit" | "delete" | "use" | "export" | "send" | "merge";
 export type PermissionRole = "manager" | "agent" | "partner";
 
+export type DocumentAccessLevel = "none" | "view" | "download";
+
 export type PermissionsConfig = Record<
   PermissionRole,
   Record<string, Record<string, boolean>>
->;
+> & {
+  /** Visibilidade de campos do Externo Consultivo (role PARTNER). */
+  fieldVisibility?: { partner: Record<string, boolean> };
+  /** Acesso a documentos do lead para o Externo Consultivo. */
+  documentAccess?: { partner: DocumentAccessLevel };
+};
 
 // ── Módulos disponíveis (espelho do backend) ────────────────────────────────
 export const PERMISSION_MODULES = [
@@ -141,7 +148,64 @@ export const PERMISSION_MODULES = [
     label: "Relatórios Gerenciais",
     actions: [{ key: "view", label: "Ver" }],
   },
+  {
+    key: "pre_ocupacao",
+    label: "Pré-Ocupação",
+    actions: [{ key: "view", label: "Ver" }],
+  },
+  {
+    key: "pos_ocupacao",
+    label: "Pós-Ocupação",
+    actions: [{ key: "view", label: "Ver" }],
+  },
 ] as const;
+
+// ── Visibilidade de campos (Externo Consultivo) — espelho do backend ─────────
+export type FieldVisibilityGroup = "lead" | "espelho";
+
+export const FIELD_VISIBILITY_FIELDS: { key: string; label: string; group: FieldVisibilityGroup }[] = [
+  { key: "lead.telefone",    label: "Telefone / WhatsApp",          group: "lead" },
+  { key: "lead.responsavel", label: "Atendente / Responsável",      group: "lead" },
+  { key: "lead.conversa",    label: "Conversa (histórico + IA)",    group: "lead" },
+  { key: "lead.cpf",         label: "CPF",                          group: "lead" },
+  { key: "lead.rg",          label: "RG",                           group: "lead" },
+  { key: "lead.email",       label: "E-mail",                       group: "lead" },
+  { key: "lead.endereco",    label: "Endereço (rua/cidade/UF/CEP)", group: "lead" },
+  { key: "lead.profissao",   label: "Profissão / Empresa",          group: "lead" },
+  { key: "lead.financeiro",  label: "Renda / FGTS / Entrada",       group: "lead" },
+  { key: "lead.estadoCivil", label: "Estado civil / Nascimento",    group: "lead" },
+  { key: "lead.origem",      label: "Origem / Indicação",           group: "lead" },
+  { key: "lead.resumo",      label: "Resumo do lead",               group: "lead" },
+  { key: "lead.observacao",  label: "Observações",                  group: "lead" },
+  { key: "unit.identificacao", label: "Empreendimento / Torre / Unidade",     group: "espelho" },
+  { key: "unit.status",        label: "Status da unidade",                    group: "espelho" },
+  { key: "unit.valores",       label: "Valores (tabela / negociado)",         group: "espelho" },
+  { key: "unit.specs",         label: "Características (área/quartos/vagas...)", group: "espelho" },
+  { key: "unit.lote",          label: "Dados do lote",                        group: "espelho" },
+  { key: "unit.proposta",      label: "Proposta (pagamento / obs)",           group: "espelho" },
+  { key: "unit.comprador",     label: "Comprador / data de venda",            group: "espelho" },
+];
+
+/** true = campo visível. Só restringe o role PARTNER; demais sempre veem tudo. */
+export function checkFieldVisible(
+  userRole: string | null,
+  permissions: PermissionsConfig | null,
+  fieldKey: string,
+): boolean {
+  if (userRole !== "PARTNER") return true;
+  const fv = permissions?.fieldVisibility?.partner;
+  if (!fv) return true;
+  return fv[fieldKey] !== false;
+}
+
+/** Nível de acesso a documentos. Não-PARTNER sempre 'download' (total). */
+export function checkDocumentAccess(
+  userRole: string | null,
+  permissions: PermissionsConfig | null,
+): DocumentAccessLevel {
+  if (userRole !== "PARTNER") return "download";
+  return permissions?.documentAccess?.partner ?? "none";
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -224,5 +288,23 @@ export function usePermissions() {
     return checkPermission(userRole, permissions, module, action);
   };
 
-  return { can, userRole, permissions, loading };
+  const isFieldVisible = (fieldKey: string): boolean => {
+    return checkFieldVisible(userRole, permissions, fieldKey);
+  };
+
+  const documentAccess: DocumentAccessLevel = checkDocumentAccess(userRole, permissions);
+
+  return { can, isFieldVisible, documentAccess, userRole, permissions, loading };
+}
+
+/**
+ * Hook leve só para o nível de acesso a documentos (lê o cache via efeito,
+ * sem fetch). Usado em componentes profundos (modais de preview de documento).
+ */
+export function useDocumentAccess(): DocumentAccessLevel {
+  const [level, setLevel] = useState<DocumentAccessLevel>("download");
+  useEffect(() => {
+    setLevel(checkDocumentAccess(getStoredUserRole(), getStoredPermissions()));
+  }, []);
+  return level;
 }

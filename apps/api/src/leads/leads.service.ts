@@ -55,7 +55,7 @@ import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unoff
 import { MessagingService } from '../messaging/messaging.service';
 import { LeadDocumentsService } from '../lead-documents/lead-documents.service';
 import { getNextLeadNumber } from './lead-numbering.helper';
-import { resolvePermissions } from '../tenants/permissions.config';
+import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess, DocumentAccessLevel } from '../tenants/permissions.config';
 import { isValidCPF } from './cpf.util';
 
 @Injectable()
@@ -1349,6 +1349,10 @@ export class LeadsService {
     const stageById = Object.fromEntries(recenteStages.map((s) => [s.id, s]));
     const userById = Object.fromEntries(recenteUsers.map((u) => [u.id, u]));
 
+    // Externo Consultivo: visibilidade de campos
+    const fv = await this.getPartnerFieldVisibility(tenantId, role);
+    const showField = (k: string) => !fv || fv[k] !== false;
+
     // ── IA execuções ───────────────────────────────────────────────────
     const aiCount = await this.prisma.aiExecutionLog.count({
       where: { tenantId, createdAt: { gte: from, lte: to } },
@@ -1397,9 +1401,12 @@ export class LeadsService {
         const stage = l.stageId ? stageById[l.stageId] : null;
         const usr = l.assignedUserId ? userById[l.assignedUserId] : null;
         return {
-          id: l.id, nome: l.nome, telefone: l.telefone, origem: l.origem,
+          id: l.id, nome: l.nome,
+          telefone: showField('lead.telefone') ? l.telefone : null,
+          origem: showField('lead.origem') ? l.origem : null,
           status: l.status, stageName: stage?.name ?? null, stageGroup: stage?.group ?? null,
-          responsavel: usr?.apelido || usr?.nome || null, criadoEm: l.criadoEm,
+          responsavel: showField('lead.responsavel') ? (usr?.apelido || usr?.nome || null) : null,
+          criadoEm: l.criadoEm,
         };
       }),
       ia: { execucoes: aiCount },
@@ -1409,7 +1416,7 @@ export class LeadsService {
         return {
           id: e.id, title: e.title, startAt: e.startAt, eventType: e.eventType,
           status: e.status, leadNome: lead?.nome ?? null, leadId: lead?.id ?? null,
-          responsavel: usr?.apelido || usr?.nome || null,
+          responsavel: showField('lead.responsavel') ? (usr?.apelido || usr?.nome || null) : null,
         };
       }),
     };
@@ -1423,6 +1430,129 @@ export class LeadsService {
     const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
     const roleKey = role.toLowerCase() as 'agent' | 'partner';
     return perms[roleKey]?.pipeline?.view ?? false;
+  }
+
+  /**
+   * Visibilidade de campos do Externo Consultivo (role PARTNER). Retorna null
+   * para qualquer outro role (sem restrição). true = campo visível.
+   */
+  private async getPartnerFieldVisibility(
+    tenantId: string,
+    role: string,
+  ): Promise<Record<string, boolean> | null> {
+    if (role !== 'PARTNER') return null;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    return resolveFieldVisibility((tenant?.permissionsConfig as any)?.fieldVisibility);
+  }
+
+  /**
+   * Nível de acesso a documentos do Externo Consultivo. 'download' para qualquer
+   * outro role (sem restrição).
+   */
+  async getPartnerDocumentAccess(tenantId: string, role: string): Promise<DocumentAccessLevel> {
+    if (role !== 'PARTNER') return 'download';
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    return resolveDocumentAccess((tenant?.permissionsConfig as any)?.documentAccess);
+  }
+
+  /** Remove do payload os campos ocultos para o Externo Consultivo (segurança real). */
+  private sanitizeLeadForPartner<T extends Record<string, any>>(
+    lead: T,
+    fv: Record<string, boolean>,
+  ): T {
+    const hidden = (k: string) => fv[k] === false;
+
+    if (hidden('lead.telefone')) {
+      (lead as any).telefone = null;
+      (lead as any).whatsapp = null;
+    }
+    if (hidden('lead.responsavel')) (lead as any).assignedUserName = null;
+    if (hidden('lead.cpf')) (lead as any).cpf = null;
+    if (hidden('lead.rg')) (lead as any).rg = null;
+    if (hidden('lead.email')) (lead as any).email = null;
+    if (hidden('lead.endereco')) {
+      (lead as any).endereco = null;
+      (lead as any).cep = null;
+      (lead as any).cidade = null;
+      (lead as any).uf = null;
+    }
+    if (hidden('lead.profissao')) {
+      (lead as any).profissao = null;
+      (lead as any).empresa = null;
+      (lead as any).naturalidade = null;
+    }
+    if (hidden('lead.financeiro')) {
+      (lead as any).rendaBrutaFamiliar = null;
+      (lead as any).fgts = null;
+      (lead as any).valorEntrada = null;
+    }
+    if (hidden('lead.estadoCivil')) {
+      (lead as any).estadoCivil = null;
+      (lead as any).dataNascimento = null;
+    }
+    if (hidden('lead.origem')) {
+      (lead as any).origem = null;
+      (lead as any).cadastroOrigem = null;
+    }
+    if (hidden('lead.resumo')) (lead as any).resumoLead = null;
+    if (hidden('lead.observacao')) (lead as any).observacao = null;
+    if (hidden('lead.conversa')) {
+      (lead as any).lastInboundText = null;
+      (lead as any).lastInboundChannel = null;
+      (lead as any).lastInboundEventAt = null;
+      (lead as any).conversaRestricted = true;
+    }
+
+    for (const u of ((lead as any).developmentUnits ?? []) as Record<string, any>[]) {
+      this.applyUnitVisibility(u, fv);
+    }
+
+    (lead as any).restrictedFields = Object.keys(fv).filter((k) => fv[k] === false);
+    return lead;
+  }
+
+  /** Remove campos ocultos de uma unidade (espelho) para o Externo Consultivo. */
+  private applyUnitVisibility(u: Record<string, any>, fv: Record<string, boolean>): void {
+    const hidden = (k: string) => fv[k] === false;
+    if (hidden('unit.identificacao')) {
+      u.nome = null;
+      if (u.development) u.development = { ...u.development, nome: null };
+      if (u.tower) u.tower = { ...u.tower, nome: null };
+    }
+    if (hidden('unit.status')) u.status = null;
+    if (hidden('unit.valores')) {
+      u.finalPrice = null;
+      u.valorVenda = null;
+      u.valorAvaliado = null;
+    }
+    if (hidden('unit.specs')) {
+      u.areaM2 = null;
+      u.quartos = null;
+      u.suites = null;
+      u.banheiros = null;
+      u.vagas = null;
+      u.andar = null;
+    }
+    if (hidden('unit.lote')) {
+      u.loteNum = null;
+      u.loteAreaM2 = null;
+      u.loteFrente = null;
+      u.loteFundo = null;
+    }
+    if (hidden('unit.proposta')) {
+      u.propostaPagamento = null;
+      u.propostaObs = null;
+    }
+    if (hidden('unit.comprador')) {
+      u.comprador = null;
+      u.soldAt = null;
+    }
   }
 
   async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
@@ -1479,7 +1609,10 @@ export class LeadsService {
       return new Date(b.criadoEm as any).getTime() - new Date(a.criadoEm as any).getTime();
     });
 
-    return this.attachLastInboundPreview(tenantId, enriched);
+    const withPreview = await this.attachLastInboundPreview(tenantId, enriched);
+    const fv = await this.getPartnerFieldVisibility(tenantId, role);
+    if (fv) withPreview.forEach((l) => this.sanitizeLeadForPartner(l, fv));
+    return withPreview;
   }
 
 async getById(user: any, id: string) {
@@ -1601,8 +1734,19 @@ async getById(user: any, id: string) {
     }) ?? null;
   }
 
-  return {
+  // Nome do responsável (para sanitização do Externo Consultivo)
+  let assignedUserName: string | null = null;
+  if ((lead as any).assignedUserId) {
+    const assigned = await this.prisma.user.findUnique({
+      where: { id: (lead as any).assignedUserId },
+      select: { nome: true, apelido: true },
+    });
+    assignedUserName = assigned ? assigned.apelido || assigned.nome : null;
+  }
+
+  const result: any = {
     ...lead,
+    assignedUserName,
     stageId: effectiveStageId,
     stageKey,
     stageName,
@@ -1612,9 +1756,25 @@ async getById(user: any, id: string) {
     developmentUnits: linkedUnits,
     empreendimentoInteresse,
   };
+
+  const fv = await this.getPartnerFieldVisibility(user.tenantId, user.role);
+  if (fv) {
+    this.sanitizeLeadForPartner(result, fv);
+    if (fv['lead.conversa'] === false) result.conversaRestricted = true;
+    if (fv['lead.responsavel'] === false) {
+      // o responsável é resolvido no front via teamMembers + assignedUserId;
+      // ocultamos o id para impedir o lookup do nome
+      result.assignedUserId = null;
+    }
+  }
+
+  return result;
 }
 
   async listEvents(user: any, id: string, opts?: { limit?: number; skip?: number }) {
+    const fv = await this.getPartnerFieldVisibility(user.tenantId, user.role);
+    if (fv && fv['lead.conversa'] === false) return [];
+
     const take = Math.min(Math.max(1, opts?.limit ?? 200), 400);
     const skip = Math.max(0, opts?.skip ?? 0);
 
@@ -2768,7 +2928,10 @@ async listTransitions(user: any, leadId: string) {
       return new Date(b.criadoEm as any).getTime() - new Date(a.criadoEm as any).getTime();
     });
 
-    return this.attachLastInboundPreview(user.tenantId, enriched);
+    const withPreview = await this.attachLastInboundPreview(user.tenantId, enriched);
+    const fv = await this.getPartnerFieldVisibility(user.tenantId, user.role);
+    if (fv) withPreview.forEach((l) => this.sanitizeLeadForPartner(l, fv));
+    return withPreview;
   }
 
   async getBranchLeads(user: any, branchId?: string) {
@@ -3073,18 +3236,33 @@ const aiAssistanceLabel =
 
     this.audit.log({ tenantId: user.tenantId, action: 'EXPORT_DATA', metadata: { count: leads.length } });
 
-    const header = ['ID', 'Nome', 'Telefone', 'Email', 'Origem', 'Status', 'Etapa', 'Resumo', 'Criado em', 'Atualizado em'];
+    // Externo Consultivo: omite colunas de campos ocultos
+    const fv = await this.getPartnerFieldVisibility(user.tenantId, user.role);
+    const show = (k: string) => !fv || fv[k] !== false;
+
     const escape = (v: any) => {
       const s = String(v ?? '').replace(/"/g, '""');
       return `"${s}"`;
     };
-    const rows = leads.map((l) => [
-      escape(l.id), escape(l.nome), escape(l.telefone), escape(l.email),
-      escape(l.origem), escape(l.status), escape(l.stage?.name),
-      escape(l.resumoLead), escape(l.criadoEm?.toISOString()), escape(l.atualizadoEm?.toISOString()),
-    ].join(','));
 
-    return [header.join(','), ...rows].join('\n');
+    type Col = { header: string; value: (l: (typeof leads)[number]) => any };
+    const cols: Col[] = [
+      { header: 'ID', value: (l) => l.id },
+      { header: 'Nome', value: (l) => l.nome },
+      ...(show('lead.telefone') ? [{ header: 'Telefone', value: (l: any) => l.telefone }] : []),
+      ...(show('lead.email') ? [{ header: 'Email', value: (l: any) => l.email }] : []),
+      ...(show('lead.origem') ? [{ header: 'Origem', value: (l: any) => l.origem }] : []),
+      { header: 'Status', value: (l) => l.status },
+      { header: 'Etapa', value: (l) => l.stage?.name },
+      ...(show('lead.resumo') ? [{ header: 'Resumo', value: (l: any) => l.resumoLead }] : []),
+      { header: 'Criado em', value: (l) => l.criadoEm?.toISOString() },
+      { header: 'Atualizado em', value: (l) => l.atualizadoEm?.toISOString() },
+    ];
+
+    const header = cols.map((c) => c.header).join(',');
+    const rows = leads.map((l) => cols.map((c) => escape(c.value(l))).join(','));
+
+    return [header, ...rows].join('\n');
   }
   // =========================================
   // DOCUMENTOS DO LEAD (delegado para LeadDocumentsService)
@@ -3485,24 +3663,30 @@ const aiAssistanceLabel =
     const userById: Record<string, string> = {};
     for (const u of users) userById[u.id] = u.nome;
 
+    const fv = await this.getPartnerFieldVisibility(tenantId, role);
+    const show = (k: string) => !fv || fv[k] !== false;
+
     return leads.map((l) => ({
       id: l.id,
       nome: l.nome,
       nomeCorreto: l.nomeCorreto,
-      telefone: l.telefone,
-      email: l.email,
-      cpf: l.cpf,
+      telefone: show('lead.telefone') ? l.telefone : null,
+      email: show('lead.email') ? l.email : null,
+      cpf: show('lead.cpf') ? l.cpf : null,
       criadoEm: l.criadoEm,
-      source: l.origem,
+      source: show('lead.origem') ? l.origem : null,
       numero: l.numero,
       stage: l.stage ? { nome: l.stage.name } : null,
-      assignedUser: l.assignedUserId ? { nome: userById[l.assignedUserId] ?? '' } : null,
+      assignedUser:
+        show('lead.responsavel') && l.assignedUserId
+          ? { nome: userById[l.assignedUserId] ?? '' }
+          : null,
       developmentUnits: l.developmentUnits.map((u) => ({
         id: u.id,
-        nome: u.nome,
-        status: u.status,
-        towerNome: u.tower?.nome ?? null,
-        developmentNome: u.development?.nome ?? null,
+        nome: show('unit.identificacao') ? u.nome : null,
+        status: show('unit.status') ? u.status : null,
+        towerNome: show('unit.identificacao') ? u.tower?.nome ?? null : null,
+        developmentNome: show('unit.identificacao') ? u.development?.nome ?? null : null,
       })),
     }));
   }

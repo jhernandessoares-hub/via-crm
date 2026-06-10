@@ -20,7 +20,7 @@ interface UseSessionTimerOptions {
 export function useSessionTimer({
   onWarning,
   onExpired,
-  warningAt = 10,
+  warningAt = 60,
 }: UseSessionTimerOptions = {}) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const stateRef = useRef({ warned: false, expired: false, lastExp: 0 });
@@ -63,9 +63,25 @@ export function useSessionTimer({
       }
     }
 
+    // Sincronização entre abas: reage a mudanças do accessToken em outras abas
+    function onStorage(e: StorageEvent) {
+      if (e.key !== "accessToken") return;
+      if (e.newValue === null) {
+        // Logout real ocorreu em outra aba (localStorage já limpo) — acompanha
+        window.location.href = "/login";
+        return;
+      }
+      // Token renovado em outra aba — recalcula imediatamente (reseta flags via novo exp)
+      tick();
+    }
+
     tick();
     const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [warningAt]);
 
   return { secondsLeft };

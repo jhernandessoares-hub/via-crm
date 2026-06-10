@@ -18,7 +18,7 @@ const ROLE_LABEL: Record<Role, string> = {
   OWNER: "Proprietário",
   MANAGER: "Gerente",
   AGENT: "Corretor",
-  PARTNER: "Parceiro",
+  PARTNER: "Externo Consultivo",
 };
 
 interface HeaderProps {

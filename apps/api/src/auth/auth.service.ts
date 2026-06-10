@@ -8,6 +8,9 @@ import { EmailService } from '../email/email.service';
 import type { JwtPayload } from './types';
 import { validatePasswordStrength } from './password-strength.util';
 
+/** Tempo de vida do access token. Mantido em sincronia com auth.module.ts. */
+const ACCESS_TOKEN_TTL = '1h';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -81,7 +84,7 @@ export class AuthService {
       branchId: user.branchId,
     };
 
-    const accessToken = await this.jwt.signAsync(basePayload, { expiresIn: '15m' });
+    const accessToken = await this.jwt.signAsync(basePayload, { expiresIn: ACCESS_TOKEN_TTL });
 
     // Gera jti único para o refresh token — permite revogação individual
     const jti = crypto.randomUUID();
@@ -167,7 +170,7 @@ export class AuthService {
       branchId: user.branchId,
     };
 
-    const newAccessToken = await this.jwt.signAsync(newBasePayload, { expiresIn: '15m' });
+    const newAccessToken = await this.jwt.signAsync(newBasePayload, { expiresIn: ACCESS_TOKEN_TTL });
 
     // Emite novo refresh token com novo jti (rotação completa)
     const newJti = crypto.randomUUID();

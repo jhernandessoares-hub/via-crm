@@ -143,6 +143,20 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
       { key: 'view', label: 'Ver' },
     ],
   },
+  {
+    key: 'pre_ocupacao',
+    label: 'Pré-Ocupação',
+    actions: [
+      { key: 'view', label: 'Ver' },
+    ],
+  },
+  {
+    key: 'pos_ocupacao',
+    label: 'Pós-Ocupação',
+    actions: [
+      { key: 'view', label: 'Ver' },
+    ],
+  },
 ];
 
 /** Permissões padrão quando o tenant não tem config salva. */
@@ -163,6 +177,8 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     duplicados:             { view: true,  merge: true  },
     exportacao:             { export: true  },
     relatorios:             { view: true  },
+    pre_ocupacao:           { view: true  },
+    pos_ocupacao:           { view: true  },
   },
   agent: {
     leads:                  { view: true,  create: true,  edit: true,  delete: false },
@@ -180,6 +196,8 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     duplicados:             { view: false, merge: false },
     exportacao:             { export: false },
     relatorios:             { view: false },
+    pre_ocupacao:           { view: true  },
+    pos_ocupacao:           { view: true  },
   },
   partner: {
     leads:                  { view: true,  create: true,  edit: false, delete: false },
@@ -197,6 +215,8 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     duplicados:             { view: false, merge: false },
     exportacao:             { export: false },
     relatorios:             { view: false },
+    pre_ocupacao:           { view: true  },
+    pos_ocupacao:           { view: true  },
   },
 };
 
@@ -219,4 +239,79 @@ export function resolvePermissions(
     }
   }
   return result;
+}
+
+/* ------------------------------------------------------------------ *
+ * Visibilidade de campos — exclusivo do perfil Externo Consultivo.
+ * O OWNER escolhe quais dados do lead / espelho ficam ocultos para
+ * esse perfil. O backend remove o dado do payload; o front borra.
+ * ------------------------------------------------------------------ */
+
+export type FieldVisibilityGroup = 'lead' | 'espelho';
+
+export interface FieldVisibilityField {
+  key: string;
+  label: string;
+  group: FieldVisibilityGroup;
+}
+
+/** Campos que o OWNER pode ocultar do Externo Consultivo. */
+export const FIELD_VISIBILITY_FIELDS: FieldVisibilityField[] = [
+  // Lead
+  { key: 'lead.telefone',    label: 'Telefone / WhatsApp',          group: 'lead' },
+  { key: 'lead.responsavel', label: 'Atendente / Responsável',      group: 'lead' },
+  { key: 'lead.conversa',    label: 'Conversa (histórico + IA)',    group: 'lead' },
+  { key: 'lead.cpf',         label: 'CPF',                          group: 'lead' },
+  { key: 'lead.rg',          label: 'RG',                           group: 'lead' },
+  { key: 'lead.email',       label: 'E-mail',                       group: 'lead' },
+  { key: 'lead.endereco',    label: 'Endereço (rua/cidade/UF/CEP)', group: 'lead' },
+  { key: 'lead.profissao',   label: 'Profissão / Empresa',          group: 'lead' },
+  { key: 'lead.financeiro',  label: 'Renda / FGTS / Entrada',       group: 'lead' },
+  { key: 'lead.estadoCivil', label: 'Estado civil / Nascimento',    group: 'lead' },
+  { key: 'lead.origem',      label: 'Origem / Indicação',           group: 'lead' },
+  { key: 'lead.resumo',      label: 'Resumo do lead',               group: 'lead' },
+  { key: 'lead.observacao',  label: 'Observações',                  group: 'lead' },
+  // Espelho / unidade
+  { key: 'unit.identificacao', label: 'Empreendimento / Torre / Unidade',     group: 'espelho' },
+  { key: 'unit.status',        label: 'Status da unidade',                    group: 'espelho' },
+  { key: 'unit.valores',       label: 'Valores (tabela / negociado)',         group: 'espelho' },
+  { key: 'unit.specs',         label: 'Características (área/quartos/vagas...)', group: 'espelho' },
+  { key: 'unit.lote',          label: 'Dados do lote',                        group: 'espelho' },
+  { key: 'unit.proposta',      label: 'Proposta (pagamento / obs)',           group: 'espelho' },
+  { key: 'unit.comprador',     label: 'Comprador / data de venda',            group: 'espelho' },
+];
+
+/**
+ * Default: true = visível. Os 3 campos abaixo nascem OCULTOS por padrão;
+ * qualquer campo não listado aqui é visível por default.
+ */
+export const DEFAULT_FIELD_VISIBILITY: Record<string, boolean> = {
+  'lead.telefone': false,
+  'lead.responsavel': false,
+  'lead.conversa': false,
+};
+
+/** Resolve a visibilidade de campos do Externo Consultivo (mescla salvo + defaults). */
+export function resolveFieldVisibility(saved: any): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const f of FIELD_VISIBILITY_FIELDS) {
+    const s = saved?.partner?.[f.key];
+    out[f.key] = s !== undefined ? !!s : DEFAULT_FIELD_VISIBILITY[f.key] ?? true;
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Acesso a documentos do lead — Externo Consultivo.
+ * 3 níveis: 'none' (nem vê), 'view' (vê/previsualiza, sem baixar),
+ * 'download' (vê e baixa). Default mais restritivo: 'none'.
+ * ------------------------------------------------------------------ */
+
+export type DocumentAccessLevel = 'none' | 'view' | 'download';
+
+export const DEFAULT_DOCUMENT_ACCESS: DocumentAccessLevel = 'none';
+
+export function resolveDocumentAccess(saved: any): DocumentAccessLevel {
+  const v = saved?.partner;
+  return v === 'view' || v === 'download' || v === 'none' ? v : DEFAULT_DOCUMENT_ACCESS;
 }
