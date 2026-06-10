@@ -136,6 +136,11 @@ export const PERMISSION_MODULES = [
       { key: "export", label: "Exportar leads (CSV)" },
     ],
   },
+  {
+    key: "relatorios",
+    label: "Relatórios Gerenciais",
+    actions: [{ key: "view", label: "Ver" }],
+  },
 ] as const;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

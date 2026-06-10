@@ -1859,6 +1859,10 @@ export default function LeadDetailChatPage() {
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
   const [unitConfirm, setUnitConfirm] = useState<{ stage: PipelineStage; message: string } | null>(null);
+  // Venda avulsa (imóvel sem unidade de empreendimento): captura valor + data
+  const [vendaModal, setVendaModal] = useState<{ stage: PipelineStage } | null>(null);
+  const [vendaValor, setVendaValor] = useState("");
+  const [vendaData, setVendaData] = useState("");
 
   // (preparação pro futuro) etapa —Sfinal⬝ pode sugerir minimizar chat
 
@@ -3477,12 +3481,12 @@ function discardAiSuggestion() {
             // Se não veio ?group= na URL, usa o grupo da etapa atual do lead
             const effectiveGroup = currentGroup || (lead as any)?.stageGroup || null;
 
-            async function moveToStage(stageId: string) {
+            async function moveToStage(stageId: string, extra?: Record<string, any>) {
               try {
                 setMovingStage(true);
                 await apiFetch("/leads/" + id + "/stage", {
                   method: "PATCH",
-                  body: JSON.stringify({ stageId }),
+                  body: JSON.stringify({ stageId, ...(extra ?? {}) }),
                 });
                 const updatedLead = await loadLead();
 
@@ -3523,6 +3527,8 @@ function discardAiSuggestion() {
               const propostaUnit = units.find((u: any) => u.status === "PROPOSTA");
               const willPropose = !!reservedUnit && (stage.unitAction === "PROPOSTA" || stage.advancesToGroup === "ESCOLHA_UNIDADE");
               const willSell = !!propostaUnit && stage.unitAction === "VENDA";
+              // Venda avulsa: etapa de VENDA e lead sem NENHUMA unidade de empreendimento.
+              const isAvulsoSale = stage.unitAction === "VENDA" && units.length === 0;
 
               if (willPropose) {
                 setUnitConfirm({
@@ -3536,6 +3542,12 @@ function discardAiSuggestion() {
                   stage,
                   message: `A unidade ${unitLabel(propostaUnit)} será marcada como Vendida ao confirmar o contrato.`,
                 });
+                return;
+              }
+              if (isAvulsoSale) {
+                setVendaValor("");
+                setVendaData(new Date().toISOString().slice(0, 10));
+                setVendaModal({ stage });
                 return;
               }
               proceedSelectStage(stage);
@@ -3616,6 +3628,63 @@ function discardAiSuggestion() {
                           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                         >
                           Confirmar e avançar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {vendaModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
+                      <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">Registrar venda</h2>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                        Confirme os dados da venda deste imóvel. O valor é opcional — se ficar em branco, usamos o preço do imóvel.
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        <label className="block">
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Valor da venda (R$)</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={vendaValor}
+                            onChange={(e) => setVendaValor(e.target.value)}
+                            placeholder="Ex.: 450.000,00"
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-100"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Data da venda</span>
+                          <input
+                            type="date"
+                            value={vendaData}
+                            onChange={(e) => setVendaData(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-100"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-5 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setVendaModal(null)}
+                          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const s = vendaModal.stage;
+                            const valor = vendaValor.trim();
+                            const data = vendaData;
+                            setVendaModal(null);
+                            moveToStage(s.id, {
+                              ...(valor ? { valorVenda: valor } : {}),
+                              ...(data ? { dataVenda: data } : {}),
+                            });
+                          }}
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                        >
+                          Confirmar venda
                         </button>
                       </div>
                     </div>

@@ -272,7 +272,7 @@ export class LeadsController {
   async updateStage(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { stageId: string; evidenceDocumentId?: string; motivo?: string },
+    @Body() body: { stageId: string; evidenceDocumentId?: string; motivo?: string; valorVenda?: number | string; dataVenda?: string },
   ) {
     if (!body?.stageId) {
       throw new BadRequestException('stageId é obrigatório');
@@ -281,6 +281,8 @@ export class LeadsController {
     return this.leadsService.updateStage(req.user, id, body.stageId, {
       evidenceDocumentId: body.evidenceDocumentId,
       motivo: body.motivo,
+      valorVenda: body.valorVenda,
+      dataVenda: body.dataVenda,
       ipAddress: req.ip,
     });
   }

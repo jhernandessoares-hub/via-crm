@@ -37,6 +37,7 @@ import { DevelopmentsModule } from './developments/developments.module';
 import { PlansModule } from './plans/plans.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { LeadDocumentsModule } from './lead-documents/lead-documents.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { LeadDocumentsModule } from './lead-documents/lead-documents.module';
     PlansModule,
     MessagingModule,
     LeadDocumentsModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

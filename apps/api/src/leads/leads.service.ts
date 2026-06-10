@@ -2186,7 +2186,7 @@ async updateStage(
   user: any,
   leadId: string,
   stageId: string,
-  opts: { evidenceDocumentId?: string; motivo?: string; ipAddress?: string } = {},
+  opts: { evidenceDocumentId?: string; motivo?: string; ipAddress?: string; valorVenda?: number | string; dataVenda?: string } = {},
 ) {
   if (!leadId) throw new BadRequestException('leadId ausente');
   if (!stageId) throw new BadRequestException('stageId ausente');
@@ -2336,10 +2336,35 @@ async updateStage(
           data: { status: 'PROPOSTA' },
         });
       } else if (unitAction === 'VENDA') {
-        await this.prisma.developmentUnit.updateMany({
+        const sold = await this.prisma.developmentUnit.updateMany({
           where: { tenantId: user.tenantId, leadId, status: 'PROPOSTA' },
           data: { status: 'VENDIDO', soldAt: new Date() },
         });
+        // Venda avulsa (sem unidade de empreendimento): registra valor/data no próprio lead.
+        // Só quando o lead NÃO tem nenhuma unidade vinculada — empreendimentos (ex.: SP9)
+        // seguem pelo fluxo acima e nunca caem aqui.
+        if (sold.count === 0) {
+          const hasUnit = await this.prisma.developmentUnit.count({
+            where: { tenantId: user.tenantId, leadId },
+          });
+          if (hasUnit === 0) {
+            const valorRaw = opts.valorVenda;
+            const valor =
+              valorRaw == null || valorRaw === ''
+                ? null
+                : typeof valorRaw === 'number'
+                  ? valorRaw
+                  : Number(String(valorRaw).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.'));
+            const data = opts.dataVenda ? new Date(opts.dataVenda) : new Date();
+            await this.prisma.lead.update({
+              where: { id: leadId },
+              data: {
+                valorVenda: valor != null && !Number.isNaN(valor) ? valor : undefined,
+                dataVenda: data,
+              },
+            });
+          }
+        }
       }
     } catch (e) {
       this.logger.warn(`applyUnitSideEffects falhou (lead ${leadId}): ${(e as Error).message}`);

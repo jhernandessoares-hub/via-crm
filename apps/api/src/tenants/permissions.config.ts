@@ -136,6 +136,13 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
       { key: 'export', label: 'Exportar leads (CSV)' },
     ],
   },
+  {
+    key: 'relatorios',
+    label: 'Relatórios Gerenciais',
+    actions: [
+      { key: 'view', label: 'Ver' },
+    ],
+  },
 ];
 
 /** Permissões padrão quando o tenant não tem config salva. */
@@ -155,6 +162,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     campanhas:              { view: true,  create: true,  edit: true,  delete: true  },
     duplicados:             { view: true,  merge: true  },
     exportacao:             { export: true  },
+    relatorios:             { view: true  },
   },
   agent: {
     leads:                  { view: true,  create: true,  edit: true,  delete: false },
@@ -171,6 +179,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     campanhas:              { view: false, create: false, edit: false, delete: false },
     duplicados:             { view: false, merge: false },
     exportacao:             { export: false },
+    relatorios:             { view: false },
   },
   partner: {
     leads:                  { view: true,  create: true,  edit: false, delete: false },
@@ -187,6 +196,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     campanhas:              { view: false, create: false, edit: false, delete: false },
     duplicados:             { view: false, merge: false },
     exportacao:             { export: false },
+    relatorios:             { view: false },
   },
 };
 

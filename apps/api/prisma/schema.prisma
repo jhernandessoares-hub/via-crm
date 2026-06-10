@@ -279,6 +279,8 @@ model Lead {
   produtoInteresseId           String?
   empreendimentoInteresseId    String?
   resumoLead                   String?
+  valorVenda                   Float?               // valor da venda fechada (imóvel avulso); empreendimento usa DevelopmentUnit.finalPrice
+  dataVenda                    DateTime?            // data da venda fechada (imóvel avulso)
   pendingRouting          Boolean              @default(false)
   pendingRoutingScope     PendingRoutingScope?
   pipelineId              String?
