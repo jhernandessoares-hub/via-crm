@@ -7,6 +7,7 @@ import AppShell from "@/components/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { apiFetch } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
+import { formatLeadNumber } from "@/lib/format-lead-number";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -29,18 +30,28 @@ type DashData = {
 };
 
 type Bucket = { qtd: number; valor: number };
-type VendasReport = {
+type Periodo = { numVendas: number; valorVendido: number; ticketMedio: number };
+type Mensal = { mes: string; vendas: number; vgv: number };
+type Corretor = { nome: string; vendas: number; vgv: number };
+type EmpreendimentoBlock = {
   espelho: { total: number; disponivel: Bucket; proposta: Bucket; reservado: Bucket; vendido: Bucket; bloqueado: Bucket };
   carteira: { vso: number; vgvEstoque: number };
-  periodo: { numVendas: number; valorVendido: number; ticketMedio: number };
-  mensal: { mes: string; vendas: number; vgv: number }[];
+  periodo: Periodo;
+  mensal: Mensal[];
   porEmpreendimento: { nome: string; totalUnidades: number; vendidas: number; vsoPct: number; vgvVendido: number; vgvDisponivel: number }[];
-  porCorretor: { nome: string; vendas: number; vgv: number }[];
+  porCorretor: Corretor[];
+};
+type AvulsoBlock = { periodo: Periodo; mensal: Mensal[]; porCorretor: Corretor[] };
+type VendasReport = {
+  developments: { id: string; nome: string }[];
+  empreendimento: EmpreendimentoBlock | null;
+  avulso: AvulsoBlock | null;
 };
 type UnidadeRow = {
-  unitId: string | null; leadId: string | null; empreendimento: string;
-  torreUnidade: string; comprador: string | null; valor: number;
-  corretor: string | null; data: string | null;
+  unitId: string | null; leadId: string | null;
+  numero: number | null; reentradaCount: number | null; cpf: string | null;
+  empreendimento: string; torreUnidade: string; comprador: string | null; valor: number;
+  corretor: string | null; etapa: string | null; leadStatus: string | null; data: string | null;
 };
 
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -278,27 +289,34 @@ function OperacionalView({ from, to }: { from: string; to: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Drill-down em tela cheia — lista de unidades de um status
 // ─────────────────────────────────────────────────────────────────────────────
-function DrillView({ status, from, to, periodLabel, onBack }: {
-  status: string; from: string; to: string; periodLabel: string; onBack: () => void;
+function DrillView({ status, source, dev, from, to, periodLabel, onBack }: {
+  status: string; source: string | null; dev: string | null; from: string; to: string; periodLabel: string; onBack: () => void;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<UnidadeRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const isAvulso = source === "avulso";
 
   useEffect(() => {
     setLoading(true);
-    apiFetch(`/reports/vendas/unidades?status=${encodeURIComponent(status)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+    const qs = new URLSearchParams({ status, from, to });
+    if (source) qs.set("source", source);
+    if (dev) qs.set("developmentId", dev);
+    apiFetch(`/reports/vendas/unidades?${qs.toString()}`)
       .then((r) => setRows((r as UnidadeRow[]) || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [status, from, to]);
+  }, [status, source, dev, from, to]);
 
   const isSold = status === "VENDIDO";
+  const col1 = isAvulso ? "Imóvel" : "Empreendimento";
+  const col2 = isAvulso ? "Produto" : "Unidade";
 
   function exportCsv() {
-    const header = ["Empreendimento", "Unidade", "Comprador", "Valor", "Corretor", ...(isSold ? ["Data"] : [])];
+    const header = ["Nº Lead", "CPF", col1, col2, "Comprador", "Valor", "Etapa", "Status", "Corretor", ...(isSold ? ["Data"] : [])];
     const lines = rows.map((r) => [
-      r.empreendimento, r.torreUnidade, r.comprador ?? "", String(r.valor ?? 0),
+      formatLeadNumber(r.numero, r.reentradaCount), r.cpf ?? "", r.empreendimento, r.torreUnidade,
+      r.comprador ?? "", String(r.valor ?? 0), r.etapa ?? "", r.leadStatus ? (STATUS_LABEL[r.leadStatus] ?? r.leadStatus) : "",
       r.corretor ?? "", ...(isSold ? [r.data ? new Date(r.data).toLocaleDateString("pt-BR") : ""] : []),
     ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";"));
     const csv = "﻿" + [header.join(";"), ...lines].join("\r\n");
@@ -306,7 +324,7 @@ function DrillView({ status, from, to, periodLabel, onBack }: {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `vendas-${status.toLowerCase()}-${periodLabel}.csv`;
+    a.download = `vendas-${isAvulso ? "avulso-" : ""}${status.toLowerCase()}-${periodLabel}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -326,9 +344,9 @@ function DrillView({ status, from, to, periodLabel, onBack }: {
             ← Voltar
           </button>
           <h1 className="text-xl font-bold text-[var(--shell-text)]">
-            {DRILL_LABEL[status] ?? status}
+            {isAvulso ? "Vendas avulsas" : (DRILL_LABEL[status] ?? status)}
             <span className="ml-2 text-sm font-normal text-[var(--shell-subtext)]">
-              {loading ? "…" : `${rows.length} ${rows.length === 1 ? "unidade" : "unidades"}`}
+              {loading ? "…" : `${rows.length} ${rows.length === 1 ? "registro" : "registros"}`}
             </span>
           </h1>
         </div>
@@ -344,18 +362,22 @@ function DrillView({ status, from, to, periodLabel, onBack }: {
           {loading ? (
             <div className="p-6 text-sm text-[var(--shell-subtext)]">Carregando...</div>
           ) : rows.length === 0 ? (
-            <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhuma unidade neste status.</div>
+            <div className="p-6 text-sm text-[var(--shell-subtext)]">Nenhum registro neste status.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-[var(--shell-subtext)] border-b" style={{ borderColor: "var(--shell-card-border)" }}>
-                    <th className="px-4 py-2 font-medium">Empreendimento</th>
-                    <th className="px-4 py-2 font-medium">Unidade</th>
-                    <th className="px-4 py-2 font-medium">Comprador</th>
-                    <th className="px-4 py-2 font-medium text-right">Valor</th>
-                    <th className="px-4 py-2 font-medium">Corretor</th>
-                    {isSold && <th className="px-4 py-2 font-medium">Data</th>}
+                    <th className="px-3 py-2 font-medium">Nº</th>
+                    <th className="px-3 py-2 font-medium">CPF</th>
+                    <th className="px-3 py-2 font-medium">{col1}</th>
+                    <th className="px-3 py-2 font-medium">{col2}</th>
+                    <th className="px-3 py-2 font-medium">Comprador</th>
+                    <th className="px-3 py-2 font-medium text-right">Valor</th>
+                    <th className="px-3 py-2 font-medium">Etapa</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Corretor</th>
+                    {isSold && <th className="px-3 py-2 font-medium">Data</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -364,12 +386,23 @@ function DrillView({ status, from, to, periodLabel, onBack }: {
                       onClick={() => openLead(r.leadId)}
                       className={`border-b transition-colors ${r.leadId ? "cursor-pointer hover:bg-[var(--shell-hover)]" : ""}`}
                       style={{ borderColor: "var(--shell-card-border)" }}>
-                      <td className="px-4 py-2.5 text-[var(--shell-text)]">{r.empreendimento}</td>
-                      <td className="px-4 py-2.5 text-[var(--shell-text)]">{r.torreUnidade || "—"}</td>
-                      <td className="px-4 py-2.5 text-[var(--shell-text)]">{r.comprador || <span className="text-[var(--shell-subtext)]">—</span>}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-[var(--shell-text)]">{brl(r.valor)}</td>
-                      <td className="px-4 py-2.5 text-[var(--shell-subtext)]">{r.corretor || "—"}</td>
-                      {isSold && <td className="px-4 py-2.5 text-[var(--shell-subtext)]">{r.data ? new Date(r.data).toLocaleDateString("pt-BR") : "—"}</td>}
+                      <td className="px-3 py-2.5 font-mono text-xs text-[var(--shell-subtext)]">{formatLeadNumber(r.numero, r.reentradaCount) || "—"}</td>
+                      <td className="px-3 py-2.5 text-[var(--shell-subtext)]">{r.cpf || "—"}</td>
+                      <td className="px-3 py-2.5 text-[var(--shell-text)]">{r.empreendimento}</td>
+                      <td className="px-3 py-2.5 text-[var(--shell-text)]">{r.torreUnidade || "—"}</td>
+                      <td className="px-3 py-2.5 text-[var(--shell-text)]">{r.comprador || <span className="text-[var(--shell-subtext)]">—</span>}</td>
+                      <td className="px-3 py-2.5 text-right font-medium text-[var(--shell-text)]">{brl(r.valor)}</td>
+                      <td className="px-3 py-2.5 text-[var(--shell-subtext)]">{r.etapa || "—"}</td>
+                      <td className="px-3 py-2.5">
+                        {r.leadStatus ? (
+                          <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                            style={{ background: STATUS_COLOR[r.leadStatus] ?? "#8DA1C9" }}>
+                            {STATUS_LABEL[r.leadStatus] ?? r.leadStatus}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-[var(--shell-subtext)]">{r.corretor || "—"}</td>
+                      {isSold && <td className="px-3 py-2.5 text-[var(--shell-subtext)]">{r.data ? new Date(r.data).toLocaleDateString("pt-BR") : "—"}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -382,6 +415,56 @@ function DrillView({ status, from, to, periodLabel, onBack }: {
   );
 }
 
+// Subcomponentes reutilizados pelas seções Gestão e Avulso
+function MensalChart({ data }: { data: Mensal[] }) {
+  if (!data.length) return <div className="h-56 flex items-center justify-center text-sm text-[var(--shell-subtext)]">Sem vendas no período</div>;
+  return (
+    <ResponsiveContainer width="100%" height={224}>
+      <BarChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--shell-card-border)" vertical={false} />
+        <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "var(--shell-subtext)" }}
+          tickFormatter={(m: string) => { const [y, mo] = m.split("-"); return `${mo}/${y.slice(2)}`; }} />
+        <YAxis tick={{ fontSize: 11, fill: "var(--shell-subtext)" }}
+          tickFormatter={(v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)} />
+        <Tooltip formatter={(v: any, name: any) => name === "vgv" ? [brl(Number(v)), "VGV"] : [v, "Vendas"]}
+          labelFormatter={(m: any) => { const [y, mo] = String(m).split("-"); return `${MONTHS[Number(mo) - 1]} ${y}`; }} />
+        <Bar dataKey="vgv" fill="#2563EB" radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function CorretorRanking({ data }: { data: Corretor[] }) {
+  if (!data.length) return <div className="text-sm text-[var(--shell-subtext)]">Sem vendas no período</div>;
+  const max = Math.max(...data.map((c) => c.vgv), 1);
+  return (
+    <div className="space-y-2">
+      {data.map((c) => (
+        <div key={c.nome}>
+          <div className="flex items-center justify-between text-xs mb-0.5">
+            <span className="text-[var(--shell-text)] truncate font-medium">{c.nome}</span>
+            <span className="text-[var(--shell-subtext)] shrink-0 ml-2">{c.vendas} · {brl(c.vgv)}</span>
+          </div>
+          <div className="h-2 rounded-full" style={{ background: "var(--shell-bg)" }}>
+            <div className="h-2 rounded-full" style={{ width: `${Math.max((c.vgv / max) * 100, 4)}%`, background: "#2563EB" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinanceCard({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
+  return (
+    <Card>
+      <CardBody className="py-4">
+        <p className="text-xs text-[var(--shell-subtext)]">{label}</p>
+        <p className="text-xl font-bold mt-1" style={{ color }}>{value}</p>
+      </CardBody>
+    </Card>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Visão GERENCIAL (vendas / espelho consolidado)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,173 +472,204 @@ function GerencialView({ from, to }: { from: string; to: string }) {
   const router = useRouter();
   const [rep, setRep] = useState<VendasReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedDev, setSelectedDev] = useState<string>("all");
 
   useEffect(() => {
     setLoading(true);
-    apiFetch(`/reports/vendas?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+    const qs = new URLSearchParams({ from, to });
+    if (selectedDev !== "all") qs.set("developmentId", selectedDev);
+    apiFetch(`/reports/vendas?${qs.toString()}`)
       .then((r) => setRep(r as VendasReport))
       .catch(() => setRep(null))
       .finally(() => setLoading(false));
-  }, [from, to]);
+  }, [from, to, selectedDev]);
 
-  function openDrill(status: string) {
-    startTransition(() => router.push(`/dashboard?drill=${status}`));
+  function openDrill(status: string, source: "empreendimento" | "avulso") {
+    const qs = new URLSearchParams({ drill: status, src: source });
+    if (source === "empreendimento" && selectedDev !== "all") qs.set("dev", selectedDev);
+    startTransition(() => router.push(`/dashboard?${qs.toString()}`));
   }
 
-  const esp = rep?.espelho;
+  const emp = rep?.empreendimento;
+  const avu = rep?.avulso;
+  const devs = rep?.developments ?? [];
+  const showDevSelector = devs.length >= 2;
+  const showEmpTable = emp && selectedDev === "all" && (emp.porEmpreendimento.length > 1);
+
   const bucketFor = (key: string): Bucket | null => {
-    if (!esp) return null;
+    if (!emp) return null;
     switch (key) {
-      case "DISPONIVEL": return esp.disponivel;
-      case "PROPOSTA": return esp.proposta;
-      case "RESERVADO": return esp.reservado;
-      case "VENDIDO": return esp.vendido;
-      case "BLOQUEADO": return esp.bloqueado;
+      case "DISPONIVEL": return emp.espelho.disponivel;
+      case "PROPOSTA": return emp.espelho.proposta;
+      case "RESERVADO": return emp.espelho.reservado;
+      case "VENDIDO": return emp.espelho.vendido;
+      case "BLOQUEADO": return emp.espelho.bloqueado;
       default: return null;
     }
   };
 
-  const maxCorretor = Math.max(...(rep?.porCorretor ?? []).map((c) => c.vgv), 1);
+  if (loading && !rep) {
+    return <div className="py-16 text-center text-sm text-[var(--shell-subtext)]">Carregando...</div>;
+  }
 
-  return (
-    <>
-      {/* Cards financeiros */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {[
-          { label: "Valor vendido", value: loading ? "…" : brl(rep?.periodo.valorVendido ?? 0), color: "#2563EB" },
-          { label: "Nº de vendas", value: loading ? "…" : (rep?.periodo.numVendas ?? 0), color: "#1D9E75" },
-          { label: "Ticket médio", value: loading ? "…" : brl(rep?.periodo.ticketMedio ?? 0), color: "#818CF8" },
-          { label: "VSO da carteira", value: loading ? "…" : `${rep?.carteira.vso ?? 0}%`, color: "#F59E0B" },
-          { label: "VGV em estoque", value: loading ? "…" : brl(rep?.carteira.vgvEstoque ?? 0), color: "#38BDF8" },
-        ].map((c) => (
-          <Card key={c.label}>
-            <CardBody className="py-4">
-              <p className="text-xs text-[var(--shell-subtext)]">{c.label}</p>
-              <p className="text-xl font-bold mt-1" style={{ color: c.color }}>{c.value}</p>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
-
-      {/* Resumo do espelho consolidado (clicável) */}
-      <div>
-        <p className="text-xs text-[var(--shell-subtext)] mb-2">
-          Espelho consolidado · <span className="text-[var(--shell-text)] font-medium">Vendido</span> no período · demais status = carteira atual. Clique num status para ver as unidades.
-        </p>
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          {ESPELHO_CARDS.map((s) => {
-            const isTotal = s.key === "TOTAL";
-            const bucket = bucketFor(s.key);
-            const qtd = isTotal ? (esp?.total ?? 0) : (bucket?.qtd ?? 0);
-            const valor = isTotal ? null : (bucket?.valor ?? 0);
-            const clickable = s.drill && !loading;
-            return (
-              <div key={s.key}
-                role={clickable ? "button" : undefined}
-                tabIndex={clickable ? 0 : undefined}
-                onClick={clickable ? () => openDrill(s.key) : undefined}
-                onKeyDown={clickable ? (e) => { if (e.key === "Enter") openDrill(s.key); } : undefined}
-                className={`rounded-xl border p-3 ${clickable ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color }} />
-                  <span className="text-xs text-[var(--shell-subtext)]">{s.label}</span>
-                </div>
-                <p className="text-2xl font-bold mt-1" style={{ color: s.color }}>{loading ? "…" : qtd}</p>
-                {valor != null && <p className="text-[11px] text-[var(--shell-subtext)] mt-0.5">{loading ? "" : brl(valor)}</p>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Evolução mensal + Ranking por corretor */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <Card className="lg:col-span-3">
-          <CardHeader><CardTitle>Evolução de vendas (VGV)</CardTitle></CardHeader>
-          <CardBody>
-            {loading ? (
-              <div className="h-56 flex items-center justify-center text-sm text-[var(--shell-subtext)]">Carregando...</div>
-            ) : !rep?.mensal.length ? (
-              <div className="h-56 flex items-center justify-center text-sm text-[var(--shell-subtext)]">Sem vendas no período</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={224}>
-                <BarChart data={rep.mensal}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--shell-card-border)" vertical={false} />
-                  <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "var(--shell-subtext)" }}
-                    tickFormatter={(m: string) => { const [y, mo] = m.split("-"); return `${mo}/${y.slice(2)}`; }} />
-                  <YAxis tick={{ fontSize: 11, fill: "var(--shell-subtext)" }}
-                    tickFormatter={(v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)} />
-                  <Tooltip formatter={(v: any, name: any) => name === "vgv" ? [brl(Number(v)), "VGV"] : [v, "Vendas"]}
-                    labelFormatter={(m: any) => { const [y, mo] = String(m).split("-"); return `${MONTHS[Number(mo) - 1]} ${y}`; }} />
-                  <Bar dataKey="vgv" fill="#2563EB" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardBody>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader><CardTitle>Ranking por corretor</CardTitle></CardHeader>
-          <CardBody className="space-y-2">
-            {loading ? (
-              <div className="text-sm text-[var(--shell-subtext)]">Carregando...</div>
-            ) : !rep?.porCorretor.length ? (
-              <div className="text-sm text-[var(--shell-subtext)]">Sem vendas no período</div>
-            ) : rep.porCorretor.map((c) => (
-              <div key={c.nome}>
-                <div className="flex items-center justify-between text-xs mb-0.5">
-                  <span className="text-[var(--shell-text)] truncate font-medium">{c.nome}</span>
-                  <span className="text-[var(--shell-subtext)] shrink-0 ml-2">{c.vendas} · {brl(c.vgv)}</span>
-                </div>
-                <div className="h-2 rounded-full" style={{ background: "var(--shell-bg)" }}>
-                  <div className="h-2 rounded-full" style={{ width: `${Math.max((c.vgv / maxCorretor) * 100, 4)}%`, background: "#2563EB" }} />
-                </div>
-              </div>
-            ))}
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Tabela por empreendimento */}
+  if (!emp && !avu) {
+    return (
       <Card>
-        <CardHeader><CardTitle>Por empreendimento</CardTitle></CardHeader>
-        <CardBody className="p-0">
-          {loading ? (
-            <div className="p-4 text-sm text-[var(--shell-subtext)]">Carregando...</div>
-          ) : !rep?.porEmpreendimento.length ? (
-            <div className="p-4 text-sm text-[var(--shell-subtext)]">Sem empreendimentos</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-[var(--shell-subtext)] border-b" style={{ borderColor: "var(--shell-card-border)" }}>
-                    <th className="px-4 py-2 font-medium">Empreendimento</th>
-                    <th className="px-4 py-2 font-medium text-right">Unidades</th>
-                    <th className="px-4 py-2 font-medium text-right">Vendidas</th>
-                    <th className="px-4 py-2 font-medium text-right">VSO</th>
-                    <th className="px-4 py-2 font-medium text-right">VGV vendido</th>
-                    <th className="px-4 py-2 font-medium text-right">VGV disponível</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rep.porEmpreendimento.map((d) => (
-                    <tr key={d.nome} className="border-b" style={{ borderColor: "var(--shell-card-border)" }}>
-                      <td className="px-4 py-2.5 text-[var(--shell-text)]">{d.nome}</td>
-                      <td className="px-4 py-2.5 text-right text-[var(--shell-text)]">{d.totalUnidades}</td>
-                      <td className="px-4 py-2.5 text-right text-[var(--shell-text)]">{d.vendidas}</td>
-                      <td className="px-4 py-2.5 text-right text-[var(--shell-subtext)]">{d.vsoPct}%</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-[var(--shell-text)]">{brl(d.vgvVendido)}</td>
-                      <td className="px-4 py-2.5 text-right text-[var(--shell-subtext)]">{brl(d.vgvDisponivel)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <CardBody className="py-16 text-center">
+          <p className="text-sm text-[var(--shell-subtext)]">Nenhuma venda registrada ainda.</p>
+          <p className="text-xs text-[var(--shell-subtext)] mt-1">
+            Cadastre um empreendimento em Gestão ou registre a venda de um imóvel avulso para ver os números aqui.
+          </p>
         </CardBody>
       </Card>
-    </>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* ── Seção GESTÃO (empreendimentos) ── */}
+      {emp && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="h-5 w-1 rounded-full" style={{ background: "#2563EB" }} />
+              <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--shell-text)]">Gestão — Empreendimentos</h2>
+            </div>
+            {showDevSelector && (
+              <select value={selectedDev} onChange={(e) => setSelectedDev(e.target.value)}
+                className="rounded-lg border px-3 h-8 text-xs font-medium text-[var(--shell-text)]"
+                style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-input-bg)" }}>
+                <option value="all">Todos os empreendimentos</option>
+                {devs.map((d) => (<option key={d.id} value={d.id}>{d.nome}</option>))}
+              </select>
+            )}
+          </div>
+
+          {/* Cards financeiros */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <FinanceCard label="Valor vendido" value={brl(emp.periodo.valorVendido)} color="#2563EB" />
+            <FinanceCard label="Nº de vendas" value={emp.periodo.numVendas} color="#1D9E75" />
+            <FinanceCard label="Ticket médio" value={brl(emp.periodo.ticketMedio)} color="#818CF8" />
+            <FinanceCard label="VSO da carteira" value={`${emp.carteira.vso}%`} color="#F59E0B" />
+            <FinanceCard label="VGV em estoque" value={brl(emp.carteira.vgvEstoque)} color="#38BDF8" />
+          </div>
+
+          {/* Espelho consolidado (clicável) */}
+          <div>
+            <p className="text-xs text-[var(--shell-subtext)] mb-2">
+              Espelho · <span className="text-[var(--shell-text)] font-medium">Vendido</span> no período · demais status = carteira atual. Clique para ver as unidades.
+            </p>
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+              {ESPELHO_CARDS.map((s) => {
+                const isTotal = s.key === "TOTAL";
+                const bucket = bucketFor(s.key);
+                const qtd = isTotal ? emp.espelho.total : (bucket?.qtd ?? 0);
+                const valor = isTotal ? null : (bucket?.valor ?? 0);
+                const clickable = s.drill;
+                return (
+                  <div key={s.key}
+                    role={clickable ? "button" : undefined}
+                    tabIndex={clickable ? 0 : undefined}
+                    onClick={clickable ? () => openDrill(s.key, "empreendimento") : undefined}
+                    onKeyDown={clickable ? (e) => { if (e.key === "Enter") openDrill(s.key, "empreendimento"); } : undefined}
+                    className={`rounded-xl border p-3 ${clickable ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                      <span className="text-xs text-[var(--shell-subtext)]">{s.label}</span>
+                    </div>
+                    <p className="text-2xl font-bold mt-1" style={{ color: s.color }}>{qtd}</p>
+                    {valor != null && <p className="text-[11px] text-[var(--shell-subtext)] mt-0.5">{brl(valor)}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Evolução mensal + Ranking por corretor */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <Card className="lg:col-span-3">
+              <CardHeader><CardTitle>Evolução de vendas (VGV)</CardTitle></CardHeader>
+              <CardBody><MensalChart data={emp.mensal} /></CardBody>
+            </Card>
+            <Card className="lg:col-span-2">
+              <CardHeader><CardTitle>Ranking por corretor</CardTitle></CardHeader>
+              <CardBody><CorretorRanking data={emp.porCorretor} /></CardBody>
+            </Card>
+          </div>
+
+          {/* Tabela por empreendimento (só quando "Todos" e há mais de um) */}
+          {showEmpTable && (
+            <Card>
+              <CardHeader><CardTitle>Por empreendimento</CardTitle></CardHeader>
+              <CardBody className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-[var(--shell-subtext)] border-b" style={{ borderColor: "var(--shell-card-border)" }}>
+                        <th className="px-4 py-2 font-medium">Empreendimento</th>
+                        <th className="px-4 py-2 font-medium text-right">Unidades</th>
+                        <th className="px-4 py-2 font-medium text-right">Vendidas</th>
+                        <th className="px-4 py-2 font-medium text-right">VSO</th>
+                        <th className="px-4 py-2 font-medium text-right">VGV vendido</th>
+                        <th className="px-4 py-2 font-medium text-right">VGV disponível</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emp.porEmpreendimento.map((d) => (
+                        <tr key={d.nome} className="border-b" style={{ borderColor: "var(--shell-card-border)" }}>
+                          <td className="px-4 py-2.5 text-[var(--shell-text)]">{d.nome}</td>
+                          <td className="px-4 py-2.5 text-right text-[var(--shell-text)]">{d.totalUnidades}</td>
+                          <td className="px-4 py-2.5 text-right text-[var(--shell-text)]">{d.vendidas}</td>
+                          <td className="px-4 py-2.5 text-right text-[var(--shell-subtext)]">{d.vsoPct}%</td>
+                          <td className="px-4 py-2.5 text-right font-medium text-[var(--shell-text)]">{brl(d.vgvVendido)}</td>
+                          <td className="px-4 py-2.5 text-right text-[var(--shell-subtext)]">{brl(d.vgvDisponivel)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardBody>
+            </Card>
+          )}
+        </section>
+      )}
+
+      {/* ── Seção AVULSO (produtos) ── */}
+      {avu && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="h-5 w-1 rounded-full" style={{ background: "#1D9E75" }} />
+            <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--shell-text)]">Imóveis avulsos — Produtos</h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div
+              role="button" tabIndex={0}
+              onClick={() => openDrill("VENDIDO", "avulso")}
+              onKeyDown={(e) => { if (e.key === "Enter") openDrill("VENDIDO", "avulso"); }}
+              className="rounded-xl border p-4 cursor-pointer hover:shadow-md transition-shadow"
+              style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
+              <p className="text-xs text-[var(--shell-subtext)]">Valor vendido (clique para a lista)</p>
+              <p className="text-xl font-bold mt-1" style={{ color: "#2563EB" }}>{brl(avu.periodo.valorVendido)}</p>
+            </div>
+            <FinanceCard label="Nº de vendas" value={avu.periodo.numVendas} color="#1D9E75" />
+            <FinanceCard label="Ticket médio" value={brl(avu.periodo.ticketMedio)} color="#818CF8" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <Card className="lg:col-span-3">
+              <CardHeader><CardTitle>Evolução de vendas avulsas (VGV)</CardTitle></CardHeader>
+              <CardBody><MensalChart data={avu.mensal} /></CardBody>
+            </Card>
+            <Card className="lg:col-span-2">
+              <CardHeader><CardTitle>Ranking por corretor</CardTitle></CardHeader>
+              <CardBody><CorretorRanking data={avu.porCorretor} /></CardBody>
+            </Card>
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -616,6 +730,8 @@ export default function DashboardPage() {
 
   const effectiveTab = canGerencial ? tab : "operacional";
   const drillStatus = searchParams.get("drill");
+  const drillSrc = searchParams.get("src");
+  const drillDev = searchParams.get("dev");
   const drillActive = canGerencial && effectiveTab === "gerencial" && !!drillStatus;
 
   const inputStyle: React.CSSProperties = {
@@ -635,6 +751,8 @@ export default function DashboardPage() {
       <AppShell title="Dashboard">
         <DrillView
           status={drillStatus.toUpperCase()}
+          source={drillSrc}
+          dev={drillDev}
           from={fromISO}
           to={toISO}
           periodLabel={periodLabel}

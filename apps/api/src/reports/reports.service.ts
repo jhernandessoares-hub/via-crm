@@ -6,18 +6,17 @@ type Bucket = { qtd: number; valor: number };
 const emptyBucket = (): Bucket => ({ qtd: 0, valor: 0 });
 
 /**
- * Relatórios gerenciais de vendas — consolida vendas de empreendimentos
- * (DevelopmentUnit) e de imóveis avulsos (Lead com dataVenda).
+ * Relatórios gerenciais de vendas — separa explicitamente duas fontes:
+ *  - GESTÃO: vendas de unidades de empreendimento (DevelopmentUnit).
+ *  - AVULSO: vendas de imóveis avulsos (Lead com dataVenda, sem unidade).
  *
- * Regra de período:
- *  - Vendido / financeiro / mensal / corretor → filtrados por período (soldAt / dataVenda).
- *  - Demais status do espelho (Disponível/Proposta/Reservado/Bloqueado) e VSO → snapshot atual.
+ * Período: Vendido / financeiro / mensal / corretor → filtrados por período.
+ * Demais status do espelho (Disponível/Proposta/Reservado/Bloqueado) e VSO → snapshot atual.
  */
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Garante que o usuário pode ver relatórios (OWNER bypassa; demais via permissionsConfig). */
   private async assertCanView(tenantId: string, role: string) {
     if (role === 'OWNER') return;
     const tenant = await this.prisma.tenant.findUnique({
@@ -38,7 +37,6 @@ export class ReportsService {
     return true;
   }
 
-  /** Nome de exibição do corretor (apelido ?? nome) por id. */
   private async buildUserMap(tenantId: string, userIds: (string | null | undefined)[]) {
     const ids = Array.from(new Set(userIds.filter((x): x is string => !!x)));
     const map = new Map<string, string>();
@@ -52,52 +50,40 @@ export class ReportsService {
   }
 
   // ── Relatório resumo ────────────────────────────────────────────────────────
-  async vendasReport(tenantId: string, role: string, fromISO?: string, toISO?: string) {
+  async vendasReport(tenantId: string, role: string, fromISO?: string, toISO?: string, developmentId?: string) {
     await this.assertCanView(tenantId, role);
     const from = fromISO ? new Date(fromISO) : null;
     const to = toISO ? new Date(toISO) : null;
 
+    // Lista de empreendimentos cadastrados (para o seletor / decidir visibilidade)
+    const developments = await this.prisma.development.findMany({
+      where: { tenantId },
+      select: { id: true, nome: true },
+      orderBy: { nome: 'asc' },
+    });
+
+    const empreendimento = developments.length > 0
+      ? await this.buildEmpreendimentoBlock(tenantId, from, to, developmentId)
+      : null;
+    const avulso = await this.buildAvulsoBlock(tenantId, from, to);
+
+    return { developments, empreendimento, avulso };
+  }
+
+  private async buildEmpreendimentoBlock(tenantId: string, from: Date | null, to: Date | null, developmentId?: string) {
     const units = await this.prisma.developmentUnit.findMany({
-      where: { tenantId, ativo: true },
+      where: { tenantId, ativo: true, ...(developmentId ? { developmentId } : {}) },
       select: {
         id: true,
         status: true,
         valorVenda: true,
         finalPrice: true,
         soldAt: true,
-        leadId: true,
         development: { select: { id: true, nome: true } },
         lead: { select: { id: true, assignedUserId: true } },
       },
     });
 
-    // Vendas avulsas no período (leads sem unidade de empreendimento)
-    const avulsos = await this.prisma.lead.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        dataVenda: { not: null, ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) },
-        developmentUnits: { none: {} },
-      },
-      select: { id: true, valorVenda: true, dataVenda: true, assignedUserId: true, produtoInteresseId: true },
-    });
-
-    // Preço de tabela de fallback para avulsos sem valorVenda
-    const prodIds = Array.from(
-      new Set(avulsos.filter((a) => a.valorVenda == null && a.produtoInteresseId).map((a) => a.produtoInteresseId as string)),
-    );
-    const prodPrice = new Map<string, number>();
-    if (prodIds.length > 0) {
-      const prods = await this.prisma.product.findMany({
-        where: { id: { in: prodIds }, tenantId },
-        select: { id: true, price: true },
-      });
-      for (const p of prods) prodPrice.set(p.id, p.price ? Number(p.price) : 0);
-    }
-    const avulsoValor = (a: (typeof avulsos)[number]): number =>
-      a.valorVenda != null ? a.valorVenda : a.produtoInteresseId ? prodPrice.get(a.produtoInteresseId) ?? 0 : 0;
-
-    // ── Espelho consolidado (empreendimentos) ──
     const espelho = {
       total: units.length,
       disponivel: emptyBucket(),
@@ -106,26 +92,14 @@ export class ReportsService {
       vendido: emptyBucket(),
       bloqueado: emptyBucket(),
     };
-    let vendidoSnapshotQtd = 0; // todas as vendidas (para VSO), independente do período
+    let vendidoSnapshotQtd = 0;
     for (const u of units) {
       const tabela = u.valorVenda || 0;
       switch (u.status) {
-        case 'DISPONIVEL':
-          espelho.disponivel.qtd++;
-          espelho.disponivel.valor += tabela;
-          break;
-        case 'PROPOSTA':
-          espelho.proposta.qtd++;
-          espelho.proposta.valor += tabela;
-          break;
-        case 'RESERVADO':
-          espelho.reservado.qtd++;
-          espelho.reservado.valor += tabela;
-          break;
-        case 'BLOQUEADO':
-          espelho.bloqueado.qtd++;
-          espelho.bloqueado.valor += tabela;
-          break;
+        case 'DISPONIVEL': espelho.disponivel.qtd++; espelho.disponivel.valor += tabela; break;
+        case 'PROPOSTA': espelho.proposta.qtd++; espelho.proposta.valor += tabela; break;
+        case 'RESERVADO': espelho.reservado.qtd++; espelho.reservado.valor += tabela; break;
+        case 'BLOQUEADO': espelho.bloqueado.qtd++; espelho.bloqueado.valor += tabela; break;
         case 'VENDIDO':
           vendidoSnapshotQtd++;
           if (this.inPeriod(u.soldAt, from, to)) {
@@ -135,109 +109,118 @@ export class ReportsService {
           break;
       }
     }
-    // Avulsos vendidos no período entram no card Vendido
-    for (const a of avulsos) {
-      espelho.vendido.qtd++;
-      espelho.vendido.valor += avulsoValor(a);
-    }
 
-    // ── Cards financeiros (período, emp + avulso) ──
     const valorVendido = espelho.vendido.valor;
     const numVendas = espelho.vendido.qtd;
     const ticketMedio = numVendas > 0 ? Math.round(valorVendido / numVendas) : 0;
-    const vso =
-      espelho.total > 0
-        ? Math.round(((vendidoSnapshotQtd + espelho.reservado.qtd) / espelho.total) * 100)
-        : 0;
+    const vso = espelho.total > 0 ? Math.round(((vendidoSnapshotQtd + espelho.reservado.qtd) / espelho.total) * 100) : 0;
     const vgvEstoque = espelho.disponivel.valor;
 
-    // ── Evolução mensal (vendas por mês no período) ──
+    // Mensal
     const monthlyMap: Record<string, { mes: string; vendas: number; vgv: number }> = {};
-    const addMonth = (date: Date | null | undefined, valor: number) => {
-      if (!this.inPeriod(date, from, to)) return;
-      const mes = new Date(date as Date).toISOString().slice(0, 7);
-      if (!monthlyMap[mes]) monthlyMap[mes] = { mes, vendas: 0, vgv: 0 };
-      monthlyMap[mes].vendas++;
-      monthlyMap[mes].vgv += valor;
-    };
-    for (const u of units)
-      if (u.status === 'VENDIDO') addMonth(u.soldAt, u.finalPrice || u.valorVenda || 0);
-    for (const a of avulsos) addMonth(a.dataVenda, avulsoValor(a));
-    const mensal = Object.values(monthlyMap).sort((x, y) => x.mes.localeCompare(y.mes));
+    for (const u of units) {
+      if (u.status === 'VENDIDO' && this.inPeriod(u.soldAt, from, to)) {
+        const mes = new Date(u.soldAt as Date).toISOString().slice(0, 7);
+        if (!monthlyMap[mes]) monthlyMap[mes] = { mes, vendas: 0, vgv: 0 };
+        monthlyMap[mes].vendas++;
+        monthlyMap[mes].vgv += u.finalPrice || u.valorVenda || 0;
+      }
+    }
+    const mensal = Object.values(monthlyMap).sort((a, b) => a.mes.localeCompare(b.mes));
 
-    // ── Por empreendimento ──
-    const devMap = new Map<
-      string,
-      { nome: string; totalUnidades: number; vendidasSnapshot: number; reservado: number; vendidas: number; vgvVendido: number; vgvDisponivel: number }
-    >();
+    // Por empreendimento
+    const devMap = new Map<string, { nome: string; totalUnidades: number; vendidasSnapshot: number; reservado: number; vendidas: number; vgvVendido: number; vgvDisponivel: number }>();
     for (const u of units) {
       const devId = u.development?.id ?? 'sem-empreendimento';
       const nome = u.development?.nome ?? 'Sem empreendimento';
-      if (!devMap.has(devId))
-        devMap.set(devId, { nome, totalUnidades: 0, vendidasSnapshot: 0, reservado: 0, vendidas: 0, vgvVendido: 0, vgvDisponivel: 0 });
+      if (!devMap.has(devId)) devMap.set(devId, { nome, totalUnidades: 0, vendidasSnapshot: 0, reservado: 0, vendidas: 0, vgvVendido: 0, vgvDisponivel: 0 });
       const d = devMap.get(devId)!;
       d.totalUnidades++;
       if (u.status === 'VENDIDO') {
         d.vendidasSnapshot++;
-        if (this.inPeriod(u.soldAt, from, to)) {
-          d.vendidas++;
-          d.vgvVendido += u.finalPrice || u.valorVenda || 0;
-        }
+        if (this.inPeriod(u.soldAt, from, to)) { d.vendidas++; d.vgvVendido += u.finalPrice || u.valorVenda || 0; }
       } else if (u.status === 'RESERVADO') {
         d.reservado++;
-        d.vgvDisponivel += 0;
       }
       if (u.status === 'DISPONIVEL') d.vgvDisponivel += u.valorVenda || 0;
     }
-    const porEmpreendimento = Array.from(devMap.values()).map((d) => ({
-      nome: d.nome,
-      totalUnidades: d.totalUnidades,
-      vendidas: d.vendidas,
-      vsoPct: d.totalUnidades > 0 ? Math.round(((d.vendidasSnapshot + d.reservado) / d.totalUnidades) * 100) : 0,
-      vgvVendido: d.vgvVendido,
-      vgvDisponivel: d.vgvDisponivel,
-    }));
-    // Linha de imóveis avulsos (somente vendas do período)
-    if (avulsos.length > 0) {
-      porEmpreendimento.push({
-        nome: 'Imóveis avulsos',
-        totalUnidades: avulsos.length,
-        vendidas: avulsos.length,
-        vsoPct: 100,
-        vgvVendido: avulsos.reduce((s, a) => s + avulsoValor(a), 0),
-        vgvDisponivel: 0,
-      });
+    const porEmpreendimento = Array.from(devMap.values())
+      .map((d) => ({
+        nome: d.nome,
+        totalUnidades: d.totalUnidades,
+        vendidas: d.vendidas,
+        vsoPct: d.totalUnidades > 0 ? Math.round(((d.vendidasSnapshot + d.reservado) / d.totalUnidades) * 100) : 0,
+        vgvVendido: d.vgvVendido,
+        vgvDisponivel: d.vgvDisponivel,
+      }))
+      .sort((a, b) => b.vgvVendido - a.vgvVendido);
+
+    // Por corretor
+    const userMap = await this.buildUserMap(tenantId, units.map((u) => u.lead?.assignedUserId));
+    const porCorretor = this.groupCorretor(
+      units
+        .filter((u) => u.status === 'VENDIDO' && this.inPeriod(u.soldAt, from, to))
+        .map((u) => ({ userId: u.lead?.assignedUserId ?? null, valor: u.finalPrice || u.valorVenda || 0 })),
+      userMap,
+    );
+
+    return { espelho, carteira: { vso, vgvEstoque }, periodo: { numVendas, valorVendido, ticketMedio }, mensal, porEmpreendimento, porCorretor };
+  }
+
+  private async buildAvulsoBlock(tenantId: string, from: Date | null, to: Date | null) {
+    const avulsos = await this.prisma.lead.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        dataVenda: { not: null, ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) },
+        developmentUnits: { none: {} },
+      },
+      select: { id: true, valorVenda: true, dataVenda: true, assignedUserId: true, produtoInteresseId: true },
+    });
+    if (avulsos.length === 0) return null;
+
+    const prodPrice = await this.buildProductPriceMap(tenantId, avulsos.filter((a) => a.valorVenda == null).map((a) => a.produtoInteresseId));
+    const valorDe = (a: (typeof avulsos)[number]) => (a.valorVenda != null ? a.valorVenda : a.produtoInteresseId ? prodPrice.get(a.produtoInteresseId) ?? 0 : 0);
+
+    const valorVendido = avulsos.reduce((s, a) => s + valorDe(a), 0);
+    const numVendas = avulsos.length;
+    const ticketMedio = numVendas > 0 ? Math.round(valorVendido / numVendas) : 0;
+
+    const monthlyMap: Record<string, { mes: string; vendas: number; vgv: number }> = {};
+    for (const a of avulsos) {
+      const mes = new Date(a.dataVenda as Date).toISOString().slice(0, 7);
+      if (!monthlyMap[mes]) monthlyMap[mes] = { mes, vendas: 0, vgv: 0 };
+      monthlyMap[mes].vendas++;
+      monthlyMap[mes].vgv += valorDe(a);
     }
-    porEmpreendimento.sort((a, b) => b.vgvVendido - a.vgvVendido);
+    const mensal = Object.values(monthlyMap).sort((a, b) => a.mes.localeCompare(b.mes));
 
-    // ── Por corretor (vendas do período) ──
-    const userMap = await this.buildUserMap(tenantId, [
-      ...units.map((u) => u.lead?.assignedUserId),
-      ...avulsos.map((a) => a.assignedUserId),
-    ]);
-    const corretorMap = new Map<string, { nome: string; vendas: number; vgv: number }>();
-    const addCorretor = (userId: string | null | undefined, valor: number) => {
-      const key = userId ?? '__none__';
-      const nome = userId ? userMap.get(userId) ?? 'Sem responsável' : 'Sem responsável';
-      if (!corretorMap.has(key)) corretorMap.set(key, { nome, vendas: 0, vgv: 0 });
-      const c = corretorMap.get(key)!;
+    const userMap = await this.buildUserMap(tenantId, avulsos.map((a) => a.assignedUserId));
+    const porCorretor = this.groupCorretor(avulsos.map((a) => ({ userId: a.assignedUserId, valor: valorDe(a) })), userMap);
+
+    return { periodo: { numVendas, valorVendido, ticketMedio }, mensal, porCorretor };
+  }
+
+  private groupCorretor(items: { userId: string | null; valor: number }[], userMap: Map<string, string>) {
+    const map = new Map<string, { nome: string; vendas: number; vgv: number }>();
+    for (const it of items) {
+      const key = it.userId ?? '__none__';
+      const nome = it.userId ? userMap.get(it.userId) ?? 'Sem responsável' : 'Sem responsável';
+      if (!map.has(key)) map.set(key, { nome, vendas: 0, vgv: 0 });
+      const c = map.get(key)!;
       c.vendas++;
-      c.vgv += valor;
-    };
-    for (const u of units)
-      if (u.status === 'VENDIDO' && this.inPeriod(u.soldAt, from, to))
-        addCorretor(u.lead?.assignedUserId, u.finalPrice || u.valorVenda || 0);
-    for (const a of avulsos) addCorretor(a.assignedUserId, avulsoValor(a));
-    const porCorretor = Array.from(corretorMap.values()).sort((a, b) => b.vgv - a.vgv);
+      c.vgv += it.valor;
+    }
+    return Array.from(map.values()).sort((a, b) => b.vgv - a.vgv);
+  }
 
-    return {
-      espelho,
-      carteira: { vso, vgvEstoque },
-      periodo: { numVendas, valorVendido, ticketMedio },
-      mensal,
-      porEmpreendimento,
-      porCorretor,
-    };
+  private async buildProductPriceMap(tenantId: string, productIds: (string | null | undefined)[]) {
+    const ids = Array.from(new Set(productIds.filter((x): x is string => !!x)));
+    const map = new Map<string, number>();
+    if (ids.length === 0) return map;
+    const prods = await this.prisma.product.findMany({ where: { id: { in: ids }, tenantId }, select: { id: true, price: true } });
+    for (const p of prods) map.set(p.id, p.price ? Number(p.price) : 0);
+    return map;
   }
 
   // ── Drill-down: lista de unidades por status ────────────────────────────────
@@ -248,65 +231,34 @@ export class ReportsService {
     fromISO?: string,
     toISO?: string,
     developmentId?: string,
+    source?: string,
   ) {
     await this.assertCanView(tenantId, role);
     const from = fromISO ? new Date(fromISO) : null;
     const to = toISO ? new Date(toISO) : null;
     const st = String(status || '').toUpperCase();
+    const src = String(source || '').toLowerCase();
 
-    const rows: Array<{
+    type Row = {
       unitId: string | null;
       leadId: string | null;
+      numero: number | null;
+      reentradaCount: number | null;
+      cpf: string | null;
       empreendimento: string;
       torreUnidade: string;
       comprador: string | null;
       valor: number;
       corretor: string | null;
+      etapa: string | null;
+      leadStatus: string | null;
       data: Date | null;
-    }> = [];
+    };
+    const rows: Row[] = [];
 
-    const units = await this.prisma.developmentUnit.findMany({
-      where: {
-        tenantId,
-        ativo: true,
-        status: st,
-        ...(developmentId ? { developmentId } : {}),
-      },
-      select: {
-        id: true,
-        nome: true,
-        status: true,
-        valorVenda: true,
-        finalPrice: true,
-        soldAt: true,
-        comprador: true,
-        leadId: true,
-        development: { select: { nome: true } },
-        tower: { select: { nome: true } },
-        lead: { select: { id: true, nome: true, nomeCorreto: true, assignedUserId: true } },
-      },
-    });
-
-    const userMap = await this.buildUserMap(tenantId, units.map((u) => u.lead?.assignedUserId));
-
-    for (const u of units) {
-      // Para VENDIDO, respeitar o período por soldAt
-      if (st === 'VENDIDO' && !this.inPeriod(u.soldAt, from, to)) continue;
-      const isSold = st === 'VENDIDO';
-      rows.push({
-        unitId: u.id,
-        leadId: u.leadId ?? u.lead?.id ?? null,
-        empreendimento: u.development?.nome ?? '—',
-        torreUnidade: [u.tower?.nome, u.nome].filter(Boolean).join(' · '),
-        comprador: u.comprador || u.lead?.nomeCorreto || u.lead?.nome || null,
-        valor: isSold ? u.finalPrice || u.valorVenda || 0 : u.valorVenda || 0,
-        corretor: u.lead?.assignedUserId ? userMap.get(u.lead.assignedUserId) ?? null : null,
-        data: isSold ? u.soldAt : null,
-      });
-    }
-
-    // Avulsos vendidos no período entram na lista de VENDIDO (sem filtro de empreendimento)
-    if (st === 'VENDIDO' && !developmentId) {
+    // ── Avulso ──
+    if (src === 'avulso') {
+      if (st !== 'VENDIDO') return [];
       const avulsos = await this.prisma.lead.findMany({
         where: {
           tenantId,
@@ -314,32 +266,80 @@ export class ReportsService {
           dataVenda: { not: null, ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) },
           developmentUnits: { none: {} },
         },
-        select: { id: true, nome: true, nomeCorreto: true, valorVenda: true, dataVenda: true, assignedUserId: true, produtoInteresseId: true },
+        select: {
+          id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true, cpf: true,
+          valorVenda: true, dataVenda: true, assignedUserId: true, produtoInteresseId: true, status: true,
+          stage: { select: { name: true } },
+        },
       });
-      const prodIds = Array.from(
-        new Set(avulsos.filter((a) => a.valorVenda == null && a.produtoInteresseId).map((a) => a.produtoInteresseId as string)),
-      );
       const prodInfo = new Map<string, { price: number; title: string }>();
-      if (prodIds.length > 0) {
-        const prods = await this.prisma.product.findMany({
-          where: { id: { in: prodIds }, tenantId },
-          select: { id: true, price: true, title: true },
-        });
+      const ids = Array.from(new Set(avulsos.filter((a) => a.valorVenda == null && a.produtoInteresseId).map((a) => a.produtoInteresseId as string)));
+      if (ids.length > 0) {
+        const prods = await this.prisma.product.findMany({ where: { id: { in: ids }, tenantId }, select: { id: true, price: true, title: true } });
         for (const p of prods) prodInfo.set(p.id, { price: p.price ? Number(p.price) : 0, title: p.title });
       }
-      const avUserMap = await this.buildUserMap(tenantId, avulsos.map((a) => a.assignedUserId));
+      const userMap = await this.buildUserMap(tenantId, avulsos.map((a) => a.assignedUserId));
       for (const a of avulsos) {
         const pinfo = a.produtoInteresseId ? prodInfo.get(a.produtoInteresseId) : undefined;
         rows.push({
           unitId: null,
           leadId: a.id,
+          numero: a.numero ?? null,
+          reentradaCount: a.reentradaCount ?? null,
+          cpf: a.cpf ?? null,
           empreendimento: 'Imóvel avulso',
           torreUnidade: pinfo?.title ?? 'Imóvel',
           comprador: a.nomeCorreto || a.nome || null,
           valor: a.valorVenda != null ? a.valorVenda : pinfo?.price ?? 0,
-          corretor: a.assignedUserId ? avUserMap.get(a.assignedUserId) ?? null : null,
+          corretor: a.assignedUserId ? userMap.get(a.assignedUserId) ?? null : null,
+          etapa: a.stage?.name ?? null,
+          leadStatus: a.status ?? null,
           data: a.dataVenda,
         });
+      }
+      rows.sort((x, y) => y.valor - x.valor);
+      return rows;
+    }
+
+    // ── Empreendimento (unidades) ──
+    const units = await this.prisma.developmentUnit.findMany({
+      where: { tenantId, ativo: true, status: st, ...(developmentId ? { developmentId } : {}) },
+      select: {
+        id: true, nome: true, status: true, valorVenda: true, finalPrice: true, soldAt: true, comprador: true, leadId: true,
+        development: { select: { nome: true } },
+        tower: { select: { nome: true } },
+        lead: { select: { id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true, cpf: true, status: true, stage: { select: { name: true } } } },
+      },
+    });
+    for (const u of units) {
+      if (st === 'VENDIDO' && !this.inPeriod(u.soldAt, from, to)) continue;
+      const isSold = st === 'VENDIDO';
+      rows.push({
+        unitId: u.id,
+        leadId: u.leadId ?? u.lead?.id ?? null,
+        numero: u.lead?.numero ?? null,
+        reentradaCount: u.lead?.reentradaCount ?? null,
+        cpf: u.lead?.cpf ?? null,
+        empreendimento: u.development?.nome ?? '—',
+        torreUnidade: [u.tower?.nome, u.nome].filter(Boolean).join(' · '),
+        comprador: u.comprador || u.lead?.nomeCorreto || u.lead?.nome || null,
+        valor: isSold ? u.finalPrice || u.valorVenda || 0 : u.valorVenda || 0,
+        corretor: null,
+        etapa: u.lead?.stage?.name ?? null,
+        leadStatus: u.lead?.status ?? null,
+        data: isSold ? u.soldAt : null,
+      });
+    }
+
+    // Corretor das unidades: busca assignedUserId dos leads envolvidos
+    const leadIds = Array.from(new Set(units.map((u) => u.lead?.id).filter((x): x is string => !!x)));
+    if (leadIds.length > 0) {
+      const leads = await this.prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, assignedUserId: true } });
+      const leadToUser = new Map(leads.map((l) => [l.id, l.assignedUserId]));
+      const cMap = await this.buildUserMap(tenantId, leads.map((l) => l.assignedUserId));
+      for (const r of rows) {
+        const uid = r.leadId ? leadToUser.get(r.leadId) : null;
+        r.corretor = uid ? cMap.get(uid) ?? null : null;
       }
     }
 

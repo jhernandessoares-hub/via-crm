@@ -8,8 +8,13 @@ export class ReportsController {
   constructor(private readonly svc: ReportsService) {}
 
   @Get('vendas')
-  vendas(@Request() req: any, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.svc.vendasReport(req.user.tenantId, req.user.role, from, to);
+  vendas(
+    @Request() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('developmentId') developmentId?: string,
+  ) {
+    return this.svc.vendasReport(req.user.tenantId, req.user.role, from, to, developmentId);
   }
 
   @Get('vendas/unidades')
@@ -19,7 +24,8 @@ export class ReportsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('developmentId') developmentId?: string,
+    @Query('source') source?: string,
   ) {
-    return this.svc.unidadesPorStatus(req.user.tenantId, req.user.role, status, from, to, developmentId);
+    return this.svc.unidadesPorStatus(req.user.tenantId, req.user.role, status, from, to, developmentId, source);
   }
 }
