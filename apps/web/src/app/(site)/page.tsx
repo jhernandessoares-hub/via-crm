@@ -568,7 +568,7 @@ export default function SitePage() {
                 {interactiveEditing ? (
                   <EditableText active={interactiveEditing} selected={selectedField === "header.ctaLabel"} label="Botão CTA header" value={view.header.ctaLabel} onClick={() => setSelectedField("header.ctaLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.ctaLabel", v))} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white" styleBox={getElementStyle("header.ctaLabel")} minWidth={150} minHeight={44} onMove={(ns) => updateElementStyle("header.ctaLabel", ns)} onResize={(ns) => updateElementStyle("header.ctaLabel", ns)} />
                 ) : (
-                  <Link href="/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</Link>
+                  <button type="button" onClick={() => setSalesModalOpen(true)} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</button>
                 )}
               </div>
             </header>
@@ -660,7 +660,7 @@ export default function SitePage() {
                         <a href="#planos" className="text-sm font-medium text-slate-200 transition hover:text-white">{view.nav.plans}</a>
                       </nav>
                       <Link href="/login" className="hidden text-sm font-medium text-slate-200 transition hover:text-white sm:inline-flex">{view.header.loginLabel}</Link>
-                      <Link href="/login" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-200">{view.header.ctaLabel}</Link>
+                      <button type="button" onClick={() => setSalesModalOpen(true)} className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-200">{view.header.ctaLabel}</button>
                     </div>
                   </header>
                 </div>
@@ -688,7 +688,7 @@ export default function SitePage() {
                       {interactiveEditing ? (
                         <EditableText active={interactiveEditing} selected={selectedField === "header.ctaLabel"} label="Botão CTA header" value={view.header.ctaLabel} onClick={() => setSelectedField("header.ctaLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "header.ctaLabel", v))} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white" styleBox={getElementStyle("header.ctaLabel")} minWidth={150} minHeight={44} onMove={(ns) => updateElementStyle("header.ctaLabel", ns)} onResize={(ns) => updateElementStyle("header.ctaLabel", ns)} />
                       ) : (
-                        <Link href="/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</Link>
+                        <button type="button" onClick={() => setSalesModalOpen(true)} className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">{view.header.ctaLabel}</button>
                       )}
                     </div>
                   </header>
@@ -713,7 +713,7 @@ export default function SitePage() {
                     {interactiveEditing ? (
                       <EditableText active={interactiveEditing} selected={selectedField === "hero.primaryCta"} label="Botão principal hero" value={view.hero.primaryCta} onClick={() => setSelectedField("hero.primaryCta")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.primaryCta", v))} className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white" styleBox={getElementStyle("hero.primaryCta")} minWidth={180} minHeight={48} onMove={(ns) => updateElementStyle("hero.primaryCta", ns)} onResize={(ns) => updateElementStyle("hero.primaryCta", ns)} />
                     ) : (
-                      <Link href="/login" className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">{view.hero.primaryCta}</Link>
+                      <button type="button" onClick={() => setSalesModalOpen(true)} className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">{view.hero.primaryCta}</button>
                     )}
                     {interactiveEditing ? (
                       <EditableText active={interactiveEditing} selected={selectedField === "hero.secondaryCta"} label="Botão secundário hero" value={view.hero.secondaryCta} onClick={() => setSelectedField("hero.secondaryCta")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "hero.secondaryCta", v))} className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700" styleBox={getElementStyle("hero.secondaryCta")} minWidth={160} minHeight={48} onMove={(ns) => updateElementStyle("hero.secondaryCta", ns)} onResize={(ns) => updateElementStyle("hero.secondaryCta", ns)} />
@@ -912,7 +912,7 @@ export default function SitePage() {
                         <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Acesso</div>
                         <ul className="space-y-2 text-sm text-slate-400">
                           <li><Link href="/login" className="hover:text-white transition">Entrar</Link></li>
-                          <li><Link href="/login" className="hover:text-white transition">Agendar demo</Link></li>
+                          <li><button type="button" onClick={() => setSalesModalOpen(true)} className="hover:text-white transition">Agendar demo</button></li>
                         </ul>
                       </div>
                     </div>
