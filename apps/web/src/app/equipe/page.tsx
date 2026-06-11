@@ -51,9 +51,13 @@ export default function EquipePage() {
 
   // Invite modal
   const [showInvite, setShowInvite] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ nome: "", email: "", senha: "", role: "AGENT", branchId: "", recebeLeads: true });
+  const [inviteForm, setInviteForm] = useState({ nome: "", email: "", role: "AGENT", branchId: "", recebeLeads: true });
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState("");
+
+  // Reenvio de convite (feedback inline por membro)
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [resentId, setResentId] = useState<string | null>(null);
 
   // Edit modal
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
@@ -125,15 +129,15 @@ export default function EquipePage() {
   // ── Invite ────────────────────────────────────────────────────────
 
   function openInvite() {
-    setInviteForm({ nome: "", email: "", senha: "", role: "AGENT", branchId: "", recebeLeads: true });
+    setInviteForm({ nome: "", email: "", role: "AGENT", branchId: "", recebeLeads: true });
     setInviteError("");
     setShowInvite(true);
   }
 
   async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
-    if (!inviteForm.nome || !inviteForm.email || !inviteForm.senha) {
-      setInviteError("Preencha nome, e-mail e senha.");
+    if (!inviteForm.nome || !inviteForm.email) {
+      setInviteError("Preencha nome e e-mail.");
       return;
     }
     setInviteLoading(true);
@@ -144,7 +148,6 @@ export default function EquipePage() {
         body: JSON.stringify({
           nome: inviteForm.nome,
           email: inviteForm.email,
-          senha: inviteForm.senha,
           role: inviteForm.role,
           branchId: inviteForm.branchId || null,
           recebeLeads: inviteForm.recebeLeads,
@@ -156,6 +159,20 @@ export default function EquipePage() {
       setInviteError(err?.message || "Erro ao criar usuário.");
     } finally {
       setInviteLoading(false);
+    }
+  }
+
+  async function resendInvite(m: TeamMember) {
+    setResendingId(m.id);
+    setResentId(null);
+    try {
+      await apiFetch(`/users/team/${m.id}/resend-invite`, { method: "POST" });
+      setResentId(m.id);
+      setTimeout(() => setResentId((id) => (id === m.id ? null : id)), 3000);
+    } catch (err: any) {
+      alert(err?.message || "Erro ao reenviar convite.");
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -349,6 +366,19 @@ export default function EquipePage() {
                       {m.ativo ? "Desativar" : "Ativar"}
                     </button>
                     <button
+                      onClick={() => resendInvite(m)}
+                      disabled={resendingId === m.id}
+                      className={`text-xs rounded px-2 py-1 border disabled:opacity-50 ${
+                        resentId === m.id
+                          ? "border-emerald-200 text-emerald-600"
+                          : "text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
+                      }`}
+                      style={resentId === m.id ? undefined : { borderColor: "var(--shell-card-border)" }}
+                      title="Envia um novo e-mail com link para o membro criar a senha"
+                    >
+                      {resendingId === m.id ? "Enviando..." : resentId === m.id ? "Convite enviado ✓" : "Reenviar convite"}
+                    </button>
+                    <button
                       onClick={() => openEdit(m)}
                       className="text-xs rounded px-2 py-1 border text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)]"
                       style={{ borderColor: "var(--shell-card-border)" }}
@@ -387,12 +417,6 @@ export default function EquipePage() {
                   style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
                   onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })} required />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Senha inicial *</label>
-                <input type="password" className="w-full border rounded-md px-3 py-2 text-sm" value={inviteForm.senha}
-                  style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
-                  onChange={(e) => setInviteForm({ ...inviteForm, senha: e.target.value })} required />
-              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-[var(--shell-subtext)] mb-1">Papel</label>
@@ -423,6 +447,10 @@ export default function EquipePage() {
                 <span className="text-sm text-[var(--shell-subtext)]">Participar da roleta de leads</span>
               </label>
 
+              <p className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-md px-3 py-2">
+                📧 O membro receberá um e-mail com um link para criar a própria senha de acesso (válido por 48 horas).
+              </p>
+
               {inviteError && <p className="text-xs text-red-600">{inviteError}</p>}
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setShowInvite(false)}
@@ -432,7 +460,7 @@ export default function EquipePage() {
                 </button>
                 <button type="submit" disabled={inviteLoading}
                   className="flex-1 rounded-md bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700 disabled:opacity-50">
-                  {inviteLoading ? "Criando..." : "Criar membro"}
+                  {inviteLoading ? "Enviando..." : "Enviar convite"}
                 </button>
               </div>
             </form>

@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from "@nestjs/common";
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from "../prisma/prisma.service";
 import { EmailService } from "../email/email.service";
 import { LimitsService } from "../plans/limits.service";
@@ -61,7 +62,6 @@ export class UsersService {
   async inviteTeamMember(tenantId: string, requesterId: string, data: {
     nome: string;
     email: string;
-    senha: string;
     role?: string;
     branchId?: string | null;
   }) {
@@ -79,7 +79,11 @@ export class UsersService {
     const validRoles = ['MANAGER', 'AGENT', 'PARTNER'];
     const role = (data.role && validRoles.includes(data.role)) ? data.role : 'AGENT';
 
-    const senhaHash = await bcrypt.hash(data.senha, 10);
+    // Conta criada sem senha utilizável — hash descartável. O membro define a
+    // própria senha pelo link de convite (token abaixo).
+    const senhaHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 horas
 
     const user = await this.prisma.user.create({
       data: {
@@ -90,17 +94,54 @@ export class UsersService {
         role: role as any,
         ativo: true,
         branchId: data.branchId ?? null,
+        passwordResetToken: token,
+        passwordResetExpiry: expiry,
       },
       select: { id: true, nome: true, email: true, role: true, ativo: true, criadoEm: true, tenantId: true },
     });
 
-    // Busca nome do tenant para o email de boas-vindas
+    // Envia o convite por email (não quebra o fluxo se falhar)
     try {
-      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { nome: true } });
-      if (tenant) await this.email.sendWelcome(email, data.nome.trim(), tenant.nome);
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { nome: true, slug: true },
+      });
+      if (tenant) {
+        const baseUrl = process.env.APP_URL || 'http://localhost:3001';
+        const inviteUrl = `${baseUrl}/definir-senha?token=${token}`;
+        const loginUrl = `${baseUrl}/login`;
+        await this.email.sendInvite(email, data.nome.trim(), tenant.nome, tenant.slug, inviteUrl, loginUrl);
+      }
     } catch { /* não quebra o fluxo */ }
 
     return user;
+  }
+
+  async resendInvite(tenantId: string, userId: string) {
+    const member = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!member) throw new NotFoundException('Usuário não encontrado.');
+    if ((member as any).role === 'OWNER') throw new ForbiddenException('Não é possível reenviar convite para um OWNER.');
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiry = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 horas
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordResetToken: token, passwordResetExpiry: expiry },
+    });
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { nome: true, slug: true },
+    });
+    if (tenant) {
+      const baseUrl = process.env.APP_URL || 'http://localhost:3001';
+      const inviteUrl = `${baseUrl}/definir-senha?token=${token}`;
+      const loginUrl = `${baseUrl}/login`;
+      await this.email.sendInvite(member.email, member.nome, tenant.nome, tenant.slug, inviteUrl, loginUrl);
+    }
+
+    return { ok: true };
   }
 
   async updateTeamMember(tenantId: string, requesterId: string, userId: string, data: {

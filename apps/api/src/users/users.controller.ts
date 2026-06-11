@@ -24,12 +24,18 @@ export class UsersController {
   async inviteMember(@Req() req: any, @Body() body: {
     nome: string;
     email: string;
-    senha: string;
     role?: string;
     branchId?: string | null;
   }) {
     requireOwner(req);
     return this.usersService.inviteTeamMember(req.user.tenantId, req.user.sub || req.user.id, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('team/:id/resend-invite')
+  async resendInvite(@Req() req: any, @Param('id') id: string) {
+    requireOwner(req);
+    return this.usersService.resendInvite(req.user.tenantId, id);
   }
 
   @UseGuards(JwtAuthGuard)

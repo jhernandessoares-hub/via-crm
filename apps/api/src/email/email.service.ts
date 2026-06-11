@@ -67,6 +67,43 @@ export class EmailService {
     );
   }
 
+  async sendInvite(
+    to: string,
+    nome: string,
+    tenantNome: string,
+    tenantSlug: string,
+    inviteUrl: string,
+    loginUrl: string,
+  ): Promise<void> {
+    await this.send(
+      to,
+      `Você foi convidado para o VIA CRM — ${tenantNome}`,
+      `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <h2 style="color:#1a1a1a">Olá, ${nome}! 👋</h2>
+        <p>Você foi convidado para fazer parte do <strong>VIA CRM</strong> da empresa <strong>${tenantNome}</strong>.</p>
+        <p>Para começar, crie sua senha de acesso clicando no botão abaixo:</p>
+        <p style="text-align:center;margin:32px 0">
+          <a href="${inviteUrl}"
+             style="background:#1D9E75;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600">
+            🔐 Criar minha senha de acesso
+          </a>
+        </p>
+        <p style="color:#666;font-size:13px">⏱️ Este link expira em <strong>48 horas</strong>. Depois disso, peça ao seu administrador para reenviar o convite.</p>
+        <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin:24px 0">
+          <p style="margin:0 0 12px;font-weight:600;color:#1a1a1a">📋 Como acessar depois de criar sua senha</p>
+          <p style="margin:0 0 12px;color:#444">Acesse <a href="${loginUrl}" style="color:#2563eb">${loginUrl}</a> e entre com:</p>
+          <p style="margin:4px 0;color:#444"><strong>Empresa:</strong> ${tenantSlug}</p>
+          <p style="margin:4px 0;color:#444"><strong>E-mail:</strong> ${to}</p>
+          <p style="margin:4px 0;color:#444"><strong>Senha:</strong> a que você acabou de criar</p>
+        </div>
+        <hr style="border:none;border-top:1px solid #eee;margin:32px 0">
+        <p style="color:#999;font-size:12px">VIA CRM · Todos os direitos reservados</p>
+      </div>
+      `,
+    );
+  }
+
   async sendNewLeadNotification(
     to: string,
     nome: string,
