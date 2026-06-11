@@ -2,8 +2,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import { useRequirePermission } from "@/lib/permissions";
 
 export default function SettingsPage() {
+  const guard = useRequirePermission((can) => can("settings", "view"));
   const [role, setRole] = useState("");
 
   useEffect(() => {
@@ -48,6 +50,16 @@ export default function SettingsPage() {
       show: isOwner,
     },
   ].filter((i) => i.show);
+
+  if (guard !== "allowed") {
+    return (
+      <AppShell title="Configurações">
+        <div className="max-w-xl mx-auto p-2 text-sm text-[var(--shell-subtext)]">
+          {guard === "checking" ? "Carregando..." : "Você não tem permissão para acessar esta área."}
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Configurações">

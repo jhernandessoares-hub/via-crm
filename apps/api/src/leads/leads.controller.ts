@@ -49,6 +49,9 @@ export class LeadsController {
       observacao?: string;
     },
   ) {
+    if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'leads', 'create'))) {
+      throw new ForbiddenException('Sem permissão para criar leads');
+    }
     return this.leadsService.create(req.user.tenantId, body);
   }
 
@@ -76,6 +79,9 @@ export class LeadsController {
 
   @Get('dashboard')
   async dashboard(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
+    if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'dashboard', 'view'))) {
+      throw new ForbiddenException('Sem permissão para ver o dashboard operacional');
+    }
     const now = new Date();
     const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
     const toDate = to ? new Date(to) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);

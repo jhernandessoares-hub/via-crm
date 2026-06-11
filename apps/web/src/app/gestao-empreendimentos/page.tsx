@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { listDevelopments, deleteDevelopment, type Development } from "@/lib/developments.service";
 import { computeCompleteness } from "@/lib/empreendimento-completeness";
+import { useRequirePermission } from "@/lib/permissions";
 
 const STATUS_LABEL: Record<string, string> = { LANCAMENTO: "Lançamento", EM_OBRA: "Em Obra", CONCLUIDO: "Concluído" };
 const STATUS_COLOR: Record<string, string> = {
@@ -16,6 +17,7 @@ const TIPO_ICON: Record<string, string> = { VERTICAL: "🏢", HORIZONTAL: "🏘�
 
 export default function EmpreendimentosPage() {
   const router = useRouter();
+  const guard = useRequirePermission((can) => can("gestao_empreendimentos", "view"));
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +55,16 @@ export default function EmpreendimentosPage() {
     } finally {
       setDeleting(null);
     }
+  }
+
+  if (guard !== "allowed") {
+    return (
+      <AppShell title="Gestão de Empreendimentos">
+        <div className="mx-auto max-w-6xl px-4 py-6 text-sm text-[var(--shell-subtext)]">
+          {guard === "checking" ? "Carregando..." : "Você não tem permissão para acessar esta área."}
+        </div>
+      </AppShell>
+    );
   }
 
   return (

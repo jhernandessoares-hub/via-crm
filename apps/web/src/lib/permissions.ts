@@ -7,7 +7,8 @@
  * OWNER sempre tem acesso total — nunca passa por verificação de permissão.
  */
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "./api";
 
 export type PermissionAction = "view" | "create" | "edit" | "delete" | "use" | "export" | "send" | "merge";
@@ -27,6 +28,11 @@ export type PermissionsConfig = Record<
 
 // ── Módulos disponíveis (espelho do backend) ────────────────────────────────
 export const PERMISSION_MODULES = [
+  {
+    key: "dashboard",
+    label: "Dashboard (Operacional)",
+    actions: [{ key: "view", label: "Ver" }],
+  },
   {
     key: "leads",
     label: "Leads",
@@ -105,6 +111,7 @@ export const PERMISSION_MODULES = [
     key: "gestao_empreendimentos",
     label: "Gestão de Empreendimentos",
     actions: [
+      { key: "view",   label: "Ver (consultar espelho)" },
       { key: "create", label: "Fazer proposta" },
       { key: "edit",   label: "Editar unidades" },
       { key: "delete", label: "Bloquear unidades" },
@@ -165,6 +172,7 @@ export type FieldVisibilityGroup = "lead" | "espelho";
 
 export const FIELD_VISIBILITY_FIELDS: { key: string; label: string; group: FieldVisibilityGroup }[] = [
   { key: "lead.telefone",    label: "Telefone / WhatsApp",          group: "lead" },
+  { key: "lead.dataCriacao", label: "Data de criação / entrada",    group: "lead" },
   { key: "lead.responsavel", label: "Atendente / Responsável",      group: "lead" },
   { key: "lead.conversa",    label: "Conversa (histórico + IA)",    group: "lead" },
   { key: "lead.cpf",         label: "CPF",                          group: "lead" },
@@ -295,6 +303,42 @@ export function usePermissions() {
   const documentAccess: DocumentAccessLevel = checkDocumentAccess(userRole, permissions);
 
   return { can, isFieldVisible, documentAccess, userRole, permissions, loading };
+}
+
+export type PageGuardState = "checking" | "allowed" | "denied";
+
+/**
+ * Guard de página por permissão. Enquanto carrega → "checking"; se permitido →
+ * "allowed"; se negado → "denied" e redireciona para `fallback` (rota sem guard,
+ * para nunca entrar em loop). OWNER sempre passa.
+ *
+ * Uso: `const guard = useRequirePermission((can) => can("calendar", "view"));`
+ * e renderize o conteúdo apenas quando `guard === "allowed"`.
+ */
+export function useRequirePermission(
+  predicate: (
+    can: (module: string, action: PermissionAction) => boolean,
+    role: string | null,
+  ) => boolean,
+  fallback = "/meus-leads",
+): PageGuardState {
+  const { can, loading, userRole } = usePermissions();
+  const router = useRouter();
+  const [state, setState] = useState<PageGuardState>("checking");
+
+  useEffect(() => {
+    if (loading) return;
+    const ok = userRole === "OWNER" || predicate(can, userRole);
+    if (ok) {
+      setState("allowed");
+      return;
+    }
+    setState("denied");
+    startTransition(() => router.replace(fallback));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, userRole]);
+
+  return state;
 }
 
 /**

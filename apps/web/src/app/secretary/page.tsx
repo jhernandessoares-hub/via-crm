@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
+import { useRequirePermission } from "@/lib/permissions";
 
 const SESSION_ID = "main";
 
@@ -65,6 +66,7 @@ function formatDate(iso: string) {
 }
 
 export default function SecretaryPage() {
+  const guard = useRequirePermission((can) => can("secretary", "use"));
   const [tab, setTab] = useState<Tab>("chat");
 
   // ── Chat ──────────────────────────────────────────────────────────────
@@ -256,6 +258,16 @@ export default function SecretaryPage() {
     const matchQ = !noteSearch || (n.title ?? "").toLowerCase().includes(noteSearch.toLowerCase()) || n.content.toLowerCase().includes(noteSearch.toLowerCase());
     return matchCat && matchQ;
   });
+
+  if (guard !== "allowed") {
+    return (
+      <AppShell title="Secretária">
+        <div className="p-2 text-sm text-[var(--shell-subtext)]">
+          {guard === "checking" ? "Carregando..." : "Você não tem permissão para acessar esta área."}
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Secretária">

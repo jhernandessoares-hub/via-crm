@@ -1406,7 +1406,7 @@ export class LeadsService {
           origem: showField('lead.origem') ? l.origem : null,
           status: l.status, stageName: stage?.name ?? null, stageGroup: stage?.group ?? null,
           responsavel: showField('lead.responsavel') ? (usr?.apelido || usr?.nome || null) : null,
-          criadoEm: l.criadoEm,
+          criadoEm: showField('lead.dataCriacao') ? l.criadoEm : null,
         };
       }),
       ia: { execucoes: aiCount },
@@ -1461,6 +1461,26 @@ export class LeadsService {
     return resolveDocumentAccess((tenant?.permissionsConfig as any)?.documentAccess);
   }
 
+  /**
+   * Verifica uma permissão configurável (módulo/ação) para o role. OWNER tem bypass total.
+   * Respeita o config do tenant (`permissionsConfig`) com fallback nos defaults.
+   */
+  async hasPermission(
+    tenantId: string,
+    role: string,
+    module: string,
+    action: string,
+  ): Promise<boolean> {
+    if (role === 'OWNER') return true;
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { permissionsConfig: true },
+    });
+    const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+    const roleKey = role.toLowerCase();
+    return !!perms[roleKey]?.[module]?.[action];
+  }
+
   /** Remove do payload os campos ocultos para o Externo Consultivo (segurança real). */
   private sanitizeLeadForPartner<T extends Record<string, any>>(
     lead: T,
@@ -1502,6 +1522,10 @@ export class LeadsService {
     }
     if (hidden('lead.resumo')) (lead as any).resumoLead = null;
     if (hidden('lead.observacao')) (lead as any).observacao = null;
+    if (hidden('lead.dataCriacao')) {
+      (lead as any).criadoEm = null;
+      (lead as any).reentradaCount = null;
+    }
     if (hidden('lead.conversa')) {
       (lead as any).lastInboundText = null;
       (lead as any).lastInboundChannel = null;
@@ -1908,7 +1932,7 @@ async getById(user: any, id: string) {
 
     const [lead, assignedUser] = await Promise.all([
       this.prisma.lead.findFirst({ where: { id, tenantId: user.tenantId }, select: { id: true, tenantId: true } }),
-      this.prisma.user.findUnique({ where: { id: assignedUserId }, select: { id: true, tenantId: true } }),
+      this.prisma.user.findUnique({ where: { id: assignedUserId }, select: { id: true, tenantId: true, role: true } }),
     ]);
 
     if (!lead) throw new NotFoundException('Lead não encontrado');
@@ -1918,6 +1942,10 @@ async getById(user: any, id: string) {
     }
     if (assignedUser.tenantId !== user.tenantId) {
       throw new ForbiddenException('Usuário pertence a outro tenant');
+    }
+    // Externo Consultivo (PARTNER) é só leitura — nunca pode ser responsável por um lead.
+    if (assignedUser.role === 'PARTNER') {
+      throw new ForbiddenException('Externo Consultivo não pode ser responsável por leads');
     }
 
     return this.prisma.lead.update({
@@ -3255,7 +3283,7 @@ const aiAssistanceLabel =
       { header: 'Status', value: (l) => l.status },
       { header: 'Etapa', value: (l) => l.stage?.name },
       ...(show('lead.resumo') ? [{ header: 'Resumo', value: (l: any) => l.resumoLead }] : []),
-      { header: 'Criado em', value: (l) => l.criadoEm?.toISOString() },
+      ...(show('lead.dataCriacao') ? [{ header: 'Criado em', value: (l: any) => l.criadoEm?.toISOString() }] : []),
       { header: 'Atualizado em', value: (l) => l.atualizadoEm?.toISOString() },
     ];
 
@@ -3673,7 +3701,7 @@ const aiAssistanceLabel =
       telefone: show('lead.telefone') ? l.telefone : null,
       email: show('lead.email') ? l.email : null,
       cpf: show('lead.cpf') ? l.cpf : null,
-      criadoEm: l.criadoEm,
+      criadoEm: show('lead.dataCriacao') ? l.criadoEm : null,
       source: show('lead.origem') ? l.origem : null,
       numero: l.numero,
       stage: l.stage ? { nome: l.stage.name } : null,

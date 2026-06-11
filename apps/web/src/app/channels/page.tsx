@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
+import { useRequirePermission } from "@/lib/permissions";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -156,6 +157,7 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
 /* ─── Page ───────────────────────────────────────────────────────────── */
 
 export default function ChannelsPage() {
+  const guard = useRequirePermission((can) => can("channels", "view"));
   const [tab, setTab] = useState<"dashboard" | "canais">("dashboard");
   const [channels, setChannels] = useState<Channel[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -469,6 +471,16 @@ export default function ChannelsPage() {
       ))}
     </div>
   );
+
+  if (guard !== "allowed") {
+    return (
+      <AppShell title="Canais">
+        <div className="p-2 text-sm text-[var(--shell-subtext)]">
+          {guard === "checking" ? "Carregando..." : "Você não tem permissão para acessar esta área."}
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Canais">

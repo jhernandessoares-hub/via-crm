@@ -127,6 +127,8 @@ type Lead = {
     indicacao?: string | null;
     [key: string]: unknown;
   } | null;
+  // Externo Consultivo: chaves de FIELD_VISIBILITY ocultas (backend já removeu o dado).
+  restrictedFields?: string[];
 };
 
 const TIPOS_DOCUMENTO = [
@@ -2432,9 +2434,11 @@ export default function LeadDetailChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Interceptor de navegação: pergunta se quer encerrar conversa aberta
+  // Interceptor de navegação: pergunta se quer encerrar conversa aberta.
+  // Externo Consultivo (PARTNER) é só consulta — não conversa, não encerra; navega livre.
   useEffect(() => {
     if (!lead?.conversaAberta) return;
+    if (user?.role === "PARTNER") return;
 
     const handleClick = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest('a');
@@ -2453,7 +2457,7 @@ export default function LeadDetailChatPage() {
 
     document.addEventListener('click', handleClick, true);
     return () => document.removeEventListener('click', handleClick, true);
-  }, [lead?.conversaAberta, id]);
+  }, [lead?.conversaAberta, id, user?.role]);
 
 const orderedEvents = useMemo(() => {
   return [...events].sort((a, b) => {
@@ -3965,7 +3969,7 @@ function discardAiSuggestion() {
                         }}
                       >
                         <option value="">— Sem responsável —</option>
-                        {teamMembers.map((m) => (
+                        {teamMembers.filter((m) => m.role !== "PARTNER").map((m) => (
                           <option key={m.id} value={m.id}>{m.nome}</option>
                         ))}
                       </select>
@@ -4071,11 +4075,15 @@ function discardAiSuggestion() {
 
             {/* Qualificação IA */}
             {lead && (() => {
+              // Externo Consultivo: campo oculto (valor já nulo no backend) deve aparecer borrado,
+              // não colapsar. `restrictedFields` é a fonte de verdade enviada pelo backend.
+              const isHidden = (k: string) => lead.restrictedFields?.includes(k) ?? false;
               const hasAnyQual = !!(
                 lead.rendaBrutaFamiliar != null || lead.fgts != null ||
                 lead.valorEntrada != null || lead.estadoCivil || lead.dataNascimento ||
                 lead.tempoProcurandoImovel || lead.conversouComCorretor != null ||
-                lead.qualCorretorImobiliaria || lead.perfilImovel || lead.resumoLead
+                lead.qualCorretorImobiliaria || lead.perfilImovel || lead.resumoLead ||
+                isHidden('lead.financeiro') || isHidden('lead.estadoCivil') || isHidden('lead.resumo')
               );
 
               const fmtCurrency = (v?: number | null) =>
@@ -4123,38 +4131,48 @@ function discardAiSuggestion() {
                         </div>
                       )}
 
-                      {fmtCurrency(lead.rendaBrutaFamiliar) && (
+                      {(fmtCurrency(lead.rendaBrutaFamiliar) || isHidden('lead.financeiro')) && (
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">Renda bruta familiar</div>
-                          <div className="text-[var(--shell-text)]">{fmtCurrency(lead.rendaBrutaFamiliar)}</div>
+                          <div className="text-[var(--shell-text)]">
+                            <MaskedField field="lead.financeiro">{fmtCurrency(lead.rendaBrutaFamiliar)}</MaskedField>
+                          </div>
                         </div>
                       )}
 
-                      {fmtCurrency(lead.fgts) && (
+                      {(fmtCurrency(lead.fgts) || isHidden('lead.financeiro')) && (
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">FGTS</div>
-                          <div className="text-[var(--shell-text)]">{fmtCurrency(lead.fgts)}</div>
+                          <div className="text-[var(--shell-text)]">
+                            <MaskedField field="lead.financeiro">{fmtCurrency(lead.fgts)}</MaskedField>
+                          </div>
                         </div>
                       )}
 
-                      {fmtCurrency(lead.valorEntrada) && (
+                      {(fmtCurrency(lead.valorEntrada) || isHidden('lead.financeiro')) && (
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">Valor de entrada</div>
-                          <div className="text-[var(--shell-text)]">{fmtCurrency(lead.valorEntrada)}</div>
+                          <div className="text-[var(--shell-text)]">
+                            <MaskedField field="lead.financeiro">{fmtCurrency(lead.valorEntrada)}</MaskedField>
+                          </div>
                         </div>
                       )}
 
-                      {lead.estadoCivil && (
+                      {(lead.estadoCivil || isHidden('lead.estadoCivil')) && (
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">Estado civil</div>
-                          <div className="text-[var(--shell-text)]">{estadoCivilLabels[lead.estadoCivil] ?? lead.estadoCivil}</div>
+                          <div className="text-[var(--shell-text)]">
+                            <MaskedField field="lead.estadoCivil">{lead.estadoCivil ? (estadoCivilLabels[lead.estadoCivil] ?? lead.estadoCivil) : null}</MaskedField>
+                          </div>
                         </div>
                       )}
 
-                      {fmtDate(lead.dataNascimento) && (
+                      {(fmtDate(lead.dataNascimento) || isHidden('lead.estadoCivil')) && (
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">Data de nascimento</div>
-                          <div className="text-[var(--shell-text)]">{fmtDate(lead.dataNascimento)}</div>
+                          <div className="text-[var(--shell-text)]">
+                            <MaskedField field="lead.estadoCivil">{fmtDate(lead.dataNascimento)}</MaskedField>
+                          </div>
                         </div>
                       )}
 
@@ -4198,11 +4216,11 @@ function discardAiSuggestion() {
                         </div>
                       )}
 
-                      {lead.resumoLead && (
+                      {(lead.resumoLead || isHidden('lead.resumo')) && (
                         <div>
                           <div className="text-xs text-[var(--shell-subtext)]">Resumo</div>
                           <div className="rounded-md border bg-[var(--shell-bg)] p-2 text-xs text-[var(--shell-text)] leading-relaxed whitespace-pre-wrap">
-                            {lead.resumoLead}
+                            <MaskedField field="lead.resumo">{lead.resumoLead}</MaskedField>
                           </div>
                         </div>
                       )}
@@ -5945,7 +5963,7 @@ function discardAiSuggestion() {
                   </div>
                 </div>
 
-                {lead?.conversaAberta && (
+                {lead?.conversaAberta && user?.role !== "PARTNER" && (
                   <div className="flex items-center justify-end pb-1">
                     <button
                       onClick={() => setShowEndConvDialog(true)}

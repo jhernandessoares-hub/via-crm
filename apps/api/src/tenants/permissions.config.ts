@@ -17,6 +17,13 @@ export interface ModulePermissions {
 
 export const PERMISSION_MODULES: ModulePermissions[] = [
   {
+    key: 'dashboard',
+    label: 'Dashboard (Operacional)',
+    actions: [
+      { key: 'view', label: 'Ver' },
+    ],
+  },
+  {
     key: 'leads',
     label: 'Leads',
     actions: [
@@ -98,6 +105,7 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
     key: 'gestao_empreendimentos',
     label: 'Gestão de Empreendimentos',
     actions: [
+      { key: 'view',   label: 'Ver (consultar espelho)' },
       { key: 'create', label: 'Fazer proposta de unidade' },
       { key: 'edit',   label: 'Editar unidades' },
       { key: 'delete', label: 'Bloquear unidades' },
@@ -162,6 +170,7 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
 /** Permissões padrão quando o tenant não tem config salva. */
 export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<string, boolean>>> = {
   manager: {
+    dashboard:              { view: true  },
     leads:                  { view: true,  create: true,  edit: true,  delete: true  },
     products:               { view: true,  create: true,  edit: true,  delete: true  },
     calendar:               { view: true,  create: true,  edit: true,  delete: true  },
@@ -171,7 +180,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     settings:               { view: false, edit: false },
     pipeline:               { view: true  },
     knowledgeBase:          { view: true,  create: true,  edit: true,  delete: true  },
-    gestao_empreendimentos: { create: true,  edit: true,  delete: false },
+    gestao_empreendimentos: { view: true,  create: true,  edit: true,  delete: false },
     inbox:                  { view: true,  send: true  },
     campanhas:              { view: true,  create: true,  edit: true,  delete: true  },
     duplicados:             { view: true,  merge: true  },
@@ -181,6 +190,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     pos_ocupacao:           { view: true  },
   },
   agent: {
+    dashboard:              { view: true  },
     leads:                  { view: true,  create: true,  edit: true,  delete: false },
     products:               { view: true,  create: true,  edit: true,  delete: false },
     calendar:               { view: true,  create: true,  edit: true,  delete: true  },
@@ -190,7 +200,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     settings:               { view: false, edit: false },
     pipeline:               { view: true  },
     knowledgeBase:          { view: true,  create: false, edit: false, delete: false },
-    gestao_empreendimentos: { create: false, edit: false, delete: false },
+    gestao_empreendimentos: { view: true,  create: false, edit: false, delete: false },
     inbox:                  { view: true,  send: true  },
     campanhas:              { view: false, create: false, edit: false, delete: false },
     duplicados:             { view: false, merge: false },
@@ -200,7 +210,8 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     pos_ocupacao:           { view: true  },
   },
   partner: {
-    leads:                  { view: true,  create: true,  edit: false, delete: false },
+    dashboard:              { view: false },
+    leads:                  { view: true,  create: false, edit: false, delete: false },
     products:               { view: true,  create: false, edit: false, delete: false },
     calendar:               { view: false, create: false, edit: false, delete: false },
     secretary:              { use: false },
@@ -209,7 +220,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     settings:               { view: false, edit: false },
     pipeline:               { view: false },
     knowledgeBase:          { view: true,  create: false, edit: false, delete: false },
-    gestao_empreendimentos: { create: false, edit: false, delete: false },
+    gestao_empreendimentos: { view: false, create: false, edit: false, delete: false },
     inbox:                  { view: false, send: false },
     campanhas:              { view: false, create: false, edit: false, delete: false },
     duplicados:             { view: false, merge: false },
@@ -259,6 +270,7 @@ export interface FieldVisibilityField {
 export const FIELD_VISIBILITY_FIELDS: FieldVisibilityField[] = [
   // Lead
   { key: 'lead.telefone',    label: 'Telefone / WhatsApp',          group: 'lead' },
+  { key: 'lead.dataCriacao', label: 'Data de criação / entrada',    group: 'lead' },
   { key: 'lead.responsavel', label: 'Atendente / Responsável',      group: 'lead' },
   { key: 'lead.conversa',    label: 'Conversa (histórico + IA)',    group: 'lead' },
   { key: 'lead.cpf',         label: 'CPF',                          group: 'lead' },

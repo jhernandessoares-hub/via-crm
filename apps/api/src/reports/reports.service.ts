@@ -29,7 +29,10 @@ export class ReportsService {
     if (!allowed) throw new ForbiddenException('Sem permissão para ver relatórios gerenciais.');
   }
 
-  /** Externo Consultivo: oculta corretor/cpf/valores nas linhas conforme config do tenant. */
+  /**
+   * Externo Consultivo: oculta nas linhas do drill os mesmos campos bloqueados na ficha do lead.
+   * Cobertura alinhada à de `LeadsService.sanitizeLeadForPartner`/`applyUnitVisibility`.
+   */
   private async sanitizeRowsForPartner<T extends Record<string, any>>(
     tenantId: string,
     role: string,
@@ -41,11 +44,19 @@ export class ReportsService {
       select: { permissionsConfig: true },
     });
     const fv = resolveFieldVisibility((tenant?.permissionsConfig as any)?.fieldVisibility);
+    const hidden = (k: string) => fv[k] === false;
     for (const r of rows) {
-      if (fv['lead.responsavel'] === false) (r as any).corretor = null;
-      if (fv['lead.cpf'] === false) (r as any).cpf = null;
-      if (fv['unit.valores'] === false) (r as any).valor = null;
-      if (fv['unit.comprador'] === false) (r as any).comprador = null;
+      if (hidden('lead.responsavel')) (r as any).corretor = null;
+      if (hidden('lead.cpf')) (r as any).cpf = null;
+      if (hidden('unit.valores')) (r as any).valor = null;
+      if (hidden('unit.comprador')) {
+        (r as any).comprador = null;
+        (r as any).data = null; // data de venda
+      }
+      if (hidden('unit.identificacao')) {
+        (r as any).empreendimento = null;
+        (r as any).torreUnidade = null;
+      }
     }
     return rows;
   }

@@ -243,9 +243,9 @@ export default function PermissionsPage() {
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {([
-                    { key: "download", label: "Baixar", desc: "Vê e baixa os arquivos" },
-                    { key: "view", label: "Só visualizar", desc: "Vê na tela, sem baixar" },
-                    { key: "none", label: "Sem acesso", desc: "Não vê os documentos" },
+                    { key: "download", label: "Baixar", desc: "Vê na tela e pode salvar o arquivo no dispositivo" },
+                    { key: "view", label: "Só visualizar", desc: "Vê na tela. Esconde o botão de baixar, mas não impede cópia/print da imagem" },
+                    { key: "none", label: "Sem acesso", desc: "Não vê documento algum" },
                   ] as const).map((opt) => {
                     const current = config?.documentAccess?.partner ?? "none";
                     const active = current === opt.key;
@@ -267,6 +267,11 @@ export default function PermissionsPage() {
                     );
                   })}
                 </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-[var(--shell-subtext)]">
+                  <strong>Sem acesso</strong>: não vê documento algum. <strong>Só visualizar</strong>: vê na tela
+                  (o botão de baixar fica escondido, mas não impede cópia ou print da imagem). <strong>Baixar</strong>:
+                  pode salvar o arquivo. Normalmente deixe em <strong>Sem acesso</strong> e libere sob demanda.
+                </p>
               </div>
             </CardBody>
           </Card>

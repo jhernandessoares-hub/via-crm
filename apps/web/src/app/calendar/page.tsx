@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
+import { useRequirePermission } from "@/lib/permissions";
 
 // ──────────────────────────────────────────────
 // Types
@@ -223,6 +224,7 @@ function eventToForm(ev: CalendarEvent): EventForm {
 // ──────────────────────────────────────────────
 
 export default function CalendarPage() {
+  const guard = useRequirePermission((can) => can("calendar", "view"));
   const today = useMemo(() => new Date(), []);
 
   const [view, setView] = useState<View>("month");
@@ -484,6 +486,16 @@ export default function CalendarPage() {
     const ws = startOfWeek(anchor);
     return Array.from({ length: 7 }, (_, i) => addDays(ws, i));
   }, [anchor]);
+
+  if (guard !== "allowed") {
+    return (
+      <AppShell title="Agenda">
+        <div className="p-2 text-sm text-[var(--shell-subtext)]">
+          {guard === "checking" ? "Carregando..." : "Você não tem permissão para acessar esta área."}
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Agenda">

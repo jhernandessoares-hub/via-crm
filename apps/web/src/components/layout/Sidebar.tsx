@@ -220,8 +220,12 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
-        <NavItem href="/dashboard" label="Dashboard" icon={LayoutDashboard} />
-        <NavItem href="/meus-leads" label="Meus Leads" icon={User} badge={counts?.mine} />
+        {(can("dashboard", "view") || can("relatorios", "view")) && (
+          <NavItem href="/dashboard" label="Dashboard" icon={LayoutDashboard} />
+        )}
+        {can("leads", "view") && (
+          <NavItem href="/meus-leads" label="Meus Leads" icon={User} badge={counts?.mine} />
+        )}
         {(role !== "AGENT" && role !== "PARTNER" || can("pipeline", "view")) && (
           <NavItem href="/pipeline" label="Todos os Leads" icon={Users} badge={counts?.total} />
         )}
@@ -230,7 +234,7 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         )}
 
         {/* Funil colapsável */}
-        {!collapsed && (
+        {!collapsed && can("leads", "view") && (
           <div className="pt-1">
             <button
               type="button"
@@ -291,7 +295,7 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         )}
 
         {/* Funil compacto */}
-        {collapsed && (
+        {collapsed && can("leads", "view") && (
           <Link
             href="/leads"
             title="Funil de Venda"
@@ -307,8 +311,12 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
           </Link>
         )}
 
-        <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
-        <NavItem href="/gestao-empreendimentos" label="Gestão de Empreendimentos" icon={Landmark} mode="prefix" />
+        {can("products", "view") && (
+          <NavItem href="/products" label="Produtos" icon={Building2} mode="prefix" />
+        )}
+        {can("gestao_empreendimentos", "view") && (
+          <NavItem href="/gestao-empreendimentos" label="Gestão de Empreendimentos" icon={Landmark} mode="prefix" />
+        )}
         {showSP9 && (role === "OWNER" || can("pre_ocupacao", "view")) && (
           <NavItem href="/pre-ocupacao" label="Pré-Ocupação" icon={KeyRound} />
         )}
@@ -317,17 +325,21 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         )}
         {role === "OWNER" && <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
-        <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
-        <NavItem href="/calendar" label="Agenda" icon={Calendar} />
+        {can("secretary", "use") && (
+          <NavItem href="/secretary" label="Secretaria" icon={Headphones} />
+        )}
+        {can("calendar", "view") && (
+          <NavItem href="/calendar" label="Agenda" icon={Calendar} />
+        )}
         {(role !== "PARTNER" || can("inbox", "view")) && (
           <NavItem href="/inbox-wa-light" label="Inbox WA Light" icon={MessageSquare} mode="prefix" />
         )}
         {(role === "OWNER" || can("campanhas", "view")) && (
           <NavItem href="/campanhas" label="Campanhas" icon={Send} mode="prefix" />
         )}
-        {role === "OWNER" && <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />}
+        {(role === "OWNER" || can("channels", "view")) && <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />}
 
-        {role === "OWNER" && (
+        {(role === "OWNER" || can("settings", "view")) && (
           <Link
             href="/settings"
             title={collapsed ? "Configurações" : undefined}
