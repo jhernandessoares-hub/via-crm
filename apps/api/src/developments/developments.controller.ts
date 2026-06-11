@@ -7,6 +7,13 @@ function requireOwner(req: any) {
   if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER do tenant.');
 }
 
+/** Externo Consultivo (PARTNER) é só consulta no espelho — nunca altera unidades. */
+function denyPartner(req: any) {
+  if (req.user?.role === 'PARTNER') {
+    throw new ForbiddenException('Sem autorização: o Externo Consultivo só pode visualizar o espelho.');
+  }
+}
+
 @UseGuards(JwtAuthGuard)
 @Controller('developments')
 export class DevelopmentsController {
@@ -91,11 +98,13 @@ export class DevelopmentsController {
 
   @Patch(':id/units/:unitId/unlink')
   unlinkUnit(@Request() req: any, @Param('id') id: string, @Param('unitId') unitId: string) {
+    denyPartner(req);
     return this.svc.unlinkUnit(req.user.tenantId, id, unitId, { id: req.user.sub, nome: req.user.nome });
   }
 
   @Patch(':id/units/:unitId')
   updateUnit(@Request() req: any, @Param('id') id: string, @Param('unitId') unitId: string, @Body() body: any) {
+    denyPartner(req);
     return this.svc.updateUnit(req.user.tenantId, id, unitId, body, { id: req.user.sub, nome: req.user.nome, role: req.user.role });
   }
 

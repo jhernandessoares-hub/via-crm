@@ -34,8 +34,23 @@ export const PERMISSION_MODULES = [
     actions: [{ key: "view", label: "Ver" }],
   },
   {
+    key: "relatorios",
+    label: "Dashboard Gerencial (vendas)",
+    actions: [{ key: "view", label: "Ver" }],
+  },
+  {
     key: "leads",
     label: "Meus Leads",
+    actions: [
+      { key: "view",   label: "Ver" },
+      { key: "create", label: "Criar" },
+      { key: "edit",   label: "Editar" },
+      { key: "delete", label: "Excluir" },
+    ],
+  },
+  {
+    key: "pipeline",
+    label: "Todos os Leads",
     actions: [
       { key: "view",   label: "Ver" },
       { key: "create", label: "Criar" },
@@ -93,16 +108,6 @@ export const PERMISSION_MODULES = [
     ],
   },
   {
-    key: "pipeline",
-    label: "Todos os Leads",
-    actions: [
-      { key: "view",   label: "Ver" },
-      { key: "create", label: "Criar" },
-      { key: "edit",   label: "Editar" },
-      { key: "delete", label: "Excluir" },
-    ],
-  },
-  {
     key: "knowledgeBase",
     label: "Base de Conhecimento",
     actions: [
@@ -154,11 +159,6 @@ export const PERMISSION_MODULES = [
     actions: [
       { key: "export", label: "Exportar leads (CSV)" },
     ],
-  },
-  {
-    key: "relatorios",
-    label: "Dashboard Gerencial (vendas)",
-    actions: [{ key: "view", label: "Ver" }],
   },
   {
     key: "pre_ocupacao",

@@ -4277,6 +4277,7 @@ function discardAiSuggestion() {
                               <span className="text-[var(--shell-subtext)]">{"\u2014 " + u.nome}</span>
                             </MaskedField>
                           </div>
+                          {user?.role !== "PARTNER" && (
                           <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
@@ -4299,6 +4300,7 @@ function discardAiSuggestion() {
                               Desvincular
                             </button>
                           </div>
+                          )}
                         </div>
                         {u.finalPrice && (
                           <div className="mt-1 text-[var(--shell-text)]">
@@ -4760,7 +4762,8 @@ function discardAiSuggestion() {
                         // Reserva na Documentação (RESERVA) e proposta na Escolha (PROPOSTA); OWNER sempre.
                         const canReserva = currentStageUnitAction === "RESERVA";
                         const canProposta = currentStageUnitAction === "PROPOSTA" || lead?.stageGroup === "ESCOLHA_UNIDADE";
-                        const canOpenEspelho = canReserva || canProposta || user?.role === "OWNER";
+                        // Externo Consultivo é só consulta — nunca vincula/reserva unidade.
+                        const canOpenEspelho = (canReserva || canProposta || user?.role === "OWNER") && user?.role !== "PARTNER";
                         const label = canReserva && !canProposta ? "🏗️ Abrir Espelho (Reservar)" : "🏗️ Abrir Espelho";
                         return (
                           <button
