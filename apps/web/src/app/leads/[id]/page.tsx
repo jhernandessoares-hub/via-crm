@@ -1282,10 +1282,11 @@ const ESPELHO_STATUS_LABEL: Record<string, string> = {
   VENDIDO: "Vendido", BLOQUEADO: "Bloqueado",
 };
 
-function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, linkStatus = "PROPOSTA", onClose, onDone }: {
+function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, linkStatus = "PROPOSTA", viewOnly = false, onClose, onDone }: {
   devId: string; leadId: string;
   trocandoUnitId?: string; trocandoUnitNome?: string;
   linkStatus?: "PROPOSTA" | "RESERVADO";
+  viewOnly?: boolean;
   onClose: () => void; onDone: () => void;
 }) {
   const [dev, setDev] = useState<any>(null);
@@ -1337,7 +1338,9 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
               {trocandoUnitId ? `Trocar unidade — DE: ${trocandoUnitNome ?? "unidade anterior"}` : "Espelho de Vendas — Selecionar unidade"}
             </h3>
             <p className="text-xs text-[var(--shell-subtext)] mt-0.5">
-              {trocandoUnitId
+              {viewOnly
+                ? "Visualização do espelho (somente leitura)"
+                : trocandoUnitId
                 ? "Clique em uma unidade Disponível para selecionar a nova unidade (PARA)"
                 : linkStatus === "RESERVADO"
                 ? "Clique em uma unidade Disponível para RESERVAR para o lead"
@@ -1390,11 +1393,11 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
                                 const isConfirming = confirming?.id === u.id;
                                 return (
                                   <button key={u.id} type="button"
-                                    disabled={!isDisp}
-                                    onClick={() => setConfirming(u)}
+                                    disabled={!isDisp || viewOnly}
+                                    onClick={viewOnly ? undefined : () => setConfirming(u)}
                                     title={`${u.nome} — ${ESPELHO_STATUS_LABEL[u.status] ?? u.status}${u.valorVenda ? ` — R$ ${u.valorVenda.toLocaleString("pt-BR")}` : ""}`}
                                     style={{ backgroundColor: isConfirming ? "#16a34a" : ESPELHO_STATUS_COLOR[u.status] }}
-                                    className={`h-8 min-w-[40px] px-1 rounded text-[10px] font-bold text-white transition-all ${isDisp ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default opacity-70"} ${isConfirming ? "ring-2 ring-white scale-110" : ""}`}>
+                                    className={`h-8 min-w-[40px] px-1 rounded text-[10px] font-bold text-white transition-all ${isDisp && !viewOnly ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default opacity-70"} ${isConfirming ? "ring-2 ring-white scale-110" : ""}`}>
                                     {u.nome.replace(/[^0-9A-Za-z]/g, "") || u.nome}
                                   </button>
                                 );
@@ -1416,11 +1419,11 @@ function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome,
                         const isConfirming = confirming?.id === u.id;
                         return (
                           <button key={u.id} type="button"
-                            disabled={!isDisp}
-                            onClick={() => setConfirming(u)}
+                            disabled={!isDisp || viewOnly}
+                            onClick={viewOnly ? undefined : () => setConfirming(u)}
                             title={`${u.nome} — ${ESPELHO_STATUS_LABEL[u.status] ?? u.status}${u.valorVenda ? ` — R$ ${u.valorVenda.toLocaleString("pt-BR")}` : ""}`}
                             style={{ backgroundColor: isConfirming ? "#16a34a" : ESPELHO_STATUS_COLOR[u.status] }}
-                            className={`h-10 min-w-[56px] px-2 rounded text-[10px] font-bold text-white transition-all ${isDisp ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default opacity-70"} ${isConfirming ? "ring-2 ring-white scale-110" : ""}`}>
+                            className={`h-10 min-w-[56px] px-2 rounded text-[10px] font-bold text-white transition-all ${isDisp && !viewOnly ? "hover:scale-110 hover:shadow-md cursor-pointer" : "cursor-default opacity-70"} ${isConfirming ? "ring-2 ring-white scale-110" : ""}`}>
                             {u.nome}
                           </button>
                         );
@@ -6300,6 +6303,7 @@ function discardAiSuggestion() {
           trocandoUnitId={espelhoModal.trocandoUnitId}
           trocandoUnitNome={espelhoModal.trocandoUnitNome}
           linkStatus={currentStageUnitAction === "RESERVA" ? "RESERVADO" : "PROPOSTA"}
+          viewOnly={user?.role === "PARTNER"}
           onClose={() => setEspelhoModal(null)}
           onDone={() => { setEspelhoModal(null); loadLead(); }}
         />
