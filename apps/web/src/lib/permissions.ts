@@ -178,6 +178,7 @@ export type FieldVisibilityGroup = "lead" | "espelho";
 export const FIELD_VISIBILITY_FIELDS: { key: string; label: string; group: FieldVisibilityGroup }[] = [
   { key: "lead.telefone",    label: "Telefone / WhatsApp",          group: "lead" },
   { key: "lead.dataCriacao", label: "Data de criação / entrada",    group: "lead" },
+  { key: "lead.historicoDatas", label: "Datas do histórico de movimentação", group: "lead" },
   { key: "lead.responsavel", label: "Atendente / Responsável",      group: "lead" },
   { key: "lead.conversa",    label: "Conversa (histórico + IA)",    group: "lead" },
   { key: "lead.cpf",         label: "CPF",                          group: "lead" },

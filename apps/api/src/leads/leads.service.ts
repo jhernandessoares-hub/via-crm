@@ -2914,13 +2914,17 @@ async listTransitions(user: any, leadId: string) {
     : [];
   const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome] as const));
 
+  // Externo Consultivo: oculta as datas do histórico se o tenant configurou assim.
+  const fv = await this.getPartnerFieldVisibility(user.tenantId, user.role);
+  const hideDate = !!fv && fv['lead.historicoDatas'] === false;
+
   return logs.map((l) => ({
     id: l.id,
     fromStage: l.fromStage,
     toStage: l.toStage,
     cascade: l.cascade,
     changedByName: l.changedBy ? userMap.get(l.changedBy) ?? null : null,
-    createdAt: l.createdAt,
+    createdAt: hideDate ? null : l.createdAt,
   }));
 }
 

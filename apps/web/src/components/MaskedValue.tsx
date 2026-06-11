@@ -23,16 +23,21 @@ export default function MaskedValue({
   if (visible) return <>{children}</>;
 
   return (
-    <span className={`relative inline-flex items-center group align-middle ${className}`}>
+    <span
+      className={`relative inline-flex items-center group align-middle cursor-help ${className}`}
+      title="Permissão não concedida"
+    >
       <span
         aria-hidden
-        title="Permissão não concedida"
-        className="blur-[5px] select-none pointer-events-none rounded text-[var(--shell-subtext)] bg-[var(--shell-hover)]/60"
-        style={{ minWidth: width }}
+        className="blur-[5px] select-none rounded text-[var(--shell-subtext)]"
+        style={{ minWidth: width, backgroundColor: "var(--shell-hover)" }}
       >
         ●●● ●●●●
       </span>
-      <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 z-50 hidden group-hover:block whitespace-nowrap rounded bg-black/80 px-2 py-1 text-[11px] font-medium text-white shadow-lg">
+      <span
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1 z-[100] hidden group-hover:block whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium text-white shadow-lg"
+        style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
+      >
         Permissão não concedida
       </span>
     </span>

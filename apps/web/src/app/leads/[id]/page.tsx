@@ -4318,7 +4318,7 @@ function discardAiSuggestion() {
                             <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)] mb-1">Histórico</div>
                             {(u.reservaHistory ?? []).map(h => (
                               <div key={h.id} className="text-[10px] text-[var(--shell-subtext)] flex flex-wrap gap-x-2">
-                                <span>{new Date(h.createdAt).toLocaleDateString("pt-BR")}</span>
+                                <span><MaskedField field="lead.historicoDatas">{new Date(h.createdAt).toLocaleDateString("pt-BR")}</MaskedField></span>
                                 <span className="font-medium">{h.statusAnterior}</span>
                                 {h.leadNome && <span>{"\u2192 " + h.leadNome}</span>}
                                 {h.finalPrice && <span>{"R$ " + h.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 0 })}</span>}
@@ -6583,7 +6583,7 @@ function discardAiSuggestion() {
                     )}
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    {t.cascade ? "Sistema" : (t.changedByName || "—")} · {new Date(t.createdAt).toLocaleString("pt-BR")}
+                    {t.cascade ? "Sistema" : (t.changedByName || "—")} · <MaskedField field="lead.historicoDatas">{new Date(t.createdAt).toLocaleString("pt-BR")}</MaskedField>
                   </div>
                 </li>
               ))}
