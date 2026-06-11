@@ -5443,7 +5443,7 @@ function discardAiSuggestion() {
               <div ref={bottomRef} />
             </div>
 
-            {!(lead as any)?.conversaRestricted && (
+            {!(lead as any)?.conversaRestricted && user?.role !== "PARTNER" && (
             <div className="border-t bg-[var(--shell-card-bg)] p-3 space-y-3">
               {/* PAINEL DA IA */}
               {tenantAiEnabled && <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
@@ -5969,7 +5969,7 @@ function discardAiSuggestion() {
                   </div>
                 </div>
 
-                {lead?.conversaAberta && user?.role !== "PARTNER" && (
+                {lead?.conversaAberta && (
                   <div className="flex items-center justify-end pb-1">
                     <button
                       onClick={() => setShowEndConvDialog(true)}

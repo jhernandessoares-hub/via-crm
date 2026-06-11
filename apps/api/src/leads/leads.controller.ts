@@ -33,6 +33,25 @@ const leadDocFileFilter = (_req: any, file: any, cb: (error: Error | null, accep
 export class LeadsController {
   constructor(private readonly leadsService: LeadsService) {}
 
+  /**
+   * Escrita no lead (editar/excluir): permitido se "Meus Leads" OU "Todos os Leads" conceder a
+   * ação. OWNER tem bypass. Externo Consultivo (PARTNER) tem tudo false → sempre bloqueado.
+   */
+  private async assertLeadWrite(req: any, action: 'edit' | 'delete') {
+    const { tenantId, role } = req.user;
+    const ok =
+      (await this.leadsService.hasPermission(tenantId, role, 'leads', action)) ||
+      (await this.leadsService.hasPermission(tenantId, role, 'pipeline', action));
+    if (!ok) throw new ForbiddenException('Sem permissão');
+  }
+
+  /** Verifica uma permissão específica (módulo/ação) e bloqueia se não tiver. */
+  private async assertPerm(req: any, module: string, action: string, msg = 'Sem permissão') {
+    if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, module, action))) {
+      throw new ForbiddenException(msg);
+    }
+  }
+
   // =========================
   // ROTAS FIXAS (SEM :id)
   // =========================
@@ -133,6 +152,7 @@ export class LeadsController {
 
   @Post(':id/end-conversation')
   async endConversation(@Req() req: any, @Param('id') id: string) {
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para encerrar conversa');
     const { tenantId } = req.user;
     return this.leadsService.endConversation(tenantId, id);
   }
@@ -143,6 +163,7 @@ export class LeadsController {
     @Param('id') winnerId: string,
     @Body() body: { sourceLeadId: string; fieldChoices: any },
   ) {
+    await this.assertPerm(req, 'duplicados', 'merge', 'Sem permissão para mesclar leads');
     return this.leadsService.mergeLeads(
       req.user.tenantId,
       winnerId,
@@ -220,6 +241,7 @@ export class LeadsController {
       payloadRaw?: any;
     },
   ) {
+    await this.assertLeadWrite(req, 'edit');
     return this.leadsService.createEvent(req.user, id, body);
   }
 
@@ -260,6 +282,7 @@ export class LeadsController {
       cadastroOrigem?: Record<string, string | null>;
     },
   ) {
+    await this.assertLeadWrite(req, 'edit');
     // AGENT só pode editar qualificação de leads atribuídos a si mesmo
     if (req.user.role === 'AGENT') {
       const lead = await this.leadsService.getById(req.user, id);
@@ -276,6 +299,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Body() body: { botPaused: boolean },
   ) {
+    await this.assertLeadWrite(req, 'edit');
     return this.leadsService.updateBotPaused(req.user.tenantId, id, body.botPaused);
   }
 
@@ -288,6 +312,7 @@ export class LeadsController {
     if (!body?.stageId) {
       throw new BadRequestException('stageId é obrigatório');
     }
+    await this.assertLeadWrite(req, 'edit');
 
     return this.leadsService.updateStage(req.user, id, body.stageId, {
       evidenceDocumentId: body.evidenceDocumentId,
@@ -367,6 +392,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Query('minutes') minutes?: string,
   ) {
+    await this.assertLeadWrite(req, 'edit');
     return this.leadsService.freezeSla(req.user, id, minutes);
   }
 
@@ -376,6 +402,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Query('reason') reason?: string,
   ) {
+    await this.assertLeadWrite(req, 'delete');
     return this.leadsService.deleteLead(req.user, id, reason);
   }
 
@@ -391,11 +418,13 @@ export class LeadsController {
   // 🚀 ENVIO REAL WHATSAPP (TEXTO)
   @Post(':id/send-whatsapp')
   async sendWhatsapp(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para enviar mensagens');
     return this.leadsService.sendWhatsappMessage(req.user, id, body);
   }
 
   @Patch(':id/canal')
   async updateCanal(@Req() req: any, @Param('id') id: string, @Body() body: { conversaCanal: string | null; conversaSessionId?: string | null }) {
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para alterar o canal');
     return this.leadsService.updateCanal(req.user, id, body);
   }
 
@@ -420,6 +449,7 @@ export class LeadsController {
         `Arquivo enviado não parece áudio (mimetype=${file.mimetype || '—'})`,
       );
     }
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para enviar mensagens');
 
     return this.leadsService.sendWhatsappAudioMessage(req.user, id, file);
   }
@@ -439,6 +469,7 @@ export class LeadsController {
     if (!file) {
       throw new BadRequestException('Arquivo não enviado (field: file)');
     }
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para enviar mensagens');
 
     return this.leadsService.sendWhatsappAttachment(req.user, id, file);
   }
@@ -456,6 +487,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Body() body: { nome: string; classificacao?: string },
   ) {
+    await this.assertLeadWrite(req, 'edit');
     return this.leadsService.createParticipante(req.user.tenantId, id, body);
   }
 
@@ -466,6 +498,7 @@ export class LeadsController {
     @Param('partId') partId: string,
     @Body() body: Record<string, any>,
   ) {
+    await this.assertLeadWrite(req, 'edit');
     return this.leadsService.updateParticipante(req.user.tenantId, id, partId, body);
   }
 
@@ -475,6 +508,7 @@ export class LeadsController {
     @Param('id') id: string,
     @Param('partId') partId: string,
   ) {
+    await this.assertLeadWrite(req, 'edit');
     return this.leadsService.deleteParticipante(req.user.tenantId, id, partId);
   }
 
