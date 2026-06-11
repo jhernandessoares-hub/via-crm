@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 export type LeadsViewMode = "KANBAN" | "LISTA";
 
 const STORAGE_KEY = "leads_view_mode";
-const DEFAULT_MODE: LeadsViewMode = "KANBAN";
+const DEFAULT_MODE: LeadsViewMode = "LISTA";
 
 /**
  * Hook compartilhado entre as três telas de leads (`/meus-leads`, `/pipeline`,
