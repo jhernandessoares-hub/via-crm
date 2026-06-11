@@ -3604,7 +3604,7 @@ function discardAiSuggestion() {
                   currentGroup={effectiveGroup}
                   allowedStageIds={allowedStages.map((s) => s.id)}
                   prevGroupActualStageId={prevGroupLastStageId}
-                  disabled={movingStage}
+                  disabled={movingStage || user?.role === "PARTNER"}
                   onSelectStage={handleSelectStage}
                 />
                 <EvidenceUploadModal

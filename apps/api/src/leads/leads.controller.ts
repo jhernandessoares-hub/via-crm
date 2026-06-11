@@ -49,7 +49,12 @@ export class LeadsController {
       observacao?: string;
     },
   ) {
-    if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'leads', 'create'))) {
+    // "Meus Leads" (leads) e "Todos os Leads" (pipeline) têm CRUD próprios; criar é permitido
+    // se qualquer um dos dois conceder (interpretação mais permissiva, sem contradição).
+    const canCreate =
+      (await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'leads', 'create')) ||
+      (await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'pipeline', 'create'));
+    if (!canCreate) {
       throw new ForbiddenException('Sem permissão para criar leads');
     }
     return this.leadsService.create(req.user.tenantId, body);

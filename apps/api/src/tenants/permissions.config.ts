@@ -25,7 +25,7 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
   },
   {
     key: 'leads',
-    label: 'Leads',
+    label: 'Meus Leads',
     actions: [
       { key: 'view',   label: 'Ver' },
       { key: 'create', label: 'Criar' },
@@ -86,9 +86,12 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
   },
   {
     key: 'pipeline',
-    label: 'Pipeline (todos os leads)',
+    label: 'Todos os Leads',
     actions: [
-      { key: 'view', label: 'Ver' },
+      { key: 'view',   label: 'Ver' },
+      { key: 'create', label: 'Criar' },
+      { key: 'edit',   label: 'Editar' },
+      { key: 'delete', label: 'Excluir' },
     ],
   },
   {
@@ -146,7 +149,7 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
   },
   {
     key: 'relatorios',
-    label: 'Relatórios Gerenciais',
+    label: 'Dashboard Gerencial (vendas)',
     actions: [
       { key: 'view', label: 'Ver' },
     ],
@@ -178,7 +181,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     channels:               { view: false, edit: false },
     botConfig:              { view: false, edit: false },
     settings:               { view: false, edit: false },
-    pipeline:               { view: true  },
+    pipeline:               { view: true,  create: true,  edit: true,  delete: true  },
     knowledgeBase:          { view: true,  create: true,  edit: true,  delete: true  },
     gestao_empreendimentos: { view: true,  create: true,  edit: true,  delete: false },
     inbox:                  { view: true,  send: true  },
@@ -198,7 +201,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     channels:               { view: false, edit: false },
     botConfig:              { view: false, edit: false },
     settings:               { view: false, edit: false },
-    pipeline:               { view: true  },
+    pipeline:               { view: true,  create: true,  edit: true,  delete: false },
     knowledgeBase:          { view: true,  create: false, edit: false, delete: false },
     gestao_empreendimentos: { view: true,  create: false, edit: false, delete: false },
     inbox:                  { view: true,  send: true  },
@@ -218,7 +221,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     channels:               { view: false, edit: false },
     botConfig:              { view: false, edit: false },
     settings:               { view: false, edit: false },
-    pipeline:               { view: false },
+    pipeline:               { view: false, create: false, edit: false, delete: false },
     knowledgeBase:          { view: true,  create: false, edit: false, delete: false },
     gestao_empreendimentos: { view: false, create: false, edit: false, delete: false },
     inbox:                  { view: false, send: false },

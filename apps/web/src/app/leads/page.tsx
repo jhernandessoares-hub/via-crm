@@ -12,6 +12,7 @@ import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { ReportModal } from "@/components/ReportModal";
 import { MaskedField } from "@/components/MaskedValue";
+import { useRequirePermission } from "@/lib/permissions";
 
 type PipelineStage = {
   id: string;
@@ -97,6 +98,7 @@ const SP9_GROUPS = new Set(["DOCUMENTACAO", "ESCOLHA_UNIDADE", "CONTRATO", "REGI
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
 
 export default function LeadsPage() {
+  const guard = useRequirePermission((can) => can("pipeline", "view"));
   const searchParams = useSearchParams();
   const activeGroup = searchParams.get("group");
   const pageTitle = activeGroup ? (GROUP_LABEL[activeGroup] ?? activeGroup) : "Leads";
@@ -355,6 +357,16 @@ export default function LeadsPage() {
     background: "var(--shell-bg)", color: "var(--shell-text)",
   };
 
+  if (guard !== "allowed") {
+    return (
+      <AppShell title={pageTitle}>
+        <div className="p-2 text-sm text-[var(--shell-subtext)]">
+          {guard === "checking" ? "Carregando..." : "Você não tem permissão para ver todos os leads."}
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell title={pageTitle}>
       <div className="flex items-start justify-between gap-3">
@@ -555,7 +567,7 @@ export default function LeadsPage() {
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
-                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
                       </div>
                     );
                   })}
@@ -608,7 +620,7 @@ export default function LeadsPage() {
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
-                      <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                      <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
                     </div>
                   );
                 })}

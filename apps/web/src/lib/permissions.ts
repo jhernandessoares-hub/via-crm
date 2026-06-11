@@ -35,7 +35,7 @@ export const PERMISSION_MODULES = [
   },
   {
     key: "leads",
-    label: "Leads",
+    label: "Meus Leads",
     actions: [
       { key: "view",   label: "Ver" },
       { key: "create", label: "Criar" },
@@ -94,8 +94,13 @@ export const PERMISSION_MODULES = [
   },
   {
     key: "pipeline",
-    label: "Pipeline (todos os leads)",
-    actions: [{ key: "view", label: "Ver" }],
+    label: "Todos os Leads",
+    actions: [
+      { key: "view",   label: "Ver" },
+      { key: "create", label: "Criar" },
+      { key: "edit",   label: "Editar" },
+      { key: "delete", label: "Excluir" },
+    ],
   },
   {
     key: "knowledgeBase",
@@ -152,7 +157,7 @@ export const PERMISSION_MODULES = [
   },
   {
     key: "relatorios",
-    label: "Relatórios Gerenciais",
+    label: "Dashboard Gerencial (vendas)",
     actions: [{ key: "view", label: "Ver" }],
   },
   {

@@ -10,6 +10,7 @@ import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { ReportModal } from "@/components/ReportModal";
 import { MaskedField } from "@/components/MaskedValue";
+import { useRequirePermission } from "@/lib/permissions";
 
 type PipelineStage = {
   id: string;
@@ -125,6 +126,7 @@ const INPUT_STYLE: React.CSSProperties = {
 };
 
 export default function PipelinePage() {
+  const guard = useRequirePermission((can) => can("pipeline", "view"));
   const [view, setView] = useLeadsViewMode();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -322,6 +324,16 @@ export default function PipelinePage() {
       <tbody>${tableRows}</tbody></table></body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
+  }
+
+  if (guard !== "allowed") {
+    return (
+      <AppShell title="Todos os Leads">
+        <div className="p-2 text-sm text-[var(--shell-subtext)]">
+          {guard === "checking" ? "Carregando..." : "Você não tem permissão para ver todos os leads."}
+        </div>
+      </AppShell>
+    );
   }
 
   return (
@@ -531,7 +543,7 @@ export default function PipelinePage() {
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
-                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
                       </div>
                     );
                   })}
@@ -578,7 +590,7 @@ export default function PipelinePage() {
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
-                    <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                    <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
                   </div>
                 );
               })}

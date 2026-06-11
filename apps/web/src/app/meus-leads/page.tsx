@@ -532,7 +532,7 @@ export default function MeusLeadsPage() {
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
-                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                        <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
                       </div>
                     );
                   })}
@@ -582,7 +582,7 @@ export default function MeusLeadsPage() {
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
-                      <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap">{formatDateTime(l.criadoEm)}</div>
+                      <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
                     </div>
                   );
                 })}

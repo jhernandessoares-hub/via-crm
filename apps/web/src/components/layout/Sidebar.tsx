@@ -226,7 +226,7 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         {can("leads", "view") && (
           <NavItem href="/meus-leads" label="Meus Leads" icon={User} badge={counts?.mine} />
         )}
-        {(role !== "AGENT" && role !== "PARTNER" || can("pipeline", "view")) && (
+        {can("pipeline", "view") && (
           <NavItem href="/pipeline" label="Todos os Leads" icon={Users} badge={counts?.total} />
         )}
         {(role === "OWNER" || role === "MANAGER" || can("duplicados", "view")) && (
@@ -234,7 +234,7 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         )}
 
         {/* Funil colapsável */}
-        {!collapsed && can("leads", "view") && (
+        {!collapsed && can("pipeline", "view") && (
           <div className="pt-1">
             <button
               type="button"
@@ -295,7 +295,7 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         )}
 
         {/* Funil compacto */}
-        {collapsed && can("leads", "view") && (
+        {collapsed && can("pipeline", "view") && (
           <Link
             href="/leads"
             title="Funil de Venda"
