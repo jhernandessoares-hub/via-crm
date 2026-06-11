@@ -37,8 +37,31 @@ export default function AdminAuditPage() {
             ) : data?.logs?.map((log: any) => (
               <tr key={log.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2"><span className="text-xs font-mono bg-gray-100 rounded px-2 py-0.5">{log.action}</span></td>
-                <td className="px-4 py-2 text-xs text-gray-500">{log.tenantId?.slice(0, 8) || "—"}</td>
-                <td className="px-4 py-2 text-xs text-gray-500">{log.userId?.slice(0, 8) || log.platformAdminId?.slice(0, 8) || "—"}</td>
+                <td className="px-4 py-2 text-xs text-gray-700">
+                  {log.tenantNome ? (
+                    <div>
+                      <div>{log.tenantNome}</div>
+                      <div className="text-[10px] text-gray-400 font-mono">{log.tenantId?.slice(0, 8)}</div>
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 font-mono">{log.tenantId?.slice(0, 8) || "—"}</span>
+                  )}
+                </td>
+                <td className="px-4 py-2 text-xs text-gray-700">
+                  {log.userNome ? (
+                    <div>
+                      <div>{log.userNome}</div>
+                      <div className="text-[10px] text-gray-400 font-mono">{log.userId?.slice(0, 8)}</div>
+                    </div>
+                  ) : log.platformAdminNome ? (
+                    <div>
+                      <div>{log.platformAdminNome} <span className="text-[10px] text-amber-600">(admin)</span></div>
+                      <div className="text-[10px] text-gray-400 font-mono">{log.platformAdminId?.slice(0, 8)}</div>
+                    </div>
+                  ) : (
+                    <span className="text-gray-400 font-mono">{(log.userId || log.platformAdminId)?.slice(0, 8) || "—"}</span>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-xs text-gray-500">{log.resourceType || "—"}</td>
                 <td className="px-4 py-2 text-xs text-gray-400">{new Date(log.createdAt).toLocaleString("pt-BR")}</td>
               </tr>

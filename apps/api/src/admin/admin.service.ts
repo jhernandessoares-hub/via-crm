@@ -219,7 +219,30 @@ export class AdminService {
       this.prisma.auditLog.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
       this.prisma.auditLog.count({ where }),
     ]);
-    return { logs, total, page, limit };
+
+    // Resolve nomes em batch (AuditLog não tem relação Prisma — IDs são strings soltas)
+    const tenantIds = [...new Set(logs.map((l) => l.tenantId).filter((id): id is string => !!id))];
+    const userIds = [...new Set(logs.map((l) => l.userId).filter((id): id is string => !!id))];
+    const adminIds = [...new Set(logs.map((l) => l.platformAdminId).filter((id): id is string => !!id))];
+
+    const [tenants, users, admins] = await Promise.all([
+      tenantIds.length ? this.prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, nome: true } }) : [],
+      userIds.length ? this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } }) : [],
+      adminIds.length ? this.prisma.platformAdmin.findMany({ where: { id: { in: adminIds } }, select: { id: true, nome: true } }) : [],
+    ]);
+
+    const tenantMap = new Map(tenants.map((t) => [t.id, t.nome] as const));
+    const userMap = new Map(users.map((u) => [u.id, u.nome] as const));
+    const adminMap = new Map(admins.map((a) => [a.id, a.nome] as const));
+
+    const enriched = logs.map((l) => ({
+      ...l,
+      tenantNome: l.tenantId ? tenantMap.get(l.tenantId) ?? null : null,
+      userNome: l.userId ? userMap.get(l.userId) ?? null : null,
+      platformAdminNome: l.platformAdminId ? adminMap.get(l.platformAdminId) ?? null : null,
+    }));
+
+    return { logs: enriched, total, page, limit };
   }
 
   async getTenantStats(tenantId: string) {
