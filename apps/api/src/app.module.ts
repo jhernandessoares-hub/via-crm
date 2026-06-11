@@ -38,6 +38,7 @@ import { PlansModule } from './plans/plans.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { LeadDocumentsModule } from './lead-documents/lead-documents.module';
 import { ReportsModule } from './reports/reports.module';
+import { SalesLeadsModule } from './sales-leads/sales-leads.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { ReportsModule } from './reports/reports.module';
     MessagingModule,
     LeadDocumentsModule,
     ReportsModule,
+    SalesLeadsModule,
   ],
   controllers: [AppController],
   providers: [

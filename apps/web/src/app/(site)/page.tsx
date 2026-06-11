@@ -19,6 +19,7 @@ import EditableText from "@/components/site-editor/EditableText";
 import EditableLogo from "@/components/site-editor/EditableLogo";
 import BlockRenderer from "@/components/site-editor/BlockRenderer";
 import EditorSidebar, { PreviewMode, FIELD_LABELS } from "@/components/site-editor/EditorSidebar";
+import SalesContactModal from "@/components/site/SalesContactModal";
 
 // â”€â”€â”€ Tipos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -120,6 +121,7 @@ export default function SitePage() {
   const [draft, setDraft] = useState<SiteContent>(cloneSiteContent());
   const [history, setHistory] = useState<SiteContent[]>([]);
   const [future, setFuture] = useState<SiteContent[]>([]);
+  const [salesModalOpen, setSalesModalOpen] = useState(false);
 
   const [editorMode, setEditorMode] = useState(false);
   const [isEditorMinimized, setIsEditorMinimized] = useState(false);
@@ -851,9 +853,9 @@ export default function SitePage() {
                           </div>
                         ))}
                       </div>
-                      <Link href="/login" className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition ${plan.featured ? "bg-slate-950 text-white hover:bg-slate-800" : "bg-white text-slate-950 hover:bg-slate-200"}`}>
+                      <button type="button" onClick={() => setSalesModalOpen(true)} className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition ${plan.featured ? "bg-slate-950 text-white hover:bg-slate-800" : "bg-white text-slate-950 hover:bg-slate-200"}`}>
                         Falar com vendas
-                      </Link>
+                      </button>
                     </article>
                   ))}
                 </div>
@@ -871,7 +873,13 @@ export default function SitePage() {
                   </div>
                   <div className="flex flex-col justify-center gap-4 rounded-[1.5rem] bg-slate-950 p-6 text-white">
                     <EditableText active={interactiveEditing} selected={selectedField === "finalCta.sideText"} label="Texto lateral CTA" value={view.finalCta.sideText} onClick={() => setSelectedField("finalCta.sideText")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "finalCta.sideText", v))} multiline className="text-sm leading-7 text-slate-300" styleBox={getElementStyle("finalCta.sideText")} minWidth={260} minHeight={120} onResize={(ns) => updateElementStyle("finalCta.sideText", ns)} />
-                    <EditableText active={interactiveEditing} selected={selectedField === "finalCta.buttonLabel"} label="Botão CTA Final" value={view.finalCta.buttonLabel} onClick={() => setSelectedField("finalCta.buttonLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "finalCta.buttonLabel", v))} className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950" styleBox={getElementStyle("finalCta.buttonLabel")} minWidth={180} minHeight={48} onResize={(ns) => updateElementStyle("finalCta.buttonLabel", ns)} />
+                    {interactiveEditing ? (
+                      <EditableText active={interactiveEditing} selected={selectedField === "finalCta.buttonLabel"} label="Botão CTA Final" value={view.finalCta.buttonLabel} onClick={() => setSelectedField("finalCta.buttonLabel")} onTextChange={(v) => updateDraft((next) => setFieldValue(next, "finalCta.buttonLabel", v))} className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950" styleBox={getElementStyle("finalCta.buttonLabel")} minWidth={180} minHeight={48} onResize={(ns) => updateElementStyle("finalCta.buttonLabel", ns)} />
+                    ) : (
+                      <button type="button" onClick={() => setSalesModalOpen(true)} className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100">
+                        {view.finalCta.buttonLabel}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -972,6 +980,8 @@ export default function SitePage() {
           />
         </div>
       )}
+
+      <SalesContactModal open={salesModalOpen} onClose={() => setSalesModalOpen(false)} />
     </div>
   );
 }

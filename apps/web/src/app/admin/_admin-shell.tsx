@@ -20,6 +20,7 @@ function isNavGroup(item: NavItem): item is NavGroup2 {
 const navItems: NavItem[] = [
   { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/site", label: "Gerenciador de Sites" },
+  { href: "/admin/leads-vendas", label: "📥 Leads de Vendas" },
   { href: "/admin/clientes", label: "Clientes" },
   {
     group: "IA",

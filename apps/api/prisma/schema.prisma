@@ -1090,6 +1090,25 @@ model PlatformConfigHistory {
   @@map("platform_config_history")
 }
 
+// Lead comercial do próprio VIA CRM (site institucional → "Falar com vendas").
+// Nível plataforma (não pertence a nenhum tenant) — visível no Platform Admin.
+model SalesLead {
+  id              String   @id @default(uuid())
+  nome            String
+  telefone        String
+  email           String?
+  empresa         String?
+  numFuncionarios String?
+  mensagem        String?
+  status          String   @default("NOVO") // NOVO | EM_CONTATO | CONVERTIDO | DESCARTADO
+  origem          String   @default("SITE")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@map("sales_leads")
+}
+
 model SiteTemplate {
   id          String       @id @default(uuid())
   name        String
