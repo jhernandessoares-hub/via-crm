@@ -278,13 +278,13 @@ export const defaultSiteContent: SiteContent = {
   plans: [
     {
       name: "Start",
-      price: "R$ 297/mês",
+      price: "Sob consulta",
       description: "Para operações enxutas que precisam sair do improviso.",
       items: ["Até 3 usuários", "Atendimento centralizado", "Agenda básica", "Suporte por e-mail"],
     },
     {
       name: "Performance",
-      price: "R$ 697/mês",
+      price: "Sob consulta",
       description: "Para imobiliárias em crescimento com foco em organização e produtividade.",
       items: ["Até 10 usuários", "Canais integrados", "Secretária e agenda", "Dashboards operacionais"],
       featured: true,
