@@ -29,9 +29,9 @@ export class AuthService {
       return v;
     }
 
-    // Se não é UUID, trata como slug
+    // Se não é UUID, trata como slug (ignora maiúsculas/minúsculas)
     const tenant = await this.prisma.tenant.findFirst({
-      where: { slug: v, ativo: true },
+      where: { slug: { equals: v, mode: 'insensitive' }, ativo: true },
     });
 
     if (!tenant) throw new UnauthorizedException('Tenant inválido');

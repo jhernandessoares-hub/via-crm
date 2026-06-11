@@ -169,11 +169,13 @@ export default function LoginPage() {
                 Identificador da empresa
               </label>
               <input
+                name="tenant"
+                id="tenant"
                 className="w-full h-11 rounded-xl border border-gray-200 px-4 text-sm outline-none transition-all focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
                 value={tenant}
                 onChange={(e) => setTenant(e.target.value)}
                 placeholder="ex: minha-imobiliaria"
-                autoComplete="organization"
+                autoComplete="off"
               />
             </div>
 
@@ -182,11 +184,13 @@ export default function LoginPage() {
               <label className="block text-sm font-medium text-gray-700">E-mail</label>
               <input
                 type="email"
+                name="email"
+                id="email"
                 className="w-full h-11 rounded-xl border border-gray-200 px-4 text-sm outline-none transition-all focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
-                autoComplete="email"
+                autoComplete="username"
               />
             </div>
 
@@ -205,6 +209,8 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type={showSenha ? "text" : "password"}
+                  name="senha"
+                  id="senha"
                   className="w-full h-11 rounded-xl border border-gray-200 px-4 pr-11 text-sm outline-none transition-all focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
