@@ -574,6 +574,12 @@ export class DevelopmentsService {
         updateData.comprador = null;
         updateData.soldAt = null;
       }
+
+      // Ao virar VENDIDO: garante soldAt mesmo que o cliente não envie (integridade independente do front).
+      // Sem isso, a venda some do Dashboard Gerencial (que filtra VENDIDO por soldAt no período).
+      if (newStatus === 'VENDIDO' && updateData.soldAt == null) {
+        updateData.soldAt = new Date();
+      }
     }
 
     // Histórico de bloqueio: registra toda transição que envolva BLOQUEADO
