@@ -2,48 +2,63 @@
 import { Fragment, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-api";
 
-// Ações conhecidas (espelha o union AuditAction em apps/api/src/audit/audit.service.ts)
-const ACTIONS = [
-  "LOGIN",
-  "LOGIN_FAILED",
-  "TOKEN_REFRESH",
-  "CREATE_LEAD",
-  "VIEW_LEAD",
-  "DELETE_LEAD",
-  "EXPORT_DATA",
-  "UPDATE_QUALIFICATION",
-  "MOVE_PIPELINE",
-  "CREATE_USER",
-  "UPDATE_USER",
-  "PASSWORD_RESET_REQUESTED",
-  "PASSWORD_RESET_COMPLETED",
-  "PLATFORM_ADMIN_LOGIN",
-  "PLATFORM_CREATE_TENANT",
-  "PLATFORM_SUSPEND_TENANT",
-  "PLATFORM_ACTIVATE_TENANT",
-  "PLATFORM_CHANGE_PLAN",
-  "PLATFORM_IMPERSONATE",
-  "PLATFORM_EXPORT_TENANT_DATA",
-  "PLATFORM_UPDATE_TENANT",
-  "PLATFORM_CREATE_USER",
-  "PLATFORM_UPDATE_USER",
-  "PLATFORM_TOGGLE_USER",
-  "PLATFORM_RESET_USER_PASSWORD",
-  "PLATFORM_DELETE_USER",
-  "PLATFORM_CREATE_AGENT_TEMPLATE",
-  "PLATFORM_UPDATE_AGENT_TEMPLATE",
-  "PLATFORM_DELETE_AGENT_TEMPLATE",
-  "PLATFORM_PUSH_AGENT_TEMPLATE",
-  "PLATFORM_QUEUE_RECOVER",
-  "PLATFORM_UPDATE_CONFIG",
-  "PLAN_UPDATED",
-  "ADDON_UPDATED",
-  "TENANT_PLAN_CHANGED",
-  "TENANT_LIMITS_OVERRIDE",
-  "TENANT_ADDON_ADDED",
-  "TENANT_ADDON_REMOVED",
-  "LEAD_MERGE",
-];
+// Rótulos legíveis das ações (espelha o union AuditAction em apps/api/src/audit/audit.service.ts)
+const ACTION_LABELS: Record<string, string> = {
+  LOGIN: "Entrou no sistema",
+  LOGIN_FAILED: "Falha de login",
+  TOKEN_REFRESH: "Renovou sessão",
+  CREATE_LEAD: "Criou lead",
+  VIEW_LEAD: "Visualizou lead",
+  DELETE_LEAD: "Excluiu lead",
+  EXPORT_DATA: "Exportou dados",
+  UPDATE_QUALIFICATION: "Atualizou qualificação",
+  MOVE_PIPELINE: "Moveu etapa do funil",
+  CREATE_USER: "Criou usuário",
+  UPDATE_USER: "Editou usuário",
+  PASSWORD_RESET_REQUESTED: "Solicitou troca de senha",
+  PASSWORD_RESET_COMPLETED: "Trocou a senha",
+  PLATFORM_ADMIN_LOGIN: "Login admin da plataforma",
+  PLATFORM_CREATE_TENANT: "Criou tenant",
+  PLATFORM_SUSPEND_TENANT: "Suspendeu tenant",
+  PLATFORM_ACTIVATE_TENANT: "Ativou tenant",
+  PLATFORM_CHANGE_PLAN: "Alterou plano",
+  PLATFORM_IMPERSONATE: "Acessou como tenant (impersonate)",
+  PLATFORM_EXPORT_TENANT_DATA: "Exportou dados do tenant",
+  PLATFORM_UPDATE_TENANT: "Editou tenant",
+  PLATFORM_CREATE_USER: "Criou usuário (admin)",
+  PLATFORM_UPDATE_USER: "Editou usuário (admin)",
+  PLATFORM_TOGGLE_USER: "Ativou/desativou usuário",
+  PLATFORM_RESET_USER_PASSWORD: "Redefiniu senha de usuário",
+  PLATFORM_DELETE_USER: "Removeu usuário",
+  PLATFORM_CREATE_AGENT_TEMPLATE: "Criou template de agente",
+  PLATFORM_UPDATE_AGENT_TEMPLATE: "Editou template de agente",
+  PLATFORM_DELETE_AGENT_TEMPLATE: "Removeu template de agente",
+  PLATFORM_PUSH_AGENT_TEMPLATE: "Publicou template de agente",
+  PLATFORM_QUEUE_RECOVER: "Recuperou fila",
+  PLATFORM_UPDATE_CONFIG: "Alterou config global",
+  PLAN_UPDATED: "Atualizou plano",
+  ADDON_UPDATED: "Atualizou add-on",
+  TENANT_PLAN_CHANGED: "Mudou plano do tenant",
+  TENANT_LIMITS_OVERRIDE: "Ajustou limites do tenant",
+  TENANT_ADDON_ADDED: "Adicionou add-on",
+  TENANT_ADDON_REMOVED: "Removeu add-on",
+  LEAD_MERGE: "Mesclou leads",
+};
+const ACTIONS = Object.keys(ACTION_LABELS);
+const actionLabel = (a: string) => ACTION_LABELS[a] ?? a;
+
+// Tipo do alvo (resourceType) em português
+const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  lead: "Lead",
+  unit: "Unidade",
+  developmentunit: "Unidade",
+  tenant: "Tenant",
+  user: "Usuário",
+  planconfig: "Plano",
+  addonconfig: "Add-on",
+};
+const resourceTypeLabel = (t?: string | null) =>
+  t ? RESOURCE_TYPE_LABELS[t.toLowerCase()] ?? t : "";
 
 export default function AdminAuditPage() {
   const [data, setData] = useState<any>(null);
@@ -130,7 +145,7 @@ export default function AdminAuditPage() {
           >
             <option value="">Todas as ações</option>
             {ACTIONS.map((a) => (
-              <option key={a} value={a}>{a}</option>
+              <option key={a} value={a}>{actionLabel(a)}</option>
             ))}
           </select>
         </div>
@@ -166,7 +181,7 @@ export default function AdminAuditPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              {["", "Ação", "Tenant", "Usuário", "Recurso", "Data"].map((h, i) => (
+              {["", "Ação", "Tenant", "Usuário", "O quê / Onde", "Data"].map((h, i) => (
                 <th key={i} className="px-4 py-3 text-left text-xs font-medium text-gray-500">{h}</th>
               ))}
             </tr>
@@ -185,7 +200,10 @@ export default function AdminAuditPage() {
                     className="hover:bg-gray-50 cursor-pointer"
                   >
                     <td className="px-4 py-2 text-gray-400 text-xs w-6">{expanded ? "▾" : "▸"}</td>
-                    <td className="px-4 py-2"><span className="text-xs font-mono bg-gray-100 rounded px-2 py-0.5">{log.action}</span></td>
+                    <td className="px-4 py-2">
+                      <div className="text-xs font-medium text-gray-800">{actionLabel(log.action)}</div>
+                      <div className="text-[10px] text-gray-400 font-mono">{log.action}</div>
+                    </td>
                     <td className="px-4 py-2 text-xs text-gray-700">
                       {log.tenantNome ? (
                         <div>
@@ -211,7 +229,18 @@ export default function AdminAuditPage() {
                         <span className="text-gray-400 font-mono">{(log.userId || log.platformAdminId)?.slice(0, 8) || "—"}</span>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-xs text-gray-500">{log.resourceType || "—"}</td>
+                    <td className="px-4 py-2 text-xs text-gray-700">
+                      {log.resourceLabel ? (
+                        <div>
+                          <div className="font-medium">{log.resourceLabel}</div>
+                          <div className="text-[10px] text-gray-400">{resourceTypeLabel(log.resourceType)}</div>
+                        </div>
+                      ) : log.resourceType ? (
+                        <span className="text-gray-500">{resourceTypeLabel(log.resourceType)}</span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-xs text-gray-400">{new Date(log.createdAt).toLocaleString("pt-BR")}</td>
                   </tr>
                   {expanded && (

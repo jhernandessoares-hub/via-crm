@@ -246,21 +246,62 @@ export class AdminService {
     const userIds = [...new Set(logs.map((l) => l.userId).filter((id): id is string => !!id))];
     const adminIds = [...new Set(logs.map((l) => l.platformAdminId).filter((id): id is string => !!id))];
 
-    const [tenants, users, admins] = await Promise.all([
+    // Resolve o ALVO da ação (resourceId) para um nome legível, por tipo de recurso.
+    const rt = (l: { resourceType?: string | null }) => (l.resourceType ?? '').toLowerCase();
+    const leadResourceIds = [...new Set(logs.filter((l) => rt(l) === 'lead' && l.resourceId).map((l) => l.resourceId as string))];
+    const unitResourceIds = [...new Set(logs.filter((l) => (rt(l) === 'unit' || rt(l) === 'developmentunit') && l.resourceId).map((l) => l.resourceId as string))];
+    const tenantResourceIds = [...new Set(logs.filter((l) => rt(l) === 'tenant' && l.resourceId).map((l) => l.resourceId as string))];
+    const userResourceIds = [...new Set(logs.filter((l) => rt(l) === 'user' && l.resourceId).map((l) => l.resourceId as string))];
+
+    const [tenants, users, admins, leadTargets, unitTargets, tenantTargets, userTargets] = await Promise.all([
       tenantIds.length ? this.prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, nome: true } }) : [],
       userIds.length ? this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, nome: true } }) : [],
       adminIds.length ? this.prisma.platformAdmin.findMany({ where: { id: { in: adminIds } }, select: { id: true, nome: true } }) : [],
+      leadResourceIds.length ? this.prisma.lead.findMany({ where: { id: { in: leadResourceIds } }, select: { id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true } }) : [],
+      unitResourceIds.length ? this.prisma.developmentUnit.findMany({ where: { id: { in: unitResourceIds } }, select: { id: true, nome: true, tower: { select: { nome: true } } } }) : [],
+      tenantResourceIds.length ? this.prisma.tenant.findMany({ where: { id: { in: tenantResourceIds } }, select: { id: true, nome: true } }) : [],
+      userResourceIds.length ? this.prisma.user.findMany({ where: { id: { in: userResourceIds } }, select: { id: true, nome: true } }) : [],
     ]);
 
     const tenantMap = new Map(tenants.map((t) => [t.id, t.nome] as const));
     const userMap = new Map(users.map((u) => [u.id, u.nome] as const));
     const adminMap = new Map(admins.map((a) => [a.id, a.nome] as const));
 
+    // Mapas do alvo → label legível
+    const fmtNum = (n: number | null) => (n ? `#${String(n).padStart(6, '0')}` : '');
+    const leadTargetMap = new Map(
+      leadTargets.map((l) => [l.id, [l.nomeCorreto ?? l.nome ?? 'Lead', fmtNum(l.numero)].filter(Boolean).join(' ')] as const),
+    );
+    const unitTargetMap = new Map(
+      unitTargets.map((u) => [u.id, [u.tower?.nome, u.nome].filter(Boolean).join(' · ') || 'Unidade'] as const),
+    );
+    const tenantTargetMap = new Map(tenantTargets.map((t) => [t.id, t.nome] as const));
+    const userTargetMap = new Map(userTargets.map((u) => [u.id, u.nome] as const));
+
+    const resolveTarget = (l: { resourceType?: string | null; resourceId?: string | null }): string | null => {
+      if (!l.resourceId) return null;
+      switch (rt(l)) {
+        case 'lead':
+          return leadTargetMap.get(l.resourceId) ?? null;
+        case 'unit':
+        case 'developmentunit':
+          return unitTargetMap.get(l.resourceId) ?? null;
+        case 'tenant':
+          return tenantTargetMap.get(l.resourceId) ?? null;
+        case 'user':
+          return userTargetMap.get(l.resourceId) ?? null;
+        default:
+          // PlanConfig/AddonConfig/etc — o próprio resourceId já é legível (ex: "PRO")
+          return l.resourceId;
+      }
+    };
+
     const enriched = logs.map((l) => ({
       ...l,
       tenantNome: l.tenantId ? tenantMap.get(l.tenantId) ?? null : null,
       userNome: l.userId ? userMap.get(l.userId) ?? null : null,
       platformAdminNome: l.platformAdminId ? adminMap.get(l.platformAdminId) ?? null : null,
+      resourceLabel: resolveTarget(l),
     }));
 
     return { logs: enriched, total, page, limit };
