@@ -1026,7 +1026,7 @@ export class LeadsService {
   // =============================
   // CRUD BÁSICO
   // =============================
-  async create(tenantId: string, body: any) {
+  async create(tenantId: string, body: any, actor?: { id?: string; sub?: string; role?: string }) {
     const telefoneRaw = body?.telefone ? String(body.telefone) : '';
     const telefoneDigits = this.normalizePhoneBR(telefoneRaw);
 
@@ -1090,6 +1090,15 @@ export class LeadsService {
       }
       throw err;
     }
+
+    this.audit.log({
+      tenantId,
+      userId: actor?.id ?? actor?.sub,
+      action: 'CREATE_LEAD',
+      resourceType: 'lead',
+      resourceId: lead.id,
+      metadata: { nome: body.nome, origem: body.origem ?? null, role: actor?.role ?? null },
+    });
 
     return lead;
   }
@@ -1948,10 +1957,21 @@ async getById(user: any, id: string) {
       throw new ForbiddenException('Externo Consultivo não pode ser responsável por leads');
     }
 
-    return this.prisma.lead.update({
+    const result = await this.prisma.lead.update({
       where: { id },
       data: { assignedUserId },
     });
+
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user?.id ?? user?.sub,
+      action: 'ASSIGN_LEAD',
+      resourceType: 'lead',
+      resourceId: id,
+      metadata: { assignedUserId, role: user?.role ?? null },
+    });
+
+    return result;
   }
 
   async getAllowedStageTransitions(user: any, leadId: string) {
@@ -2314,7 +2334,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
   uf?: string | null;
   telefone?: string | null;
   email?: string | null;
-}) {
+}, actor?: { id?: string; sub?: string; role?: string }) {
   // Campos monetários: o front envia string (input type="number") — converter para Float (vazio → null)
   const toFloat = (v: any): number | null => {
     if (v === '' || v === null || v === undefined) return null;
@@ -2356,7 +2376,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
   }
   if ((data as any).cadastroOrigem !== undefined) updateData.cadastroOrigem = (data as any).cadastroOrigem;
 
-  return this.prisma.lead.update({
+  const updated = await this.prisma.lead.update({
     where: { id: leadId, tenantId },
     data: updateData,
     select: {
@@ -2368,6 +2388,21 @@ async updateQualification(tenantId: string, leadId: string, data: {
       cpf: true, telefone: true, telefoneKey: true,
     },
   });
+
+  // Registra a edição na trilha de auditoria — guarda QUAIS campos mudaram (não os valores)
+  const camposAlterados = Object.keys(updateData).filter((k) => k !== 'telefoneKey');
+  if (camposAlterados.length) {
+    this.audit.log({
+      tenantId,
+      userId: actor?.id ?? actor?.sub,
+      action: 'UPDATE_QUALIFICATION',
+      resourceType: 'lead',
+      resourceId: leadId,
+      metadata: { campos: camposAlterados, role: actor?.role ?? null },
+    });
+  }
+
+  return updated;
 }
 
 async updateStage(

@@ -76,7 +76,7 @@ export class LeadsController {
     if (!canCreate) {
       throw new ForbiddenException('Sem permissão para criar leads');
     }
-    return this.leadsService.create(req.user.tenantId, body);
+    return this.leadsService.create(req.user.tenantId, body, req.user);
   }
 
   @Get('my')
@@ -290,7 +290,7 @@ export class LeadsController {
         throw new ForbiddenException('Sem permissão para editar este lead');
       }
     }
-    return this.leadsService.updateQualification(req.user.tenantId, id, body);
+    return this.leadsService.updateQualification(req.user.tenantId, id, body, req.user);
   }
 
   @Patch(':id/bot-paused')

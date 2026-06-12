@@ -43,6 +43,9 @@ const ACTION_LABELS: Record<string, string> = {
   TENANT_ADDON_ADDED: "Adicionou add-on",
   TENANT_ADDON_REMOVED: "Removeu add-on",
   LEAD_MERGE: "Mesclou leads",
+  ASSIGN_LEAD: "Atribuiu responsável",
+  UNIT_STATUS_CHANGED: "Alterou status de unidade",
+  UNLINK_UNIT: "Desvinculou unidade",
 };
 const ACTIONS = Object.keys(ACTION_LABELS);
 const actionLabel = (a: string) => ACTION_LABELS[a] ?? a;

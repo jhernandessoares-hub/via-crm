@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { Prisma } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class DevelopmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async findAll(tenantId: string, role?: string) {
     // Não-OWNER só vê empreendimentos publicados
@@ -597,7 +601,7 @@ export class DevelopmentsService {
       }
     }
 
-    return this.prisma.developmentUnit.update({
+    const result = await this.prisma.developmentUnit.update({
       where: { id: unitId },
       data: updateData,
       include: {
@@ -605,6 +609,25 @@ export class DevelopmentsService {
         bloqueioHistory: { orderBy: { createdAt: 'asc' } },
       },
     });
+
+    // Trilha de auditoria: mudança de status da unidade (proposta/reserva/venda/bloqueio)
+    if (newStatus && newStatus !== unit.status) {
+      this.audit.log({
+        tenantId,
+        userId: actor?.id,
+        action: 'UNIT_STATUS_CHANGED',
+        resourceType: 'unit',
+        resourceId: unitId,
+        metadata: {
+          from: unit.status,
+          to: newStatus,
+          leadId: updateData.leadId ?? unit.leadId ?? null,
+          role: actor?.role ?? null,
+        },
+      });
+    }
+
+    return result;
   }
 
   async unlinkUnit(tenantId: string, developmentId: string, unitId: string, actor?: { id: string; nome: string }) {
@@ -633,7 +656,7 @@ export class DevelopmentsService {
     }
 
     // Volta para DISPONIVEL limpando campos de proposta
-    return this.prisma.developmentUnit.update({
+    const result = await this.prisma.developmentUnit.update({
       where: { id: unitId },
       data: {
         status: 'DISPONIVEL',
@@ -650,6 +673,17 @@ export class DevelopmentsService {
         reservaHistory: { orderBy: { createdAt: 'asc' } },
       },
     });
+
+    this.audit.log({
+      tenantId,
+      userId: actor?.id,
+      action: 'UNLINK_UNIT',
+      resourceType: 'unit',
+      resourceId: unitId,
+      metadata: { statusAnterior: unit.status, leadId: unit.leadId ?? null },
+    });
+
+    return result;
   }
 
   async getPaymentCondition(tenantId: string, developmentId: string) {
