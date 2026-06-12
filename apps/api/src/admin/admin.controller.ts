@@ -211,8 +211,15 @@ export class AdminController {
 
   @UseGuards(PlatformAdminGuard)
   @Get('audit-logs')
-  auditLogs(@Query('page') page?: string, @Query('limit') limit?: string, @Query('tenantId') tenantId?: string) {
-    return this.adminService.getAuditLogs(Number(page) || 1, Number(limit) || 50, tenantId);
+  auditLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('tenantId') tenantId?: string,
+    @Query('action') action?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.adminService.getAuditLogs(Number(page) || 1, Number(limit) || 50, { tenantId, action, from, to });
   }
 
   // ── Queue Monitoring ─────────────────────────────────────────────────────

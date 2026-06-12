@@ -214,9 +214,28 @@ export class AdminService {
     return { tenants: tenantCount, leads: leadCount, auditLogs: auditCount, timestamp: new Date() };
   }
 
-  async getAuditLogs(page = 1, limit = 50, tenantId?: string) {
+  async getAuditLogs(
+    page = 1,
+    limit = 50,
+    filters: { tenantId?: string; action?: string; from?: string; to?: string } = {},
+  ) {
     const skip = (page - 1) * limit;
-    const where = tenantId ? { tenantId } : {};
+    const where: {
+      tenantId?: string;
+      action?: string;
+      createdAt?: { gte?: Date; lte?: Date };
+    } = {};
+    if (filters.tenantId) where.tenantId = filters.tenantId;
+    if (filters.action) where.action = filters.action;
+    if (filters.from || filters.to) {
+      where.createdAt = {};
+      if (filters.from) where.createdAt.gte = new Date(filters.from);
+      if (filters.to) {
+        const end = new Date(filters.to);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
     const [logs, total] = await Promise.all([
       this.prisma.auditLog.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
       this.prisma.auditLog.count({ where }),
