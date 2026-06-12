@@ -4081,6 +4081,19 @@ function discardAiSuggestion() {
                 isHidden('lead.financeiro') || isHidden('lead.estadoCivil') || isHidden('lead.resumo')
               );
 
+              const qualCount = [
+                lead.rendaBrutaFamiliar != null,
+                lead.fgts != null,
+                lead.valorEntrada != null,
+                !!lead.estadoCivil,
+                !!lead.dataNascimento,
+                !!lead.tempoProcurandoImovel,
+                lead.conversouComCorretor != null,
+                !!lead.qualCorretorImobiliaria,
+                !!lead.perfilImovel,
+                !!lead.resumoLead,
+              ].filter(Boolean).length;
+
               const fmtCurrency = (v?: number | null) =>
                 v != null ? "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : null;
 
@@ -4111,7 +4124,7 @@ function discardAiSuggestion() {
                       <span className="text-sm font-semibold text-[var(--shell-text)]">Qualificação IA</span>
                       {hasAnyQual && (
                         <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
-                          Coletado
+                          {qualCount > 0 ? `${qualCount} ${qualCount === 1 ? "info" : "infos"}` : "Coletado"}
                         </span>
                       )}
                     </div>
@@ -4806,6 +4819,11 @@ function discardAiSuggestion() {
                 <span className="flex items-center gap-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                   Cadastro e Documentos
+                  {documents.length > 0 && (
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                      {documents.length} {documents.length === 1 ? "arquivo" : "arquivos"}
+                    </span>
+                  )}
                 </span>
                 <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
               </a>
