@@ -4275,8 +4275,10 @@ function discardAiSuggestion() {
                               <MaskedField field="unit.valores"><span className="font-medium text-[var(--shell-text)]">{"· R$ " + u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></MaskedField>
                             )}
                           </div>
+                        </div>
+                        {prodOpen && (<>
                           {user?.role !== "PARTNER" && (
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="mt-2 flex items-center gap-1">
                             <button
                               type="button"
                               onClick={() => {
@@ -4299,8 +4301,6 @@ function discardAiSuggestion() {
                             </button>
                           </div>
                           )}
-                        </div>
-                        {prodOpen && (<>
                         {u.propostaPagamento && <div className="mt-1 text-[var(--shell-subtext)]">{"Pagamento: " + u.propostaPagamento.replace(/_/g, " ")}</div>}
                         {u.propostaObs && <div className="text-[var(--shell-subtext)]">{"Obs: " + u.propostaObs}</div>}
                         {u.soldAt && <div className="text-[var(--shell-subtext)]">{"Vendido em: " + new Date(u.soldAt).toLocaleDateString("pt-BR")}</div>}
