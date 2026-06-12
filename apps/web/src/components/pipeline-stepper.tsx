@@ -226,6 +226,7 @@ interface PipelineStepperProps {
   currentGroup?: string | null;
   allowedStageIds?: string[];
   prevGroupActualStageId?: string | null;
+  previousStageName?: string | null;
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
 }
@@ -236,6 +237,7 @@ export function PipelineStepper({
   currentGroup,
   allowedStageIds,
   prevGroupActualStageId,
+  previousStageName,
   onSelectStage,
   disabled,
 }: PipelineStepperProps) {
@@ -307,11 +309,47 @@ export function PipelineStepper({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900">
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-        Você está em:{" "}
-        <span className="font-semibold text-slate-700 dark:text-slate-200">{groupLabel}</span>
-      </p>
+    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
+      {/* Header — breadcrumb: fase › etapa atual */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-sm">
+          <span className="font-medium text-slate-500 dark:text-slate-400">{groupLabel}</span>
+          {currentStage && (
+            <>
+              <span className="mx-1.5 text-slate-300 dark:text-neutral-600">›</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-100">{currentStage.name}</span>
+            </>
+          )}
+        </p>
+        {previousStageName && (
+          <span className="shrink-0 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-800 dark:border-purple-900/50 dark:bg-purple-950/40 dark:text-purple-300">
+            Etapa anterior: {previousStageName}
+          </span>
+        )}
+      </div>
+
+      {/* Trilha macro — progresso entre as fases do funil */}
+      {groupOrder.length > 1 && currentGroupIndex >= 0 && (
+        <div className="mb-3 flex items-center gap-2">
+          <div className="flex flex-1 items-center gap-1">
+            {groupOrder.map((g, i) => (
+              <div
+                key={g}
+                title={GROUP_LABELS[g] ?? g}
+                className={cn(
+                  "h-1.5 flex-1 rounded-full transition-colors",
+                  i < currentGroupIndex && "bg-blue-400 dark:bg-blue-500/70",
+                  i === currentGroupIndex && "bg-blue-600 dark:bg-blue-500",
+                  i > currentGroupIndex && "bg-slate-200 dark:bg-neutral-700",
+                )}
+              />
+            ))}
+          </div>
+          <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+            fase {currentGroupIndex + 1} de {groupOrder.length}
+          </span>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-start gap-x-1.5 gap-y-2">
 

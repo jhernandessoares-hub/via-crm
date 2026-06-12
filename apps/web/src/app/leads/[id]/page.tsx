@@ -1960,8 +1960,9 @@ export default function LeadDetailChatPage() {
   const [propostaSaving, setPropostaSaving] = useState(false);
 
   const [agendaEvents, setAgendaEvents] = useState<LeadCalendarEvent[]>([]);
-  const [agendaOpen, setAgendaOpen] = useState(true);
-  const [slaOpen, setSlaOpen] = useState(true);
+  const [agendaOpen, setAgendaOpen] = useState(false);
+  const [slaOpen, setSlaOpen] = useState(false);
+  const [creditOpen, setCreditOpen] = useState(false);
   const [editingAgendaEvent, setEditingAgendaEvent] = useState<LeadCalendarEvent | null>(null);
   const [agendaEditForm, setAgendaEditForm] = useState({ title: "", startAt: "", endAt: "", status: "", visibility: "" });
   const [agendaEditSaving, setAgendaEditSaving] = useState(false);
@@ -3475,17 +3476,7 @@ function discardAiSuggestion() {
       <div className="h-screen flex flex-col overflow-hidden">
 
             {/* STEPPER DO FUNIL (ETAPA 4) */}
-        <div className="mb-4 rounded-xl border bg-[var(--shell-card-bg)] p-3">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="text-xs font-semibold text-[var(--shell-subtext)]">Funil</div>
-
-            {(lead as any)?.stageKey === "BASE_FRIA" && (lead as any)?.previousStageName ? (
-              <div className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-800">
-                Etapa anterior: {(lead as any).previousStageName}
-              </div>
-            ) : null}
-          </div>
-
+        <div className="mb-4">
           {pipelineStages.length ? (() => {
             const currentStageId = (lead as any)?.stageId || null;
             // Se não veio ?group= na URL, usa o grupo da etapa atual do lead
@@ -3607,6 +3598,7 @@ function discardAiSuggestion() {
                   currentGroup={effectiveGroup}
                   allowedStageIds={allowedStages.map((s) => s.id)}
                   prevGroupActualStageId={prevGroupLastStageId}
+                  previousStageName={(lead as any)?.stageKey === "BASE_FRIA" ? (lead as any)?.previousStageName : null}
                   disabled={movingStage || user?.role === "PARTNER"}
                   onSelectStage={handleSelectStage}
                 />
@@ -4870,20 +4862,23 @@ function discardAiSuggestion() {
             {/* Análise de Crédito */}
             {lead && (
               <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--shell-card-border)]">
-                  <div className="flex items-center gap-2">
+                <div className={`flex items-center justify-between px-4 py-3 ${creditOpen ? "border-b border-[var(--shell-card-border)]" : ""}`}>
+                  <button type="button" onClick={() => setCreditOpen((o) => !o)}
+                    className="flex items-center gap-2 text-left">
                     <span className="text-sm">💳</span>
                     <span className="text-sm font-semibold text-[var(--shell-text)]">Análise de Crédito</span>
                     {creditRequests.length > 0 && (
                       <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{creditRequests.length}</span>
                     )}
-                  </div>
-                  <button onClick={() => setShowCreditForm((p) => !p)}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors">
+                    <span className="text-[var(--shell-subtext)] text-xs">{creditOpen ? "▲" : "▼"}</span>
+                  </button>
+                  <button onClick={() => { setCreditOpen(true); setShowCreditForm((p) => !p); }}
+                    className="ml-2 shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors">
                     + Enviar para Correspondente
                   </button>
                 </div>
 
+                {creditOpen && (<>
                 {/* Formulário de nova solicitação */}
                 {showCreditForm && (
                   <div className="px-4 py-4 border-b border-[var(--shell-card-border)] bg-blue-50/50 space-y-3">
@@ -4990,6 +4985,7 @@ function discardAiSuggestion() {
                     </div>
                   )
                 )}
+                </>)}
               </div>
             )}
 
@@ -5090,6 +5086,18 @@ function discardAiSuggestion() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-[var(--shell-text)]">SLA</span>
+                    {slaData?.lastInboundAt && (
+                      <span
+                        title={slaData.windowExpired ? "Janela WhatsApp (23h) expirada" : "Janela WhatsApp (23h) ativa"}
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          slaData.windowExpired
+                            ? "bg-red-500"
+                            : slaData.windowRemainingMinutes < 120
+                              ? "bg-amber-500"
+                              : "bg-emerald-500"
+                        }`}
+                      />
+                    )}
                     {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
                   </div>
                   <svg
