@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import JSZip from "jszip";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import { maskCPF, maskCEP, maskPhone, isValidCPF } from "@/lib/format";
@@ -445,6 +446,57 @@ async function fetchDocBlob(leadId: string, docId: string): Promise<{ blobUrl: s
   return { blobUrl: URL.createObjectURL(blob), mimeType };
 }
 
+// ─── Helpers: download de documentos ──────────────────────────────────────────
+
+function extFromMime(mime: string | null, filename?: string | null): string {
+  if (filename && filename.includes(".")) {
+    const ext = filename.split(".").pop()!.toLowerCase().trim();
+    if (ext && ext.length <= 5) return ext;
+  }
+  switch ((mime || "").toLowerCase()) {
+    case "application/pdf": return "pdf";
+    case "image/jpeg":
+    case "image/jpg": return "jpg";
+    case "image/png": return "png";
+    case "image/webp": return "webp";
+    default: return "bin";
+  }
+}
+
+function sanitizeFilename(name: string): string {
+  return (name || "arquivo").replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim();
+}
+
+function buildDocFilename(doc: DocItem, personName: string, ext: string): string {
+  const label = doc.tipo === "OUTRO" || doc.tipo === "NAO_IDENTIFICADO"
+    ? (doc.nome || "Documento")
+    : tipoLabel(doc.tipo);
+  return sanitizeFilename(`${label} - ${personName}`) + `.${ext}`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Garante nome único dentro do ZIP (evita sobrescrever arquivos homônimos)
+function dedupeName(name: string, used: Set<string>): string {
+  if (!used.has(name)) return name;
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  let i = 2;
+  let candidate = `${base} (${i})${ext}`;
+  while (used.has(candidate)) { i++; candidate = `${base} (${i})${ext}`; }
+  return candidate;
+}
+
 // ─── Modal: preview de documento ──────────────────────────────────────────────
 
 function PreviewModal({ leadId, docId, nome, onClose }: {
@@ -456,8 +508,16 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
   const [fetchError, setFetchError] = useState(false);
   const canDownload = useDocumentAccess() === "download";
 
+  // Controles de zoom/rotação/pan (apenas para imagens)
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
   useEffect(() => {
     let objectUrl: string | null = null;
+    setZoom(1); setRotation(0); setPan({ x: 0, y: 0 });
     fetchDocBlob(leadId, docId)
       .then(({ blobUrl: u, mimeType: m }) => { objectUrl = u; setBlobUrl(u); setMime(m); })
       .catch(() => setFetchError(true))
@@ -468,14 +528,70 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
   const isImage = !!mime?.startsWith("image/");
   const isPdf = mime === "application/pdf";
 
+  const clampZoom = (z: number) => Math.min(5, Math.max(0.25, z));
+  const resetView = () => { setZoom(1); setRotation(0); setPan({ x: 0, y: 0 }); };
+
+  function onImgMouseDown(e: React.MouseEvent) {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: pan.x, baseY: pan.y };
+    setDragging(true);
+  }
+  function onImgMouseMove(e: React.MouseEvent) {
+    if (!dragRef.current) return;
+    setPan({ x: dragRef.current.baseX + (e.clientX - dragRef.current.startX), y: dragRef.current.baseY + (e.clientY - dragRef.current.startY) });
+  }
+  function endDrag() { dragRef.current = null; setDragging(false); }
+  function onWheel(e: React.WheelEvent) {
+    if (!isImage) return;
+    e.preventDefault();
+    setZoom(z => clampZoom(z + (e.deltaY < 0 ? 0.2 : -0.2)));
+  }
+
+  async function downloadCurrent() {
+    if (!blobUrl) return;
+    try {
+      const blob = await (await fetch(blobUrl)).blob();
+      downloadBlob(blob, sanitizeFilename(nome) + "." + extFromMime(mime));
+    } catch { /* noop */ }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.88)" }}>
       <div className="relative w-full max-w-6xl mx-4 flex flex-col" style={{ maxHeight: "95vh" }} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between bg-[var(--shell-card-bg)] rounded-t-xl px-4 py-3 shrink-0">
+        <div className="flex items-center gap-2 bg-[var(--shell-card-bg)] rounded-t-xl px-4 py-3 shrink-0">
           <span className="text-sm font-medium text-[var(--shell-text)] truncate flex-1">{nome}</span>
-          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-4">✕</button>
+          {!loading && blobUrl && isImage && (
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button title="Diminuir zoom" onClick={() => setZoom(z => clampZoom(z - 0.2))} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 8a3 3 0 100 6m-3-3h6m4 0a7 7 0 11-14 0 7 7 0 0114 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11h6" /></svg>
+              </button>
+              <span className="text-xs text-[var(--shell-subtext)] w-10 text-center tabular-nums select-none">{Math.round(zoom * 100)}%</span>
+              <button title="Aumentar zoom" onClick={() => setZoom(z => clampZoom(z + 0.2))} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 8v6m-3-3h6m4 0a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              </button>
+              <button title="Girar 90°" onClick={() => setRotation(r => (r + 90) % 360)} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              </button>
+              <button title="Restaurar" onClick={resetView} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M20 8a8 8 0 00-15.5-2M4 16a8 8 0 0015.5 2" /></svg>
+              </button>
+            </div>
+          )}
+          {!loading && blobUrl && canDownload && (
+            <button title="Baixar" onClick={downloadCurrent} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)] shrink-0">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            </button>
+          )}
+          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-2 shrink-0">✕</button>
         </div>
-        <div className="flex-1 overflow-hidden bg-gray-900 rounded-b-xl flex items-center justify-center min-h-[300px]">
+        <div
+          className="flex-1 overflow-hidden bg-gray-900 rounded-b-xl flex items-center justify-center min-h-[300px]"
+          onWheel={onWheel}
+          onMouseMove={onImgMouseMove}
+          onMouseUp={endDrag}
+          onMouseLeave={endDrag}
+        >
           {loading && (
             <div className="flex flex-col items-center gap-3 text-[var(--shell-subtext)]">
               <svg className="animate-spin h-8 w-8" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
@@ -488,7 +604,18 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
             </div>
           )}
           {!loading && blobUrl && isImage && (
-            <img src={blobUrl} alt={nome} className="max-w-full max-h-[82vh] object-contain" />
+            <img
+              src={blobUrl}
+              alt={nome}
+              draggable={false}
+              onMouseDown={onImgMouseDown}
+              className="max-w-full max-h-[82vh] object-contain select-none"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rotation}deg) scale(${zoom})`,
+                transition: dragging ? "none" : "transform 0.15s ease-out",
+                cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "default",
+              }}
+            />
           )}
           {!loading && blobUrl && isPdf && (
             <iframe src={blobUrl} className="w-full" style={{ height: "82vh" }} title={nome} />
@@ -1596,6 +1723,8 @@ export default function DocumentosPage() {
   // Operações
   const [busyNA, setBusyNA] = useState<Set<string>>(new Set());
   const [busyDel, setBusyDel] = useState<Set<string>>(new Set());
+  const [busyDownload, setBusyDownload] = useState<Set<string>>(new Set());
+  const [downloadingAll, setDownloadingAll] = useState(false);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
   const [confirmRemovePartId, setConfirmRemovePartId] = useState<string | null>(null);
   const [busyRemove, setBusyRemove] = useState<Set<string>>(new Set());
@@ -1754,6 +1883,58 @@ export default function DocumentosPage() {
     finally { setBusyDel(prev => { const s = new Set(prev); s.delete(docId); return s; }); }
   }
 
+  // ─── Download de documentos ──────────────────────────────────────────────────
+
+  function personNameForDoc(doc: DocItem): string {
+    return doc.participanteNome ?? ((lead?.nomeCorreto ?? lead?.nome) || "Lead");
+  }
+
+  async function handleDownloadOne(doc: DocItem) {
+    if (busyDownload.has(doc.id)) return;
+    setBusyDownload(prev => new Set(prev).add(doc.id));
+    try {
+      const { blobUrl, mimeType } = await fetchDocBlob(leadId, doc.id);
+      const blob = await (await fetch(blobUrl)).blob();
+      URL.revokeObjectURL(blobUrl);
+      const ext = extFromMime(mimeType, doc.filename);
+      downloadBlob(blob, buildDocFilename(doc, personNameForDoc(doc), ext));
+    } catch (e: any) {
+      alert(e?.message ?? "Não foi possível baixar o arquivo");
+    } finally {
+      setBusyDownload(prev => { const s = new Set(prev); s.delete(doc.id); return s; });
+    }
+  }
+
+  async function handleDownloadAll() {
+    if (downloadingAll) return;
+    const realDocs = docs.filter(d => !d.naoAplicavel && (d.url || (d as any).publicId));
+    if (realDocs.length === 0) { alert("Nenhum documento para baixar."); return; }
+    setDownloadingAll(true);
+    try {
+      const zip = new JSZip();
+      const used = new Set<string>();
+      await Promise.all(realDocs.map(async (doc) => {
+        try {
+          const { blobUrl, mimeType } = await fetchDocBlob(leadId, doc.id);
+          const blob = await (await fetch(blobUrl)).blob();
+          URL.revokeObjectURL(blobUrl);
+          const ext = extFromMime(mimeType, doc.filename);
+          const name = dedupeName(buildDocFilename(doc, personNameForDoc(doc), ext), used);
+          used.add(name);
+          zip.file(name, blob);
+        } catch { /* pula arquivo indisponível, segue o ZIP */ }
+      }));
+      if (Object.keys(zip.files).length === 0) { alert("Nenhum arquivo pôde ser baixado."); return; }
+      const content = await zip.generateAsync({ type: "blob" });
+      const leadName = (lead?.nomeCorreto ?? lead?.nome) || "lead";
+      downloadBlob(content, `documentos - ${sanitizeFilename(leadName)}.zip`);
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao gerar o ZIP");
+    } finally {
+      setDownloadingAll(false);
+    }
+  }
+
   async function handleAddParticipante(nome: string, classificacao: string) {
     try {
       const created = await apiFetch(`/leads/${leadId}/participantes`, { method: "POST", body: JSON.stringify({ nome, classificacao }) });
@@ -1902,6 +2083,13 @@ export default function DocumentosPage() {
                   <button title="Visualizar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]" onClick={() => setPreviewDoc({ docId: doc.id, nome: doc.nome })}>
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                   </button>
+                  {canDownloadDocs && (
+                    <button title="Baixar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600 disabled:opacity-50" onClick={() => handleDownloadOne(doc)} disabled={busyDownload.has(doc.id)}>
+                      {busyDownload.has(doc.id)
+                        ? <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                        : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+                    </button>
+                  )}
                   <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600" onClick={() => setReclassifyDoc(doc)}>
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </button>
@@ -1970,6 +2158,13 @@ export default function DocumentosPage() {
                       {d.url && <button title="Visualizar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]" onClick={() => setPreviewDoc({ docId: d.id, nome: d.nome })}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                       </button>}
+                      {d.url && canDownloadDocs && (
+                        <button title="Baixar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600 disabled:opacity-50" onClick={() => handleDownloadOne(d)} disabled={busyDownload.has(d.id)}>
+                          {busyDownload.has(d.id)
+                            ? <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                            : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+                        </button>
+                      )}
                       <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600" onClick={() => setReclassifyDoc(d)}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                       </button>
@@ -2150,16 +2345,29 @@ export default function DocumentosPage() {
                 <h1 className="text-base font-semibold text-[var(--shell-text)]">Documentos</h1>
                 <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{leadDisplayName}</p>
               </div>
-              {!isPartner && (
-                <div className="flex items-center gap-2">
-                  <button className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => setBulkOpen(true)}>
-                    ↑ Subir vários
+              <div className="flex items-center gap-2">
+                {canDownloadDocs && docs.some(d => !d.naoAplicavel && (d.url || (d as any).publicId)) && (
+                  <button
+                    className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors disabled:opacity-60"
+                    onClick={handleDownloadAll}
+                    disabled={downloadingAll}
+                    title="Baixar todos os documentos em um arquivo ZIP">
+                    {downloadingAll
+                      ? <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Gerando…</>
+                      : <><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> Baixar todos</>}
                   </button>
-                  <button className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors" onClick={() => setAddPartOpen(true)}>
-                    + Participante
-                  </button>
-                </div>
-              )}
+                )}
+                {!isPartner && (
+                  <>
+                    <button className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => setBulkOpen(true)}>
+                      ↑ Subir vários
+                    </button>
+                    <button className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors" onClick={() => setAddPartOpen(true)}>
+                      + Participante
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
             <div className="px-6 py-5">
               <ProcessingSection />
