@@ -4262,15 +4262,18 @@ function discardAiSuggestion() {
                     const isDesvinculando = desvinculandoUnitId === u.id;
                     const isTrocando = trocandoUnit === u.id;
                     return (
-                      <div key={u.id} className={`rounded-lg border ${s.border} ${s.bg} p-3 text-xs`}>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
+                      <div key={u.id} className={`rounded-lg border ${s.border} ${s.bg} px-3 py-2 text-xs`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap min-w-0">
+                            <span className={`shrink-0 inline-block rounded-full ${s.badge} px-2 py-0.5 text-[10px] font-bold text-white`}>{s.label}</span>
                             <MaskedField field="unit.identificacao">
                               <span className="font-semibold text-[var(--shell-text)]">{u.development?.nome}</span>
                               {u.tower?.nome && <span className="text-[var(--shell-subtext)]">{"\u00b7 " + u.tower.nome}</span>}
                               <span className="text-[var(--shell-subtext)]">{"\u2014 " + u.nome}</span>
                             </MaskedField>
+                            {u.finalPrice && (
+                              <MaskedField field="unit.valores"><span className="font-medium text-[var(--shell-text)]">{"· R$ " + u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span></MaskedField>
+                            )}
                           </div>
                           {user?.role !== "PARTNER" && (
                           <div className="flex items-center gap-1 shrink-0">
@@ -4297,12 +4300,8 @@ function discardAiSuggestion() {
                           </div>
                           )}
                         </div>
-                        {u.finalPrice && (
-                          <div className="mt-1 text-[var(--shell-text)]">
-                            <MaskedField field="unit.valores">{"Valor: R$ " + u.finalPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</MaskedField>
-                          </div>
-                        )}
-                        {u.propostaPagamento && <div className="text-[var(--shell-subtext)]">{"Pagamento: " + u.propostaPagamento.replace(/_/g, " ")}</div>}
+                        {prodOpen && (<>
+                        {u.propostaPagamento && <div className="mt-1 text-[var(--shell-subtext)]">{"Pagamento: " + u.propostaPagamento.replace(/_/g, " ")}</div>}
                         {u.propostaObs && <div className="text-[var(--shell-subtext)]">{"Obs: " + u.propostaObs}</div>}
                         {u.soldAt && <div className="text-[var(--shell-subtext)]">{"Vendido em: " + new Date(u.soldAt).toLocaleDateString("pt-BR")}</div>}
                         {(u.reservaHistory ?? []).length > 0 && (
@@ -4331,6 +4330,7 @@ function discardAiSuggestion() {
                             </button>
                           )}
                         </div>
+                        </>)}
                         {isDesvinculando && (
                           <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 flex items-center gap-2">
                             <span className="text-[10px] text-red-700 flex-1">Desvincular unidade? O status volta para Disponível e o histórico é preservado no espelho.</span>
