@@ -7,10 +7,12 @@ import { PlatformAdminGuard } from './admin-auth.guard';
 import { AiProvidersService } from './ai-providers.service';
 import { PlansService } from './plans.service';
 import { PlansController } from './plans.controller';
+import { WhatsappUnofficialModule } from '../whatsapp-unofficial/whatsapp-unofficial.module';
 
 @Module({
   imports: [
     PrismaModule,
+    WhatsappUnofficialModule,
     JwtModule.registerAsync({
       useFactory: () => ({
         secret: process.env.PLATFORM_ADMIN_JWT_SECRET || process.env.JWT_SECRET,

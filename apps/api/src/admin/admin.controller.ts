@@ -290,4 +290,23 @@ export class AdminController {
   backfillLightMedia(@Query('since') since: string) {
     return this.adminService.backfillWhatsappLightMedia(since || '2026-05-26T00:00:00.000Z');
   }
+
+  // Backfill do histórico antigo de UM lead WhatsApp Light (Fase 0 / teste).
+  // Ex.: POST /admin/tools/backfill-light-history?leadId=<id>&maxPages=10
+  @UseGuards(PlatformAdminGuard)
+  @Post('tools/backfill-light-history')
+  backfillLightHistory(
+    @Query('leadId') leadId: string,
+    @Query('maxPages') maxPages?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('delayMs') delayMs?: string,
+    @Query('processMedia') processMedia?: string,
+  ) {
+    return this.adminService.backfillWhatsappLightHistory(leadId, {
+      maxPages: maxPages ? Number(maxPages) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      delayMs: delayMs ? Number(delayMs) : undefined,
+      processMedia: processMedia === 'false' ? false : undefined,
+    });
+  }
 }

@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { QueueService } from '../queue/queue.service';
+import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { DEFAULT_GLOBAL_SAFETY_RULES, DEFAULT_AGENT_IDENTITY_RULES, DEFAULT_WHATSAPP_FORMATTING_RULES } from '../ai/ai.service';
 import { Logger } from '../logger';
 
@@ -21,6 +22,7 @@ export class AdminService {
     private readonly audit: AuditService,
     private readonly email: EmailService,
     private readonly queue: QueueService,
+    private readonly whatsappUnofficial: WhatsappUnofficialService,
   ) {}
 
   async login(email: string, senha: string) {
@@ -902,5 +904,14 @@ export class AdminService {
     }
 
     return { candidates: candidates.length, ok, skip, fail, errors };
+  }
+
+  // Backfill do histórico antigo de UM lead (WhatsApp Light). Requer sessão conectada.
+  async backfillWhatsappLightHistory(
+    leadId: string,
+    opts?: { maxPages?: number; pageSize?: number; delayMs?: number; processMedia?: boolean },
+  ) {
+    if (!leadId) throw new BadRequestException('Parâmetro "leadId" é obrigatório.');
+    return this.whatsappUnofficial.backfillLeadHistory(leadId, opts);
   }
 }

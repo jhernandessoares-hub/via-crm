@@ -21,6 +21,20 @@ const logger = new Logger('WhatsappUnofficialService');
 // Tipos que não representam intenção do lead — não acionam IA nem criam lead de campanha
 const SILENT_INBOUND_TYPES = new Set(['sticker', 'poll', 'system', 'unknown', 'edited']);
 
+const WA_LIGHT_CHANNELS = ['whatsapp.unofficial.in', 'whatsapp.unofficial.out'];
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Contexto de uma importação de histórico em andamento (por sessão).
+// O handler `messaging-history.set` só persiste mensagens quando há um contexto ativo,
+// atribuindo cada mensagem ao lead dono do `remoteJid` e deduplicando por `key.id`.
+interface HistoryImportCtx {
+  tenantId: string;
+  jidToLead: Map<string, { leadId: string; knownKeyIds: Set<string> }>;
+  inserted: number;
+  processMedia: boolean;
+}
+
 // ── Extrator de texto/tipo de mensagens Baileys ───────────────────────────────
 
 function extractBaileysText(msgContent: any): { type: string; text: string } {
@@ -199,6 +213,8 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   // Mapa LID → phone por sessão (WhatsApp multi-device usa LIDs como ID interno)
   // Ex: { sessionId → Map('95236772601989' → '5513991431834') }
   private lidToPhone = new Map<string, Map<string, string>>();
+  // Importações de histórico ativas por sessão (backfill de mensagens antigas)
+  private historyImports = new Map<string, HistoryImportCtx>();
 
   private updateLidMap(sessionId: string, contacts: Array<{ id: string; lid?: string | null }>) {
     let map = this.lidToPhone.get(sessionId);
@@ -389,6 +405,20 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
         );
       }
     });
+
+    // Histórico (on-demand): resultados de `fetchMessageHistory` chegam aqui.
+    // Só age quando há uma importação ativa para a sessão — caso contrário ignora,
+    // para não interferir no fluxo normal de mensagens novas.
+    socket.ev.on('messaging-history.set', async ({ messages }) => {
+      const ctx = this.historyImports.get(sessionId);
+      if (!ctx || !messages?.length) return;
+      logger.log(`📜 messaging-history.set sessão=${sessionId} msgs=${messages.length} (import ativo)`);
+      for (const msg of messages) {
+        await this.persistHistoryMessage(ctx, msg).catch((e) =>
+          logger.warn(`Erro ao persistir histórico sessão=${sessionId}: ${e?.message}`),
+        );
+      }
+    });
   }
 
   async disconnect(sessionId: string) {
@@ -531,6 +561,186 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       logger.warn(`⚠️ Erro ao processar mídia inbound (${type}): ${err?.message}`);
       return { mediaUrl: null, mimeType: null, filename: null };
     }
+  }
+
+  // ── Importação de histórico antigo (backfill de mensagens) ─────────────────
+
+  // Persiste UMA mensagem histórica como LeadEvent, de forma inerte:
+  // sem mexer em lastInboundAt/conversaCanal/SLA, sem acionar IA, sem criar lead.
+  // Atribui ao lead dono do `remoteJid` (já conhecido no contexto) e deduplica por `key.id`.
+  private async persistHistoryMessage(ctx: HistoryImportCtx, msg: any) {
+    const jid: string | undefined = msg?.key?.remoteJid;
+    if (!jid) return;
+    const target = ctx.jidToLead.get(jid);
+    if (!target) return; // não é um lead rastreado nesta importação
+
+    const keyId: string | undefined = msg?.key?.id;
+    if (!keyId || target.knownKeyIds.has(keyId)) return; // dedup
+
+    const { type, text } = extractBaileysText(msg.message);
+    if (type === 'reaction') return; // reações não viram evento
+
+    const channel = msg.key.fromMe ? 'whatsapp.unofficial.out' : 'whatsapp.unofficial.in';
+    const tsSec = Number(msg.messageTimestamp) || 0;
+    const criadoEm = tsSec > 0 ? new Date(tsSec * 1000) : new Date();
+
+    // Mídia best-effort: imagem/vídeo/documento sobem ao Cloudinary; áudio sobe sem transcrever.
+    let media: { url: string; mimeType: string; filename: string | null; kind: string } | null = null;
+    let audioMediaUrl: string | null = null;
+    let audioMimeType: string | null = null;
+    if (ctx.processMedia) {
+      if (type === 'image' || type === 'video' || type === 'document') {
+        const r = await this.processMediaInbound(msg, type);
+        if (r.mediaUrl) {
+          media = { url: r.mediaUrl, mimeType: r.mimeType ?? 'application/octet-stream', filename: r.filename, kind: type };
+        }
+      } else if (type === 'audio') {
+        const a = await this.processHistoryAudio(msg);
+        audioMediaUrl = a.mediaUrl;
+        audioMimeType = a.mimeType;
+      }
+    }
+
+    await this.prisma.leadEvent.create({
+      data: {
+        tenantId: ctx.tenantId,
+        leadId: target.leadId,
+        channel,
+        isReentry: false,
+        criadoEm, // sobrescreve @default(now()) — preserva a ordem cronológica real
+        payloadRaw: {
+          from: jid,
+          type,
+          text,
+          rawMsg: msg,
+          historyImport: true,
+          ...(audioMediaUrl ? { mediaUrl: audioMediaUrl } : {}),
+          ...(audioMimeType ? { mimeType: audioMimeType } : {}),
+          ...(media ? { media } : {}),
+        },
+      },
+    });
+
+    target.knownKeyIds.add(keyId);
+    ctx.inserted++;
+  }
+
+  // Upload de áudio histórico ao Cloudinary (sem transcrição Whisper — economiza custo/tempo).
+  private async processHistoryAudio(msg: any): Promise<{ mediaUrl: string | null; mimeType: string | null }> {
+    try {
+      const buffer = (await downloadMediaMessage(msg, 'buffer', {})) as Buffer;
+      if (!buffer || buffer.length === 0) return { mediaUrl: null, mimeType: null };
+      const inner =
+        msg.message?.viewOnceMessage?.message ||
+        msg.message?.ephemeralMessage?.message ||
+        msg.message || {};
+      const rawMime: string = inner?.audioMessage?.mimetype ?? 'audio/ogg; codecs=opus';
+      const mimeType = rawMime.split(';')[0].trim();
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'ogg';
+      const mediaUrl = await new Promise<string>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'via-crm/whatsapp-light/audio', resource_type: 'video', format: ext, type: 'upload', access_mode: 'public' },
+          (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
+        );
+        Readable.from(buffer).pipe(stream);
+      });
+      return { mediaUrl, mimeType };
+    } catch (err: any) {
+      logger.warn(`⚠️ Erro ao subir áudio histórico: ${err?.message}`);
+      return { mediaUrl: null, mimeType: null };
+    }
+  }
+
+  // Carrega a âncora (msg mais antiga com key) e o set de key.id já conhecidos de um lead.
+  private async loadLeadAnchor(leadId: string): Promise<{
+    knownKeyIds: Set<string>;
+    anchorKey: any;
+    anchorTs: number;
+    anchorJid: string;
+  } | null> {
+    const events = await this.prisma.leadEvent.findMany({
+      where: { leadId, channel: { in: WA_LIGHT_CHANNELS } },
+      select: { payloadRaw: true },
+      orderBy: { criadoEm: 'asc' },
+    });
+    const knownKeyIds = new Set<string>();
+    let anchor: { key: any; ts: number; jid: string } | null = null;
+    for (const ev of events) {
+      const r = (ev.payloadRaw as any)?.rawMsg;
+      const kid = r?.key?.id;
+      if (kid) knownKeyIds.add(kid);
+      if (!anchor && r?.key?.id && r?.key?.remoteJid) {
+        anchor = { key: r.key, ts: Number(r.messageTimestamp) || 0, jid: r.key.remoteJid };
+      }
+    }
+    if (!anchor) return null;
+    return { knownKeyIds, anchorKey: anchor.key, anchorTs: anchor.ts, anchorJid: anchor.jid };
+  }
+
+  // Backfill do histórico de UM lead (modo de teste / Fase 0).
+  async backfillLeadHistory(
+    leadId: string,
+    opts?: { maxPages?: number; pageSize?: number; delayMs?: number; processMedia?: boolean },
+  ) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, tenantId: true, conversaSessionId: true, numero: true, nome: true },
+    });
+    if (!lead) throw new BadRequestException('Lead não encontrado');
+    const sessionId = lead.conversaSessionId;
+    if (!sessionId) throw new BadRequestException('Lead sem sessão WhatsApp Light vinculada (conversaSessionId)');
+    const socket = this.sockets.get(sessionId);
+    if (!socket) throw new BadRequestException(`Sessão Light ${sessionId} não está conectada`);
+    if (this.historyImports.has(sessionId)) {
+      throw new BadRequestException('Já existe uma importação de histórico em andamento nesta sessão');
+    }
+
+    const anchor = await this.loadLeadAnchor(leadId);
+    if (!anchor) {
+      throw new BadRequestException('Lead sem âncora — nenhum evento Light com rawMsg.key para paginar o histórico');
+    }
+
+    const pageSize = opts?.pageSize ?? 50;
+    const maxPages = opts?.maxPages ?? 10;
+    const delayMs = opts?.delayMs ?? 6000;
+    const processMedia = opts?.processMedia ?? true;
+
+    const ctx: HistoryImportCtx = {
+      tenantId: lead.tenantId,
+      jidToLead: new Map([[anchor.anchorJid, { leadId, knownKeyIds: anchor.knownKeyIds }]]),
+      inserted: 0,
+      processMedia,
+    };
+    this.historyImports.set(sessionId, ctx);
+
+    let pages = 0;
+    let curKey = anchor.anchorKey;
+    let curTs = anchor.anchorTs;
+    try {
+      for (pages = 0; pages < maxPages; pages++) {
+        const before = ctx.inserted;
+        logger.log(`📜 fetchMessageHistory lead=#${lead.numero} page=${pages + 1} anchorTs=${curTs}`);
+        await socket.fetchMessageHistory(pageSize, curKey, curTs);
+        await sleep(delayMs);
+        if (ctx.inserted === before) break; // nada novo chegou → fim do histórico disponível
+
+        // Avança a âncora para a mensagem mais antiga agora armazenada
+        const oldest = await this.prisma.leadEvent.findFirst({
+          where: { leadId, channel: { in: WA_LIGHT_CHANNELS } },
+          select: { payloadRaw: true },
+          orderBy: { criadoEm: 'asc' },
+        });
+        const ro = (oldest?.payloadRaw as any)?.rawMsg;
+        if (!ro?.key?.id) break;
+        curKey = ro.key;
+        curTs = Number(ro.messageTimestamp) || 0;
+      }
+    } finally {
+      this.historyImports.delete(sessionId);
+    }
+
+    logger.log(`📜 Backfill lead=#${lead.numero} concluído — inseridos=${ctx.inserted} páginas=${pages}`);
+    return { leadId, numero: lead.numero, nome: lead.nome, inserted: ctx.inserted, pages };
   }
 
   // ── Status ────────────────────────────────────────────────────────────────
