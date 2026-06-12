@@ -497,6 +497,93 @@ function dedupeName(name: string, used: Set<string>): string {
   return candidate;
 }
 
+// ─── Visualizador de imagem com zoom/rotação/pan + atalhos de teclado ─────────
+// Reutilizado pelo PreviewModal e pelos previews inline (FieldDocModal/IdentifyDocModal).
+// Atalhos (quando o foco não está em input/textarea/select): + / =  zoom in,
+//  - / _  zoom out, R girar 90°, 0 restaurar.
+
+function ZoomableImage({ src, alt, compact }: { src: string; alt: string; compact?: boolean }) {
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const clampZoom = (z: number) => Math.min(5, Math.max(0.25, z));
+  const reset = () => { setZoom(1); setRotation(0); setPan({ x: 0, y: 0 }); };
+
+  // Reseta a transformação ao trocar de imagem
+  useEffect(() => { reset(); }, [src]);
+
+  // Atalhos de teclado
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); setZoom(z => clampZoom(z + 0.2)); }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); setZoom(z => clampZoom(z - 0.2)); }
+      else if (e.key === "r" || e.key === "R") { e.preventDefault(); setRotation(r => (r + 90) % 360); }
+      else if (e.key === "0") { e.preventDefault(); reset(); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function onMouseDown(e: React.MouseEvent) {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: pan.x, baseY: pan.y };
+    setDragging(true);
+  }
+  function onMouseMove(e: React.MouseEvent) {
+    if (!dragRef.current) return;
+    setPan({ x: dragRef.current.baseX + (e.clientX - dragRef.current.startX), y: dragRef.current.baseY + (e.clientY - dragRef.current.startY) });
+  }
+  function endDrag() { dragRef.current = null; setDragging(false); }
+  function onWheel(e: React.WheelEvent) { e.preventDefault(); setZoom(z => clampZoom(z + (e.deltaY < 0 ? 0.2 : -0.2))); }
+
+  const btn = "p-1.5 rounded hover:bg-white/10 text-white/80 hover:text-white transition-colors";
+
+  return (
+    <div
+      className="relative w-full h-full flex-1 flex items-center justify-center overflow-hidden"
+      onWheel={onWheel}
+      onMouseMove={onMouseMove}
+      onMouseUp={endDrag}
+      onMouseLeave={endDrag}
+    >
+      {/* Barra flutuante de controles */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 rounded-lg bg-black/55 backdrop-blur px-1 py-0.5 shadow-lg" title="Atalhos: + / − zoom · R girar · 0 restaurar">
+        <button title="Diminuir zoom (−)" onClick={() => setZoom(z => clampZoom(z - 0.2))} className={btn}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 8a3 3 0 100 6m-3-3h6m4 0a7 7 0 11-14 0 7 7 0 0114 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11h6" /></svg>
+        </button>
+        {!compact && <span className="text-[11px] text-white/80 w-9 text-center tabular-nums select-none">{Math.round(zoom * 100)}%</span>}
+        <button title="Aumentar zoom (+)" onClick={() => setZoom(z => clampZoom(z + 0.2))} className={btn}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 8v6m-3-3h6m4 0a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        </button>
+        <button title="Girar 90° (R)" onClick={() => setRotation(r => (r + 90) % 360)} className={btn}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        </button>
+        <button title="Restaurar (0)" onClick={reset} className={btn}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M20 8a8 8 0 00-15.5-2M4 16a8 8 0 0015.5 2" /></svg>
+        </button>
+      </div>
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        onMouseDown={onMouseDown}
+        className="max-w-full max-h-full object-contain select-none"
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rotation}deg) scale(${zoom})`,
+          transition: dragging ? "none" : "transform 0.15s ease-out",
+          cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "default",
+        }}
+      />
+    </div>
+  );
+}
+
 // ─── Modal: preview de documento ──────────────────────────────────────────────
 
 function PreviewModal({ leadId, docId, nome, onClose }: {
@@ -508,16 +595,8 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
   const [fetchError, setFetchError] = useState(false);
   const canDownload = useDocumentAccess() === "download";
 
-  // Controles de zoom/rotação/pan (apenas para imagens)
-  const [zoom, setZoom] = useState(1);
-  const [rotation, setRotation] = useState(0);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
-  const [dragging, setDragging] = useState(false);
-
   useEffect(() => {
     let objectUrl: string | null = null;
-    setZoom(1); setRotation(0); setPan({ x: 0, y: 0 });
     fetchDocBlob(leadId, docId)
       .then(({ blobUrl: u, mimeType: m }) => { objectUrl = u; setBlobUrl(u); setMime(m); })
       .catch(() => setFetchError(true))
@@ -525,28 +604,15 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [leadId, docId]);
 
+  // Esc fecha o visualizador
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const isImage = !!mime?.startsWith("image/");
   const isPdf = mime === "application/pdf";
-
-  const clampZoom = (z: number) => Math.min(5, Math.max(0.25, z));
-  const resetView = () => { setZoom(1); setRotation(0); setPan({ x: 0, y: 0 }); };
-
-  function onImgMouseDown(e: React.MouseEvent) {
-    if (zoom <= 1) return;
-    e.preventDefault();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: pan.x, baseY: pan.y };
-    setDragging(true);
-  }
-  function onImgMouseMove(e: React.MouseEvent) {
-    if (!dragRef.current) return;
-    setPan({ x: dragRef.current.baseX + (e.clientX - dragRef.current.startX), y: dragRef.current.baseY + (e.clientY - dragRef.current.startY) });
-  }
-  function endDrag() { dragRef.current = null; setDragging(false); }
-  function onWheel(e: React.WheelEvent) {
-    if (!isImage) return;
-    e.preventDefault();
-    setZoom(z => clampZoom(z + (e.deltaY < 0 ? 0.2 : -0.2)));
-  }
 
   async function downloadCurrent() {
     if (!blobUrl) return;
@@ -561,37 +627,14 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
       <div className="relative w-full max-w-6xl mx-4 flex flex-col" style={{ maxHeight: "95vh" }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 bg-[var(--shell-card-bg)] rounded-t-xl px-4 py-3 shrink-0">
           <span className="text-sm font-medium text-[var(--shell-text)] truncate flex-1">{nome}</span>
-          {!loading && blobUrl && isImage && (
-            <div className="flex items-center gap-0.5 shrink-0">
-              <button title="Diminuir zoom" onClick={() => setZoom(z => clampZoom(z - 0.2))} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 8a3 3 0 100 6m-3-3h6m4 0a7 7 0 11-14 0 7 7 0 0114 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11h6" /></svg>
-              </button>
-              <span className="text-xs text-[var(--shell-subtext)] w-10 text-center tabular-nums select-none">{Math.round(zoom * 100)}%</span>
-              <button title="Aumentar zoom" onClick={() => setZoom(z => clampZoom(z + 0.2))} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 8v6m-3-3h6m4 0a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              </button>
-              <button title="Girar 90°" onClick={() => setRotation(r => (r + 90) % 360)} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-              </button>
-              <button title="Restaurar" onClick={resetView} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)]">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M20 8a8 8 0 00-15.5-2M4 16a8 8 0 0015.5 2" /></svg>
-              </button>
-            </div>
-          )}
           {!loading && blobUrl && canDownload && (
             <button title="Baixar" onClick={downloadCurrent} className="p-1.5 rounded hover:bg-[var(--shell-bg)] text-[var(--shell-subtext)] shrink-0">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             </button>
           )}
-          <button onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-2 shrink-0">✕</button>
+          <button title="Fechar (Esc)" onClick={onClose} className="text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)] text-lg leading-none ml-2 shrink-0">✕</button>
         </div>
-        <div
-          className="flex-1 overflow-hidden bg-gray-900 rounded-b-xl flex items-center justify-center min-h-[300px]"
-          onWheel={onWheel}
-          onMouseMove={onImgMouseMove}
-          onMouseUp={endDrag}
-          onMouseLeave={endDrag}
-        >
+        <div className="flex-1 overflow-hidden bg-gray-900 rounded-b-xl flex items-center justify-center min-h-[300px]">
           {loading && (
             <div className="flex flex-col items-center gap-3 text-[var(--shell-subtext)]">
               <svg className="animate-spin h-8 w-8" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
@@ -604,18 +647,7 @@ function PreviewModal({ leadId, docId, nome, onClose }: {
             </div>
           )}
           {!loading && blobUrl && isImage && (
-            <img
-              src={blobUrl}
-              alt={nome}
-              draggable={false}
-              onMouseDown={onImgMouseDown}
-              className="max-w-full max-h-[82vh] object-contain select-none"
-              style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rotation}deg) scale(${zoom})`,
-                transition: dragging ? "none" : "transform 0.15s ease-out",
-                cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "default",
-              }}
-            />
+            <ZoomableImage src={blobUrl} alt={nome} />
           )}
           {!loading && blobUrl && isPdf && (
             <iframe src={blobUrl} className="w-full" style={{ height: "82vh" }} title={nome} />
@@ -666,7 +698,7 @@ function DocPreviewInline({ leadId, doc }: { leadId: string; doc: DocItem }) {
         </div>
       )}
       {!loading && fetchError && <p className="text-xs text-[var(--shell-subtext)]">Não foi possível carregar o arquivo.</p>}
-      {!loading && blobUrl && isImage && <img src={blobUrl} alt={doc.nome} className="max-w-full max-h-full object-contain" />}
+      {!loading && blobUrl && isImage && <ZoomableImage src={blobUrl} alt={doc.nome} compact />}
       {!loading && blobUrl && isPdf && <iframe src={blobUrl} className="w-full h-full" title={doc.nome} style={{ minHeight: 600 }} />}
       {!loading && blobUrl && !isImage && !isPdf && (
         <div className="text-center text-[var(--shell-subtext)] text-xs p-6">
@@ -1258,7 +1290,7 @@ function IdentifyDocModal({ leadId, doc, participantes, onConfirm, onCancel, bus
               </div>
             )}
             {!loadingPreview && blobUrl && isImage && (
-              <img src={blobUrl} alt={doc.nome} className="max-w-full max-h-full object-contain p-3" />
+              <ZoomableImage src={blobUrl} alt={doc.nome} compact />
             )}
             {!loadingPreview && blobUrl && isPdf && (
               <iframe src={blobUrl} className="w-full h-full" style={{ minHeight: "340px" }} title={doc.nome} />
@@ -1725,6 +1757,7 @@ export default function DocumentosPage() {
   const [busyDel, setBusyDel] = useState<Set<string>>(new Set());
   const [busyDownload, setBusyDownload] = useState<Set<string>>(new Set());
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
   const [confirmRemovePartId, setConfirmRemovePartId] = useState<string | null>(null);
   const [busyRemove, setBusyRemove] = useState<Set<string>>(new Set());
@@ -1910,9 +1943,11 @@ export default function DocumentosPage() {
     const realDocs = docs.filter(d => !d.naoAplicavel && (d.url || (d as any).publicId));
     if (realDocs.length === 0) { alert("Nenhum documento para baixar."); return; }
     setDownloadingAll(true);
+    setDownloadProgress({ done: 0, total: realDocs.length });
     try {
       const zip = new JSZip();
       const used = new Set<string>();
+      let done = 0;
       await Promise.all(realDocs.map(async (doc) => {
         try {
           const { blobUrl, mimeType } = await fetchDocBlob(leadId, doc.id);
@@ -1923,6 +1958,7 @@ export default function DocumentosPage() {
           used.add(name);
           zip.file(name, blob);
         } catch { /* pula arquivo indisponível, segue o ZIP */ }
+        finally { done++; setDownloadProgress({ done, total: realDocs.length }); }
       }));
       if (Object.keys(zip.files).length === 0) { alert("Nenhum arquivo pôde ser baixado."); return; }
       const content = await zip.generateAsync({ type: "blob" });
@@ -1932,6 +1968,7 @@ export default function DocumentosPage() {
       alert(e?.message ?? "Erro ao gerar o ZIP");
     } finally {
       setDownloadingAll(false);
+      setDownloadProgress(null);
     }
   }
 
@@ -2348,13 +2385,21 @@ export default function DocumentosPage() {
               <div className="flex items-center gap-2">
                 {canDownloadDocs && docs.some(d => !d.naoAplicavel && (d.url || (d as any).publicId)) && (
                   <button
-                    className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors disabled:opacity-60"
+                    className="relative flex items-center gap-1.5 overflow-hidden text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors disabled:opacity-80"
                     onClick={handleDownloadAll}
                     disabled={downloadingAll}
                     title="Baixar todos os documentos em um arquivo ZIP">
-                    {downloadingAll
-                      ? <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Gerando…</>
-                      : <><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> Baixar todos</>}
+                    {downloadingAll && downloadProgress && (
+                      <span
+                        className="absolute inset-y-0 left-0 bg-blue-500/15 transition-[width] duration-200"
+                        style={{ width: `${Math.round((downloadProgress.done / Math.max(1, downloadProgress.total)) * 100)}%` }}
+                      />
+                    )}
+                    <span className="relative flex items-center gap-1.5">
+                      {downloadingAll
+                        ? <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> {downloadProgress ? `Gerando ${downloadProgress.done}/${downloadProgress.total}…` : "Gerando…"}</>
+                        : <><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> Baixar todos</>}
+                    </span>
                   </button>
                 )}
                 {!isPartner && (
