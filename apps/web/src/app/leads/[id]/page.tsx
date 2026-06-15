@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
+import { PendenciasModal, type PendenciaDraft, type PendenciaPessoa } from "@/components/PendenciasModal";
+import { PendenciasPanel } from "@/components/PendenciasPanel";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import QuickReplies from "@/components/leads/QuickReplies";
@@ -1856,6 +1858,7 @@ export default function LeadDetailChatPage() {
   const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
+  const [currentStageRequiresPendencias, setCurrentStageRequiresPendencias] = useState(false);
   const [currentStageUnitAction, setCurrentStageUnitAction] = useState<string | null>(null);
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
   const [evidencesOpen, setEvidencesOpen] = useState(false);
@@ -1864,6 +1867,18 @@ export default function LeadDetailChatPage() {
   const [evidencePreview, setEvidencePreview] = useState<{ url: string; mime: string; nome: string } | null>(null);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
+  const [pendenciasModalOpen, setPendenciasModalOpen] = useState(false);
+  const [pendenciasReloadKey, setPendenciasReloadKey] = useState(0);
+  const [participantes, setParticipantes] = useState<{ nome: string; classificacao?: string | null }[]>([]);
+  const pendenciaPessoas = useMemo<PendenciaPessoa[]>(() => {
+    const principal: PendenciaPessoa = { nome: null, label: "Lead principal" };
+    const extras: PendenciaPessoa[] = participantes.map((p) => ({
+      nome: p.nome,
+      label: p.classificacao ? `${p.nome} (${p.classificacao})` : p.nome,
+      classificacao: p.classificacao ?? null,
+    }));
+    return [principal, ...extras];
+  }, [participantes]);
   const [unitConfirm, setUnitConfirm] = useState<{ stage: PipelineStage; message: string } | null>(null);
   // Venda avulsa (imóvel sem unidade de empreendimento): captura valor + data
   const [vendaModal, setVendaModal] = useState<{ stage: PipelineStage } | null>(null);
@@ -2106,12 +2121,14 @@ export default function LeadDetailChatPage() {
       setPrevGroupLastStageId(data?.prevGroupLastStageId ?? null);
       setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
       setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
+      setCurrentStageRequiresPendencias(Boolean(data?.currentRequiresPendencias));
       setCurrentStageUnitAction(data?.currentUnitAction ?? null);
     } catch {
       setAllowedStages([]);
       setPrevGroupLastStageId(null);
       setCurrentStageRequiresEvidence(false);
       setCurrentStageRequiresReason(false);
+      setCurrentStageRequiresPendencias(false);
       setCurrentStageUnitAction(null);
     }
   }
@@ -2173,6 +2190,16 @@ export default function LeadDetailChatPage() {
       setDocuments([]);
     } finally {
       setLoadingDocs(false);
+    }
+  }
+
+  async function loadParticipantes() {
+    if (!id) return;
+    try {
+      const data = await apiFetch(`/leads/${id}/participantes`);
+      setParticipantes(Array.isArray(data) ? data.map((p: any) => ({ nome: p.nome, classificacao: p.classificacao ?? null })) : []);
+    } catch {
+      setParticipantes([]);
     }
   }
 
@@ -2380,6 +2407,7 @@ export default function LeadDetailChatPage() {
       const [,,,,,,,, aiStatus] = await Promise.all([loadLead(), loadEvents(), loadProducts({ silent: true }), loadTeamMembers(), loadDocuments(), loadCreditData(), loadDevelopments(), loadWaChannels(), apiFetch("/tenants/ai-status").catch(() => null)]);
       if (aiStatus) setTenantAiEnabled((aiStatus as any).autopilotEnabled ?? true);
       loadAgendaEvents();
+      loadParticipantes();
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar");
       setLead(null);
@@ -3504,6 +3532,13 @@ function discardAiSuggestion() {
             }
 
             function proceedSelectStage(stage: PipelineStage) {
+              // Ao ENTRAR numa etapa que exige pendências (ex.: Docs Pendente): abre o
+              // modal de pendências, que cria os itens antes de mover.
+              if (stage.requiresPendencias) {
+                setPendingStage(stage);
+                setPendenciasModalOpen(true);
+                return;
+              }
               // Abre o modal ao ENTRAR num status que exige evidência/justificativa
               // ou ao SAIR de um (ex.: reativar lead suspenso/excluído). Os flags
               // current* vêm do backend (allowed-stage-transitions), determinísticos.
@@ -3515,6 +3550,22 @@ function discardAiSuggestion() {
               } else {
                 moveToStage(stage.id);
               }
+            }
+
+            async function handlePendenciasConfirm(payload: { items: PendenciaDraft[]; observacao: string }) {
+              if (!pendingStage || !id) return;
+              // Cria as pendências e grava a observação ANTES de mover (o backend exige ≥1).
+              for (const it of payload.items) {
+                await apiFetch(`/leads/${id}/pendencias`, { method: "POST", body: JSON.stringify(it) });
+              }
+              await apiFetch(`/leads/${id}/pendencias-observacao`, {
+                method: "PATCH",
+                body: JSON.stringify({ observacao: payload.observacao }),
+              });
+              await moveToStage(pendingStage.id);
+              setPendenciasReloadKey((k) => k + 1);
+              setPendenciasModalOpen(false);
+              setPendingStage(null);
             }
 
             function unitLabel(u: any) {
@@ -3610,6 +3661,13 @@ function discardAiSuggestion() {
                   needsReason={Boolean(pendingStage?.requiresReason) || currentStageRequiresReason}
                   onClose={() => { setEvidenceModalOpen(false); setPendingStage(null); }}
                   onConfirm={handleEvidenceConfirm}
+                />
+                <PendenciasModal
+                  isOpen={pendenciasModalOpen}
+                  stageName={pendingStage?.name ?? ""}
+                  pessoas={pendenciaPessoas}
+                  onClose={() => { setPendenciasModalOpen(false); setPendingStage(null); }}
+                  onConfirm={handlePendenciasConfirm}
                 />
                 {unitConfirm && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
@@ -5005,6 +5063,16 @@ function discardAiSuggestion() {
                 )}
                 </>)}
               </div>
+            )}
+
+            {/* Pendências (só na etapa que exige — ex.: Docs Pendente) */}
+            {currentStageRequiresPendencias && user?.role !== "PARTNER" && id && (
+              <PendenciasPanel
+                leadId={id}
+                pessoas={pendenciaPessoas}
+                canEdit={true}
+                reloadKey={pendenciasReloadKey}
+              />
             )}
 
             {/* Agenda */}

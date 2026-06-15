@@ -512,6 +512,55 @@ export class LeadsController {
     return this.leadsService.deleteParticipante(req.user.tenantId, id, partId);
   }
 
+  // ─── Pendências do lead ──────────────────────────────────────────────────────
+
+  @Get(':id/pendencias')
+  async listPendencias(@Req() req: any, @Param('id') id: string) {
+    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
+    return this.leadsService.listPendencias(req.user.tenantId, id);
+  }
+
+  @Post(':id/pendencias')
+  async createPendencia(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { descricao: string; origem?: string; tipoDocumento?: string | null; participanteNome?: string | null; participanteClassificacao?: string | null },
+  ) {
+    await this.assertLeadWrite(req, 'edit');
+    return this.leadsService.createPendencia(req.user.tenantId, id, body, req.user.sub);
+  }
+
+  @Patch(':id/pendencias-observacao')
+  async updatePendenciasObservacao(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { observacao: string | null },
+  ) {
+    await this.assertLeadWrite(req, 'edit');
+    return this.leadsService.updatePendenciasObservacao(req.user.tenantId, id, body.observacao ?? null);
+  }
+
+  @Patch(':id/pendencias/:pendenciaId')
+  async updatePendencia(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('pendenciaId') pendenciaId: string,
+    @Body() body: { descricao?: string; resolvida?: boolean; participanteNome?: string | null; participanteClassificacao?: string | null },
+  ) {
+    await this.assertLeadWrite(req, 'edit');
+    return this.leadsService.updatePendencia(req.user.tenantId, id, pendenciaId, body, req.user.sub);
+  }
+
+  @Delete(':id/pendencias/:pendenciaId')
+  async deletePendencia(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('pendenciaId') pendenciaId: string,
+  ) {
+    await this.assertLeadWrite(req, 'edit');
+    return this.leadsService.deletePendencia(req.user.tenantId, id, pendenciaId);
+  }
+
   // ─── Documentos do lead ──────────────────────────────────────────────────────
 
   // ─── Classificação bulk + AI cadastro ───────────────────────────────────────

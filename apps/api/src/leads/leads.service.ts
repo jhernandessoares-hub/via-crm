@@ -1998,17 +1998,19 @@ async getById(user: any, id: string) {
     // o modal também ao SAIR de um status sensível (suspenso/excluído/etc.)
     let currentRequiresEvidence = false;
     let currentRequiresReason = false;
+    let currentRequiresPendencias = false;
     let currentUnitAction: string | null = null;
 
     if (lead.stageId) {
       const from = await this.prisma.pipelineStage.findFirst({
         where: { id: lead.stageId, tenantId: user.tenantId },
-        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, unitAction: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true },
       });
 
       fromStageKey = from?.key ?? null;
       currentRequiresEvidence = from?.requiresEvidence ?? false;
       currentRequiresReason = from?.requiresReason ?? false;
+      currentRequiresPendencias = (from as any)?.requiresPendencias ?? false;
       currentUnitAction = from?.unitAction ?? null;
     } else {
       const defaultStage = await this.prisma.pipelineStage.findFirst({
@@ -2017,7 +2019,7 @@ async getById(user: any, id: string) {
           isActive: true,
         },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, unitAction: true },
+        select: { id: true, key: true, name: true, sortOrder: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true },
       });
 
       if (!defaultStage?.id) {
@@ -2028,6 +2030,7 @@ async getById(user: any, id: string) {
       fromStageKey = defaultStage.key;
       currentRequiresEvidence = defaultStage.requiresEvidence ?? false;
       currentRequiresReason = defaultStage.requiresReason ?? false;
+      currentRequiresPendencias = (defaultStage as any).requiresPendencias ?? false;
       currentUnitAction = defaultStage.unitAction ?? null;
     }
 
@@ -2109,7 +2112,7 @@ async getById(user: any, id: string) {
               NOT: { id: effectiveCurrentStageId ?? undefined },
               ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
             },
-            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
+            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
             orderBy: { sortOrder: 'asc' },
           })
         : [];
@@ -2160,6 +2163,7 @@ async getById(user: any, id: string) {
         currentStageKey: fromStageKey,
         currentRequiresEvidence,
         currentRequiresReason,
+        currentRequiresPendencias,
         currentUnitAction,
         allowedStages: allCustomStages,
         prevGroupLastStageId,
@@ -2434,11 +2438,12 @@ async updateStage(
   let fromStageGroup: string | null = null;
   let fromStageRequiresEvidence = false;
   let fromStageRequiresReason = false;
+  let fromStageRequiresPendencias = false;
 
   if (lead.stageId) {
     const from = await this.prisma.pipelineStage.findFirst({
       where: { id: lead.stageId, tenantId: user.tenantId },
-      select: { key: true, name: true, group: true, requiresEvidence: true, requiresReason: true },
+      select: { key: true, name: true, group: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true },
     });
 
     fromStageKey = from?.key ?? null;
@@ -2446,6 +2451,7 @@ async updateStage(
     fromStageGroup = from?.group ?? null;
     fromStageRequiresEvidence = from?.requiresEvidence ?? false;
     fromStageRequiresReason = from?.requiresReason ?? false;
+    fromStageRequiresPendencias = (from as any)?.requiresPendencias ?? false;
   } else {
     const defaultStage = await this.prisma.pipelineStage.findFirst({
       where: {
@@ -2520,6 +2526,26 @@ async updateStage(
       throw new BadRequestException(
         'Esta etapa exige evidência. Anexe um documento ou informe uma justificativa para continuar.',
       );
+    }
+  }
+
+  // ── Pendências (requiresPendencias) ───────────────────────────────────────
+  // Ao ENTRAR numa etapa que exige pendências: precisa existir ao menos uma
+  // pendência registrada (o modal as cria via API antes deste PATCH).
+  // Ao SAIR de uma etapa que exige pendências: só libera quando TODAS estiverem
+  // resolvidas.
+  if ((toStage as any).requiresPendencias) {
+    const total = await (this.prisma as any).leadPendencia.count({ where: { leadId, tenantId: user.tenantId } });
+    if (total === 0) {
+      throw new BadRequestException('Registre ao menos uma pendência para mover o lead para esta etapa.');
+    }
+  }
+  if (fromStageRequiresPendencias) {
+    const abertas = await (this.prisma as any).leadPendencia.count({
+      where: { leadId, tenantId: user.tenantId, resolvida: false },
+    });
+    if (abertas > 0) {
+      throw new BadRequestException('Resolva todas as pendências antes de sair desta etapa.');
     }
   }
 
@@ -3423,6 +3449,92 @@ const aiAssistanceLabel =
     // Remove documentos do banco e o participante
     await this.prisma.leadDocument.deleteMany({ where: { leadId, tenantId, participanteNome: part.nome } });
     await (this.prisma as any).leadParticipante.delete({ where: { id: partId } });
+    return { ok: true };
+  }
+
+  // =========================================
+  // PENDÊNCIAS DO LEAD
+  // =========================================
+
+  async listPendencias(tenantId: string, leadId: string) {
+    await this.assertLeadAccess(tenantId, leadId);
+    const [items, lead] = await Promise.all([
+      (this.prisma as any).leadPendencia.findMany({
+        where: { leadId, tenantId },
+        orderBy: { criadoEm: 'asc' },
+      }),
+      this.prisma.lead.findFirst({
+        where: { id: leadId, tenantId },
+        select: { pendenciasObservacao: true },
+      }),
+    ]);
+    return { items, observacao: (lead as any)?.pendenciasObservacao ?? null };
+  }
+
+  async createPendencia(
+    tenantId: string,
+    leadId: string,
+    data: { descricao: string; origem?: string; tipoDocumento?: string | null; participanteNome?: string | null; participanteClassificacao?: string | null },
+    userId: string,
+  ) {
+    await this.assertLeadAccess(tenantId, leadId);
+    const descricao = (data.descricao ?? '').trim();
+    if (!descricao) throw new BadRequestException('Descrição da pendência é obrigatória');
+    const origem = data.origem === 'DOCUMENTO' ? 'DOCUMENTO' : 'MANUAL';
+    return (this.prisma as any).leadPendencia.create({
+      data: {
+        tenantId,
+        leadId,
+        descricao,
+        origem,
+        tipoDocumento: origem === 'DOCUMENTO' ? (data.tipoDocumento ?? null) : null,
+        participanteNome: data.participanteNome ?? null,
+        participanteClassificacao: data.participanteClassificacao ?? null,
+        criadoPor: userId ?? null,
+      },
+    });
+  }
+
+  async updatePendencia(
+    tenantId: string,
+    leadId: string,
+    pendenciaId: string,
+    data: { descricao?: string; resolvida?: boolean; participanteNome?: string | null; participanteClassificacao?: string | null },
+    userId: string,
+  ) {
+    await this.assertLeadAccess(tenantId, leadId);
+    const existing = await (this.prisma as any).leadPendencia.findFirst({ where: { id: pendenciaId, leadId, tenantId } });
+    if (!existing) throw new NotFoundException('Pendência não encontrada neste lead');
+    const updateData: any = {};
+    if (data.descricao !== undefined) {
+      const d = (data.descricao ?? '').trim();
+      if (!d) throw new BadRequestException('Descrição da pendência é obrigatória');
+      updateData.descricao = d;
+    }
+    if (data.participanteNome !== undefined) updateData.participanteNome = data.participanteNome ?? null;
+    if (data.participanteClassificacao !== undefined) updateData.participanteClassificacao = data.participanteClassificacao ?? null;
+    if (data.resolvida !== undefined) {
+      updateData.resolvida = !!data.resolvida;
+      updateData.resolvidoPor = data.resolvida ? (userId ?? null) : null;
+      updateData.resolvidoEm = data.resolvida ? new Date() : null;
+    }
+    return (this.prisma as any).leadPendencia.update({ where: { id: pendenciaId }, data: updateData });
+  }
+
+  async deletePendencia(tenantId: string, leadId: string, pendenciaId: string) {
+    await this.assertLeadAccess(tenantId, leadId);
+    const existing = await (this.prisma as any).leadPendencia.findFirst({ where: { id: pendenciaId, leadId, tenantId } });
+    if (!existing) throw new NotFoundException('Pendência não encontrada');
+    await (this.prisma as any).leadPendencia.delete({ where: { id: pendenciaId } });
+    return { ok: true };
+  }
+
+  async updatePendenciasObservacao(tenantId: string, leadId: string, observacao: string | null) {
+    await this.assertLeadAccess(tenantId, leadId);
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: { pendenciasObservacao: observacao ?? null } as any,
+    });
     return { ok: true };
   }
 

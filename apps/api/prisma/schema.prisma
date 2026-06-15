@@ -37,6 +37,7 @@ model PipelineStage {
   isActive         Boolean   @default(true)
   requiresEvidence Boolean   @default(false)
   requiresReason   Boolean   @default(false) // exige justificativa em texto (de todos os roles) ao entrar/sair
+  requiresPendencias Boolean @default(false) // exige registrar pendências ao entrar; bloqueia saída até todas resolvidas
   unitAction       String?   // espelho: RESERVA (permite reservar) | PROPOSTA (converte reserva→proposta ao entrar) | VENDA (converte proposta→vendido ao entrar)
   ownerOnly        Boolean   @default(false)
   createdAt        DateTime  @default(now())
@@ -301,6 +302,7 @@ model Lead {
   avatarUrl               String?
   lastReadAt              DateTime?
   conversaAberta          Boolean              @default(false)
+  pendenciasObservacao    String?
   aiExecutionLogs         AiExecutionLog[]
   baseFria                BaseFria?
   calendarEvents          CalendarEvent[]
@@ -308,6 +310,7 @@ model Lead {
   documents               LeadDocument[]
   events                  LeadEvent[]
   participantes           LeadParticipante[]
+  pendencias              LeadPendencia[]
   leadSla                 LeadSla?
   leadTransitionLogs      LeadTransitionLog[]
   creditRequests          CreditRequest[]
@@ -1212,6 +1215,28 @@ model LeadParticipante {
   @@index([leadId])
   @@index([tenantId])
   @@map("lead_participantes")
+}
+
+model LeadPendencia {
+  id                        String    @id @default(uuid())
+  tenantId                  String
+  leadId                    String
+  descricao                 String
+  origem                    String    @default("MANUAL") // DOCUMENTO | MANUAL
+  tipoDocumento             String?   // value de TIPOS_PADRAO quando origem=DOCUMENTO
+  participanteNome          String?   // null = lead principal
+  participanteClassificacao String?   // CONJUGE | SOCIO | FIADOR | OUTRO
+  resolvida                 Boolean   @default(false)
+  criadoPor                 String?
+  resolvidoPor              String?
+  resolvidoEm               DateTime?
+  criadoEm                  DateTime  @default(now())
+  atualizadoEm              DateTime  @updatedAt
+  lead                      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@map("lead_pendencias")
 }
 
 enum PlanTier {
