@@ -110,7 +110,7 @@ export class ProductsService {
         type: body.type || ProductType.OUTRO,
         status: body.status || ProductStatus.ACTIVE,
         origin,
-        dealType: body.dealType || null,
+        ...(body.dealType ? { dealType: body.dealType } : {}),
 
         price: body.price ?? null,
         city: body.city || null,
