@@ -18,11 +18,13 @@ interface PendenciasPanelProps {
   leadId: string;
   pessoas: PendenciaPessoa[];
   canEdit: boolean;
+  /** true quando a etapa atual exige pendências (Docs Pendente) — controla o aviso de bloqueio de saída. */
+  requiresNow?: boolean;
   /** Sinal para recarregar (incrementado pelo pai após mover etapa). */
   reloadKey?: number;
 }
 
-export function PendenciasPanel({ leadId, pessoas, canEdit, reloadKey }: PendenciasPanelProps) {
+export function PendenciasPanel({ leadId, pessoas, canEdit, requiresNow, reloadKey }: PendenciasPanelProps) {
   const [items, setItems] = useState<PendenciaItem[]>([]);
   const [observacao, setObservacao] = useState("");
   const [open, setOpen] = useState(false);
@@ -123,6 +125,10 @@ export function PendenciasPanel({ leadId, pessoas, canEdit, reloadKey }: Pendenc
 
   const abertas = items.filter((i) => !i.resolvida).length;
 
+  // Fora da etapa de Docs Pendente, o painel só permanece se houver pendências
+  // registradas (vira histórico). Sem itens e sem exigência: não renderiza nada.
+  if (!requiresNow && items.length === 0) return null;
+
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-4 dark:border-amber-700/60 dark:bg-amber-950/20">
       <button
@@ -144,7 +150,7 @@ export function PendenciasPanel({ leadId, pessoas, canEdit, reloadKey }: Pendenc
 
       {open && (
         <div className="mt-3 space-y-3">
-          {abertas > 0 && (
+          {requiresNow && abertas > 0 && (
             <p className="text-xs text-amber-800 dark:text-amber-300">
               Só é possível sair desta etapa quando todas as pendências estiverem resolvidas.
             </p>

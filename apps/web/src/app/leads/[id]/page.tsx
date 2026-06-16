@@ -5065,12 +5065,14 @@ function discardAiSuggestion() {
               </div>
             )}
 
-            {/* Pendências (só na etapa que exige — ex.: Docs Pendente) */}
-            {currentStageRequiresPendencias && user?.role !== "PARTNER" && id && (
+            {/* Pendências: aparece na etapa Docs Pendente (requiresNow) e permanece
+                como histórico enquanto o lead tiver pendências registradas. */}
+            {user?.role !== "PARTNER" && id && (
               <PendenciasPanel
                 leadId={id}
                 pessoas={pendenciaPessoas}
                 canEdit={true}
+                requiresNow={currentStageRequiresPendencias}
                 reloadKey={pendenciasReloadKey}
               />
             )}
