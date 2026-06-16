@@ -25,7 +25,7 @@ interface PendenciasPanelProps {
 export function PendenciasPanel({ leadId, pessoas, canEdit, reloadKey }: PendenciasPanelProps) {
   const [items, setItems] = useState<PendenciaItem[]>([]);
   const [observacao, setObservacao] = useState("");
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pessoaIdx, setPessoaIdx] = useState(0);
   const [docTipo, setDocTipo] = useState(TIPOS_PADRAO_PENDENCIA[0].value);
