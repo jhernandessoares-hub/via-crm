@@ -120,6 +120,7 @@ type Lead = {
   perfilImovel?: string | null;
   produtoInteresseId?: string | null;
   empreendimentoInteresseId?: string | null;
+  interesseOrigem?: string | null;
   empreendimentoInteresse?: { id: string; nome: string; capaUrl?: string | null } | null;
   resumoLead?: string | null;
   cadastroOrigem?: {
@@ -4272,7 +4273,7 @@ function discardAiSuggestion() {
 
                       {lead.empreendimentoInteresse && (
                         <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Empreendimento de interesse</div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Empreendimento de interesse{lead.interesseOrigem === "MANUAL" && <span className="ml-1 text-amber-600" title="Editado manualmente">✎ editado</span>}</div>
                           <div className="flex items-center gap-2">
                             {lead.empreendimentoInteresse.capaUrl && (
                               <img src={lead.empreendimentoInteresse.capaUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />

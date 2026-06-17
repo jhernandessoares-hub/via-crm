@@ -279,6 +279,7 @@ model Lead {
   perfilImovel            String?
   produtoInteresseId           String?
   empreendimentoInteresseId    String?
+  interesseOrigem              String?              // "IA" | "MANUAL" — origem do interesse real (produto/empreendimento); MANUAL nunca é sobrescrito pela IA
   resumoLead                   String?
   valorVenda                   Float?               // valor da venda fechada (imóvel avulso); empreendimento usa DevelopmentUnit.finalPrice
   dataVenda                    DateTime?            // data da venda fechada (imóvel avulso)

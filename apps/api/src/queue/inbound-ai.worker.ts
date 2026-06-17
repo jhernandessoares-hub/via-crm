@@ -21,6 +21,30 @@ async function sendImageViaWhatsapp(
   await sendWhatsappImage(creds, toRaw, imageUrl, caption);
 }
 
+// Pré-filtro por menção: o lead cita o item, então quando o catálogo é grande mantém só os
+// candidatos cujas palavras aparecem na conversa (senão devolve a lista inteira até o teto).
+function prefilterByMention<T>(
+  items: T[],
+  text: string,
+  fieldsFn: (item: T) => (string | null | undefined)[],
+  max: number,
+): T[] {
+  if (items.length <= max) return items;
+  const hay = ' ' + (text || '').toLowerCase() + ' ';
+  const scored = items.map((item) => {
+    const tokens = fieldsFn(item)
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .split(/[^0-9a-záàâãéêíóôõúç]+/i)
+      .filter((t) => t.length >= 4);
+    const score = tokens.reduce((s, t) => (hay.includes(t) ? s + 1 : s), 0);
+    return { item, score };
+  });
+  const matched = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
+  return (matched.length ? matched.map((s) => s.item) : items).slice(0, max);
+}
+
 // ── Notification helpers ───────────────────────────────────────────────────
 
 const NOTIFY_EVENT_KEYS = new Set(['new_lead', 'lead_qualified']);
@@ -790,7 +814,7 @@ async function handleInboundAiJob(
 
   // ── Assistente Operacional (análise silenciosa pós-resposta) ────────────
   try {
-    const [leadWithQual, stages, products] = await Promise.all([
+    const [leadWithQual, stages] = await Promise.all([
       prisma.lead.findUnique({
         where: { id: lead.id },
         select: {
@@ -804,7 +828,11 @@ async function handleInboundAiJob(
           dataNascimento: true,
           perfilImovel: true,
           produtoInteresseId: true,
+          empreendimentoInteresseId: true,
+          interesseOrigem: true,
           resumoLead: true,
+          cidade: true,
+          observacao: true,
         },
       }),
       prisma.pipelineStage.findMany({
@@ -812,12 +840,44 @@ async function handleInboundAiJob(
         select: { id: true, key: true, name: true },
         orderBy: { sortOrder: 'asc' },
       }),
-      prisma.product.findMany({
-        where: { tenantId: lead.tenantId, status: 'ACTIVE' },
-        select: { id: true, title: true, type: true },
-        take: 20,
-      }),
     ]);
+
+    // Trava: se o lead já tem interesse real definido (IA ou MANUAL), não rebusca catálogo/empreendimentos.
+    // O lead normalmente cita o interesse nas primeiras mensagens — depois disso é só ruído e custo.
+    const interesseDefinido = !!(leadWithQual?.produtoInteresseId || leadWithQual?.empreendimentoInteresseId);
+
+    let availableProducts: { id: string; title: string; standard?: string | null }[] = [];
+    let availableDevelopments: { id: string; nome: string; cidade?: string | null }[] = [];
+    if (!interesseDefinido) {
+      const [products, developments] = await Promise.all([
+        prisma.product.findMany({
+          where: { tenantId: lead.tenantId, status: 'ACTIVE' },
+          select: { id: true, title: true, type: true, city: true, neighborhood: true },
+        }),
+        prisma.development.findMany({
+          where: { tenantId: lead.tenantId },
+          select: { id: true, nome: true, cidade: true },
+        }),
+      ]);
+      // Safeguard de escala: como o lead cita o item, pré-filtra por menção quando o catálogo é grande.
+      const MAX_CANDIDATES = 40;
+      availableProducts = prefilterByMention(
+        products,
+        recentConversation,
+        (p) => [p.title, p.city, p.neighborhood],
+        MAX_CANDIDATES,
+      ).map((p) => ({
+        id: p.id,
+        title: p.title,
+        standard: [String(p.type ?? ''), p.neighborhood, p.city].filter(Boolean).join(' · '),
+      }));
+      availableDevelopments = prefilterByMention(
+        developments,
+        recentConversation,
+        (d) => [d.nome, d.cidade],
+        MAX_CANDIDATES,
+      ).map((d) => ({ id: d.id, nome: d.nome, cidade: d.cidade }));
+    }
 
     const currentStage = leadWithQual?.stageId
       ? stages.find((s) => s.id === leadWithQual.stageId)
@@ -839,11 +899,8 @@ async function handleInboundAiJob(
       conversation: recentConversation,
       currentQualification,
       availableStages: stages.map((s) => ({ key: s.key, name: s.name })),
-      availableProducts: products.map((p) => ({
-        id: p.id,
-        title: p.title,
-        standard: String(p.type ?? ''),
-      })),
+      availableProducts,
+      availableDevelopments,
     });
 
     // Aplica campos de qualificação
@@ -861,7 +918,21 @@ async function handleInboundAiJob(
       updateData.dataNascimento = u.dataNascimento ? new Date(u.dataNascimento) : null;
     }
     if (u.perfilImovel !== undefined) updateData.perfilImovel = u.perfilImovel;
-    if (u.produtoInteresseId !== undefined) updateData.produtoInteresseId = u.produtoInteresseId;
+    // Interesse real (produto OU empreendimento) — mutuamente exclusivos. Só preenche quando ainda
+    // não estava definido e a origem não é MANUAL. Valida o ID contra os candidatos (evita alucinação).
+    if (!interesseDefinido && leadWithQual?.interesseOrigem !== 'MANUAL') {
+      const validProductIds = new Set(availableProducts.map((p) => p.id));
+      const validDevIds = new Set(availableDevelopments.map((d) => d.id));
+      if (u.produtoInteresseId && validProductIds.has(u.produtoInteresseId)) {
+        updateData.produtoInteresseId = u.produtoInteresseId;
+        updateData.empreendimentoInteresseId = null;
+        updateData.interesseOrigem = 'IA';
+      } else if (u.empreendimentoInteresseId && validDevIds.has(u.empreendimentoInteresseId)) {
+        updateData.empreendimentoInteresseId = u.empreendimentoInteresseId;
+        updateData.produtoInteresseId = null;
+        updateData.interesseOrigem = 'IA';
+      }
+    }
     if (u.resumoLead !== undefined) updateData.resumoLead = u.resumoLead;
 
     if (Object.keys(updateData).length > 0) {
@@ -960,9 +1031,20 @@ async function handleInboundAiJob(
             if (!v) return null;
             try { return new Date(v).toLocaleDateString('pt-BR'); } catch { return null; }
           };
-          const produtoNome = mergedQual.produtoInteresseId
-            ? (products.find((p) => p.id === mergedQual.produtoInteresseId)?.title ?? mergedQual.produtoInteresseId)
-            : null;
+          let interesseNome: string | null = null;
+          if (mergedQual.produtoInteresseId) {
+            const p = await prisma.product.findUnique({
+              where: { id: mergedQual.produtoInteresseId },
+              select: { title: true },
+            });
+            interesseNome = p?.title ?? null;
+          } else if (mergedQual.empreendimentoInteresseId) {
+            const d = await prisma.development.findUnique({
+              where: { id: mergedQual.empreendimentoInteresseId },
+              select: { nome: true },
+            });
+            interesseNome = d?.nome ?? null;
+          }
 
           const linhas: string[] = [
             `🎯 *Lead qualificado: ${lead.nomeCorreto ?? lead.nome}*`,
@@ -974,7 +1056,7 @@ async function handleInboundAiJob(
           if (mergedQual.fgts != null) linhas.push(`🏦 FGTS: ${fmtMoney(mergedQual.fgts)}`);
           if (mergedQual.valorEntrada != null) linhas.push(`💵 Entrada: ${fmtMoney(mergedQual.valorEntrada)}`);
           if (mergedQual.perfilImovel) linhas.push(`🏠 Perfil: ${fmt(mergedQual.perfilImovel)}`);
-          if (produtoNome) linhas.push(`📋 Interesse: ${produtoNome}`);
+          if (interesseNome) linhas.push(`📋 Interesse: ${interesseNome}`);
           if (mergedQual.estadoCivil) linhas.push(`💍 Estado civil: ${fmt(mergedQual.estadoCivil)}`);
           if (mergedQual.dataNascimento) linhas.push(`🎂 Nascimento: ${fmtDate(mergedQual.dataNascimento)}`);
           if (mergedQual.tempoProcurandoImovel) linhas.push(`⏱ Procurando há: ${fmt(mergedQual.tempoProcurandoImovel)}`);

@@ -55,6 +55,7 @@ import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unoff
 import { MessagingService } from '../messaging/messaging.service';
 import { LeadDocumentsService } from '../lead-documents/lead-documents.service';
 import { getNextLeadNumber } from './lead-numbering.helper';
+import { buildLeadInteresseLabel } from './lead-interesse.helper';
 import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess, DocumentAccessLevel } from '../tenants/permissions.config';
 import { isValidCPF } from './cpf.util';
 
@@ -1588,6 +1589,19 @@ export class LeadsService {
     }
   }
 
+  // Mapa id→título de produtos do catálogo, para resolver o nome do interesse nas listas.
+  private async buildProductTitleMap(tenantId: string, productIds: (string | null | undefined)[]) {
+    const ids = Array.from(new Set(productIds.filter((x): x is string => !!x)));
+    const map = new Map<string, string>();
+    if (ids.length === 0) return map;
+    const prods = await this.prisma.product.findMany({
+      where: { id: { in: ids }, tenantId },
+      select: { id: true, title: true },
+    });
+    for (const p of prods) map.set(p.id, p.title);
+    return map;
+  }
+
   async list(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
     const { id, tenantId, role, branchId } = user;
 
@@ -1605,6 +1619,7 @@ export class LeadsService {
       orderBy: { criadoEm: 'desc' },
       include: {
         stage: { select: { id: true, name: true, key: true, group: true } },
+        empreendimentoInteresse: { select: { nome: true } },
         developmentUnits: {
           select: {
             id: true,
@@ -1625,9 +1640,11 @@ export class LeadsService {
       ? await this.prisma.user.findMany({ where: { id: { in: assignedIds } }, select: { id: true, nome: true, apelido: true } })
       : [];
     const assignedMap = Object.fromEntries(assignedUsers.map((u) => [u.id, u.apelido || u.nome]));
+    const productTitleMap = await this.buildProductTitleMap(tenantId, leads.map((l) => l.produtoInteresseId));
     const enriched = leads.map((l) => ({
       ...l,
       assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
+      interesse: buildLeadInteresseLabel(l as any, productTitleMap),
     }));
 
     // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
@@ -2364,8 +2381,24 @@ async updateQualification(tenantId: string, leadId: string, data: {
   if (data.conversouComCorretor !== undefined) updateData.conversouComCorretor = data.conversouComCorretor;
   if (data.qualCorretorImobiliaria !== undefined) updateData.qualCorretorImobiliaria = data.qualCorretorImobiliaria;
   if (data.perfilImovel !== undefined) updateData.perfilImovel = data.perfilImovel;
-  if (data.produtoInteresseId !== undefined) updateData.produtoInteresseId = data.produtoInteresseId;
-  if (data.empreendimentoInteresseId !== undefined) updateData.empreendimentoInteresseId = data.empreendimentoInteresseId;
+  // Interesse real (produto/empreendimento): edição manual marca origem MANUAL (IA nunca sobrescreve)
+  // e mantém os dois mutuamente exclusivos (um interesse por vez).
+  if (data.produtoInteresseId !== undefined || data.empreendimentoInteresseId !== undefined) {
+    if (data.produtoInteresseId) {
+      updateData.produtoInteresseId = data.produtoInteresseId;
+      updateData.empreendimentoInteresseId = null;
+      updateData.interesseOrigem = 'MANUAL';
+    } else if (data.empreendimentoInteresseId) {
+      updateData.empreendimentoInteresseId = data.empreendimentoInteresseId;
+      updateData.produtoInteresseId = null;
+      updateData.interesseOrigem = 'MANUAL';
+    } else {
+      // Interesse removido manualmente
+      if (data.produtoInteresseId !== undefined) updateData.produtoInteresseId = null;
+      if (data.empreendimentoInteresseId !== undefined) updateData.empreendimentoInteresseId = null;
+      updateData.interesseOrigem = null;
+    }
+  }
   if (data.resumoLead !== undefined) updateData.resumoLead = data.resumoLead;
   // Cadastro pessoal (campos string)
   const pessoalFields = ['cpf', 'rg', 'profissao', 'empresa', 'naturalidade', 'endereco', 'cep', 'cidade', 'uf', 'telefone', 'email'] as const;
@@ -2388,7 +2421,7 @@ async updateQualification(tenantId: string, leadId: string, data: {
       fgts: true, valorEntrada: true, estadoCivil: true, dataNascimento: true,
       tempoProcurandoImovel: true, conversouComCorretor: true,
       qualCorretorImobiliaria: true, perfilImovel: true,
-      produtoInteresseId: true, empreendimentoInteresseId: true, resumoLead: true,
+      produtoInteresseId: true, empreendimentoInteresseId: true, interesseOrigem: true, resumoLead: true,
       cpf: true, telefone: true, telefoneKey: true,
     },
   });
@@ -2999,6 +3032,7 @@ async listTransitions(user: any, leadId: string) {
       orderBy: { criadoEm: 'desc' },
       include: {
         stage: { select: { id: true, name: true, key: true, group: true } },
+        empreendimentoInteresse: { select: { nome: true } },
       },
     });
 
@@ -3007,7 +3041,12 @@ async listTransitions(user: any, leadId: string) {
       select: { nome: true, apelido: true },
     });
     const myName = userInfo?.apelido || userInfo?.nome || null;
-    const enriched = leads.map((l) => ({ ...l, assignedUserName: myName }));
+    const productTitleMap = await this.buildProductTitleMap(user.tenantId, leads.map((l) => l.produtoInteresseId));
+    const enriched = leads.map((l) => ({
+      ...l,
+      assignedUserName: myName,
+      interesse: buildLeadInteresseLabel(l as any, productTitleMap),
+    }));
 
     // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
     enriched.sort((a, b) => {

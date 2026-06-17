@@ -809,6 +809,7 @@ export class AiService {
     currentQualification: Record<string, any>;
     availableStages: { key: string; name: string }[];
     availableProducts: { id: string; title: string; standard?: string | null }[];
+    availableDevelopments?: { id: string; nome: string; cidade?: string | null }[];
   }): Promise<{
     updates: Record<string, any>;
     stageKey?: string | null;
@@ -823,6 +824,16 @@ export class AiService {
 
     const customPrompt = operationalAgent?.prompt?.trim() || '';
 
+    // Match de interesse só quando há candidatos (catálogo/empreendimentos). Quando o lead já tem
+    // interesse definido, o worker envia listas vazias e a IA não tenta identificar interesse (trava).
+    const availableDevelopments = params.availableDevelopments ?? [];
+    const matchInterest = params.availableProducts.length > 0 || availableDevelopments.length > 0;
+    const interestSpecLines = matchInterest
+      ? `
+- produtoInteresseId: string (ID EXATO de um produto da lista — só se o lead CITOU explicitamente)
+- empreendimentoInteresseId: string (ID EXATO de um empreendimento da lista — só se o lead CITOU explicitamente)`
+      : '';
+
     const JSON_SPEC = `
 Retorne APENAS JSON válido, sem texto adicional, com os campos que se aplicam:
 - nomeCorreto: string
@@ -831,8 +842,7 @@ Retorne APENAS JSON válido, sem texto adicional, com os campos que se aplicam:
 - valorEntrada: number (em reais)
 - estadoCivil: "SOLTEIRO" | "CASADO" | "UNIAO_ESTAVEL" | "DIVORCIADO" | "VIUVO"
 - dataNascimento: "YYYY-MM-DD"
-- perfilImovel: "POPULAR" | "MEDIO" | "ALTO_PADRAO" | "LUXO"
-- produtoInteresseId: string (ID exato do produto)
+- perfilImovel: "POPULAR" | "MEDIO" | "ALTO_PADRAO" | "LUXO"${interestSpecLines}
 - resumoLead: string (resumo completo para o corretor)
 - stageKey: string (key da etapa do funil — omita se não mudar)
 - notifyBroker: boolean (true quando lead qualificado ou precisa de atenção do corretor)
@@ -853,8 +863,8 @@ Campos que você pode extrair:
 - valorEntrada: number (valor de entrada disponível em reais)
 - estadoCivil: "SOLTEIRO" | "CASADO" | "UNIAO_ESTAVEL" | "DIVORCIADO" | "VIUVO"
 - dataNascimento: "YYYY-MM-DD" (converta de qualquer formato)
-- perfilImovel: "POPULAR" | "MEDIO" | "ALTO_PADRAO" | "LUXO"
-- produtoInteresseId: string (ID do produto se identificado na lista)
+- perfilImovel: "POPULAR" | "MEDIO" | "ALTO_PADRAO" | "LUXO"${matchInterest ? `
+- produtoInteresseId / empreendimentoInteresseId: ID EXATO da lista fornecida. O lead menciona EXPLICITAMENTE o imóvel/empreendimento que quer — identifique qual item da lista corresponde ao que ele disse e retorne o ID. NÃO infira por orçamento ou perfil. Se não foi citado claramente ou estiver ambíguo, omita. Use cidade/bairro para desambiguar nomes parecidos.` : ''}
 - resumoLead: string (resumo completo de tudo que foi coletado, para envio ao corretor)
 - stageKey: string (mova o lead para esta etapa conforme as regras abaixo)
 - notifyBroker: boolean (notifique o corretor se o lead for qualificado ou precisar de atenção)
@@ -874,9 +884,15 @@ Regras para notifyBroker:
 - resumoLead: monte quando tiver dados suficientes para o corretor`;
 
     const stagesText = params.availableStages.map(s => `${s.key}: ${s.name}`).join('\n');
-    const productsText = params.availableProducts.length > 0
-      ? params.availableProducts.map(p => `ID: ${p.id} | ${p.title}${p.standard ? ` (${p.standard})` : ''}`).join('\n')
-      : 'Nenhum produto cadastrado';
+    const catalogText = matchInterest
+      ? `
+
+Produtos do catálogo (ID | título):
+${params.availableProducts.length ? params.availableProducts.map(p => `ID: ${p.id} | ${p.title}${p.standard ? ` (${p.standard})` : ''}`).join('\n') : 'Nenhum produto'}
+
+Empreendimentos (ID | nome):
+${availableDevelopments.length ? availableDevelopments.map(d => `ID: ${d.id} | ${d.nome}${d.cidade ? ` (${d.cidade})` : ''}`).join('\n') : 'Nenhum empreendimento'}`
+      : '';
 
     const currentQualText = Object.entries(params.currentQualification)
       .filter(([, v]) => v !== null && v !== undefined)
@@ -889,10 +905,7 @@ Dados já coletados:
 ${currentQualText}
 
 Etapas disponíveis no funil:
-${stagesText}
-
-Produtos disponíveis:
-${productsText}
+${stagesText}${catalogText}
 
 Conversa recente:
 ${params.conversation}

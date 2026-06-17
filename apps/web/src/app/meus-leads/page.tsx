@@ -30,6 +30,8 @@ type Lead = {
   origem?: string | null;
   status?: string | null;
   perfilImovel?: string | null;
+  interesse?: string | null;
+  interesseOrigem?: string | null;
   stageId?: string | null;
   stageName?: string | null;
   stage?: { name: string; key?: string | null; group?: string | null } | null;
@@ -193,7 +195,7 @@ export default function MeusLeadsPage() {
         if (l.status) status.add(l.status);
       }
       if (l.origem) origem.add(l.origem);
-      if (l.perfilImovel) interesse.add(l.perfilImovel);
+      if (l.interesse) interesse.add(l.interesse);
       const ind = (l.cadastroOrigem as any)?.indicacao;
       if (ind) indicacao.add(ind);
     }
@@ -213,7 +215,7 @@ export default function MeusLeadsPage() {
         const ind = (l.cadastroOrigem as any)?.indicacao ?? "";
         const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "";
         const sn = l.stage?.name ?? l.stageName ?? "";
-        if (![l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.origem, l.status, l.perfilImovel, sn, ind, num, l.assignedUserName]
+        if (![l.nome, l.nomeCorreto, l.telefone, l.whatsapp, l.origem, l.status, l.interesse, sn, ind, num, l.assignedUserName]
           .join(" ").toLowerCase().includes(qq)) return false;
       }
       const sn = getStageName(l);
@@ -226,7 +228,7 @@ export default function MeusLeadsPage() {
         if (colFilters.status && l.status !== colFilters.status) return false;
       }
       if (colFilters.origem && l.origem !== colFilters.origem) return false;
-      if (colFilters.interesse && l.perfilImovel !== colFilters.interesse) return false;
+      if (colFilters.interesse && l.interesse !== colFilters.interesse) return false;
       if (colFilters.indicacao && (l.cadastroOrigem as any)?.indicacao !== colFilters.indicacao) return false;
       if (numRange.min && (l.numero ?? 0) < parseInt(numRange.min)) return false;
       if (numRange.max && (l.numero ?? 0) > parseInt(numRange.max)) return false;
@@ -288,7 +290,7 @@ export default function MeusLeadsPage() {
       return [
         num, displayName(l), l.telefone || l.whatsapp || "—", l.origem || "—",
         getStageName(l), STATUS_LABEL[l.status ?? ""] || l.status || "—",
-        l.perfilImovel || "—", (l.cadastroOrigem as any)?.indicacao || "—",
+        l.interesse || "—", (l.cadastroOrigem as any)?.indicacao || "—",
         l.assignedUserName || "—", formatDateTime(l.criadoEm),
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",");
     });
@@ -308,7 +310,7 @@ export default function MeusLeadsPage() {
       return `<tr><td>${num}</td><td>${displayName(l)}</td><td>${l.telefone || l.whatsapp || "—"}</td>
         <td>${l.origem || "—"}</td><td>${getStageName(l)}</td>
         <td>${STATUS_LABEL[l.status ?? ""] || l.status || "—"}</td>
-        <td>${l.perfilImovel || "—"}</td><td>${(l.cadastroOrigem as any)?.indicacao || "—"}</td>
+        <td>${l.interesse || "—"}</td><td>${(l.cadastroOrigem as any)?.indicacao || "—"}</td>
         <td>${l.assignedUserName || "—"}</td><td>${formatDateTime(l.criadoEm)}</td></tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Meus Leads</title>
@@ -435,7 +437,7 @@ export default function MeusLeadsPage() {
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
                               {!isGroupedPipeline && st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
-                              {l.perfilImovel && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.perfilImovel}>{l.perfilImovel}</span>}
+                              {l.interesse && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.interesse}>{l.interesse}{l.interesseOrigem === "MANUAL" && " ✎"}</span>}
                               <MaskedField field="lead.responsavel">{l.assignedUserName ? <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span> : null}</MaskedField>
                             </div>
                           </Link>
@@ -529,7 +531,7 @@ export default function MeusLeadsPage() {
                             <span className="text-sm text-[var(--shell-subtext)]">—</span>
                           )}
                         </div>
-                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                         <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
@@ -579,7 +581,7 @@ export default function MeusLeadsPage() {
                           <span className="text-sm text-[var(--shell-subtext)]">—</span>
                         )}
                       </div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.perfilImovel ?? undefined}>{l.perfilImovel || "—"}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                       <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
