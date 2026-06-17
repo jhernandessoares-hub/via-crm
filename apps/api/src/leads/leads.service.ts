@@ -1784,6 +1784,17 @@ async getById(user: any, id: string) {
     }) ?? null;
   }
 
+  let produtoInteresse: { id: string; title: string; coverUrl: string | null } | null = null;
+  if ((lead as any).produtoInteresseId) {
+    const prod = await this.prisma.product.findFirst({
+      where: { id: (lead as any).produtoInteresseId, tenantId: user.tenantId },
+      select: { id: true, title: true, images: { select: { url: true }, take: 1, orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } },
+    });
+    produtoInteresse = prod
+      ? { id: prod.id, title: prod.title, coverUrl: prod.images[0]?.url ?? null }
+      : null;
+  }
+
   // Nome do responsável (para sanitização do Externo Consultivo)
   let assignedUserName: string | null = null;
   if ((lead as any).assignedUserId) {
@@ -1805,6 +1816,7 @@ async getById(user: any, id: string) {
     previousStageKey,
     developmentUnits: linkedUnits,
     empreendimentoInteresse,
+    produtoInteresse,
   };
 
   const fv = await this.getPartnerFieldVisibility(user.tenantId, user.role);

@@ -122,6 +122,7 @@ type Lead = {
   empreendimentoInteresseId?: string | null;
   interesseOrigem?: string | null;
   empreendimentoInteresse?: { id: string; nome: string; capaUrl?: string | null } | null;
+  produtoInteresse?: { id: string; title: string; coverUrl?: string | null } | null;
   resumoLead?: string | null;
   cadastroOrigem?: {
     codigoOcorrencia?: string | null;
@@ -4137,6 +4138,7 @@ function discardAiSuggestion() {
                 lead.valorEntrada != null || lead.estadoCivil || lead.dataNascimento ||
                 lead.tempoProcurandoImovel || lead.conversouComCorretor != null ||
                 lead.qualCorretorImobiliaria || lead.perfilImovel || lead.resumoLead ||
+                lead.empreendimentoInteresse || lead.produtoInteresse ||
                 isHidden('lead.financeiro') || isHidden('lead.estadoCivil') || isHidden('lead.resumo')
               );
 
@@ -4151,6 +4153,7 @@ function discardAiSuggestion() {
                 !!lead.qualCorretorImobiliaria,
                 !!lead.perfilImovel,
                 !!lead.resumoLead,
+                !!(lead.empreendimentoInteresse || lead.produtoInteresse),
               ].filter(Boolean).length;
 
               const fmtCurrency = (v?: number | null) =>
@@ -4279,6 +4282,18 @@ function discardAiSuggestion() {
                               <img src={lead.empreendimentoInteresse.capaUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
                             )}
                             <span className="text-[var(--shell-text)] text-sm font-medium">{lead.empreendimentoInteresse.nome}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {lead.produtoInteresse && (
+                        <div>
+                          <div className="text-xs text-[var(--shell-subtext)]">Imóvel de interesse{lead.interesseOrigem === "MANUAL" && <span className="ml-1 text-amber-600" title="Editado manualmente">✎ editado</span>}</div>
+                          <div className="flex items-center gap-2">
+                            {lead.produtoInteresse.coverUrl && (
+                              <img src={lead.produtoInteresse.coverUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
+                            )}
+                            <span className="text-[var(--shell-text)] text-sm font-medium">{lead.produtoInteresse.title}</span>
                           </div>
                         </div>
                       )}
