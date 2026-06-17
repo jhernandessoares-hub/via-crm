@@ -146,6 +146,11 @@ export class LeadsController {
     return this.leadsService.getPendingReply(req.user);
   }
 
+  @Get('interest-options')
+  async interestOptions(@Req() req: any) {
+    return this.leadsService.interestOptions(req.user);
+  }
+
   // =========================
   // ROTAS COM :id
   // =========================

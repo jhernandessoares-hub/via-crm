@@ -1286,6 +1286,122 @@ const ESPELHO_STATUS_LABEL: Record<string, string> = {
   VENDIDO: "Vendido", BLOQUEADO: "Bloqueado",
 };
 
+// Modal unificado para definir/alterar o interesse do lead: lista imóveis do catálogo + empreendimentos.
+function InteresseSelectorModal({ leadId, current, onClose, onDone }: {
+  leadId: string;
+  current: { type: "produto" | "empreendimento"; id: string } | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [q, setQ] = useState("");
+  const [opts, setOpts] = useState<{
+    products: { id: string; title: string; local: string | null; coverUrl: string | null }[];
+    developments: { id: string; nome: string; local: string | null; coverUrl: string | null }[];
+  }>({ products: [], developments: [] });
+
+  useEffect(() => {
+    apiFetch(`/leads/interest-options`).then((d) => setOpts(d)).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  async function pick(body: { produtoInteresseId: string | null; empreendimentoInteresseId: string | null }) {
+    setSaving(true);
+    try {
+      await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify(body) });
+      onDone();
+    } catch {
+      setSaving(false);
+    }
+  }
+
+  const qq = q.trim().toLowerCase();
+  const devs = opts.developments.filter((d) => !qq || `${d.nome} ${d.local ?? ""}`.toLowerCase().includes(qq));
+  const prods = opts.products.filter((p) => !qq || `${p.title} ${p.local ?? ""}`.toLowerCase().includes(qq));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+      <div className="flex w-full max-w-lg flex-col rounded-2xl bg-[var(--shell-card-bg)] shadow-2xl" style={{ maxHeight: "80vh" }}>
+        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+          <div className="text-base font-bold text-[var(--shell-text)]">Definir interesse</div>
+          <button type="button" onClick={onClose} className="text-lg text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+        </div>
+        <div className="border-b px-5 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
+          <input
+            autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar imóvel ou empreendimento..."
+            className="w-full rounded-lg border px-3 py-2 text-sm"
+            style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+          />
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-3 py-3">
+          {loading ? (
+            <div className="px-2 py-6 text-center text-sm text-[var(--shell-subtext)]">Carregando...</div>
+          ) : (
+            <>
+              {current && (
+                <button
+                  type="button" disabled={saving}
+                  onClick={() => pick({ produtoInteresseId: null, empreendimentoInteresseId: null })}
+                  className="w-full rounded-lg border px-3 py-2 text-left text-sm text-red-600 hover:bg-[var(--shell-hover)] disabled:opacity-50"
+                  style={{ borderColor: "var(--shell-card-border)" }}
+                >
+                  🗑 Remover interesse atual
+                </button>
+              )}
+              {devs.length > 0 && (
+                <div>
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Empreendimentos</div>
+                  <div className="space-y-1">
+                    {devs.map((d) => (
+                      <button
+                        key={d.id} type="button" disabled={saving}
+                        onClick={() => pick({ empreendimentoInteresseId: d.id, produtoInteresseId: null })}
+                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-[var(--shell-hover)] disabled:opacity-50 ${current?.type === "empreendimento" && current.id === d.id ? "bg-[var(--shell-hover)]" : ""}`}
+                      >
+                        {d.coverUrl ? <img src={d.coverUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded object-cover" /> : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-[var(--shell-bg)] text-sm">🏢</div>}
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-[var(--shell-text)]">{d.nome}</div>
+                          {d.local && <div className="truncate text-xs text-[var(--shell-subtext)]">{d.local}</div>}
+                        </div>
+                        {current?.type === "empreendimento" && current.id === d.id && <span className="ml-auto text-xs text-emerald-600">atual</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {prods.length > 0 && (
+                <div>
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Imóveis do catálogo</div>
+                  <div className="space-y-1">
+                    {prods.map((p) => (
+                      <button
+                        key={p.id} type="button" disabled={saving}
+                        onClick={() => pick({ produtoInteresseId: p.id, empreendimentoInteresseId: null })}
+                        className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-[var(--shell-hover)] disabled:opacity-50 ${current?.type === "produto" && current.id === p.id ? "bg-[var(--shell-hover)]" : ""}`}
+                      >
+                        {p.coverUrl ? <img src={p.coverUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded object-cover" /> : <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-[var(--shell-bg)] text-sm">🏠</div>}
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-[var(--shell-text)]">{p.title}</div>
+                          {p.local && <div className="truncate text-xs text-[var(--shell-subtext)]">{p.local}</div>}
+                        </div>
+                        {current?.type === "produto" && current.id === p.id && <span className="ml-auto text-xs text-emerald-600">atual</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {devs.length === 0 && prods.length === 0 && (
+                <div className="px-2 py-6 text-center text-sm text-[var(--shell-subtext)]">Nenhuma opção encontrada.</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EspelhoSelectorModal({ devId, leadId, trocandoUnitId, trocandoUnitNome, linkStatus = "PROPOSTA", viewOnly = false, onClose, onDone }: {
   devId: string; leadId: string;
   trocandoUnitId?: string; trocandoUnitNome?: string;
@@ -1969,6 +2085,7 @@ export default function LeadDetailChatPage() {
   const [espelhoModal, setEspelhoModal] = useState<{ devId: string; trocandoUnitId?: string; trocandoUnitNome?: string } | null>(null);
   const [devInteresseConfirm, setDevInteresseConfirm] = useState<{ devId: string; devNome: string; action: "espelho" | "midia" } | null>(null);
   const [devInteresseSaving, setDevInteresseSaving] = useState(false);
+  const [interesseModalOpen, setInteresseModalOpen] = useState(false);
   const [devMediaModal, setDevMediaModal] = useState<{ devId: string; devNome: string } | null>(null);
   const [devUnits, setDevUnits] = useState<DevUnit[]>([]);
   const [devUnitsLoading, setDevUnitsLoading] = useState(false);
@@ -4274,29 +4391,35 @@ function discardAiSuggestion() {
                         </div>
                       )}
 
-                      {lead.empreendimentoInteresse && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Empreendimento de interesse{lead.interesseOrigem === "MANUAL" && <span className="ml-1 text-amber-600" title="Editado manualmente">✎ editado</span>}</div>
-                          <div className="flex items-center gap-2">
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-xs text-[var(--shell-subtext)]">Interesse{lead.interesseOrigem === "MANUAL" && <span className="ml-1 text-amber-600" title="Editado manualmente">✎ editado</span>}</div>
+                          {user?.role !== "PARTNER" && (
+                            <button type="button" onClick={() => setInteresseModalOpen(true)} className="text-xs font-medium hover:underline" style={{ color: "var(--brand-accent)" }}>
+                              {(lead.empreendimentoInteresse || lead.produtoInteresse) ? "Alterar" : "Definir"}
+                            </button>
+                          )}
+                        </div>
+                        {lead.empreendimentoInteresse ? (
+                          <div className="mt-0.5 flex items-center gap-2">
                             {lead.empreendimentoInteresse.capaUrl && (
                               <img src={lead.empreendimentoInteresse.capaUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
                             )}
                             <span className="text-[var(--shell-text)] text-sm font-medium">{lead.empreendimentoInteresse.nome}</span>
+                            <span className="rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)]">Empreendimento</span>
                           </div>
-                        </div>
-                      )}
-
-                      {lead.produtoInteresse && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Imóvel de interesse{lead.interesseOrigem === "MANUAL" && <span className="ml-1 text-amber-600" title="Editado manualmente">✎ editado</span>}</div>
-                          <div className="flex items-center gap-2">
+                        ) : lead.produtoInteresse ? (
+                          <div className="mt-0.5 flex items-center gap-2">
                             {lead.produtoInteresse.coverUrl && (
                               <img src={lead.produtoInteresse.coverUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
                             )}
                             <span className="text-[var(--shell-text)] text-sm font-medium">{lead.produtoInteresse.title}</span>
+                            <span className="rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)]">Imóvel</span>
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="mt-0.5 text-sm text-[var(--shell-subtext)]">—</div>
+                        )}
+                      </div>
 
                       {(lead.resumoLead || isHidden('lead.resumo')) && (
                         <div>
@@ -6418,6 +6541,25 @@ function discardAiSuggestion() {
           viewOnly={user?.role === "PARTNER"}
           onClose={() => setEspelhoModal(null)}
           onDone={() => { setEspelhoModal(null); loadLead(); }}
+        />
+      )}
+
+      {/* Modal unificado: definir/alterar interesse (imóvel do catálogo ou empreendimento) */}
+      {interesseModalOpen && lead && (
+        <InteresseSelectorModal
+          leadId={id}
+          current={
+            lead.empreendimentoInteresse
+              ? { type: "empreendimento", id: lead.empreendimentoInteresse.id }
+              : lead.produtoInteresse
+              ? { type: "produto", id: lead.produtoInteresse.id }
+              : null
+          }
+          onClose={() => setInteresseModalOpen(false)}
+          onDone={async () => {
+            await loadLead();
+            setInteresseModalOpen(false);
+          }}
         />
       )}
 

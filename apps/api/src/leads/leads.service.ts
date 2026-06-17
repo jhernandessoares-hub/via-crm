@@ -1589,6 +1589,39 @@ export class LeadsService {
     }
   }
 
+  // Opções selecionáveis de interesse do lead: imóveis do catálogo (ACTIVE) + empreendimentos.
+  async interestOptions(user: { tenantId: string }) {
+    const [products, developments] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { tenantId: user.tenantId, status: 'ACTIVE' },
+        select: {
+          id: true, title: true, city: true, neighborhood: true,
+          images: { select: { url: true }, take: 1, orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        },
+        orderBy: { title: 'asc' },
+      }),
+      this.prisma.development.findMany({
+        where: { tenantId: user.tenantId },
+        select: { id: true, nome: true, cidade: true, capaUrl: true },
+        orderBy: { nome: 'asc' },
+      }),
+    ]);
+    return {
+      products: products.map((p) => ({
+        id: p.id,
+        title: p.title,
+        local: [p.neighborhood, p.city].filter(Boolean).join(', ') || null,
+        coverUrl: p.images[0]?.url ?? null,
+      })),
+      developments: developments.map((d) => ({
+        id: d.id,
+        nome: d.nome,
+        local: d.cidade ?? null,
+        coverUrl: d.capaUrl ?? null,
+      })),
+    };
+  }
+
   // Mapa id→título de produtos do catálogo, para resolver o nome do interesse nas listas.
   private async buildProductTitleMap(tenantId: string, productIds: (string | null | undefined)[]) {
     const ids = Array.from(new Set(productIds.filter((x): x is string => !!x)));
