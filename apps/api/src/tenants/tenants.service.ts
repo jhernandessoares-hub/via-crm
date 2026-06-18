@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess } from './permissions.config';
+import { resolveSlaConfig } from './sla.config';
 import { encryptField } from '../crypto/field-crypto.util';
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -217,5 +218,23 @@ export class TenantsService {
       ...resolvePermissions(merged),
       fieldVisibility: { partner: resolveFieldVisibility((merged as any)?.fieldVisibility) },
     };
+  }
+
+  // ── Config SLA (por canal: oficial / light) ──────────────────────
+  async getSlaConfig(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { slaConfig: true },
+    });
+    return resolveSlaConfig(tenant?.slaConfig as any);
+  }
+
+  async updateSlaConfig(tenantId: string, config: any) {
+    const normalized = resolveSlaConfig(config);
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { slaConfig: normalized as any },
+    });
+    return normalized;
   }
 }

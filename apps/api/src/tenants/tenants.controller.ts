@@ -80,6 +80,20 @@ export class TenantsController {
     return this.tenantsService.updateBotConfig(req.user.tenantId, body);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('sla-config')
+  async getSlaConfig(@Req() req: any) {
+    requireOwner(req);
+    return this.tenantsService.getSlaConfig(req.user.tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('sla-config')
+  async updateSlaConfig(@Req() req: any, @Body() body: any) {
+    requireOwner(req);
+    return this.tenantsService.updateSlaConfig(req.user.tenantId, body);
+  }
+
   // Qualquer usuário autenticado pode buscar as permissões do seu tenant
   @UseGuards(JwtAuthGuard)
   @Get('permissions-public')

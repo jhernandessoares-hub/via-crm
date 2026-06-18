@@ -84,6 +84,7 @@ model Tenant {
   criadoEm               DateTime                @default(now())
   permissionsConfig      Json?
   roundRobinConfig       Json?
+  slaConfig              Json?
   brandPalette           String?
   faviconPublicId        String?
   faviconUrl             String?

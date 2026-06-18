@@ -36,6 +36,12 @@ export default function SettingsPage() {
       show: isOwner,
     },
     {
+      href: "/settings/sla",
+      title: "Config. SLA",
+      desc: "Reativação automática de leads parados (WhatsApp Oficial e Light)",
+      show: isOwner,
+    },
+    {
       href: "/settings/notifications",
       title: "Notificações",
       desc: "Escolha quais eventos e etapas te notificam pelo WhatsApp",
