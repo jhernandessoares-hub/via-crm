@@ -339,7 +339,9 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         )}
         {(role === "OWNER" || can("channels", "view")) && <NavItem href="/channels" label="Canais" icon={Megaphone} mode="prefix" />}
 
-        {(role === "OWNER" || can("settings", "view")) && (
+        {/* Configurações visível a todos: cada papel vê só os itens permitidos
+            dentro da página (corretor/parceiro veem ao menos "Notificações" pessoais). */}
+        {(
           <Link
             href="/settings"
             title={collapsed ? "Configurações" : undefined}
