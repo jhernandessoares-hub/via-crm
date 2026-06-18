@@ -280,6 +280,27 @@ async function sendImagesForProduct(
     return 'nenhuma imagem disponível';
   }
 
+  // Idempotência: evita reenviar as fotos do MESMO produto ao MESMO lead em curto intervalo
+  // (cobre retry do job, chamada dupla da ferramenta na mesma geração, jobs concorrentes).
+  const DEDUP_WINDOW_MS = 3 * 60 * 1000;
+  const recentOut = await prisma.leadEvent.findMany({
+    where: {
+      leadId: lead.id,
+      channel: { in: ['whatsapp.out', 'whatsapp.unofficial.out'] },
+      criadoEm: { gte: new Date(Date.now() - DEDUP_WINDOW_MS) },
+    },
+    select: { payloadRaw: true },
+    take: 100,
+  });
+  const jaEnviou = recentOut.some((e) => {
+    const p = e.payloadRaw as any;
+    return p?.source === 'agent-tool.enviar_fotos_produto' && p?.productId === productId;
+  });
+  if (jaEnviou) {
+    logger.log(`📸 FERRAMENTA: fotos do produto ${productId} já enviadas há pouco — pulando (leadId=${lead.id})`);
+    return 'as fotos deste imóvel já foram enviadas há instantes';
+  }
+
   const isLight = lead.conversaCanal === 'WHATSAPP_LIGHT' && !!lead.conversaSessionId && !!unofficialService;
 
   for (const img of images) {
@@ -304,6 +325,7 @@ async function sendImagesForProduct(
             },
             caption,
             source: 'agent-tool.enviar_fotos_produto',
+            productId,
             aiAssistanceLabel: '100% IA',
             aiAssistancePercent: 100,
             at: new Date().toISOString(),
