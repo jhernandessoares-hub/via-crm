@@ -3119,6 +3119,7 @@ function discardAiSuggestion() {
       if (ch === "ai.suggestion") continue;
       if (ch === "stage.changed") continue;
       if (ch === "ai.broker_notify") continue;
+      if (ch === "ai.qual_settle") continue;
       if (ch === "bot.outside_hours") continue;
       if (isGhostEvent(ev)) continue;
       normal.push(ev);
