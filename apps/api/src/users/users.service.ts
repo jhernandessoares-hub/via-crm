@@ -321,8 +321,8 @@ export class UsersService {
       where: { id: userId },
       select: { notificationSettings: true },
     });
-    // null = nunca configurou → opt-out default (só lead_qualified)
-    if (!user?.notificationSettings) return { events: ['lead_qualified'], stages: [], allTenantQualified: false };
+    // null = nunca configurou → padrão: recebe novo lead E lead qualificado
+    if (!user?.notificationSettings) return { events: ['new_lead', 'lead_qualified'], stages: [], allTenantQualified: false };
     return user.notificationSettings as { events: string[]; stages: string[]; allTenantQualified?: boolean };
   }
 

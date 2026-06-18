@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
+import { userWantsEvent } from '../users/notification-prefs.helper';
 
 function getRedisConnection() {
   const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -303,14 +304,14 @@ async function processPayload(
             if (whatsappService) {
               const usersToNotify = await prisma.user.findMany({
                 where: { tenantId: tenant.id, ativo: true, whatsappNumber: { not: null } },
-                select: { whatsappNumber: true, nome: true },
+                select: { id: true, whatsappNumber: true, nome: true },
               });
               const nome = contactName || 'Novo lead';
               const notifMsg = `🔔 Novo lead chegou: *${nome}*${from ? `\nWhatsApp: ${from}` : ''}`;
               for (const u of usersToNotify) {
-                if (u.whatsappNumber) {
-                  whatsappService.sendMessage(u.whatsappNumber, notifMsg).catch(() => {});
-                }
+                if (!u.whatsappNumber) continue;
+                if (!(await userWantsEvent(prisma, u.id, 'new_lead'))) continue;
+                whatsappService.sendMessage(u.whatsappNumber, notifMsg).catch(() => {});
               }
             }
           }

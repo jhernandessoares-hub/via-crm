@@ -16,6 +16,7 @@ import { resolveAiModel } from '../ai/resolve-ai-model';
 import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
+import { userWantsEvent } from '../users/notification-prefs.helper';
 
 const logger = new Logger('WhatsappUnofficialService');
 
@@ -292,6 +293,8 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       select: { whatsappNumber: true },
     });
     if (!user?.whatsappNumber) return;
+    // Respeita a preferência do usuário (tela de Notificações).
+    if (!(await userWantsEvent(this.prisma, assignedUserId, 'new_lead'))) return;
     const nome = contactName || phone || 'Novo lead';
     const msg = `🔔 Novo lead chegou: *${nome}*${phone ? `\nWhatsApp: ${phone}` : ''}`;
 

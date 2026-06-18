@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { QueueService } from './queue.service';
+import { userWantsEvent, userWantsStageNotification } from '../users/notification-prefs.helper';
 import { resolveWhatsappCreds, sendWhatsappImage } from '../whatsapp/whatsapp-creds';
 
 async function sendImageViaWhatsapp(
@@ -57,6 +58,7 @@ async function notifyAssignedUser(
   tenantId: string,
   assignedUserId: string | null | undefined,
   message: string,
+  prefCheck?: (userId: string) => Promise<boolean>,
 ) {
   if (assignedUserId) {
     const user = await prisma.user.findFirst({
@@ -64,6 +66,10 @@ async function notifyAssignedUser(
       select: { whatsappNumber: true },
     });
     if (user?.whatsappNumber) {
+      if (prefCheck && !(await prefCheck(assignedUserId))) {
+        logger.log(`🔕 usuário ${assignedUserId} optou por não receber este aviso`);
+        return;
+      }
       whatsapp.sendMessage(user.whatsappNumber, message, tenantId).catch((err: any) => logger.warn(`Falha ao notificar usuário assignado: ${err?.message}`));
     }
     return;
@@ -72,12 +78,12 @@ async function notifyAssignedUser(
   // Fallback: sem responsável → notifica todos os OWNERs com WhatsApp cadastrado
   const owners = await prisma.user.findMany({
     where: { tenantId, ativo: true, role: 'OWNER', whatsappNumber: { not: null } },
-    select: { whatsappNumber: true },
+    select: { id: true, whatsappNumber: true },
   });
   for (const owner of owners) {
-    if (owner.whatsappNumber) {
-      whatsapp.sendMessage(owner.whatsappNumber, message, tenantId).catch((err: any) => logger.warn(`Falha ao notificar owner fallback: ${err?.message}`));
-    }
+    if (!owner.whatsappNumber) continue;
+    if (prefCheck && !(await prefCheck(owner.id))) continue;
+    whatsapp.sendMessage(owner.whatsappNumber, message, tenantId).catch((err: any) => logger.warn(`Falha ao notificar owner fallback: ${err?.message}`));
   }
 }
 
@@ -102,9 +108,10 @@ async function notifyUsersForStage(
   message: string,
   assignedUserId?: string | null,
 ) {
-  const STAGE_NOTIFY_KEYS = new Set(['INTERESSE_QUALIFICACAO_CONFIRMADOS', 'NAO_QUALIFICADO', 'AGENDAMENTO_VISITA']);
-  if (!STAGE_NOTIFY_KEYS.has(stageKey)) return;
-  await notifyAssignedUser(prisma, whatsapp, tenantId, assignedUserId, message);
+  // Respeita as preferências do usuário: precisa ter 'stage_change' ligado e a etapa selecionada.
+  await notifyAssignedUser(prisma, whatsapp, tenantId, assignedUserId, message, (uid) =>
+    userWantsStageNotification(prisma, uid, stageKey),
+  );
 }
 
 function getRedisConnection() {
@@ -1136,7 +1143,9 @@ async function handleQualSettleJob(
   }
 
   if (whatsapp) {
-    await notifyAssignedUser(prisma, whatsapp, lead.tenantId, lead.assignedUserId, linhas.join('\n'));
+    await notifyAssignedUser(prisma, whatsapp, lead.tenantId, lead.assignedUserId, linhas.join('\n'), (uid) =>
+      userWantsEvent(prisma, uid, 'lead_qualified'),
+    );
   }
 
   await prisma.leadEvent.create({

@@ -8,6 +8,7 @@ import { WhatsappService } from '../secretary/whatsapp.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { Logger } from '../logger';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
+import { userWantsEvent } from '../users/notification-prefs.helper';
 
 const logger = new Logger('ChannelsWebhook');
 
@@ -338,10 +339,10 @@ export class ChannelsWebhookController {
         });
         leadId = lead.id;
 
-        // Notifica usuários
+        // Notifica usuários (respeita a preferência 'new_lead' de cada um)
         const users = await this.prisma.user.findMany({
           where: { tenantId: tenant.id, ativo: true, whatsappNumber: { not: null } },
-          select: { whatsappNumber: true },
+          select: { id: true, whatsappNumber: true },
         });
         const reentrada = existing ? '♻️ Re-entrada — ' : '';
         const msg =
@@ -351,9 +352,9 @@ export class ChannelsWebhookController {
           (normalized.observacao ? `\nMsg: ${normalized.observacao}` : '');
 
         for (const u of users) {
-          if (u.whatsappNumber) {
-            this.whatsapp.sendMessage(u.whatsappNumber, msg).catch(() => {});
-          }
+          if (!u.whatsappNumber) continue;
+          if (!(await userWantsEvent(this.prisma, u.id, 'new_lead'))) continue;
+          this.whatsapp.sendMessage(u.whatsappNumber, msg).catch(() => {});
         }
 
         logger.log(`Lead ${existing ? 're-entrada' : 'novo'} via ${channel.type}: ${normalized.nome}`);
