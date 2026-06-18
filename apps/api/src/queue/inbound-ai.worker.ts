@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { QueueService } from './queue.service';
-import { userWantsEvent, userWantsStageNotification } from '../users/notification-prefs.helper';
+import { userWantsEvent, userWantsStageNotification, getUserNotifPrefs } from '../users/notification-prefs.helper';
 import { resolveWhatsappCreds, sendWhatsappImage } from '../whatsapp/whatsapp-creds';
 
 async function sendImageViaWhatsapp(
@@ -1142,10 +1142,35 @@ async function handleQualSettleJob(
     linhas.push('', '📝 *Resumo IA:*', lead.resumoLead);
   }
 
+  const msg = linhas.join('\n');
   if (whatsapp) {
-    await notifyAssignedUser(prisma, whatsapp, lead.tenantId, lead.assignedUserId, linhas.join('\n'), (uid) =>
+    await notifyAssignedUser(prisma, whatsapp, lead.tenantId, lead.assignedUserId, msg, (uid) =>
       userWantsEvent(prisma, uid, 'lead_qualified'),
     );
+
+    // Broadcast: OWNERs com "receber todos os qualificados do tenant" ligado recebem
+    // os leads QUALIFICADOS de toda a equipe (não só os seus). Inclui o responsável na msg.
+    if (verdict === 'QUALIFICADO') {
+      const owners = await prisma.user.findMany({
+        where: { tenantId: lead.tenantId, ativo: true, role: 'OWNER', whatsappNumber: { not: null } },
+        select: { id: true, whatsappNumber: true },
+      });
+      if (owners.length) {
+        const responsavel = lead.assignedUserId
+          ? await prisma.user.findUnique({ where: { id: lead.assignedUserId }, select: { apelido: true, nome: true } })
+          : null;
+        const responsavelNome = responsavel?.apelido || responsavel?.nome || 'Sem responsável';
+        const msgOwner = `${msg}\n\n👤 Atendido por: ${responsavelNome}`;
+        for (const owner of owners) {
+          if (owner.id === lead.assignedUserId) continue; // já notificado como responsável
+          const prefs = await getUserNotifPrefs(prisma, owner.id);
+          if (!prefs.allTenantQualified) continue;
+          whatsapp
+            .sendMessage(owner.whatsappNumber!, msgOwner, lead.tenantId)
+            .catch((err: any) => logger.warn(`Falha ao notificar owner (allTenantQualified): ${err?.message}`));
+        }
+      }
+    }
   }
 
   await prisma.leadEvent.create({

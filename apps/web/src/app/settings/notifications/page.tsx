@@ -44,6 +44,8 @@ export default function NotificationsSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [events, setEvents] = useState<string[]>(["new_lead"]);
   const [stages, setStages] = useState<string[]>([]);
+  const [allTenantQualified, setAllTenantQualified] = useState(false);
+  const [role, setRole] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState<string | null>(null);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
 
@@ -56,8 +58,12 @@ export default function NotificationsSettingsPage() {
       if (notif) {
         setEvents(notif.events ?? ["new_lead"]);
         setStages(notif.stages ?? []);
+        setAllTenantQualified(!!notif.allTenantQualified);
       }
-      if (me) setWhatsappNumber(me.whatsappNumber || null);
+      if (me) {
+        setWhatsappNumber(me.whatsappNumber || null);
+        setRole(me.role || "");
+      }
       if (Array.isArray(pipeline)) setPipelineStages(pipeline);
     }).finally(() => setLoading(false));
   }, []);
@@ -79,7 +85,7 @@ export default function NotificationsSettingsPage() {
     try {
       await apiFetch("/users/me/notifications", {
         method: "PATCH",
-        body: JSON.stringify({ events, stages }),
+        body: JSON.stringify({ events, stages, allTenantQualified }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -174,6 +180,22 @@ export default function NotificationsSettingsPage() {
             ))}
           </div>
         </div>
+
+        {/* Exclusivo do OWNER: receber todos os qualificados do tenant */}
+        {role === "OWNER" && (
+          <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-base font-semibold text-[var(--shell-text)]">Como dono</p>
+                <p className="text-sm text-[var(--shell-subtext)] mt-0.5">
+                  Receber os leads qualificados de <strong>toda a equipe</strong>, não só os seus.
+                  A mensagem mostra quem está atendendo.
+                </p>
+              </div>
+              <Toggle value={allTenantQualified} onChange={setAllTenantQualified} />
+            </div>
+          </div>
+        )}
 
         {/* Salvar */}
         <div className="flex justify-end">
