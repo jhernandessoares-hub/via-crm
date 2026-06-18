@@ -7,6 +7,7 @@ import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
+import { QueueService } from './queue.service';
 import { resolveWhatsappCreds, sendWhatsappImage } from '../whatsapp/whatsapp-creds';
 
 async function sendImageViaWhatsapp(
@@ -492,6 +493,7 @@ async function handleInboundAiJob(
   ai: AiService,
   whatsapp?: WhatsappService,
   unofficialService?: WhatsappUnofficialService,
+  queue?: QueueService,
 ) {
   const leadId = job.data?.leadId as string | undefined;
   if (!leadId) return;
@@ -993,100 +995,160 @@ async function handleInboundAiJob(
       }
     }
 
-    // Notificação para o corretor (throttle: no máximo 1 a cada 30 minutos)
-    // Gate de qualificação: não dispara "🎯 Lead qualificado" sem renda informada.
-    // Evita qualificação frouxa da IA (lead que só demonstrou interesse). Quando a renda
-    // chegar numa mensagem posterior, a notificação volta a poder disparar.
-    const rendaConhecida = (updateData?.rendaBrutaFamiliar ?? currentQualification?.rendaBrutaFamiliar) != null;
-    if (analysis.notifyBroker && analysis.notifyMessage && !rendaConhecida) {
-      logger.log(`🚧 ASSISTENTE OPERACIONAL: notifyBroker ignorado — lead sem renda informada leadId=${lead.id}`);
-    } else if (analysis.notifyBroker && analysis.notifyMessage) {
-      const recentNotify = await prisma.leadEvent.findFirst({
-        where: {
-          tenantId: lead.tenantId,
-          leadId: lead.id,
-          channel: 'ai.broker_notify',
-          criadoEm: { gte: new Date(Date.now() - 30 * 60 * 1000) },
-        },
-        select: { id: true },
-      });
-
-      if (!recentNotify) {
-        await prisma.leadEvent.create({
-          data: {
-            tenantId: lead.tenantId,
-            leadId: lead.id,
-            channel: 'ai.broker_notify',
-            payloadRaw: {
-              message: analysis.notifyMessage,
-              source: 'assistente-operacional',
-              at: new Date().toISOString(),
-            },
-          },
-        });
-
-        // Envia WhatsApp para usuários que querem notificação de lead qualificado
-        if (whatsapp) {
-          // Mescla dados já salvos com os atualizados agora
-          const mergedQual = { ...currentQualification, ...updateData };
-
-          const fmt = (v: any) => (v !== null && v !== undefined ? String(v) : null);
-          const fmtBool = (v: any) => (v === true ? 'Sim' : v === false ? 'Não' : null);
-          const fmtMoney = (v: any) => (v != null ? `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null);
-          const fmtDate = (v: any) => {
-            if (!v) return null;
-            try { return new Date(v).toLocaleDateString('pt-BR'); } catch { return null; }
-          };
-          let interesseNome: string | null = null;
-          if (mergedQual.produtoInteresseId) {
-            const p = await prisma.product.findUnique({
-              where: { id: mergedQual.produtoInteresseId },
-              select: { title: true },
-            });
-            interesseNome = p?.title ?? null;
-          } else if (mergedQual.empreendimentoInteresseId) {
-            const d = await prisma.development.findUnique({
-              where: { id: mergedQual.empreendimentoInteresseId },
-              select: { nome: true },
-            });
-            interesseNome = d?.nome ?? null;
-          }
-
-          const linhas: string[] = [
-            `🎯 *Lead qualificado: ${lead.nomeCorreto ?? lead.nome}*`,
-            `📱 WhatsApp: ${lead.telefone || '—'}`,
-            '',
-          ];
-
-          if (mergedQual.rendaBrutaFamiliar != null) linhas.push(`💰 Renda bruta: ${fmtMoney(mergedQual.rendaBrutaFamiliar)}`);
-          if (mergedQual.fgts != null) linhas.push(`🏦 FGTS: ${fmtMoney(mergedQual.fgts)}`);
-          if (mergedQual.valorEntrada != null) linhas.push(`💵 Entrada: ${fmtMoney(mergedQual.valorEntrada)}`);
-          if (mergedQual.perfilImovel) linhas.push(`🏠 Perfil: ${fmt(mergedQual.perfilImovel)}`);
-          if (interesseNome) linhas.push(`📋 Interesse: ${interesseNome}`);
-          if (mergedQual.estadoCivil) linhas.push(`💍 Estado civil: ${fmt(mergedQual.estadoCivil)}`);
-          if (mergedQual.dataNascimento) linhas.push(`🎂 Nascimento: ${fmtDate(mergedQual.dataNascimento)}`);
-          if (mergedQual.tempoProcurandoImovel) linhas.push(`⏱ Procurando há: ${fmt(mergedQual.tempoProcurandoImovel)}`);
-          if (mergedQual.conversouComCorretor != null) linhas.push(`🤝 Conversou c/ corretor: ${fmtBool(mergedQual.conversouComCorretor)}`);
-          if (mergedQual.qualCorretorImobiliaria) linhas.push(`🏢 Corretor anterior: ${fmt(mergedQual.qualCorretorImobiliaria)}`);
-
-          if (mergedQual.resumoLead) {
-            linhas.push('', `📝 *Resumo IA:*`, mergedQual.resumoLead);
-          }
-
-          const qualMsg = linhas.join('\n');
-          await notifyUsersForEvent(prisma, whatsapp, lead.tenantId, 'lead_qualified', qualMsg, lead.assignedUserId);
-        }
-
-        logger.log(`📢 ASSISTENTE OPERACIONAL: notificou corretor leadId=${lead.id}`);
-      } else {
-        logger.log(`🔕 ASSISTENTE OPERACIONAL: notificação suprimida (throttle 30min) leadId=${lead.id}`);
-      }
+    // Em vez de notificar a cada mensagem, (re)arma o cronômetro de "conversa assentou".
+    // Quando o lead ficar em silêncio pela janela, o worker de qualificação (qual-settle)
+    // avalia renda × faixa do produto e manda UM resumo consolidado ao corretor.
+    if (queue) {
+      await queue
+        .scheduleQualSettle(lead.id)
+        .catch((e: any) => logger.warn(`Falha ao agendar qual-settle leadId=${lead.id}: ${e?.message ?? e}`));
     }
   } catch (opErr: any) {
     logger.log(
       `⚠️ Assistente Operacional erro leadId=${lead.id}: ${opErr?.message || opErr}`,
     );
   }
+}
+
+// ── Qualificação: avaliação quando a conversa assenta ──────────────────────
+// Dispara após o lead ficar em silêncio pela janela (debounce no QueueService).
+// Avalia renda × faixa do produto de interesse e manda UM resumo ao corretor.
+async function handleQualSettleJob(
+  job: Job,
+  prisma: PrismaService,
+  whatsapp?: WhatsappService,
+) {
+  const leadId = job.data?.leadId as string | undefined;
+  if (!leadId) return;
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true, tenantId: true, nome: true, nomeCorreto: true, telefone: true,
+      assignedUserId: true, deletedAt: true,
+      rendaBrutaFamiliar: true, fgts: true, valorEntrada: true, perfilImovel: true,
+      estadoCivil: true, dataNascimento: true, resumoLead: true,
+      produtoInteresseId: true, empreendimentoInteresseId: true,
+    },
+  });
+  if (!lead || lead.deletedAt) return;
+
+  const renda = lead.rendaBrutaFamiliar;
+  const temProduto = !!(lead.produtoInteresseId || lead.empreendimentoInteresseId);
+
+  // Nada coletado ainda → o aviso de "novo lead" já cobriu; não há resumo de qualificação.
+  if (renda == null && !temProduto) {
+    logger.log(`⏳ qual-settle: lead sem dados de qualificação — sem aviso leadId=${lead.id}`);
+    return;
+  }
+
+  // Faixa de renda do produto de interesse (campos já existem em Product).
+  let interesseNome: string | null = null;
+  let minIncome: number | null = null;
+  let maxIncome: number | null = null;
+  let temFaixa = false;
+  if (lead.produtoInteresseId) {
+    const p = await prisma.product.findUnique({
+      where: { id: lead.produtoInteresseId },
+      select: { title: true, minBuyerIncome: true, buyerIncomeLimit: true },
+    });
+    interesseNome = p?.title ?? null;
+    minIncome = p?.minBuyerIncome != null ? Number(p.minBuyerIncome) : null;
+    maxIncome = p?.buyerIncomeLimit != null ? Number(p.buyerIncomeLimit) : null;
+    temFaixa = minIncome != null || maxIncome != null;
+  } else if (lead.empreendimentoInteresseId) {
+    const d = await prisma.development.findUnique({
+      where: { id: lead.empreendimentoInteresseId },
+      select: { nome: true },
+    });
+    interesseNome = d?.nome ?? null;
+  }
+
+  // Veredito objetivo: renda × faixa do produto.
+  type Verdict = 'QUALIFICADO' | 'RENDA_INCOMPATIVEL' | 'INCOMPLETO';
+  let verdict: Verdict;
+  const faltas: string[] = [];
+  let semFaixaAviso = false;
+  if (renda == null) {
+    verdict = 'INCOMPLETO';
+    faltas.push('renda');
+  } else if (!temProduto) {
+    verdict = 'INCOMPLETO';
+    faltas.push('imóvel de interesse');
+  } else if (temFaixa) {
+    const acimaMin = minIncome == null || renda >= minIncome;
+    const abaixoMax = maxIncome == null || renda <= maxIncome;
+    verdict = acimaMin && abaixoMax ? 'QUALIFICADO' : 'RENDA_INCOMPATIVEL';
+  } else {
+    // Tem renda + produto, mas produto sem faixa cadastrada → qualifica e avisa.
+    verdict = 'QUALIFICADO';
+    semFaixaAviso = true;
+  }
+
+  // Dedup: não reenvia se veredito + renda + produto não mudaram desde o último settle.
+  const signature = `${verdict}|${renda ?? ''}|${lead.produtoInteresseId ?? lead.empreendimentoInteresseId ?? ''}`;
+  const lastSettle = await prisma.leadEvent.findFirst({
+    where: { tenantId: lead.tenantId, leadId: lead.id, channel: 'ai.qual_settle' },
+    orderBy: { criadoEm: 'desc' },
+    select: { payloadRaw: true },
+  });
+  if (lastSettle && (lastSettle.payloadRaw as any)?.signature === signature) {
+    logger.log(`🔁 qual-settle: sem mudança desde o último aviso leadId=${lead.id}`);
+    return;
+  }
+
+  const fmtMoney = (v: any) => (v != null ? `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null);
+  const fmtDate = (v: any) => { if (!v) return null; try { return new Date(v).toLocaleDateString('pt-BR'); } catch { return null; } };
+  const nome = lead.nomeCorreto ?? lead.nome;
+
+  const header =
+    verdict === 'QUALIFICADO' ? `🎯 *Lead qualificado: ${nome}*`
+    : verdict === 'RENDA_INCOMPATIVEL' ? `⚠️ *Renda incompatível: ${nome}*`
+    : `⏳ *Lead incompleto: ${nome}*`;
+
+  const linhas: string[] = [header, `📱 WhatsApp: ${lead.telefone || '—'}`, ''];
+  if (renda != null) linhas.push(`💰 Renda bruta: ${fmtMoney(renda)}`);
+  if (lead.fgts != null) linhas.push(`🏦 FGTS: ${fmtMoney(lead.fgts)}`);
+  if (lead.valorEntrada != null) linhas.push(`💵 Entrada: ${fmtMoney(lead.valorEntrada)}`);
+  if (interesseNome) linhas.push(`📋 Interesse: ${interesseNome}`);
+  if (temFaixa) {
+    const faixa = [
+      minIncome != null ? `mín ${fmtMoney(minIncome)}` : null,
+      maxIncome != null ? `máx ${fmtMoney(maxIncome)}` : null,
+    ].filter(Boolean).join(' / ');
+    linhas.push(`📊 Faixa do imóvel: ${faixa}`);
+  }
+  if (lead.perfilImovel) linhas.push(`🏠 Perfil: ${lead.perfilImovel}`);
+  if (lead.estadoCivil) linhas.push(`💍 Estado civil: ${lead.estadoCivil}`);
+  if (lead.dataNascimento) linhas.push(`🎂 Nascimento: ${fmtDate(lead.dataNascimento)}`);
+
+  if (verdict === 'RENDA_INCOMPATIVEL') {
+    linhas.push('', '⚠️ A renda informada não atende à faixa exigida pelo imóvel de interesse.');
+  }
+  if (verdict === 'INCOMPLETO') {
+    linhas.push('', `⏳ O lead parou de responder. Falta: ${faltas.join(', ')}.`);
+  }
+  if (semFaixaAviso) {
+    linhas.push('', 'ℹ️ Imóvel de interesse sem faixa de renda cadastrada — confira o cadastro.');
+  }
+  if (lead.resumoLead) {
+    linhas.push('', '📝 *Resumo IA:*', lead.resumoLead);
+  }
+
+  if (whatsapp) {
+    await notifyAssignedUser(prisma, whatsapp, lead.tenantId, lead.assignedUserId, linhas.join('\n'));
+  }
+
+  await prisma.leadEvent.create({
+    data: {
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      channel: 'ai.qual_settle',
+      payloadRaw: { verdict, signature, at: new Date().toISOString() },
+    },
+  });
+
+  logger.log(`📢 qual-settle: ${verdict} → corretor leadId=${lead.id}`);
 }
 
 // ── Worker bootstrap ───────────────────────────────────────────────────────
@@ -1096,13 +1158,18 @@ export function startInboundAiWorker(
   ai: AiService,
   whatsapp?: WhatsappService,
   unofficialService?: WhatsappUnofficialService,
+  queue?: QueueService,
 ) {
   logger.log('🧠 Inbound AI Worker boot', { redis: getRedisConnection() });
 
   const worker = new Worker(
     'inbound-ai-queue',
     async (job) => {
-      await handleInboundAiJob(job, prisma, ai, whatsapp, unofficialService);
+      if (job.name === 'qual-settle') {
+        await handleQualSettleJob(job, prisma, whatsapp);
+      } else {
+        await handleInboundAiJob(job, prisma, ai, whatsapp, unofficialService, queue);
+      }
     },
     {
       connection: getRedisConnection(),

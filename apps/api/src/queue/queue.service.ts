@@ -192,6 +192,39 @@ export class QueueService implements OnModuleDestroy {
     }
   }
 
+  // =============================
+  // QUALIFICAÇÃO: cronômetro de "conversa assentou"
+  // =============================
+  // Reagendado (debounce) a cada mensagem real do lead. Quando o lead fica em
+  // silêncio pela janela, o worker avalia a qualificação e manda UM resumo ao corretor.
+
+  private getQualSettleDelayMs() {
+    const minutes = Number(process.env.AI_QUAL_SETTLE_MINUTES || 10);
+    return Math.max(1, minutes) * 60 * 1000;
+  }
+
+  async scheduleQualSettle(leadId: string) {
+    await this.cancelQualSettleJobs(leadId);
+    await this.inboundAiQueue.add(
+      'qual-settle',
+      { leadId },
+      {
+        delay: this.getQualSettleDelayMs(),
+        jobId: `qual-settle-${leadId}`,
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+    return { ok: true, leadId };
+  }
+
+  async cancelQualSettleJobs(leadId: string) {
+    const job = await this.inboundAiQueue.getJob(`qual-settle-${leadId}`);
+    if (job) await job.remove();
+  }
+
   async scheduleInboundAiTest(leadId: string, seconds = 10) {
     const delay = Math.max(1, Number(seconds || 10)) * 1000;
 
