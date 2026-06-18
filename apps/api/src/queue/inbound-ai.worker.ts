@@ -176,6 +176,44 @@ function isWithinBusinessHours(businessHours: any, timezone: string): boolean {
   }
 }
 
+/**
+ * Quantos minutos faltam até a próxima abertura do atendimento (a partir de agora, no tz).
+ * Retorna null se não houver nenhum dia com horário configurado nos próximos 7 dias.
+ * Usa apenas o delta de minutos no relógio do tz (não constrói Date em fuso) — preciso o
+ * suficiente para agendar o job. Só chamado quando já se sabe que está FORA do horário.
+ */
+function minutesUntilNextOpen(businessHours: any, timezone: string): number | null {
+  if (!businessHours) return null;
+  const tz = timezone || 'America/Sao_Paulo';
+  const DOW = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const shortToFull: Record<string, string> = {
+    sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday',
+  };
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date());
+    const weekdayShort = parts.find((p) => p.type === 'weekday')?.value?.toLowerCase();
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const todayKey = weekdayShort ? shortToFull[weekdayShort] : null;
+    if (!todayKey) return null;
+    const todayIdx = DOW.indexOf(todayKey);
+    const currentMinutes = hour * 60 + minute;
+
+    for (let d = 0; d < 8; d++) {
+      const sched = businessHours[DOW[(todayIdx + d) % 7]];
+      if (!sched) continue;
+      const [oh, om] = String(sched.open || '00:00').split(':').map(Number);
+      const deltaMin = d * 1440 + (oh * 60 + om) - currentMinutes;
+      if (deltaMin > 0) return deltaMin;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 async function registerAiSuggestion(
@@ -572,6 +610,15 @@ async function handleInboundAiJob(
       'Olá! Nosso atendimento está encerrado no momento. Retornaremos assim que possível. 😊';
     if (whatsapp && lead.telefone) {
       await sendOutsideHoursMessage(prisma, whatsapp, lead.tenantId, lead.id, lead.telefone, msg);
+    }
+    // Reagenda a resposta real da IA para a próxima abertura do atendimento, para
+    // não deixar a mensagem do lead sem resposta. +1min de margem após a abertura.
+    const minsUntilOpen = minutesUntilNextOpen(bh, tz);
+    if (queue && minsUntilOpen && minsUntilOpen > 0) {
+      await queue
+        .scheduleInboundAiAt(lead.id, minsUntilOpen * 60 + 60)
+        .catch((e: any) => logger.warn(`Falha ao reagendar p/ abertura leadId=${lead.id}: ${e?.message ?? e}`));
+      logger.log(`🕐 IA reagendada p/ abertura (~${minsUntilOpen}min) leadId=${lead.id}`);
     }
     return;
   }

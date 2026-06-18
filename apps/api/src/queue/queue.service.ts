@@ -184,12 +184,37 @@ export class QueueService implements OnModuleDestroy {
     const ids = [
       `inbound-ai-${leadId}`,
       `inbound-ai-${leadId}-test`,
+      `inbound-ai-reopen-${leadId}`,
     ];
 
     for (const id of ids) {
       const job = await this.inboundAiQueue.getJob(id);
       if (job) await job.remove();
     }
+  }
+
+  /**
+   * Agenda o processamento da IA para um momento futuro (ex: abertura do atendimento).
+   * Usa um jobId distinto ('reopen') para não colidir com o job atual em processamento
+   * quando chamado de dentro do próprio worker.
+   */
+  async scheduleInboundAiAt(leadId: string, delaySeconds: number) {
+    const id = `inbound-ai-reopen-${leadId}`;
+    const existing = await this.inboundAiQueue.getJob(id);
+    if (existing) await existing.remove();
+    await this.inboundAiQueue.add(
+      'inbound-ai',
+      { leadId, isFirstReply: false },
+      {
+        delay: Math.max(1, delaySeconds) * 1000,
+        jobId: id,
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+    return { ok: true, leadId, delaySeconds };
   }
 
   // =============================
