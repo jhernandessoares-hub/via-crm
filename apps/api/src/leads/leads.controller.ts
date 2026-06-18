@@ -162,6 +162,12 @@ export class LeadsController {
     return this.leadsService.endConversation(tenantId, id);
   }
 
+  // Marca o lead como lido (ao abrir o detalhe) — limpa "Aguardando resposta" do sininho.
+  @Post(':id/mark-read')
+  async markRead(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.markRead(req.user.tenantId, id);
+  }
+
   @Post(':id/merge')
   async mergeLeads(
     @Req() req: any,

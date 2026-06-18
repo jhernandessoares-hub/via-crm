@@ -1180,7 +1180,7 @@ export class LeadsService {
 
     const leads = await this.prisma.lead.findMany({
       where: { tenantId, deletedAt: null, lastInboundAt: { not: null }, ...roleFilter },
-      select: { id: true, nome: true, nomeCorreto: true, telefone: true, lastInboundAt: true },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true, lastInboundAt: true, lastReadAt: true },
       orderBy: { lastInboundAt: 'desc' },
       take: 100,
     });
@@ -1205,8 +1205,13 @@ export class LeadsService {
     return leads
       .filter((lead) => {
         const lastOut = lastOutboundMap.get(lead.id);
-        return !lastOut || lead.lastInboundAt! > lastOut;
+        const aguardaResposta = !lastOut || lead.lastInboundAt! > lastOut;
+        if (!aguardaResposta) return false;
+        // Já lido: o usuário abriu o lead depois da última mensagem recebida → some da lista.
+        if (lead.lastReadAt && lead.lastReadAt >= lead.lastInboundAt!) return false;
+        return true;
       })
+      .map(({ lastReadAt, ...rest }) => rest)
       .slice(0, 20);
   }
 
@@ -3310,6 +3315,16 @@ const aiAssistanceLabel =
     await this.prisma.lead.update({
       where: { id: leadId, tenantId },
       data: { conversaAberta: false, lastReadAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  /** Marca o lead como lido (ao abrir o detalhe) — limpa a notificação "Aguardando resposta".
+   *  Não altera conversaAberta; só registra que o usuário viu a última mensagem. */
+  async markRead(tenantId: string, leadId: string): Promise<{ ok: boolean }> {
+    await this.prisma.lead.updateMany({
+      where: { id: leadId, tenantId, deletedAt: null },
+      data: { lastReadAt: new Date() },
     });
     return { ok: true };
   }

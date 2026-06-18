@@ -2585,6 +2585,12 @@ export default function LeadDetailChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Ao abrir o lead, marca como lido → limpa a notificação "Aguardando resposta" do sininho.
+  useEffect(() => {
+    if (!id) return;
+    apiFetch(`/leads/${id}/mark-read`, { method: "POST" }).catch(() => null);
+  }, [id]);
+
   // Interceptor de navegação: pergunta se quer encerrar conversa aberta.
   // Externo Consultivo (PARTNER) é só consulta — não conversa, não encerra; navega livre.
   useEffect(() => {
