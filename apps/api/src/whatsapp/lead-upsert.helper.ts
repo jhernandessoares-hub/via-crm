@@ -114,6 +114,7 @@ export async function upsertLeadFromWhatsapp(
 
   let leadId: string;
   let isReentry: boolean;
+  let assignedUserId: string | null = null;
 
   const isSystemMessage = type === 'system';
 
@@ -177,6 +178,7 @@ export async function upsertLeadFromWhatsapp(
 
     leadId = created.id;
     isReentry = false;
+    assignedUserId = assignment.assignedUserId;
   }
 
   await prisma.leadEvent.create({
@@ -228,5 +230,5 @@ export async function upsertLeadFromWhatsapp(
   }
 
   logger.log(`Lead ${isReentry ? 'atualizado' : 'criado'} — id=${leadId} canal=${canal}`);
-  return { leadId, isReentry };
+  return { leadId, isReentry, assignedUserId };
 }

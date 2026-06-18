@@ -15,6 +15,7 @@ import { upsertLeadFromWhatsapp } from '../whatsapp/lead-upsert.helper';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
+import { WhatsappService } from '../secretary/whatsapp.service';
 
 const logger = new Logger('WhatsappUnofficialService');
 
@@ -265,12 +266,30 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
     private readonly limitsService: LimitsService,
+    private readonly whatsapp: WhatsappService,
   ) {}
 
   async onModuleDestroy() {
     for (const [, socket] of this.sockets) {
       try { socket.end(undefined); } catch {}
     }
+  }
+
+  /** Notifica o corretor responsável (pelo WhatsApp oficial) sobre um lead novo do Light. */
+  private async notifyResponsibleNewLead(
+    tenantId: string,
+    assignedUserId: string,
+    contactName: string | null | undefined,
+    phone: string,
+  ) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: assignedUserId, tenantId, ativo: true, whatsappNumber: { not: null } },
+      select: { whatsappNumber: true },
+    });
+    if (!user?.whatsappNumber) return;
+    const nome = contactName || phone || 'Novo lead';
+    const msg = `🔔 Novo lead chegou: *${nome}*${phone ? `\nWhatsApp: ${phone}` : ''}`;
+    await this.whatsapp.sendMessage(user.whatsappNumber, msg, tenantId);
   }
 
   // ── Criação e reconexão ───────────────────────────────────────────────────
@@ -938,7 +957,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     }
 
     // Cria/atualiza lead e cria LeadEvent (inbound)
-    const { leadId } = await upsertLeadFromWhatsapp(this.prisma, this.queue, {
+    const { leadId, isReentry, assignedUserId } = await upsertLeadFromWhatsapp(this.prisma, this.queue, {
       tenantId,
       from: phone,
       text: text,
@@ -952,6 +971,13 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       transcription: audioTranscription,
       media: inboundMedia,
     });
+
+    // Notifica o corretor responsável quando um lead NOVO entra pelo WhatsApp Light.
+    // Só lead novo (não reentrada), só mensagens reais (não silenciosas), só o responsável.
+    const SILENT_TYPES = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
+    if (!isReentry && assignedUserId && !SILENT_TYPES.has(type)) {
+      this.notifyResponsibleNewLead(tenantId, assignedUserId, contactName, phone).catch(() => {});
+    }
 
     // Se é resposta de campanha e o lead NÃO foi criado pelo worker (fluxo legado),
     // registra a mensagem original + previews acumulados como contexto para a IA
