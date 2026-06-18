@@ -994,7 +994,13 @@ async function handleInboundAiJob(
     }
 
     // Notificação para o corretor (throttle: no máximo 1 a cada 30 minutos)
-    if (analysis.notifyBroker && analysis.notifyMessage) {
+    // Gate de qualificação: não dispara "🎯 Lead qualificado" sem renda informada.
+    // Evita qualificação frouxa da IA (lead que só demonstrou interesse). Quando a renda
+    // chegar numa mensagem posterior, a notificação volta a poder disparar.
+    const rendaConhecida = (updateData?.rendaBrutaFamiliar ?? currentQualification?.rendaBrutaFamiliar) != null;
+    if (analysis.notifyBroker && analysis.notifyMessage && !rendaConhecida) {
+      logger.log(`🚧 ASSISTENTE OPERACIONAL: notifyBroker ignorado — lead sem renda informada leadId=${lead.id}`);
+    } else if (analysis.notifyBroker && analysis.notifyMessage) {
       const recentNotify = await prisma.leadEvent.findFirst({
         where: {
           tenantId: lead.tenantId,
