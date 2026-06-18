@@ -50,6 +50,15 @@ type PendingReplyLead = {
   lastInboundAt: string;
 };
 
+type AppNotice = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  criadoEm: string;
+};
+
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2)
@@ -77,6 +86,7 @@ function AppShellInner({
   const [counts, setCounts] = useState<Counts | null>(null);
   const [pendingDeletions, setPendingDeletions] = useState(0);
   const [pendingReplies, setPendingReplies] = useState<PendingReplyLead[]>([]);
+  const [notices, setNotices] = useState<AppNotice[]>([]);
   const [branding, setBranding] = useState<TenantBranding>({});
   const [tenantAddons, setTenantAddons] = useState<string[]>([]);
   const [tenantPlan, setTenantPlan] = useState<string>('');
@@ -131,10 +141,18 @@ function AppShellInner({
       apiFetch("/leads/pending-reply")
         .then((data: any) => setPendingReplies(Array.isArray(data) ? data : []))
         .catch(() => null);
+      apiFetch("/users/me/notices")
+        .then((data: any) => setNotices(Array.isArray(data) ? data : []))
+        .catch(() => null);
     }
     fetchCounts();
     const i = setInterval(fetchCounts, 60_000);
     return () => clearInterval(i);
+  }, []);
+
+  const handleReadNotice = useCallback(async (id: string) => {
+    setNotices((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
+    apiFetch(`/users/me/notices/${id}/read`, { method: "POST" }).catch(() => null);
   }, []);
 
   const handleSessionWarning = useCallback(() => {
@@ -233,6 +251,8 @@ function AppShellInner({
             onOpenMeusDados={() => setModalOpen(true)}
             pendingDeletions={pendingDeletions}
             pendingReplies={pendingReplies}
+            notices={notices}
+            onReadNotice={handleReadNotice}
             sessionSecondsLeft={secondsLeft}
           />
           <main className="flex-1 p-6 overflow-y-auto">{children}</main>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Sun, Moon, ChevronDown, Trash2, MessageCircle } from "lucide-react";
+import { Bell, Sun, Moon, ChevronDown, Trash2, MessageCircle, AlertTriangle } from "lucide-react";
 import { apiLogout } from "@/lib/api";
 
 type PendingReplyLead = {
@@ -11,6 +11,15 @@ type PendingReplyLead = {
   nomeCorreto: string | null;
   telefone: string | null;
   lastInboundAt: string;
+};
+
+type AppNotice = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  criadoEm: string;
 };
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
@@ -32,6 +41,8 @@ interface HeaderProps {
   onOpenMeusDados: () => void;
   pendingDeletions?: number;
   pendingReplies?: PendingReplyLead[];
+  notices?: AppNotice[];
+  onReadNotice?: (id: string) => void;
   sessionSecondsLeft?: number | null;
 }
 
@@ -62,8 +73,12 @@ export function Header({
   onOpenMeusDados,
   pendingDeletions = 0,
   pendingReplies = [],
+  notices = [],
+  onReadNotice,
   sessionSecondsLeft,
 }: HeaderProps) {
+  const unreadNotices = notices.filter((n) => !n.readAt);
+  const totalCount = pendingDeletions + pendingReplies.length + unreadNotices.length;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notifsOpen, setNotifsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -164,9 +179,9 @@ export function Header({
               aria-label="Notificações"
             >
               <Bell className="h-[18px] w-[18px]" />
-              {(pendingDeletions + pendingReplies.length) > 0 && (
+              {totalCount > 0 && (
                 <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
-                  {(pendingDeletions + pendingReplies.length) > 9 ? "9+" : (pendingDeletions + pendingReplies.length)}
+                  {totalCount > 9 ? "9+" : totalCount}
                 </span>
               )}
             </button>
@@ -186,14 +201,14 @@ export function Header({
                   <span className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>
                     Notificações
                   </span>
-                  {(pendingDeletions + pendingReplies.length) > 0 && (
+                  {totalCount > 0 && (
                     <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
-                      {(pendingDeletions + pendingReplies.length) > 9 ? "9+" : (pendingDeletions + pendingReplies.length)}
+                      {totalCount > 9 ? "9+" : totalCount}
                     </span>
                   )}
                 </div>
 
-                {pendingDeletions === 0 && pendingReplies.length === 0 ? (
+                {totalCount === 0 ? (
                   <div className="flex flex-col items-center gap-2 py-6 px-4">
                     <Bell className="h-8 w-8" style={{ color: "var(--shell-subtext)", opacity: 0.4 }} />
                     <span className="text-sm text-center" style={{ color: "var(--shell-subtext)" }}>
@@ -202,6 +217,37 @@ export function Header({
                   </div>
                 ) : (
                   <div className="max-h-80 overflow-y-auto">
+                    {unreadNotices.map((notice) => (
+                      <button
+                        key={notice.id}
+                        onClick={() => onReadNotice?.(notice.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--shell-hover)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium truncate" style={{ color: "var(--shell-text)" }}>
+                            {notice.title}
+                          </div>
+                          {notice.body && (
+                            <div className="text-xs truncate" style={{ color: "var(--shell-subtext)" }}>
+                              {notice.body}
+                            </div>
+                          )}
+                          <div className="text-[11px] mt-0.5" style={{ color: "var(--shell-subtext)", opacity: 0.7 }}>
+                            {formatRelativeTime(notice.criadoEm)} · toque para marcar como lido
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+
+                    {unreadNotices.length > 0 && (pendingDeletions > 0 || pendingReplies.length > 0) && (
+                      <div className="mx-4 border-t" style={{ borderColor: "var(--shell-divider)" }} />
+                    )}
+
                     {pendingDeletions > 0 && (
                       <button
                         onClick={() => { setNotifsOpen(false); router.push("/products"); }}

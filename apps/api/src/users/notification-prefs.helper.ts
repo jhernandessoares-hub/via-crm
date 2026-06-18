@@ -42,3 +42,27 @@ export async function userWantsStageNotification(prisma: PrismaService, userId: 
   const p = await getUserNotifPrefs(prisma, userId);
   return p.events.includes('stage_change') && p.stages.includes(stageKey);
 }
+
+/**
+ * Registra um aviso in-app para o usuário (aparece no sininho ao logar).
+ * Usado quando não foi possível entregar uma notificação por WhatsApp.
+ * Nunca quebra o fluxo (try/catch silencioso).
+ */
+export async function recordUserNotice(
+  prisma: PrismaService,
+  data: { tenantId: string; userId: string; kind: string; title: string; body?: string | null },
+): Promise<void> {
+  try {
+    await prisma.userNotice.create({
+      data: {
+        tenantId: data.tenantId,
+        userId: data.userId,
+        kind: data.kind,
+        title: data.title,
+        body: data.body ?? null,
+      },
+    });
+  } catch {
+    // não quebra o fluxo de notificação
+  }
+}

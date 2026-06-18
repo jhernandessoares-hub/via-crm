@@ -337,4 +337,30 @@ export class UsersService {
     });
     return data;
   }
+
+  // ── Avisos in-app (sininho) ──────────────────────────────────────
+  async getNotices(userId: string) {
+    return this.prisma.userNotice.findMany({
+      where: { userId },
+      orderBy: { criadoEm: 'desc' },
+      take: 20,
+      select: { id: true, kind: true, title: true, body: true, readAt: true, criadoEm: true },
+    });
+  }
+
+  async markNoticeRead(userId: string, id: string) {
+    await this.prisma.userNotice.updateMany({
+      where: { id, userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  async markAllNoticesRead(userId: string) {
+    await this.prisma.userNotice.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { ok: true };
+  }
 }

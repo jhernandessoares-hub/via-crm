@@ -133,4 +133,23 @@ export class UsersController {
       body,
     );
   }
+
+  // ── Avisos in-app (sininho) ──────────────────────────────────────
+  @UseGuards(JwtAuthGuard)
+  @Get("me/notices")
+  async getNotices(@Req() req: any) {
+    return this.usersService.getNotices(req.user.sub || req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("me/notices/:id/read")
+  async markNoticeRead(@Req() req: any, @Param("id") id: string) {
+    return this.usersService.markNoticeRead(req.user.sub || req.user.id, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("me/notices/read-all")
+  async markAllNoticesRead(@Req() req: any) {
+    return this.usersService.markAllNoticesRead(req.user.sub || req.user.id);
+  }
 }

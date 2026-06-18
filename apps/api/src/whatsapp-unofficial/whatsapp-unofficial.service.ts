@@ -16,7 +16,7 @@ import { resolveAiModel } from '../ai/resolve-ai-model';
 import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
-import { userWantsEvent } from '../users/notification-prefs.helper';
+import { userWantsEvent, recordUserNotice } from '../users/notification-prefs.helper';
 
 const logger = new Logger('WhatsappUnofficialService');
 
@@ -309,7 +309,18 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     }
 
     // 2) Fallback: WhatsApp oficial (Meta).
-    await this.whatsapp.sendMessage(user.whatsappNumber, msg, tenantId);
+    const r = await this.whatsapp.sendMessage(user.whatsappNumber, msg, tenantId);
+
+    // 3) Ambos falharam → deixa aviso in-app (sininho) para o responsável.
+    if (!r) {
+      await recordUserNotice(this.prisma, {
+        tenantId,
+        userId: assignedUserId,
+        kind: 'delivery_failed',
+        title: 'Não consegui te avisar de um novo lead',
+        body: `${nome}${phone ? ' — ' + phone : ''}`,
+      });
+    }
   }
 
   // ── Criação e reconexão ───────────────────────────────────────────────────
