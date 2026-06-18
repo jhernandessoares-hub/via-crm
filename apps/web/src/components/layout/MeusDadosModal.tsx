@@ -16,6 +16,7 @@ export type FullProfile = {
   nome: string;
   email: string;
   apelido: string | null;
+  whatsappNumber: string | null;
   preferences: { theme?: "light" | "dark"; welcomeSeen?: boolean; lgpdAccepted?: boolean } | null;
   role: Role;
   branchId: string | null;
@@ -38,6 +39,7 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
   const [nome, setNome] = useState(profile.nome);
   const [email, setEmail] = useState(profile.email);
   const [apelido, setApelido] = useState(profile.apelido ?? "");
+  const [whatsapp, setWhatsapp] = useState(profile.whatsappNumber ?? "");
   const [senhaAtual, setSenhaAtual] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmarSenha, setConfirmarSenha] = useState("");
@@ -68,17 +70,20 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
         nome,
         email,
         apelido: apelido.trim() || null,
+        whatsappNumber: whatsapp.trim() || null,
         preferences: { theme },
       };
       if (novaSenha) {
         body.senhaAtual = senhaAtual;
         body.novaSenha = novaSenha;
       }
-      await apiFetch("/users/me", {
+      const updated = await apiFetch("/users/me", {
         method: "PATCH",
         body: JSON.stringify(body),
       });
       applyTheme(theme);
+      // Backend normaliza o número (55+DDD) — reflete o valor salvo no campo
+      if (updated?.whatsappNumber !== undefined) setWhatsapp(updated.whatsappNumber ?? "");
       setOk(true);
       setSenhaAtual("");
       setNovaSenha("");
@@ -87,6 +92,7 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
         nome,
         email,
         apelido: apelido.trim() || null,
+        whatsappNumber: updated?.whatsappNumber ?? (whatsapp.trim() || null),
         preferences: { theme },
       });
     } catch (e: unknown) {
@@ -118,6 +124,14 @@ export function MeusDadosModal({ profile, onClose, onSaved }: Props) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+        />
+        <Input
+          label="WhatsApp"
+          type="tel"
+          hint="Usado para receber notificações dos seus leads e usar a secretária"
+          value={whatsapp}
+          onChange={(e) => setWhatsapp(e.target.value)}
+          placeholder="(11) 99999-9999"
         />
 
         {/* Trocar senha */}

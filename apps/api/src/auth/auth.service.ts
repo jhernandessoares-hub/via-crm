@@ -7,6 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import type { JwtPayload } from './types';
 import { validatePasswordStrength } from './password-strength.util';
+import { normalizePhoneBR, isValidWhatsappNumber } from '../common/phone.util';
 
 /** Tempo de vida do access token. Mantido em sincronia com auth.module.ts. */
 const ACCESS_TOKEN_TTL = '1h';
@@ -258,10 +259,23 @@ export class AuthService {
     });
   }
 
-  async resetPassword(token: string, newPassword: string): Promise<void> {
+  async resetPassword(token: string, newPassword: string, whatsappNumber?: string | null): Promise<void> {
     if (!token) throw new BadRequestException('Token inválido.');
     const pwError = validatePasswordStrength(newPassword);
     if (pwError) throw new BadRequestException(pwError);
+
+    // WhatsApp opcional (informado ao definir a senha via convite). Valida só quando preenchido.
+    let whatsappToSave: string | undefined;
+    if (whatsappNumber !== undefined && whatsappNumber !== null) {
+      const raw = whatsappNumber.trim();
+      if (raw) {
+        const normalized = normalizePhoneBR(raw);
+        if (!isValidWhatsappNumber(normalized)) {
+          throw new BadRequestException('Número de WhatsApp inválido. Use DDD + número (ex: 11 99999-9999).');
+        }
+        whatsappToSave = normalized!;
+      }
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { passwordResetToken: token },
@@ -276,7 +290,12 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { senhaHash, passwordResetToken: null, passwordResetExpiry: null },
+      data: {
+        senhaHash,
+        passwordResetToken: null,
+        passwordResetExpiry: null,
+        ...(whatsappToSave ? { whatsappNumber: whatsappToSave } : {}),
+      },
     });
 
     this.audit.log({

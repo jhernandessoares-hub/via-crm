@@ -77,8 +77,8 @@ export class AuthController {
   }
 
   @Post('reset-password')
-  async resetPassword(@Body() body: { token: string; password: string }) {
-    await this.authService.resetPassword(body.token, body.password);
+  async resetPassword(@Body() body: { token: string; password: string; whatsappNumber?: string | null }) {
+    await this.authService.resetPassword(body.token, body.password, body.whatsappNumber);
     return { ok: true };
   }
 

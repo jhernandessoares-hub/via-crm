@@ -58,6 +58,7 @@ import { getNextLeadNumber } from './lead-numbering.helper';
 import { buildLeadInteresseLabel } from './lead-interesse.helper';
 import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess, DocumentAccessLevel } from '../tenants/permissions.config';
 import { isValidCPF } from './cpf.util';
+import { digitsOnly, normalizePhoneBR } from '../common/phone.util';
 
 @Injectable()
 export class LeadsService {
@@ -917,7 +918,7 @@ export class LeadsService {
   // HELPERS (telefone / key)
   // =============================
   private digitsOnly(v: string): string {
-    return (v || '').replace(/\D/g, '');
+    return digitsOnly(v);
   }
 
   private telefoneKeyFrom(input: string): string {
@@ -935,11 +936,7 @@ export class LeadsService {
    * conseguir falar com o cliente. Números nacionais (10/11 dígitos) recebem o 55;
    * números que já têm o país (12/13 dígitos) são mantidos. */
   private normalizePhoneBR(input: string | null | undefined): string | null {
-    const d = this.digitsOnly(input ?? '');
-    if (!d) return null;
-    if (d.startsWith('55') && (d.length === 12 || d.length === 13)) return d;
-    if (d.length === 10 || d.length === 11) return '55' + d;
-    return d;
+    return normalizePhoneBR(input);
   }
 
   private getInboundChannels(): string[] {

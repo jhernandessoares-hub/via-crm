@@ -6,6 +6,7 @@ import { EmailService } from "../email/email.service";
 import { LimitsService } from "../plans/limits.service";
 import { UsageService, LimitExceededException } from "../plans/usage.service";
 import { validatePasswordStrength } from "../auth/password-strength.util";
+import { normalizePhoneBR, isValidWhatsappNumber } from "../common/phone.util";
 
 @Injectable()
 export class UsersService {
@@ -261,7 +262,18 @@ export class UsersService {
     if (data.apelido !== undefined) updateData.apelido = data.apelido?.trim() || null;
     if (data.preferences !== undefined) updateData.preferences = data.preferences;
     if (data.novaSenha) updateData.senhaHash = await bcrypt.hash(data.novaSenha, 10);
-    if (data.whatsappNumber !== undefined) updateData.whatsappNumber = data.whatsappNumber?.trim() || null;
+    if (data.whatsappNumber !== undefined) {
+      const raw = data.whatsappNumber?.trim() || '';
+      if (!raw) {
+        updateData.whatsappNumber = null;
+      } else {
+        const normalized = normalizePhoneBR(raw);
+        if (!isValidWhatsappNumber(normalized)) {
+          throw new BadRequestException('Número de WhatsApp inválido. Use DDD + número (ex: 11 99999-9999).');
+        }
+        updateData.whatsappNumber = normalized;
+      }
+    }
     if (data.secretaryName !== undefined) updateData.secretaryName = data.secretaryName?.trim() || null;
     if (data.secretaryBotName !== undefined) updateData.secretaryBotName = data.secretaryBotName?.trim() || null;
     if (data.secretaryGender !== undefined) updateData.secretaryGender = data.secretaryGender;

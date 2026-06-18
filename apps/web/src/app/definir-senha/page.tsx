@@ -13,6 +13,7 @@ function DefinirSenhaForm() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -29,7 +30,7 @@ function DefinirSenhaForm() {
       const resp = await fetch(`${apiUrl}/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password, whatsappNumber: whatsapp.trim() || null }),
       });
       const j = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error(j?.message || "Convite inválido ou expirado.");
@@ -104,6 +105,23 @@ function DefinirSenhaForm() {
           placeholder="Repita a senha"
           autoComplete="new-password"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-gray-700">
+          WhatsApp <span className="font-normal text-gray-400">(opcional)</span>
+        </label>
+        <input
+          type="tel"
+          className="w-full h-11 rounded-xl border border-gray-200 px-4 text-sm outline-none transition-all focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+          value={whatsapp}
+          onChange={(e) => setWhatsapp(e.target.value)}
+          placeholder="(11) 99999-9999"
+          autoComplete="tel"
+        />
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Sem um número, você não recebe as notificações dos seus leads nem consegue usar a secretária.
+        </p>
       </div>
 
       {err && (
