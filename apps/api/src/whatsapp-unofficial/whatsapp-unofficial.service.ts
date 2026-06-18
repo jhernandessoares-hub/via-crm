@@ -275,12 +275,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     }
   }
 
-  /** Notifica o corretor responsável (pelo WhatsApp oficial) sobre um lead novo do Light. */
+  /**
+   * Notifica o corretor responsável sobre um lead novo do Light.
+   * Entrega inteligente: tenta primeiro pela própria sessão Light que recebeu o lead
+   * (cobre tenant sem WhatsApp oficial); se falhar, cai para o WhatsApp oficial (Meta).
+   */
   private async notifyResponsibleNewLead(
     tenantId: string,
     assignedUserId: string,
     contactName: string | null | undefined,
     phone: string,
+    sessionId: string | null,
   ) {
     const user = await this.prisma.user.findFirst({
       where: { id: assignedUserId, tenantId, ativo: true, whatsappNumber: { not: null } },
@@ -289,6 +294,18 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     if (!user?.whatsappNumber) return;
     const nome = contactName || phone || 'Novo lead';
     const msg = `🔔 Novo lead chegou: *${nome}*${phone ? `\nWhatsApp: ${phone}` : ''}`;
+
+    // 1) Light primeiro (sessão que recebeu o lead está conectada).
+    if (sessionId) {
+      try {
+        await this.sendText(sessionId, user.whatsappNumber, msg);
+        return;
+      } catch (e: any) {
+        logger.warn(`Notif novo lead via Light falhou, tentando oficial: ${e?.message ?? e}`);
+      }
+    }
+
+    // 2) Fallback: WhatsApp oficial (Meta).
     await this.whatsapp.sendMessage(user.whatsappNumber, msg, tenantId);
   }
 
@@ -976,7 +993,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     // Só lead novo (não reentrada), só mensagens reais (não silenciosas), só o responsável.
     const SILENT_TYPES = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
     if (!isReentry && assignedUserId && !SILENT_TYPES.has(type)) {
-      this.notifyResponsibleNewLead(tenantId, assignedUserId, contactName, phone).catch(() => {});
+      this.notifyResponsibleNewLead(tenantId, assignedUserId, contactName, phone, sessionId).catch(() => {});
     }
 
     // Se é resposta de campanha e o lead NÃO foi criado pelo worker (fluxo legado),
