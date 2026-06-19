@@ -94,11 +94,7 @@ export default function BaseFriaPage() {
     setDisparosOpen(true);
     setLoadingDisparos(true);
     apiFetch("/campanhas/disparos")
-      .then((d) => {
-        const lista = Array.isArray(d) ? d : [];
-        // Só os disparos originados na Base Fria
-        setDisparos(lista.filter((x: any) => typeof x?.nome === "string" && x.nome.startsWith("Base Fria")));
-      })
+      .then((d) => setDisparos(Array.isArray(d) ? d : []))
       .catch(() => setDisparos([]))
       .finally(() => setLoadingDisparos(false));
   }
@@ -494,14 +490,14 @@ export default function BaseFriaPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
           <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border shadow-xl" style={{ background: "var(--shell-card-bg)", borderColor: "var(--shell-card-border)" }}>
             <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
-              <h2 className="text-lg font-semibold text-[var(--shell-text)]">Campanhas criadas — Base Fria</h2>
+              <h2 className="text-lg font-semibold text-[var(--shell-text)]">Campanhas criadas (WhatsApp Light)</h2>
               <button onClick={() => setDisparosOpen(false)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
             </div>
             <div className="overflow-y-auto p-5">
               {loadingDisparos ? (
                 <p className="text-sm text-[var(--shell-subtext)]">Carregando…</p>
               ) : disparos.length === 0 ? (
-                <p className="text-sm text-[var(--shell-subtext)]">Nenhuma campanha de Base Fria criada ainda.</p>
+                <p className="text-sm text-[var(--shell-subtext)]">Nenhuma campanha criada ainda.</p>
               ) : (
                 <div className="space-y-2">
                   {disparos.map((d) => {
@@ -515,7 +511,12 @@ export default function BaseFriaPage() {
                     return (
                       <div key={d.id} className="rounded-lg border p-3" style={{ borderColor: "var(--shell-card-border)" }}>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate font-medium text-[var(--shell-text)]" title={d.nome}>{d.nome}</span>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {typeof d.nome === "string" && d.nome.startsWith("Base Fria") && (
+                              <span className="shrink-0 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">❄️ Base Fria</span>
+                            )}
+                            <span className="truncate font-medium text-[var(--shell-text)]" title={d.nome}>{d.nome}</span>
+                          </span>
                           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor[d.status] ?? "bg-slate-100 text-slate-600"}`}>{d.status}</span>
                         </div>
                         <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--shell-subtext)]">
