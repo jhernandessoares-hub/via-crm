@@ -3,6 +3,8 @@ import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Logger } from '../logger';
 import { resolveWhatsappCreds, sendWhatsappText } from '../whatsapp/whatsapp-creds';
+import { resolveSlaConfig } from '../tenants/sla.config';
+import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 
 const logger = new Logger('SlaWorker');
 
@@ -476,7 +478,134 @@ async function handleSlaJob(job: Job, prisma: PrismaService, ai: AiService) {
   logger.log(`⏰ SLA processado leadId=${lead.id} urgency=${urgency}`);
 }
 
-export function startSlaWorker(prisma: PrismaService, ai: AiService) {
+// ── Handler config-driven (parte 2): cadência por canal, suporta Light ──────
+// Processa jobs 'sla-attempt' agendados por QueueService.rescheduleSla.
+async function handleSlaAttempt(
+  job: Job,
+  prisma: PrismaService,
+  ai: AiService,
+  unofficialService?: WhatsappUnofficialService,
+) {
+  const leadId = job.data?.leadId as string | undefined;
+  const attemptIndex = Number(job.data?.attemptIndex ?? 0);
+  if (!leadId) return;
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true, tenantId: true, status: true, nome: true, nomeCorreto: true,
+      telefone: true, botPaused: true, conversaCanal: true, conversaSessionId: true,
+    },
+  });
+  if (!lead) return;
+  if (lead.status === 'FECHADO' || lead.status === 'PERDIDO') return;
+  if (lead.botPaused) return;
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: lead.tenantId },
+    select: { slaConfig: true, businessHours: true },
+  });
+  const cfg = resolveSlaConfig(tenant?.slaConfig as any);
+  const isLight = lead.conversaCanal === 'WHATSAPP_LIGHT';
+  const channelCfg = isLight ? cfg.light : cfg.oficial;
+  if (!channelCfg.enabled) {
+    logger.log(`⏸ SLA canal ${isLight ? 'light' : 'oficial'} desligado — leadId=${lead.id}`);
+    return;
+  }
+
+  // Respeitar horário de atendimento
+  if (channelCfg.respeitarHorario) {
+    const bh = tenant?.businessHours as any;
+    const tz = bh?.timezone || 'America/Sao_Paulo';
+    if (!isWithinBusinessHours(bh, tz)) {
+      logger.log(`🕐 SLA fora do horário — tentativa ${attemptIndex + 1} pulada leadId=${lead.id}`);
+      return;
+    }
+  }
+
+  // Gera a mensagem com a IA (com base na conversa recente)
+  const agent = await ai.findDefaultAgentForTenant(lead.tenantId);
+  if (!agent?.id) {
+    logger.log(`⚠️ SLA: nenhum agente ativo para tenant=${lead.tenantId}`);
+    return;
+  }
+
+  const recentEvents = await prisma.leadEvent.findMany({
+    where: { leadId: lead.id, channel: { in: ['whatsapp.in', 'whatsapp.out', 'whatsapp.unofficial.in', 'whatsapp.unofficial.out'] } },
+    orderBy: { criadoEm: 'desc' },
+    take: 6,
+    select: { channel: true, payloadRaw: true },
+  });
+  const conversationLines = [...recentEvents].reverse().map((ev) => {
+    const p = ev.payloadRaw as any;
+    const text = typeof p?.text === 'string' ? p.text.trim() : (typeof p?.transcription === 'string' ? p.transcription.trim() : '');
+    if (!text) return null;
+    return ev.channel.endsWith('.in') ? `Lead: ${text}` : `Agente: ${text}`;
+  }).filter(Boolean).join('\n');
+
+  let text = '';
+  try {
+    const suggestion = await ai.generateFollowUp({
+      nome: String((lead.nomeCorreto ?? lead.nome) || 'Cliente').trim() || 'Cliente',
+      status: String(lead.status || 'NOVO'),
+      tenantId: lead.tenantId,
+      agentId: agent.id,
+      leadId: lead.id,
+      conversationContext: conversationLines || undefined,
+    } as any);
+    text = (suggestion || '').trim();
+  } catch (err: any) {
+    logger.warn(`⚠️ SLA: erro ao gerar mensagem leadId=${lead.id}: ${err?.message}`);
+    return;
+  }
+  if (!text) return;
+
+  // COPILOT: só registra sugestão para o corretor
+  if (channelCfg.mode === 'COPILOT') {
+    await registerAiSuggestion(prisma, {
+      tenantId: lead.tenantId, leadId: lead.id, jobName: job.name,
+      agentId: agent.id, agentTitle: (agent as any).title ?? null, urgency: null, text,
+    });
+    logger.log(`🤖 SLA SUGESTÃO (COPILOT) tentativa ${attemptIndex + 1} leadId=${lead.id}`);
+    return;
+  }
+
+  // AUTOPILOT: envia pelo canal certo
+  if (!lead.telefone) return;
+  try {
+    if (isLight) {
+      if (!unofficialService || !lead.conversaSessionId) {
+        logger.warn(`⚠️ SLA Light sem sessão/serviço leadId=${lead.id}`);
+        return;
+      }
+      await unofficialService.sendText(lead.conversaSessionId, lead.telefone, text);
+      await prisma.leadEvent.create({
+        data: {
+          tenantId: lead.tenantId, leadId: lead.id, channel: 'whatsapp.unofficial.out',
+          payloadRaw: { text, type: 'text', source: 'sla.worker.autopilot', attemptIndex, aiAssistanceLabel: '100% IA', aiAssistancePercent: 100, at: new Date().toISOString() },
+        },
+      });
+    } else {
+      const creds = await resolveWhatsappCreds(prisma, lead.tenantId);
+      if (!creds) {
+        logger.warn(`⚠️ SLA oficial sem credenciais tenant=${lead.tenantId}`);
+        return;
+      }
+      await sendWhatsappText(creds, lead.telefone, text);
+      await prisma.leadEvent.create({
+        data: {
+          tenantId: lead.tenantId, leadId: lead.id, channel: 'whatsapp.out',
+          payloadRaw: { text, type: 'text', source: 'sla.worker.autopilot', attemptIndex, aiAssistanceLabel: '100% IA', aiAssistancePercent: 100, at: new Date().toISOString() },
+        },
+      });
+    }
+    logger.log(`📤 SLA AUTOPILOT enviou tentativa ${attemptIndex + 1} leadId=${lead.id} canal=${isLight ? 'LIGHT' : 'OFICIAL'}`);
+  } catch (err: any) {
+    logger.warn(`⚠️ SLA: erro ao enviar leadId=${lead.id}: ${err?.message}`);
+  }
+}
+
+export function startSlaWorker(prisma: PrismaService, ai: AiService, unofficialService?: WhatsappUnofficialService) {
   logger.log('🚀 SLA Worker boot', {
     inboundChannels: getInboundChannels(),
     activeConversationMinutes: getActiveConversationMinutes(),
@@ -487,7 +616,12 @@ export function startSlaWorker(prisma: PrismaService, ai: AiService) {
   const worker = new Worker(
     'sla-queue',
     async (job) => {
-      await handleSlaJob(job, prisma, ai);
+      // Cadência config-driven (parte 2). Jobs legados (2h/10h/...) caem no handler antigo.
+      if (job.name === 'sla-attempt') {
+        await handleSlaAttempt(job, prisma, ai, unofficialService);
+      } else {
+        await handleSlaJob(job, prisma, ai);
+      }
     },
     {
       connection: getRedisConnection(),

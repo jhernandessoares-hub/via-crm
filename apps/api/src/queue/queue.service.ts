@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveSlaConfig } from '../tenants/sla.config';
 
 @Injectable()
 export class QueueService implements OnModuleDestroy {
@@ -286,8 +287,34 @@ export class QueueService implements OnModuleDestroy {
   // =============================
 
   async rescheduleSla(leadId: string) {
-    // SLA temporariamente desativado — cancela qualquer job existente e não agenda novos
+    // Reinicia a cadência do SLA a cada mensagem do lead, conforme a config do canal.
     await this.cancelSlaJobs(leadId);
+
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { tenantId: true, conversaCanal: true, status: true, botPaused: true },
+    });
+    if (!lead || lead.status === 'FECHADO' || lead.status === 'PERDIDO' || lead.botPaused) return;
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: lead.tenantId },
+      select: { slaConfig: true },
+    });
+    const cfg = resolveSlaConfig(tenant?.slaConfig as any);
+    const canal: 'light' | 'oficial' = lead.conversaCanal === 'WHATSAPP_LIGHT' ? 'light' : 'oficial';
+    const channelCfg = cfg[canal];
+    if (!channelCfg.enabled) return;
+
+    let horas = [...channelCfg.tentativasHoras].filter((h) => h > 0).sort((a, b) => a - b);
+    if (canal === 'light' && channelCfg.maxTentativas) horas = horas.slice(0, channelCfg.maxTentativas);
+
+    for (let i = 0; i < horas.length && i < 20; i++) {
+      await this.slaQueue.add(
+        'sla-attempt',
+        { leadId, attemptIndex: i, canal },
+        { delay: horas[i] * 60 * 60 * 1000, jobId: `sla-${leadId}-att-${i}`, removeOnComplete: true, removeOnFail: false },
+      );
+    }
   }
 
   // =============================
@@ -352,6 +379,9 @@ export class QueueService implements OnModuleDestroy {
       `sla-${leadId}-test`,
       `sla-${leadId}-test-template`,
     ];
+
+    // tentativas da cadência configurável
+    for (let i = 0; i < 20; i++) ids.push(`sla-${leadId}-att-${i}`);
 
     for (const id of ids) {
       const job = await this.slaQueue.getJob(id);

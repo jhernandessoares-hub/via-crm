@@ -129,7 +129,7 @@ async function bootstrap() {
   }
 
   // 🚀 INICIAR WORKER SLA (reutiliza instâncias do container NestJS)
-  startSlaWorker(app.get(PrismaService), app.get(AiService));
+  startSlaWorker(app.get(PrismaService), app.get(AiService), app.get(WhatsappUnofficialService));
 
   // 🚀 INICIAR WORKER WHATSAPP MEDIA (reutiliza instâncias do container NestJS)
   startWhatsappMediaWorker(app.get(PrismaService));
