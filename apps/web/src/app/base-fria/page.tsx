@@ -85,7 +85,29 @@ export default function BaseFriaPage() {
   const [delayMin, setDelayMin] = useState(10);
   const [delayMax, setDelayMax] = useState(20);
 
+  // Campanhas criadas (disparos)
+  const [disparosOpen, setDisparosOpen] = useState(false);
+  const [disparos, setDisparos] = useState<any[]>([]);
+  const [loadingDisparos, setLoadingDisparos] = useState(false);
+
+  function openDisparos() {
+    setDisparosOpen(true);
+    setLoadingDisparos(true);
+    apiFetch("/campanhas/disparos")
+      .then((d) => {
+        const lista = Array.isArray(d) ? d : [];
+        // Só os disparos originados na Base Fria
+        setDisparos(lista.filter((x: any) => typeof x?.nome === "string" && x.nome.startsWith("Base Fria")));
+      })
+      .catch(() => setDisparos([]))
+      .finally(() => setLoadingDisparos(false));
+  }
+
   function openCampaignModal() {
+    if (selected.size === 0) {
+      alert("Selecione os leads primeiro.");
+      return;
+    }
     setModeloId("");
     setSessionId("");
     setNovoNome("");
@@ -94,7 +116,7 @@ export default function BaseFriaPage() {
     setDelayMax(20);
     Promise.all([
       apiFetch("/campanhas/modelos").catch(() => []),
-      apiFetch("/whatsapp-unofficial").catch(() => []),
+      apiFetch("/inbox-wa-light").catch(() => []),
     ]).then(([mods, sess]) => {
       const lista = Array.isArray(mods) ? mods : [];
       setModelos(lista);
@@ -269,15 +291,24 @@ export default function BaseFriaPage() {
             Limpar filtros
           </button>
         )}
-        {canCampaign && selected.size > 0 && (
+        {canCampaign && (
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-[var(--shell-subtext)]">{selected.size} selecionado(s)</span>
+            {selected.size > 0 && (
+              <span className="text-xs text-[var(--shell-subtext)]">{selected.size} selecionado(s)</span>
+            )}
+            <button
+              onClick={openDisparos}
+              className="rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--shell-hover)]"
+              style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+            >
+              📋 Campanhas criadas
+            </button>
             <button
               onClick={openCampaignModal}
               className="rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--shell-hover)]"
               style={{ borderColor: "var(--brand-accent)", color: "var(--brand-accent)" }}
             >
-              📣 Escolher campanha
+              📣 Criar campanha
             </button>
           </div>
         )}
@@ -453,6 +484,56 @@ export default function BaseFriaPage() {
               <Button size="sm" onClick={dispararCampanha} loading={enviando} disabled={!sessionId || (modoNovo ? !novaMensagem.trim() : !modeloId)}>
                 Iniciar campanha
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: campanhas criadas (disparos da Base Fria) */}
+      {disparosOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border shadow-xl" style={{ background: "var(--shell-card-bg)", borderColor: "var(--shell-card-border)" }}>
+            <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <h2 className="text-lg font-semibold text-[var(--shell-text)]">Campanhas criadas — Base Fria</h2>
+              <button onClick={() => setDisparosOpen(false)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+            </div>
+            <div className="overflow-y-auto p-5">
+              {loadingDisparos ? (
+                <p className="text-sm text-[var(--shell-subtext)]">Carregando…</p>
+              ) : disparos.length === 0 ? (
+                <p className="text-sm text-[var(--shell-subtext)]">Nenhuma campanha de Base Fria criada ainda.</p>
+              ) : (
+                <div className="space-y-2">
+                  {disparos.map((d) => {
+                    const statusColor: Record<string, string> = {
+                      RODANDO: "bg-blue-100 text-blue-700",
+                      PAUSADA: "bg-amber-100 text-amber-700",
+                      CONCLUIDA: "bg-emerald-100 text-emerald-700",
+                      CANCELADA: "bg-slate-100 text-slate-600",
+                      RASCUNHO: "bg-slate-100 text-slate-600",
+                    };
+                    return (
+                      <div key={d.id} className="rounded-lg border p-3" style={{ borderColor: "var(--shell-card-border)" }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate font-medium text-[var(--shell-text)]" title={d.nome}>{d.nome}</span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor[d.status] ?? "bg-slate-100 text-slate-600"}`}>{d.status}</span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--shell-subtext)]">
+                          <span>📇 {d.totalContatos ?? 0} contatos</span>
+                          <span>📤 {d.enviados ?? 0} enviados</span>
+                          <span>💬 {d.responderam ?? 0} responderam</span>
+                          {d.falhas ? <span>⚠️ {d.falhas} falhas</span> : null}
+                          {d.session?.nome && <span>📱 {d.session.nome}</span>}
+                          {d.iniciadaEm && <span>🕒 {new Date(d.iniciadaEm).toLocaleString("pt-BR")}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end border-t px-5 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
+              <Button variant="outline" size="sm" onClick={() => setDisparosOpen(false)}>Fechar</Button>
             </div>
           </div>
         </div>

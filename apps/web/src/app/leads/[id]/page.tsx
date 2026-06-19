@@ -3722,7 +3722,7 @@ function discardAiSuggestion() {
                   setBfMsgTexto("");
                   setBfMsgSessionId("");
                   setBfSalvarTemplate(false);
-                  apiFetch("/whatsapp-unofficial")
+                  apiFetch("/inbox-wa-light")
                     .then((d) => setBfSessions(Array.isArray(d) ? d.filter((s: any) => s.status === "CONNECTED") : []))
                     .catch(() => setBfSessions([]));
                   setBaseFriaModal({ stage });
