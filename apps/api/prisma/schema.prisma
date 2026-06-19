@@ -68,6 +68,7 @@ model Tenant {
   aiDelayMax             Int                     @default(15)
   aiTypingEnabled        Boolean                 @default(true)
   aiHistoryLimit         Int                     @default(8)
+  aiReassumirBaseFria    Boolean                 @default(false) // IA volta a responder leads reativados pela Base Fria (padrão: corretor assume)
   logradouro             String?
   numero                 String?
   bairro                 String?

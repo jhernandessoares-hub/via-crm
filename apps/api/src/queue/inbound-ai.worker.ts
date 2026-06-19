@@ -595,13 +595,21 @@ async function handleInboundAiJob(
   });
   if (!lead) return;
 
-  // Lead reativado pela Base Fria: a IA NÃO assume. Espera o silêncio e notifica o corretor.
+  // Lead reativado pela Base Fria: por padrão a IA NÃO assume (corretor atende).
+  // Se o tenant ligar "Reassumir leads da Base Fria", a IA volta a responder normal.
   if (lead.passouBaseFria) {
-    logger.log(`❄️ Lead passou pela Base Fria — IA suprimida, agendando base-fria-settle leadId=${lead.id}`);
-    await queue?.scheduleBaseFriaSettle(lead.id).catch((e: any) =>
-      logger.warn(`Falha ao agendar base-fria-settle leadId=${lead.id}: ${e?.message ?? e}`),
-    );
-    return;
+    const tcfg = await prisma.tenant.findUnique({
+      where: { id: lead.tenantId },
+      select: { aiReassumirBaseFria: true },
+    });
+    if (!tcfg?.aiReassumirBaseFria) {
+      logger.log(`❄️ Lead passou pela Base Fria — IA suprimida, agendando base-fria-settle leadId=${lead.id}`);
+      await queue?.scheduleBaseFriaSettle(lead.id).catch((e: any) =>
+        logger.warn(`Falha ao agendar base-fria-settle leadId=${lead.id}: ${e?.message ?? e}`),
+      );
+      return;
+    }
+    logger.log(`❄️→🤖 Reassumir Base Fria ligado — IA responde normalmente leadId=${lead.id}`);
   }
 
   const assignedUser = lead.assignedUserId

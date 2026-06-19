@@ -40,6 +40,7 @@ export class TenantsService {
         aiDelayMax: true,
         aiTypingEnabled: true,
         aiHistoryLimit: true,
+        aiReassumirBaseFria: true,
       },
     });
   }
@@ -93,6 +94,7 @@ export class TenantsService {
     aiDelayMax?: number;
     aiTypingEnabled?: boolean;
     aiHistoryLimit?: number;
+    aiReassumirBaseFria?: boolean;
   }) {
     return this.prisma.tenant.update({
       where: { id: tenantId },
@@ -104,6 +106,7 @@ export class TenantsService {
         ...(data.aiDelayMax !== undefined && { aiDelayMax: data.aiDelayMax }),
         ...(data.aiTypingEnabled !== undefined && { aiTypingEnabled: data.aiTypingEnabled }),
         ...(data.aiHistoryLimit !== undefined && { aiHistoryLimit: data.aiHistoryLimit }),
+        ...(data.aiReassumirBaseFria !== undefined && { aiReassumirBaseFria: data.aiReassumirBaseFria }),
       },
       select: {
         id: true,
@@ -114,6 +117,7 @@ export class TenantsService {
         aiDelayMax: true,
         aiTypingEnabled: true,
         aiHistoryLimit: true,
+        aiReassumirBaseFria: true,
       },
     });
   }

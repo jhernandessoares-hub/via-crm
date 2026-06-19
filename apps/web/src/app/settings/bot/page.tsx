@@ -59,6 +59,7 @@ export default function BotSettingsPage() {
   const [aiDelayMin, setAiDelayMin] = useState(5);
   const [aiDelayMax, setAiDelayMax] = useState(15);
   const [aiHistoryLimit, setAiHistoryLimit] = useState(8);
+  const [aiReassumirBaseFria, setAiReassumirBaseFria] = useState(false);
 
   useEffect(() => {
     apiFetch("/tenants/bot-config")
@@ -70,6 +71,7 @@ export default function BotSettingsPage() {
         setAiDelayMin(data.aiDelayMin ?? 5);
         setAiDelayMax(data.aiDelayMax ?? 15);
         setAiHistoryLimit(data.aiHistoryLimit ?? 8);
+        setAiReassumirBaseFria(data.aiReassumirBaseFria ?? false);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -94,7 +96,7 @@ export default function BotSettingsPage() {
     try {
       await apiFetch("/tenants/bot-config", {
         method: "PATCH",
-        body: JSON.stringify({ autopilotEnabled, businessHours, outsideHoursMessage, aiDelayMin, aiDelayMax, aiHistoryLimit }),
+        body: JSON.stringify({ autopilotEnabled, businessHours, outsideHoursMessage, aiDelayMin, aiDelayMax, aiHistoryLimit, aiReassumirBaseFria }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -190,6 +192,23 @@ export default function BotSettingsPage() {
               className="w-full rounded-xl border px-4 py-3 text-sm resize-none"
               style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
             />
+          </CardBody>
+        </Card>
+
+        {/* Reassumir leads da Base Fria */}
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-base font-semibold text-[var(--shell-text)]">Reassumir leads da Base Fria</p>
+                <p className="text-sm text-[var(--shell-subtext)] mt-0.5">
+                  Quando um lead responde a uma campanha de reaquecimento da Base Fria, a IA volta a
+                  responder automaticamente. Desligado (padrão): a IA fica de fora e o corretor é
+                  notificado para assumir a conversa.
+                </p>
+              </div>
+              <Toggle value={aiReassumirBaseFria} onChange={setAiReassumirBaseFria} />
+            </div>
           </CardBody>
         </Card>
 
