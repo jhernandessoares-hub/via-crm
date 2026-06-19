@@ -100,6 +100,36 @@ export default function BaseFriaPage() {
   const [disparos, setDisparos] = useState<any[]>([]);
   const [loadingDisparos, setLoadingDisparos] = useState(false);
 
+  // Campanhas em andamento (barra de status) — atualiza a cada 6s
+  const [activeCampaigns, setActiveCampaigns] = useState<any[]>([]);
+  useEffect(() => {
+    if (!canCampaign) return;
+    let alive = true;
+    const fetchActive = () =>
+      apiFetch("/campanhas/disparos")
+        .then((d) => {
+          if (!alive) return;
+          const lista = Array.isArray(d) ? d : [];
+          setActiveCampaigns(lista.filter((x: any) => x.status === "RODANDO" || x.status === "PAUSADA"));
+        })
+        .catch(() => {});
+    fetchActive();
+    const t = setInterval(fetchActive, 6000);
+    return () => { alive = false; clearInterval(t); };
+  }, [canCampaign]);
+
+  async function campaignAction(id: string, action: "pause" | "resume" | "cancel") {
+    if (action === "cancel" && !confirm("Cancelar esta campanha? Os envios pendentes não serão feitos.")) return;
+    try {
+      await apiFetch(`/campanhas/disparos/${id}/${action}`, { method: "POST" });
+      const d = await apiFetch("/campanhas/disparos").catch(() => []);
+      const lista = Array.isArray(d) ? d : [];
+      setActiveCampaigns(lista.filter((x: any) => x.status === "RODANDO" || x.status === "PAUSADA"));
+    } catch (e: any) {
+      alert(e?.message ?? "Erro na ação da campanha.");
+    }
+  }
+
   function openDisparos() {
     setDisparosOpen(true);
     setLoadingDisparos(true);
@@ -407,6 +437,41 @@ export default function BaseFriaPage() {
           </div>
         )}
       </div>
+
+      {/* Barra de status de campanhas em andamento */}
+      {canCampaign && activeCampaigns.map((c) => {
+        const total = c.totalContatos ?? 0;
+        const processados = (c.enviados ?? 0) + (c.falhas ?? 0);
+        const pct = total > 0 ? Math.min(100, Math.round((processados / total) * 100)) : 0;
+        return (
+          <div key={c.id} className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--brand-accent)", background: "var(--shell-card-bg)" }}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${c.status === "RODANDO" ? "animate-pulse bg-blue-500" : "bg-amber-500"}`} />
+                <span className="truncate text-sm font-medium text-[var(--shell-text)]" title={c.nome}>{c.nome}</span>
+                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{c.status}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {c.status === "RODANDO" ? (
+                  <button onClick={() => campaignAction(c.id, "pause")} className="rounded-lg border px-3 py-1 text-xs font-medium hover:bg-[var(--shell-hover)]" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>⏸ Pausar</button>
+                ) : (
+                  <button onClick={() => campaignAction(c.id, "resume")} className="rounded-lg border px-3 py-1 text-xs font-medium hover:bg-[var(--shell-hover)]" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>▶ Retomar</button>
+                )}
+                <button onClick={() => campaignAction(c.id, "cancel")} className="rounded-lg border px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50" style={{ borderColor: "var(--shell-card-border)" }}>✕ Cancelar</button>
+              </div>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--shell-hover)]">
+              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: "var(--brand-accent)" }} />
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[var(--shell-subtext)]">
+              <span>{processados}/{total} processados ({pct}%)</span>
+              <span>📤 {c.enviados ?? 0} enviados</span>
+              <span>💬 {c.responderam ?? 0} responderam</span>
+              {c.falhas ? <span>⚠️ {c.falhas} falhas</span> : null}
+            </div>
+          </div>
+        );
+      })}
 
       <div className="mt-5 overflow-hidden rounded-xl border" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
         <div className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
