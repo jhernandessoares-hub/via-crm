@@ -26,6 +26,9 @@ type Lead = {
   criadoEm?: string;
   emCampanha?: boolean;
   emCampanhaDesde?: string | null;
+  ultimaCampanha?: string | null;
+  ultimaCampanhaData?: string | null;
+  ultimaCampanhaStatus?: string | null;
 };
 
 type Modelo = {
@@ -531,9 +534,14 @@ export default function BaseFriaPage() {
                   {l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}
                 </div>
                 <div className="min-w-0">
-                  {l.emCampanha ? (
-                    <span className="inline-block rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                      📣 {l.emCampanhaDesde ? formatDate(l.emCampanhaDesde) : "ativa"}
+                  {l.ultimaCampanha ? (
+                    <span className="flex flex-col" title={`${l.ultimaCampanha}${l.ultimaCampanhaData ? ` · ${formatDate(l.ultimaCampanhaData)}` : ""}`}>
+                      <span className={`inline-flex w-fit items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${l.emCampanha ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-600"}`}>
+                        📣 <span className="truncate">{l.ultimaCampanha}</span>
+                      </span>
+                      {l.ultimaCampanhaData && (
+                        <span className="mt-0.5 text-[10px] text-[var(--shell-subtext)]">{formatDate(l.ultimaCampanhaData)}</span>
+                      )}
                     </span>
                   ) : (
                     <span className="text-sm text-[var(--shell-subtext)]">—</span>

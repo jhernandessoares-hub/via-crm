@@ -1776,33 +1776,47 @@ export class LeadsService {
     const assignedMap = Object.fromEntries(assignedUsers.map((u) => [u.id, u.apelido || u.nome]));
     const productTitleMap = await this.buildProductTitleMap(tenantId, leads.map((l) => l.produtoInteresseId));
 
-    // Marcação "em campanha": CampanhaContato vinculado ao lead em disparo ativo e ainda não respondido.
+    // Última campanha de cada lead (qualquer status) — nome + data + se ainda está ativa.
     const leadIds = leads.map((l) => l.id);
-    const emCampanhaMap = new Map<string, Date | null>();
+    type UltimaCampanha = { nome: string; data: Date | null; status: string; ativa: boolean };
+    const ultimaCampanhaMap = new Map<string, UltimaCampanha>();
     if (leadIds.length > 0) {
       const contatos = await this.prisma.campanhaContato.findMany({
-        where: {
-          leadId: { in: leadIds },
-          status: { in: ['PENDENTE', 'ENVIADO'] },
-          disparo: { is: { tenantId, status: { in: ['RODANDO', 'PAUSADA'] } } },
+        where: { leadId: { in: leadIds }, disparo: { is: { tenantId } } },
+        select: {
+          leadId: true,
+          status: true,
+          enviadoEm: true,
+          criadoEm: true,
+          disparo: { select: { nome: true, status: true, modelo: { select: { nome: true } } } },
         },
-        select: { leadId: true, enviadoEm: true, criadoEm: true },
         orderBy: { criadoEm: 'desc' },
       });
       for (const c of contatos) {
-        if (c.leadId && !emCampanhaMap.has(c.leadId)) {
-          emCampanhaMap.set(c.leadId, c.enviadoEm ?? c.criadoEm ?? null);
+        if (c.leadId && !ultimaCampanhaMap.has(c.leadId)) {
+          ultimaCampanhaMap.set(c.leadId, {
+            nome: c.disparo?.nome ?? c.disparo?.modelo?.nome ?? 'Campanha',
+            data: c.enviadoEm ?? c.criadoEm ?? null,
+            status: c.status,
+            ativa: c.disparo?.status === 'RODANDO' || c.disparo?.status === 'PAUSADA',
+          });
         }
       }
     }
 
-    const enriched = leads.map((l) => ({
-      ...l,
-      assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
-      interesse: buildLeadInteresseLabel(l as any, productTitleMap),
-      emCampanha: emCampanhaMap.has(l.id),
-      emCampanhaDesde: emCampanhaMap.get(l.id) ?? null,
-    }));
+    const enriched = leads.map((l) => {
+      const uc = ultimaCampanhaMap.get(l.id) ?? null;
+      return {
+        ...l,
+        assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
+        interesse: buildLeadInteresseLabel(l as any, productTitleMap),
+        emCampanha: !!uc?.ativa,
+        emCampanhaDesde: uc?.data ?? null,
+        ultimaCampanha: uc?.nome ?? null,
+        ultimaCampanhaData: uc?.data ?? null,
+        ultimaCampanhaStatus: uc?.status ?? null,
+      };
+    });
 
     const fv = await this.getPartnerFieldVisibility(tenantId, role);
     if (fv) enriched.forEach((l) => this.sanitizeLeadForPartner(l, fv));
