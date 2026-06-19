@@ -3166,6 +3166,23 @@ function discardAiSuggestion() {
     return formatAgo(nowTick - lastInboundMs);
   }, [nowTick, lastInboundMs]);
 
+  // Contato de ORIGEM: canal por onde o lead entrou (1ª mensagem de WhatsApp).
+  const origemContatoLabel = useMemo(() => {
+    const firstWa = orderedEvents.find((e) => String(e.channel || "").toLowerCase().includes("whatsapp"));
+    if (firstWa) {
+      return String(firstWa.channel || "").toLowerCase().includes("unofficial") ? "WhatsApp Light" : "WhatsApp Oficial";
+    }
+    return (lead as any)?.origem || null;
+  }, [orderedEvents, lead]);
+
+  // Contato ATUAL: canal/número por onde a conversa continua (= seletor de resposta).
+  const atualContatoLabel = useMemo(() => {
+    if (!lead?.conversaCanal) return null;
+    if (lead.conversaCanal === "WHATSAPP_OFICIAL") return "WhatsApp Oficial";
+    const s = waLightSessions.find((x) => x.id === lead.conversaSessionId);
+    return s ? `${s.nome}${s.phoneNumber ? ` · ${s.phoneNumber}` : ""}` : "WhatsApp Light";
+  }, [lead?.conversaCanal, lead?.conversaSessionId, waLightSessions]);
+
   useEffect(() => {
     try {
       const lastInbound = [...orderedEvents]
@@ -5732,7 +5749,13 @@ function discardAiSuggestion() {
                         lastInboundAgoLabel}
                     </span>
                     {lead?.telefone ? <span>{"Tel: " + lead.telefone}</span> : null}
-                    {/* Canal de saída — seletor unificado */}
+                    {origemContatoLabel ? (
+                      <span title="Canal por onde este lead entrou">{"📥 Origem: " + origemContatoLabel}</span>
+                    ) : null}
+                    {atualContatoLabel ? (
+                      <span title="Canal por onde a conversa continua agora">{"➡️ Atual: " + atualContatoLabel}</span>
+                    ) : null}
+                    {/* Canal de saída — seletor unificado (= contato atual) */}
                     {waLightSessions.length === 0 && !waOficialConfigured ? (
                       <span className="text-amber-600">
                         Nenhum número WA cadastrado.{" "}
