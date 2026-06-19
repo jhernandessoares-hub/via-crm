@@ -104,6 +104,30 @@ async function processNext(
       where: { id: disparoId },
       data: { enviados: { increment: 1 } },
     });
+
+    // Campanha de Base Fria: o lead já existe (leadId semeado). Registra a mensagem
+    // enviada na timeline e marca o canal atual como Light, para o corretor ver o
+    // que foi disparado e responder pelo número certo.
+    if (contato.leadId) {
+      await prisma.leadEvent.create({
+        data: {
+          tenantId,
+          leadId: contato.leadId,
+          channel: 'whatsapp.unofficial.out',
+          payloadRaw: {
+            text: texto,
+            source: 'campanha-base-fria',
+            disparoId,
+            sentAt: new Date().toISOString(),
+            ...(disparo.modelo.mediaUrl ? { mediaUrl: disparo.modelo.mediaUrl, mediaType: disparo.modelo.mediaType } : {}),
+          },
+        },
+      });
+      await prisma.lead.update({
+        where: { id: contato.leadId },
+        data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: sessionId },
+      }).catch(() => {});
+    }
     logger.log(`📤 Enviado para ${contato.telefone} — disparo=${disparoId}`);
   } catch (e: any) {
     await prisma.campanhaContato.update({
