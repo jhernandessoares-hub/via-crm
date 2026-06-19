@@ -119,7 +119,17 @@ async function processNext(
             source: 'campanha-base-fria',
             disparoId,
             sentAt: new Date().toISOString(),
-            ...(disparo.modelo.mediaUrl ? { mediaUrl: disparo.modelo.mediaUrl, mediaType: disparo.modelo.mediaType } : {}),
+            // Formato que a timeline do lead renderiza (p.media.url): imagem/vídeo
+            ...(disparo.modelo.mediaUrl
+              ? {
+                  type: disparo.modelo.mediaType === 'VIDEO' ? 'video' : 'image',
+                  media: {
+                    url: disparo.modelo.mediaUrl,
+                    kind: disparo.modelo.mediaType === 'VIDEO' ? 'video' : 'image',
+                    mimeType: disparo.modelo.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg',
+                  },
+                }
+              : {}),
           },
         },
       });

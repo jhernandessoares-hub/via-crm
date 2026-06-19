@@ -357,6 +357,12 @@ export class LeadsController {
     return this.leadsService.listTransitions(req.user, id);
   }
 
+  /** Campanhas (WhatsApp Light) das quais este lead participou */
+  @Get(':id/campanhas')
+  async listLeadCampanhas(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.listLeadCampanhas(req.user, id);
+  }
+
   /**
    * GET /leads/:id/events/:eventId/download
    */

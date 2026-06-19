@@ -3219,6 +3219,51 @@ async listStatusEvidences(user: any, leadId: string) {
 }
 
 /**
+ * Campanhas (WhatsApp Light) das quais este lead participou — mais recentes primeiro.
+ * Cada item é um CampanhaContato vinculado ao lead, com dados do disparo/modelo.
+ */
+async listLeadCampanhas(user: any, leadId: string) {
+  const lead = await this.prisma.lead.findFirst({
+    where: { id: leadId, tenantId: user.tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!lead) throw new NotFoundException('Lead não encontrado');
+
+  const contatos = await this.prisma.campanhaContato.findMany({
+    where: { leadId, disparo: { is: { tenantId: user.tenantId } } },
+    orderBy: { criadoEm: 'desc' },
+    select: {
+      id: true,
+      status: true,
+      enviadoEm: true,
+      respondeuEm: true,
+      criadoEm: true,
+      disparo: {
+        select: {
+          id: true,
+          nome: true,
+          status: true,
+          modelo: { select: { nome: true, mediaType: true, mensagem: true } },
+        },
+      },
+    },
+  });
+
+  return contatos.map((c) => ({
+    id: c.id,
+    status: c.status,
+    enviadoEm: c.enviadoEm,
+    respondeuEm: c.respondeuEm,
+    criadoEm: c.criadoEm,
+    disparoId: c.disparo?.id ?? null,
+    nome: c.disparo?.nome ?? c.disparo?.modelo?.nome ?? 'Campanha',
+    disparoStatus: c.disparo?.status ?? null,
+    mediaType: c.disparo?.modelo?.mediaType ?? null,
+    mensagem: c.disparo?.modelo?.mensagem ?? null,
+  }));
+}
+
+/**
  * Histórico completo de movimentações de etapa/status do lead (mais recentes primeiro).
  * Marca movimentos automáticos (cascade) e resolve o nome de quem moveu.
  */

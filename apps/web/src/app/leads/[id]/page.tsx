@@ -1981,6 +1981,7 @@ export default function LeadDetailChatPage() {
   const [statusEvidences, setStatusEvidences] = useState<StatusEvidence[]>([]);
   const [evidencesOpen, setEvidencesOpen] = useState(false);
   const [transitions, setTransitions] = useState<LeadTransition[]>([]);
+  const [leadCampanhas, setLeadCampanhas] = useState<any[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [evidencePreview, setEvidencePreview] = useState<{ url: string; mime: string; nome: string } | null>(null);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
@@ -2279,6 +2280,15 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  async function loadLeadCampanhas(leadId: string) {
+    try {
+      const data = await apiFetch("/leads/" + leadId + "/campanhas", { method: "GET" });
+      setLeadCampanhas(Array.isArray(data) ? data : []);
+    } catch {
+      setLeadCampanhas([]);
+    }
+  }
+
   async function openStatusEvidenceDoc(docId: string, nome: string) {
     try {
       const blob = await authFetchBlob(absApiUrl(`/leads/${id}/documents/${docId}/view`));
@@ -2338,6 +2348,7 @@ export default function LeadDetailChatPage() {
     await loadAllowedStages(id);
     await loadStatusEvidences(id);
     await loadTransitions(id);
+    await loadLeadCampanhas(id);
     return l;
   }
 
@@ -5585,6 +5596,51 @@ function discardAiSuggestion() {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Campanhas do lead — entre o SLA e o Histórico */}
+            {leadCampanhas.length > 0 && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                <div className="mb-2 flex items-center gap-2">
+                  <span>📣</span>
+                  <span className="text-sm font-semibold text-[var(--shell-text)]">Campanhas</span>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{leadCampanhas.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {leadCampanhas.map((c) => {
+                    const statusColor: Record<string, string> = {
+                      PENDENTE: "bg-slate-100 text-slate-600",
+                      ENVIADO: "bg-blue-100 text-blue-700",
+                      RESPONDEU: "bg-emerald-100 text-emerald-700",
+                      FALHA: "bg-red-100 text-red-700",
+                    };
+                    const statusLabel: Record<string, string> = {
+                      PENDENTE: "Pendente",
+                      ENVIADO: "Enviado",
+                      RESPONDEU: "Respondeu",
+                      FALHA: "Falha",
+                    };
+                    const quando = c.respondeuEm || c.enviadoEm || c.criadoEm;
+                    return (
+                      <div key={c.id} className="rounded-lg border p-2.5" style={{ borderColor: "var(--shell-card-border)" }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-medium text-[var(--shell-text)]" title={c.nome}>
+                            {c.mediaType === "VIDEO" ? "🎬 " : c.mediaType === "IMAGE" ? "🖼️ " : ""}{c.nome}
+                          </span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[c.status] ?? "bg-slate-100 text-slate-600"}`}>
+                            {statusLabel[c.status] ?? c.status}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-[var(--shell-subtext)]">
+                          {c.enviadoEm && <span>📤 {new Date(c.enviadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}
+                          {c.respondeuEm && <span>💬 Respondeu {new Date(c.respondeuEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
+                          {!c.enviadoEm && !c.respondeuEm && quando && <span>{new Date(quando).toLocaleDateString("pt-BR")}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
