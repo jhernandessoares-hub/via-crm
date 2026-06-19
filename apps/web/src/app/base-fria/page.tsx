@@ -18,6 +18,7 @@ type Lead = {
   nome?: string;
   nomeCorreto?: string | null;
   telefone?: string;
+  rendaBrutaFamiliar?: number | null;
   interesse?: string | null;
   interesseOrigem?: string | null;
   assignedUserName?: string | null;
@@ -39,7 +40,19 @@ function formatDate(s: string | null | undefined): string {
   return new Date(s).toLocaleDateString("pt-BR");
 }
 
-const COL = "36px 90px 1.4fr 1.1fr 1.2fr 1fr 1fr 1fr";
+function formatMoney(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const COL = "36px 80px 1.4fr 1.1fr 1fr 1.2fr 1.1fr 1fr 0.9fr";
+
+const SEL_STYLE: React.CSSProperties = {
+  width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4,
+  border: "1px solid var(--shell-card-border)",
+  background: "var(--shell-bg)", color: "var(--shell-text)",
+};
+const INPUT_STYLE: React.CSSProperties = { ...SEL_STYLE };
 
 export default function BaseFriaPage() {
   const { can } = usePermissions();
@@ -49,6 +62,14 @@ export default function BaseFriaPage() {
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Filtros
+  const [showFilters, setShowFilters] = useState(false);
+  const [interesseFilter, setInteresseFilter] = useState("");
+  const [responsavelFilter, setResponsavelFilter] = useState("");
+  const [campanhaFilter, setCampanhaFilter] = useState(""); // "" | "sim" | "nao"
+  const [rendaMin, setRendaMin] = useState("");
+  const [rendaMax, setRendaMax] = useState("");
 
   // Campanha
   const [modalOpen, setModalOpen] = useState(false);
@@ -117,11 +138,36 @@ export default function BaseFriaPage() {
     return [...s].sort();
   }, [leads]);
 
-  const [interesseFilter, setInteresseFilter] = useState("");
-  const filtered = useMemo(
-    () => (interesseFilter ? leads.filter((l) => l.interesse === interesseFilter) : leads),
-    [leads, interesseFilter],
-  );
+  const responsaveis = useMemo(() => {
+    const s = new Set<string>();
+    for (const l of leads) if (l.assignedUserName) s.add(l.assignedUserName);
+    return [...s].sort();
+  }, [leads]);
+
+  const filtered = useMemo(() => {
+    const min = rendaMin ? parseFloat(rendaMin.replace(/\./g, "").replace(",", ".")) : null;
+    const max = rendaMax ? parseFloat(rendaMax.replace(/\./g, "").replace(",", ".")) : null;
+    return leads.filter((l) => {
+      if (interesseFilter && l.interesse !== interesseFilter) return false;
+      if (responsavelFilter && l.assignedUserName !== responsavelFilter) return false;
+      if (campanhaFilter === "sim" && !l.emCampanha) return false;
+      if (campanhaFilter === "nao" && l.emCampanha) return false;
+      if (min != null && (l.rendaBrutaFamiliar ?? -Infinity) < min) return false;
+      if (max != null && (l.rendaBrutaFamiliar ?? Infinity) > max) return false;
+      return true;
+    });
+  }, [leads, interesseFilter, responsavelFilter, campanhaFilter, rendaMin, rendaMax]);
+
+  const activeFilterCount =
+    (interesseFilter ? 1 : 0) + (responsavelFilter ? 1 : 0) + (campanhaFilter ? 1 : 0) + (rendaMin || rendaMax ? 1 : 0);
+
+  function clearFilters() {
+    setInteresseFilter("");
+    setResponsavelFilter("");
+    setCampanhaFilter("");
+    setRendaMin("");
+    setRendaMax("");
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -164,16 +210,21 @@ export default function BaseFriaPage() {
           {loading ? "Carregando..." : "Atualizar"}
         </Button>
         <Input className="w-56" placeholder="Buscar nome, telefone, CPF..." value={q} onChange={(e) => setQ(e.target.value)} />
-        {interesses.length > 0 && (
-          <select
-            value={interesseFilter}
-            onChange={(e) => setInteresseFilter(e.target.value)}
-            className="rounded-lg border px-3 py-1.5 text-sm"
-            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
-          >
-            <option value="">Todos os interesses</option>
-            {interesses.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
+        <button
+          onClick={() => setShowFilters((v) => !v)}
+          className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+          style={{
+            borderColor: activeFilterCount ? "var(--brand-accent)" : "var(--shell-card-border)",
+            color: activeFilterCount ? "var(--brand-accent)" : "var(--shell-text)",
+            background: showFilters ? "var(--shell-hover)" : "transparent",
+          }}
+        >
+          ▼ Filtros{activeFilterCount > 0 && ` (${activeFilterCount})`}
+        </button>
+        {activeFilterCount > 0 && (
+          <button onClick={clearFilters} className="text-xs text-[var(--shell-subtext)] underline hover:text-[var(--shell-text)]">
+            Limpar filtros
+          </button>
         )}
         {canCampaign && selected.size > 0 && (
           <div className="ml-auto flex items-center gap-2">
@@ -193,9 +244,37 @@ export default function BaseFriaPage() {
         <div className="grid gap-2 border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide"
           style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-subtext)", gridTemplateColumns: COL }}>
           <div>{canCampaign && <input type="checkbox" checked={allSelected} onChange={toggleAll} />}</div>
-          <div>Número</div><div>Nome</div><div>Telefone</div><div>Interesse</div>
-          <div>Campanha</div><div>Responsável</div><div>Na Base Fria desde</div>
+          <div>Número</div><div>Nome</div><div>Telefone</div><div>Renda</div><div>Interesse</div>
+          <div>Campanha</div><div>Responsável</div><div>Desde</div>
         </div>
+
+        {/* Linha de filtros */}
+        {showFilters && (
+          <div className="grid items-center gap-2 border-b px-4 py-2"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)", gridTemplateColumns: COL }}>
+            <div /><div />
+            <div /> {/* Nome */}
+            <div /> {/* Telefone */}
+            <div className="flex gap-1">
+              <input style={INPUT_STYLE} placeholder="mín" value={rendaMin} onChange={(e) => setRendaMin(e.target.value)} />
+              <input style={INPUT_STYLE} placeholder="máx" value={rendaMax} onChange={(e) => setRendaMax(e.target.value)} />
+            </div>
+            <select style={SEL_STYLE} value={interesseFilter} onChange={(e) => setInteresseFilter(e.target.value)}>
+              <option value="">Todos</option>
+              {interesses.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <select style={SEL_STYLE} value={campanhaFilter} onChange={(e) => setCampanhaFilter(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="sim">Em campanha</option>
+              <option value="nao">Sem campanha</option>
+            </select>
+            <select style={SEL_STYLE} value={responsavelFilter} onChange={(e) => setResponsavelFilter(e.target.value)}>
+              <option value="">Todos</option>
+              {responsaveis.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <div />
+          </div>
+        )}
 
         {filtered.length === 0 ? (
           <div className="p-6 text-sm text-[var(--shell-subtext)]">
@@ -213,14 +292,15 @@ export default function BaseFriaPage() {
                   <Link href={`/leads/${l.id}`} className="block truncate font-medium text-[var(--shell-text)] hover:underline">{displayName(l)}</Link>
                 </div>
                 <div className="truncate text-sm text-[var(--shell-subtext)]"><MaskedField field="lead.telefone">{l.telefone || "—"}</MaskedField></div>
+                <div className="truncate text-sm text-[var(--shell-subtext)]"><MaskedField field="lead.financeiro">{formatMoney(l.rendaBrutaFamiliar)}</MaskedField></div>
                 <div className="truncate text-sm text-[var(--shell-subtext)]" title={l.interesse ?? undefined}>
                   {l.interesse || "—"}
                   {l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}
                 </div>
                 <div className="min-w-0">
                   {l.emCampanha ? (
-                    <span className="inline-block rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700" title={l.emCampanhaDesde ? `Desde ${formatDate(l.emCampanhaDesde)}` : undefined}>
-                      📣 Em campanha{l.emCampanhaDesde ? ` · ${formatDate(l.emCampanhaDesde)}` : ""}
+                    <span className="inline-block rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                      📣 {l.emCampanhaDesde ? formatDate(l.emCampanhaDesde) : "ativa"}
                     </span>
                   ) : (
                     <span className="text-sm text-[var(--shell-subtext)]">—</span>
