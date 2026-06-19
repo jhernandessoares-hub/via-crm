@@ -317,6 +317,18 @@ export class QueueService implements OnModuleDestroy {
     }
   }
 
+  /** Reagenda uma tentativa específica do SLA (ex: empurrar para a abertura do atendimento). */
+  async rescheduleSlaAttempt(leadId: string, attemptIndex: number, canal: 'light' | 'oficial', delaySeconds: number) {
+    const id = `sla-${leadId}-att-${attemptIndex}`;
+    const existing = await this.slaQueue.getJob(id);
+    if (existing) await existing.remove();
+    await this.slaQueue.add(
+      'sla-attempt',
+      { leadId, attemptIndex, canal },
+      { delay: Math.max(1, delaySeconds) * 1000, jobId: id, removeOnComplete: true, removeOnFail: false },
+    );
+  }
+
   // =============================
   // TESTE: agendar em X segundos (texto/IA)
   // =============================

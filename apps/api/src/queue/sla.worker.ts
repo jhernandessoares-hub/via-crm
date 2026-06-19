@@ -5,6 +5,7 @@ import { Logger } from '../logger';
 import { resolveWhatsappCreds, sendWhatsappText } from '../whatsapp/whatsapp-creds';
 import { resolveSlaConfig } from '../tenants/sla.config';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
+import { QueueService } from './queue.service';
 
 const logger = new Logger('SlaWorker');
 
@@ -78,6 +79,38 @@ function isWithinBusinessHours(businessHours: any, timezone: string): boolean {
     return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
   } catch {
     return true;
+  }
+}
+
+/** Minutos até a próxima abertura do atendimento (no tz). null se nenhum dia configurado. */
+function minutesUntilNextOpen(businessHours: any, timezone: string): number | null {
+  if (!businessHours) return null;
+  const tz = timezone || 'America/Sao_Paulo';
+  const DOW = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const shortToFull: Record<string, string> = {
+    sun: 'sunday', mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday',
+  };
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date());
+    const weekdayShort = parts.find((p) => p.type === 'weekday')?.value?.toLowerCase();
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const todayKey = weekdayShort ? shortToFull[weekdayShort] : null;
+    if (!todayKey) return null;
+    const todayIdx = DOW.indexOf(todayKey);
+    const currentMinutes = hour * 60 + minute;
+    for (let d = 0; d < 8; d++) {
+      const sched = businessHours[DOW[(todayIdx + d) % 7]];
+      if (!sched) continue;
+      const [oh, om] = String(sched.open || '00:00').split(':').map(Number);
+      const deltaMin = d * 1440 + (oh * 60 + om) - currentMinutes;
+      if (deltaMin > 0) return deltaMin;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -485,6 +518,7 @@ async function handleSlaAttempt(
   prisma: PrismaService,
   ai: AiService,
   unofficialService?: WhatsappUnofficialService,
+  queue?: QueueService,
 ) {
   const leadId = job.data?.leadId as string | undefined;
   const attemptIndex = Number(job.data?.attemptIndex ?? 0);
@@ -495,6 +529,7 @@ async function handleSlaAttempt(
     select: {
       id: true, tenantId: true, status: true, nome: true, nomeCorreto: true,
       telefone: true, botPaused: true, conversaCanal: true, conversaSessionId: true,
+      lastInboundAt: true, stageId: true, stage: { select: { key: true } },
     },
   });
   if (!lead) return;
@@ -513,12 +548,60 @@ async function handleSlaAttempt(
     return;
   }
 
-  // Respeitar horário de atendimento
+  // Parte 2b — Oficial: encerrar o atendimento ao fim da janela de 24h da Meta.
+  if (!isLight && channelCfg.encerrarAoFim24h) {
+    const horasSemInbound = lead.lastInboundAt
+      ? (Date.now() - new Date(lead.lastInboundAt).getTime()) / 3_600_000
+      : Infinity;
+    if (horasSemInbound >= 24) {
+      const encerrado = await prisma.pipelineStage.findFirst({
+        where: { tenantId: lead.tenantId, key: 'ATENDIMENTO_ENCERRADO', isActive: true },
+        select: { id: true },
+      });
+      if (encerrado && lead.stageId !== encerrado.id) {
+        await prisma.$transaction(async (tx) => {
+          await tx.lead.update({ where: { id: lead.id }, data: { stageId: encerrado.id } });
+          await tx.leadTransitionLog.create({
+            data: { tenantId: lead.tenantId, leadId: lead.id, fromStage: lead.stage?.key ?? null, toStage: 'ATENDIMENTO_ENCERRADO', changedBy: 'SLA_AUTO' },
+          });
+        });
+        logger.log(`🚫 SLA oficial: janela 24h expirou → ATENDIMENTO_ENCERRADO leadId=${lead.id}`);
+      }
+      return; // fora da janela da Meta: não envia
+    }
+  }
+
+  // Trava anti-duplicação: o SLA só persegue quando NÓS já respondemos e o LEAD ficou em
+  // silêncio. Se a última mensagem é um inbound não respondido, quem cuida é o fluxo normal
+  // (inbound-AI), não o SLA — evita responder + cutucar em cima.
+  const [lastIn, lastOut] = await Promise.all([
+    prisma.leadEvent.findFirst({ where: { leadId: lead.id, channel: { in: ['whatsapp.in', 'whatsapp.unofficial.in'] } }, orderBy: { criadoEm: 'desc' }, select: { criadoEm: true } }),
+    prisma.leadEvent.findFirst({ where: { leadId: lead.id, channel: { in: ['whatsapp.out', 'whatsapp.unofficial.out'] } }, orderBy: { criadoEm: 'desc' }, select: { criadoEm: true } }),
+  ]);
+  if (!lastOut || (lastIn && lastIn.criadoEm > lastOut.criadoEm)) {
+    logger.log(`⏭ SLA: lead aguardando nossa resposta — fluxo normal cuida, pulando leadId=${lead.id}`);
+    return;
+  }
+  const COOLDOWN_MIN = 15;
+  if (Date.now() - new Date(lastOut.criadoEm).getTime() < COOLDOWN_MIN * 60 * 1000) {
+    logger.log(`⏭ SLA: outbound recente (<${COOLDOWN_MIN}min) — pulando p/ evitar duplicidade leadId=${lead.id}`);
+    return;
+  }
+
+  // Respeitar horário — fora do horário, reagenda esta tentativa para a abertura (não perde).
   if (channelCfg.respeitarHorario) {
     const bh = tenant?.businessHours as any;
     const tz = bh?.timezone || 'America/Sao_Paulo';
     if (!isWithinBusinessHours(bh, tz)) {
-      logger.log(`🕐 SLA fora do horário — tentativa ${attemptIndex + 1} pulada leadId=${lead.id}`);
+      const mins = minutesUntilNextOpen(bh, tz);
+      if (queue && mins && mins > 0) {
+        await queue
+          .rescheduleSlaAttempt(lead.id, attemptIndex, isLight ? 'light' : 'oficial', mins * 60 + 60)
+          .catch((e: any) => logger.warn(`SLA reagendar p/ abertura falhou leadId=${lead.id}: ${e?.message ?? e}`));
+        logger.log(`🕐 SLA fora do horário — tentativa ${attemptIndex + 1} reagendada p/ abertura (~${mins}min) leadId=${lead.id}`);
+      } else {
+        logger.log(`🕐 SLA fora do horário — tentativa ${attemptIndex + 1} pulada leadId=${lead.id}`);
+      }
       return;
     }
   }
@@ -605,7 +688,7 @@ async function handleSlaAttempt(
   }
 }
 
-export function startSlaWorker(prisma: PrismaService, ai: AiService, unofficialService?: WhatsappUnofficialService) {
+export function startSlaWorker(prisma: PrismaService, ai: AiService, unofficialService?: WhatsappUnofficialService, queue?: QueueService) {
   logger.log('🚀 SLA Worker boot', {
     inboundChannels: getInboundChannels(),
     activeConversationMinutes: getActiveConversationMinutes(),
@@ -618,7 +701,7 @@ export function startSlaWorker(prisma: PrismaService, ai: AiService, unofficialS
     async (job) => {
       // Cadência config-driven (parte 2). Jobs legados (2h/10h/...) caem no handler antigo.
       if (job.name === 'sla-attempt') {
-        await handleSlaAttempt(job, prisma, ai, unofficialService);
+        await handleSlaAttempt(job, prisma, ai, unofficialService, queue);
       } else {
         await handleSlaJob(job, prisma, ai);
       }
