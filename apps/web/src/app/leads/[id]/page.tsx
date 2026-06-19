@@ -3710,17 +3710,24 @@ function discardAiSuggestion() {
             // Antes de mover: avisa quando a unidade vinculada vai mudar de status pela etapa.
             function handleSelectStage(stage: PipelineStage) {
               // Ingresso na Base Fria: abre modal opcional (agenda / mensagem programada).
-              if (stage.key === "BASE_FRIA") {
-                setBfAgendaData("");
-                setBfMsgData("");
-                setBfMsgTexto("");
-                setBfMsgSessionId("");
-                setBfSalvarTemplate(false);
-                apiFetch("/whatsapp-unofficial")
-                  .then((d) => setBfSessions(Array.isArray(d) ? d.filter((s: any) => s.status === "CONNECTED") : []))
-                  .catch(() => setBfSessions([]));
-                setBaseFriaModal({ stage });
-                return;
+              // Cobre BASE_FRIA (padrão) e BASE_FRIA_PRE/AGENDAMENTO/NEGOCIACOES (v2).
+              // Só intercepta quando a etapa não exige evidência/justificativa/pendência
+              // (caso contrário, segue o fluxo normal desses modais).
+              if (stage.key?.startsWith("BASE_FRIA")) {
+                const needsDocument = Boolean(stage.requiresEvidence) || currentStageRequiresEvidence;
+                const needsReason = Boolean(stage.requiresReason) || currentStageRequiresReason;
+                if (!needsDocument && !needsReason && !stage.requiresPendencias) {
+                  setBfAgendaData("");
+                  setBfMsgData("");
+                  setBfMsgTexto("");
+                  setBfMsgSessionId("");
+                  setBfSalvarTemplate(false);
+                  apiFetch("/whatsapp-unofficial")
+                    .then((d) => setBfSessions(Array.isArray(d) ? d.filter((s: any) => s.status === "CONNECTED") : []))
+                    .catch(() => setBfSessions([]));
+                  setBaseFriaModal({ stage });
+                  return;
+                }
               }
               const units = (lead as any)?.developmentUnits ?? [];
               const reservedUnit = units.find((u: any) => u.status === "RESERVADO");

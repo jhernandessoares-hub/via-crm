@@ -1181,9 +1181,10 @@ export class LeadsService {
     const noStage = await this.prisma.lead.count({ where: { ...baseWhere, stageId: null } });
     groups[firstGroup] += noStage;
 
-    // Base Fria — contagem dedicada (etapa BASE_FRIA não tem group, some do funil acima)
+    // Base Fria — contagem dedicada (cobre BASE_FRIA do pipeline padrão e
+    // BASE_FRIA_PRE/AGENDAMENTO/NEGOCIACOES do pipeline v2)
     const baseFria = await this.prisma.lead.count({
-      where: { ...baseWhere, stage: { key: 'BASE_FRIA' } },
+      where: { ...baseWhere, stage: { key: { startsWith: 'BASE_FRIA' } } },
     });
 
     return { total, mine, groups, baseFria };
@@ -1758,7 +1759,7 @@ export class LeadsService {
         ...extraFilter,
         ...searchFilter,
         deletedAt: null,
-        stage: { key: 'BASE_FRIA' },
+        stage: { key: { startsWith: 'BASE_FRIA' } },
         ...(filters.produtoInteresseId ? { produtoInteresseId: filters.produtoInteresseId } : {}),
       },
       orderBy: [{ baseFriaDesde: 'desc' }, { criadoEm: 'desc' }],
@@ -2675,8 +2676,9 @@ async updateStage(
   }
 
   // Base Fria: marca a data de ingresso ao entrar; limpa ao sair.
-  const enteringBaseFria = toStage.key === 'BASE_FRIA';
-  const leavingBaseFria = fromStageKey === 'BASE_FRIA';
+  // Cobre BASE_FRIA (pipeline padrão) e BASE_FRIA_PRE/AGENDAMENTO/NEGOCIACOES (v2).
+  const enteringBaseFria = toStage.key.startsWith('BASE_FRIA');
+  const leavingBaseFria = !!fromStageKey && fromStageKey.startsWith('BASE_FRIA');
   const baseFriaData: { baseFriaDesde?: Date | null } = enteringBaseFria
     ? { baseFriaDesde: new Date() }
     : leavingBaseFria

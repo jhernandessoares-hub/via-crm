@@ -981,7 +981,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       if (contatoDisparo.leadId) {
         try {
           const bfLead = await this.prisma.lead.findFirst({
-            where: { id: contatoDisparo.leadId, tenantId, deletedAt: null, stage: { key: 'BASE_FRIA' } },
+            where: { id: contatoDisparo.leadId, tenantId, deletedAt: null, stage: { key: { startsWith: 'BASE_FRIA' } } },
             select: { id: true, stage: { select: { name: true } } },
           });
           if (bfLead) {

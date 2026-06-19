@@ -302,7 +302,7 @@ export class CampanhasService {
         id: { in: leadIds },
         tenantId,
         deletedAt: null,
-        stage: { key: 'BASE_FRIA' },
+        stage: { key: { startsWith: 'BASE_FRIA' } },
         telefone: { not: null },
       },
       select: { id: true, nome: true, nomeCorreto: true, telefone: true },
