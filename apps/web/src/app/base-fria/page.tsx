@@ -78,28 +78,69 @@ export default function BaseFriaPage() {
   const [modeloId, setModeloId] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [enviando, setEnviando] = useState(false);
+  // Composição inline de campanha (sem precisar cadastrar antes em Campanhas)
+  const [modoNovo, setModoNovo] = useState(false);
+  const [novoNome, setNovoNome] = useState("");
+  const [novaMensagem, setNovaMensagem] = useState("");
+  const [delayMin, setDelayMin] = useState(10);
+  const [delayMax, setDelayMax] = useState(20);
 
   function openCampaignModal() {
+    setModeloId("");
+    setSessionId("");
+    setNovoNome("");
+    setNovaMensagem("");
+    setDelayMin(10);
+    setDelayMax(20);
     Promise.all([
       apiFetch("/campanhas/modelos").catch(() => []),
       apiFetch("/whatsapp-unofficial").catch(() => []),
     ]).then(([mods, sess]) => {
-      setModelos(Array.isArray(mods) ? mods : []);
+      const lista = Array.isArray(mods) ? mods : [];
+      setModelos(lista);
       setSessions(Array.isArray(sess) ? sess.filter((s: Session) => s.status === "CONNECTED") : []);
+      // Sem modelo cadastrado → já abre no modo "Nova mensagem"
+      setModoNovo(lista.length === 0);
       setModalOpen(true);
     });
   }
 
   async function dispararCampanha() {
-    if (!modeloId || !sessionId) {
-      alert("Escolha o modelo e a sessão de WhatsApp.");
+    if (!sessionId) {
+      alert("Escolha a sessão de WhatsApp.");
       return;
     }
     setEnviando(true);
     try {
+      // Modo "Nova mensagem": cria o modelo na hora (fica salvo para reuso) e usa o id.
+      let mid = modeloId;
+      if (modoNovo) {
+        if (!novaMensagem.trim()) {
+          alert("Escreva a mensagem da campanha.");
+          setEnviando(false);
+          return;
+        }
+        const min = Math.max(10, delayMin || 10);
+        const max = Math.max(min, delayMax || min);
+        const novo = await apiFetch("/campanhas/modelos", {
+          method: "POST",
+          body: JSON.stringify({
+            nome: novoNome.trim() || `Base Fria — ${new Date().toLocaleDateString("pt-BR")}`,
+            mensagem: novaMensagem.trim(),
+            delayMinSegundos: min,
+            delayMaxSegundos: max,
+          }),
+        });
+        mid = novo?.id;
+      }
+      if (!mid) {
+        alert("Escolha um modelo ou escreva uma mensagem.");
+        setEnviando(false);
+        return;
+      }
       const r = await apiFetch("/campanhas/disparos/base-fria", {
         method: "POST",
-        body: JSON.stringify({ modeloId, sessionId, leadIds: [...selected] }),
+        body: JSON.stringify({ modeloId: mid, sessionId, leadIds: [...selected] }),
       });
       const ignorados = r?.ignorados ?? 0;
       alert(`Campanha iniciada para ${r?.totalContatos ?? 0} lead(s).${ignorados ? ` ${ignorados} ignorado(s) (sem telefone ou já em campanha).` : ""}`);
@@ -107,6 +148,8 @@ export default function BaseFriaPage() {
       setSelected(new Set());
       setModeloId("");
       setSessionId("");
+      setNovoNome("");
+      setNovaMensagem("");
       load();
     } catch (e: any) {
       alert(e?.message ?? "Erro ao iniciar a campanha.");
@@ -323,18 +366,70 @@ export default function BaseFriaPage() {
               {selected.size} lead(s) selecionado(s). Cada lead recebe a mensagem uma vez (delay anti-ban).
             </p>
 
-            <label className="mt-4 block text-sm font-medium text-[var(--shell-text)]">Modelo</label>
-            <select
-              value={modeloId}
-              onChange={(e) => setModeloId(e.target.value)}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
-              style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
-            >
-              <option value="">Selecione um modelo…</option>
-              {modelos.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
-            </select>
-            {modelos.length === 0 && (
-              <p className="mt-1 text-xs text-amber-600">Nenhum modelo cadastrado. Crie um em Campanhas.</p>
+            {/* Alternância: usar modelo salvo ou compor nova mensagem aqui mesmo */}
+            <div className="mt-4 inline-flex rounded-lg border p-1" style={{ borderColor: "var(--shell-card-border)" }}>
+              <button
+                type="button"
+                onClick={() => setModoNovo(false)}
+                className="rounded-md px-3 py-1 text-sm"
+                style={{ background: !modoNovo ? "var(--shell-hover)" : "transparent", color: !modoNovo ? "var(--shell-text)" : "var(--shell-subtext)", fontWeight: !modoNovo ? 600 : 400 }}
+              >
+                Modelo salvo
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoNovo(true)}
+                className="rounded-md px-3 py-1 text-sm"
+                style={{ background: modoNovo ? "var(--shell-hover)" : "transparent", color: modoNovo ? "var(--shell-text)" : "var(--shell-subtext)", fontWeight: modoNovo ? 600 : 400 }}
+              >
+                Nova mensagem
+              </button>
+            </div>
+
+            {!modoNovo ? (
+              <>
+                <label className="mt-3 block text-sm font-medium text-[var(--shell-text)]">Modelo</label>
+                <select
+                  value={modeloId}
+                  onChange={(e) => setModeloId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                >
+                  <option value="">Selecione um modelo…</option>
+                  {modelos.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                </select>
+                {modelos.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-600">Nenhum modelo salvo. Use "Nova mensagem".</p>
+                )}
+              </>
+            ) : (
+              <>
+                <label className="mt-3 block text-sm font-medium text-[var(--shell-text)]">Nome (para reuso) — opcional</label>
+                <input
+                  value={novoNome}
+                  onChange={(e) => setNovoNome(e.target.value)}
+                  placeholder="Ex.: Reaquecimento lançamento X"
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                />
+                <label className="mt-3 block text-sm font-medium text-[var(--shell-text)]">Mensagem</label>
+                <textarea
+                  value={novaMensagem}
+                  onChange={(e) => setNovaMensagem(e.target.value)}
+                  placeholder="Use {{nome}} para personalizar com o nome do lead."
+                  rows={4}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <label className="text-xs text-[var(--shell-subtext)]">Delay entre envios (s):</label>
+                  <input type="number" min={10} value={delayMin} onChange={(e) => setDelayMin(Math.max(10, parseInt(e.target.value) || 10))}
+                    className="w-16 rounded-lg border px-2 py-1 text-sm text-center" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }} />
+                  <span className="text-xs text-[var(--shell-subtext)]">a</span>
+                  <input type="number" min={delayMin} value={delayMax} onChange={(e) => setDelayMax(Math.max(delayMin, parseInt(e.target.value) || delayMin))}
+                    className="w-16 rounded-lg border px-2 py-1 text-sm text-center" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }} />
+                </div>
+              </>
             )}
 
             <label className="mt-4 block text-sm font-medium text-[var(--shell-text)]">Sessão de WhatsApp (Light)</label>
@@ -355,7 +450,7 @@ export default function BaseFriaPage() {
               <Button variant="outline" size="sm" onClick={() => setModalOpen(false)} disabled={enviando}>
                 Cancelar
               </Button>
-              <Button size="sm" onClick={dispararCampanha} loading={enviando} disabled={!modeloId || !sessionId}>
+              <Button size="sm" onClick={dispararCampanha} loading={enviando} disabled={!sessionId || (modoNovo ? !novaMensagem.trim() : !modeloId)}>
                 Iniciar campanha
               </Button>
             </div>
