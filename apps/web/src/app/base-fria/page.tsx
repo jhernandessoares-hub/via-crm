@@ -84,6 +84,7 @@ export default function BaseFriaPage() {
   const [novaMensagem, setNovaMensagem] = useState("");
   const [delayMin, setDelayMin] = useState(10);
   const [delayMax, setDelayMax] = useState(20);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
 
   // Campanhas criadas (disparos)
   const [disparosOpen, setDisparosOpen] = useState(false);
@@ -110,6 +111,7 @@ export default function BaseFriaPage() {
     setNovaMensagem("");
     setDelayMin(10);
     setDelayMax(20);
+    setMediaFile(null);
     Promise.all([
       apiFetch("/campanhas/modelos").catch(() => []),
       apiFetch("/inbox-wa-light").catch(() => []),
@@ -150,6 +152,12 @@ export default function BaseFriaPage() {
           }),
         });
         mid = novo?.id;
+        // Mídia opcional (imagem/vídeo) → sobe pro modelo recém-criado
+        if (mid && mediaFile) {
+          const fd = new FormData();
+          fd.append("file", mediaFile);
+          await apiFetch(`/campanhas/modelos/${mid}/media`, { method: "POST", body: fd });
+        }
       }
       if (!mid) {
         alert("Escolha um modelo ou escreva uma mensagem.");
@@ -168,6 +176,7 @@ export default function BaseFriaPage() {
       setSessionId("");
       setNovoNome("");
       setNovaMensagem("");
+      setMediaFile(null);
       load();
     } catch (e: any) {
       alert(e?.message ?? "Erro ao iniciar a campanha.");
@@ -448,7 +457,20 @@ export default function BaseFriaPage() {
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                   style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
                 />
-                <div className="mt-2 flex items-center gap-2">
+                <label className="mt-3 block text-sm font-medium text-[var(--shell-text)]">Imagem ou vídeo (opcional)</label>
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
+                  className="mt-1 w-full text-sm text-[var(--shell-subtext)]"
+                />
+                {mediaFile && (
+                  <p className="mt-1 text-xs text-[var(--shell-subtext)]">
+                    📎 {mediaFile.name}
+                    <button onClick={() => setMediaFile(null)} className="ml-2 text-amber-600 underline">remover</button>
+                  </p>
+                )}
+                <div className="mt-3 flex items-center gap-2">
                   <label className="text-xs text-[var(--shell-subtext)]">Delay entre envios (s):</label>
                   <input type="number" min={10} value={delayMin} onChange={(e) => setDelayMin(Math.max(10, parseInt(e.target.value) || 10))}
                     className="w-16 rounded-lg border px-2 py-1 text-sm text-center" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }} />
