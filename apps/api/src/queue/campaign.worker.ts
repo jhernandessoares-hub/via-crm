@@ -134,6 +134,21 @@ export function startCampaignWorker(
     async (job: Job) => {
       const { campanhaId } = job.data;
       if (!campanhaId) return;
+      // Mensagem programada (Base Fria): no horário agendado, ativa o rascunho e dispara.
+      if (job.name === 'campaign-start') {
+        const d = await prisma.campanhaDisparo.findUnique({
+          where: { id: campanhaId },
+          select: { status: true },
+        });
+        if (!d || d.status !== 'RASCUNHO') {
+          logger.log(`campaign-start ignorado disparo=${campanhaId} (status=${d?.status ?? 'inexistente'})`);
+          return;
+        }
+        await prisma.campanhaDisparo.update({ where: { id: campanhaId }, data: { status: 'RODANDO' } });
+        await queue.scheduleCampaignNext(campanhaId, 0);
+        logger.log(`▶ Mensagem programada ativada disparo=${campanhaId}`);
+        return;
+      }
       await processNext(campanhaId, prisma, queue, unofficial);
     },
     { connection: getRedisConnection(), concurrency: 1 },

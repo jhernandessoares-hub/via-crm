@@ -251,6 +251,32 @@ export class QueueService implements OnModuleDestroy {
     if (job) await job.remove();
   }
 
+  /**
+   * Base Fria — debounce de silêncio: após a reativação, espera o lead parar de
+   * escrever e então notifica o corretor (a IA não assume). Espelha scheduleQualSettle.
+   */
+  async scheduleBaseFriaSettle(leadId: string) {
+    await this.cancelBaseFriaSettleJobs(leadId);
+    await this.inboundAiQueue.add(
+      'base-fria-settle',
+      { leadId },
+      {
+        delay: this.getQualSettleDelayMs(),
+        jobId: `base-fria-settle-${leadId}`,
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+    return { ok: true, leadId };
+  }
+
+  async cancelBaseFriaSettleJobs(leadId: string) {
+    const job = await this.inboundAiQueue.getJob(`base-fria-settle-${leadId}`);
+    if (job) await job.remove();
+  }
+
   async scheduleInboundAiTest(leadId: string, seconds = 10) {
     const delay = Math.max(1, Number(seconds || 10)) * 1000;
 
@@ -292,9 +318,11 @@ export class QueueService implements OnModuleDestroy {
 
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      select: { tenantId: true, conversaCanal: true, status: true, botPaused: true, stage: { select: { key: true } } },
+      select: { tenantId: true, conversaCanal: true, status: true, botPaused: true, passouBaseFria: true, stage: { select: { key: true } } },
     });
     if (!lead || lead.status === 'FECHADO' || lead.status === 'PERDIDO' || lead.botPaused) return;
+    // Lead reativado a partir da Base Fria: o reaquecimento é manual (corretor), SLA não atua.
+    if (lead.passouBaseFria) return;
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: lead.tenantId },
@@ -666,6 +694,16 @@ export class QueueService implements OnModuleDestroy {
   async scheduleCampaignNext(disparoId: string, delayMs: number) {
     await this.campaignQueue.add(
       'campaign-send',
+      { campanhaId: disparoId },
+      { delay: delayMs, removeOnComplete: true, removeOnFail: false },
+    );
+  }
+
+  /** Agenda o início de um disparo em RASCUNHO para um horário futuro (mensagem programada da Base Fria). */
+  async scheduleCampaignStart(disparoId: string, runAt: Date) {
+    const delayMs = Math.max(0, runAt.getTime() - Date.now());
+    await this.campaignQueue.add(
+      'campaign-start',
       { campanhaId: disparoId },
       { delay: delayMs, removeOnComplete: true, removeOnFail: false },
     );

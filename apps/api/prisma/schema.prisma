@@ -305,6 +305,8 @@ model Lead {
   lastReadAt              DateTime?
   conversaAberta          Boolean              @default(false)
   pendenciasObservacao    String?
+  passouBaseFria          Boolean              @default(false) // lead reativado a partir da Base Fria: SLA pula e rótulo "(Base Fria)"
+  baseFriaDesde           DateTime?            // quando o lead entrou na Base Fria (sort/idade na listagem dedicada)
   aiExecutionLogs         AiExecutionLog[]
   baseFria                BaseFria?
   calendarEvents          CalendarEvent[]

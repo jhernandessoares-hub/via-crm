@@ -11,7 +11,7 @@ import { startTransition, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "./api";
 
-export type PermissionAction = "view" | "create" | "edit" | "delete" | "use" | "export" | "send" | "merge";
+export type PermissionAction = "view" | "create" | "edit" | "delete" | "use" | "export" | "send" | "merge" | "campaign";
 export type PermissionRole = "manager" | "agent" | "partner";
 
 export type DocumentAccessLevel = "none" | "view" | "download";
@@ -151,6 +151,14 @@ export const PERMISSION_MODULES = [
     actions: [
       { key: "view",  label: "Ver" },
       { key: "merge", label: "Mesclar" },
+    ],
+  },
+  {
+    key: "base_fria",
+    label: "Base Fria",
+    actions: [
+      { key: "view",     label: "Ver" },
+      { key: "campaign", label: "Disparar campanha" },
     ],
   },
   {

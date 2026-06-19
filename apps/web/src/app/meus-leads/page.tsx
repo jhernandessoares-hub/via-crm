@@ -39,6 +39,7 @@ type Lead = {
   cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
   conversaAberta?: boolean;
+  passouBaseFria?: boolean;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -516,7 +517,7 @@ export default function MeusLeadsPage() {
                       <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
                         style={{ borderBottomColor: "var(--shell-card-border)", borderLeftColor: "#f59e0b", gridTemplateColumns: COL }}>
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                        <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
+                        <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{l.passouBaseFria && <span title="Reativado da Base Fria">❄️ </span>}{displayName(l)}</Link></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                         <div className="min-w-0">
@@ -566,7 +567,7 @@ export default function MeusLeadsPage() {
                     <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
                       style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
                       <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                      <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link></div>
+                      <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{l.passouBaseFria && <span title="Reativado da Base Fria">❄️ </span>}{displayName(l)}</Link></div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                       <div className="min-w-0">

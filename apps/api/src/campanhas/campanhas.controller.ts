@@ -89,6 +89,15 @@ export class CampanhasController {
     return this.service.createDisparo(req.user.tenantId, req.user.sub, body);
   }
 
+  /** Campanha de reaquecimento da Base Fria — só OWNER/MANAGER. */
+  @Post('disparos/base-fria')
+  createBaseFriaDisparo(@Req() req: any, @Body() body: { modeloId: string; sessionId: string; leadIds: string[] }) {
+    if (req.user.role !== 'OWNER' && req.user.role !== 'MANAGER') {
+      throw new ForbiddenException('Sem permissão para disparar campanha de Base Fria');
+    }
+    return this.service.createBaseFriaDisparo(req.user.tenantId, req.user.sub, body);
+  }
+
   @Post('disparos/:id/pause')
   pause(@Req() req: any, @Param('id') id: string) {
     return this.service.pauseDisparo(id, req.user.tenantId);

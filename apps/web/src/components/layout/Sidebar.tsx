@@ -28,6 +28,7 @@ import {
   GitMerge,
   KeyRound,
   ClipboardCheck,
+  Snowflake,
   type LucideIcon,
 } from "lucide-react";
 import { apiLogout } from "@/lib/api";
@@ -40,6 +41,7 @@ type Counts = {
   total: number;
   mine: number;
   groups: Record<string, number>;
+  baseFria?: number;
 };
 
 type Branding = {
@@ -231,6 +233,9 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         )}
         {(role === "OWNER" || role === "MANAGER" || can("duplicados", "view")) && (
           <NavItem href="/leads/duplicados" label="Duplicados" icon={GitMerge} />
+        )}
+        {(role === "OWNER" || can("base_fria", "view")) && (
+          <NavItem href="/base-fria" label="Base Fria" icon={Snowflake} badge={counts?.baseFria} />
         )}
 
         {/* Funil colapsável */}

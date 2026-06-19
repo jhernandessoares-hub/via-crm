@@ -974,6 +974,57 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
           data: { responderam: { increment: 1 } },
         });
       });
+
+      // Reativação da Base Fria: se o lead vinculado à campanha está na etapa
+      // BASE_FRIA, volta para NOVO_LEAD e marca passouBaseFria (SLA pula + IA não
+      // assume; o corretor é notificado após o silêncio via base-fria-settle).
+      if (contatoDisparo.leadId) {
+        try {
+          const bfLead = await this.prisma.lead.findFirst({
+            where: { id: contatoDisparo.leadId, tenantId, deletedAt: null, stage: { key: 'BASE_FRIA' } },
+            select: { id: true, stage: { select: { name: true } } },
+          });
+          if (bfLead) {
+            const novoLeadStage =
+              (await this.prisma.pipelineStage.findFirst({
+                where: { tenantId, key: 'NOVO_LEAD', isActive: true },
+                select: { id: true, name: true, pipelineId: true },
+              })) ??
+              (await this.prisma.pipelineStage.findFirst({
+                where: { tenantId, isActive: true },
+                orderBy: { sortOrder: 'asc' },
+                select: { id: true, name: true, pipelineId: true },
+              }));
+            if (novoLeadStage) {
+              await this.prisma.lead.update({
+                where: { id: bfLead.id },
+                data: {
+                  stageId: novoLeadStage.id,
+                  ...(novoLeadStage.pipelineId ? { pipelineId: novoLeadStage.pipelineId } : {}),
+                  passouBaseFria: true,
+                  baseFriaDesde: null,
+                },
+              });
+              await this.prisma.leadTransitionLog.create({
+                data: {
+                  tenantId,
+                  leadId: bfLead.id,
+                  fromStage: bfLead.stage?.name ?? 'Base Fria',
+                  toStage: novoLeadStage.name,
+                  changedBy: 'SYSTEM',
+                  cascade: true,
+                },
+              });
+              await this.prisma.leadEvent.create({
+                data: { tenantId, leadId: bfLead.id, channel: 'base_fria.reactivated', payloadRaw: { at: new Date().toISOString() } },
+              });
+              logger.log(`❄️→🔥 Lead reativado da Base Fria leadId=${bfLead.id}`);
+            }
+          }
+        } catch (e: any) {
+          logger.warn(`Falha ao reativar lead da Base Fria: ${e?.message ?? e}`);
+        }
+      }
     }
 
     // Foto do contato — fire-and-forget, não bloqueia o processamento

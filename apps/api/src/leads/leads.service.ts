@@ -1181,7 +1181,12 @@ export class LeadsService {
     const noStage = await this.prisma.lead.count({ where: { ...baseWhere, stageId: null } });
     groups[firstGroup] += noStage;
 
-    return { total, mine, groups };
+    // Base Fria — contagem dedicada (etapa BASE_FRIA não tem group, some do funil acima)
+    const baseFria = await this.prisma.lead.count({
+      where: { ...baseWhere, stage: { key: 'BASE_FRIA' } },
+    });
+
+    return { total, mine, groups, baseFria };
   }
 
   async getPendingReply(user: { id: string; tenantId: string; role: string; branchId?: string | null }) {
@@ -1714,6 +1719,93 @@ export class LeadsService {
     const fv = await this.getPartnerFieldVisibility(tenantId, role);
     if (fv) withPreview.forEach((l) => this.sanitizeLeadForPartner(l, fv));
     return withPreview;
+  }
+
+  /**
+   * Listagem dedicada da Base Fria — leads na etapa BASE_FRIA (some do funil ativo
+   * porque a etapa não tem group). Respeita isolamento por role, anexa rótulo de
+   * interesse e marcação "em campanha" (CampanhaContato pendente em disparo ativo).
+   */
+  async listBaseFria(
+    user: { id: string; tenantId: string; role: string; branchId?: string | null },
+    filters: { q?: string; produtoInteresseId?: string } = {},
+  ) {
+    const { id, tenantId, role, branchId } = user;
+
+    let extraFilter: Record<string, unknown> = {};
+    if (role === 'AGENT' || role === 'PARTNER') {
+      const canViewAll = await this.canViewPipeline(tenantId, role);
+      if (!canViewAll) extraFilter = { assignedUserId: id };
+    } else if (role === 'MANAGER' && branchId) {
+      extraFilter = { branchId };
+    }
+
+    const q = (filters.q ?? '').trim();
+    const searchFilter: Record<string, unknown> = q
+      ? {
+          OR: [
+            { nome: { contains: q, mode: 'insensitive' } },
+            { nomeCorreto: { contains: q, mode: 'insensitive' } },
+            { telefone: { contains: q } },
+            { cpf: { contains: q } },
+          ],
+        }
+      : {};
+
+    const leads = await this.prisma.lead.findMany({
+      where: {
+        tenantId,
+        ...extraFilter,
+        ...searchFilter,
+        deletedAt: null,
+        stage: { key: 'BASE_FRIA' },
+        ...(filters.produtoInteresseId ? { produtoInteresseId: filters.produtoInteresseId } : {}),
+      },
+      orderBy: [{ baseFriaDesde: 'desc' }, { criadoEm: 'desc' }],
+      include: {
+        stage: { select: { id: true, name: true, key: true, group: true } },
+        empreendimentoInteresse: { select: { nome: true } },
+      },
+    });
+
+    const assignedIds = [...new Set(leads.map((l) => l.assignedUserId).filter(Boolean))] as string[];
+    const assignedUsers = assignedIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: assignedIds } }, select: { id: true, nome: true, apelido: true } })
+      : [];
+    const assignedMap = Object.fromEntries(assignedUsers.map((u) => [u.id, u.apelido || u.nome]));
+    const productTitleMap = await this.buildProductTitleMap(tenantId, leads.map((l) => l.produtoInteresseId));
+
+    // Marcação "em campanha": CampanhaContato vinculado ao lead em disparo ativo e ainda não respondido.
+    const leadIds = leads.map((l) => l.id);
+    const emCampanhaMap = new Map<string, Date | null>();
+    if (leadIds.length > 0) {
+      const contatos = await this.prisma.campanhaContato.findMany({
+        where: {
+          leadId: { in: leadIds },
+          status: { in: ['PENDENTE', 'ENVIADO'] },
+          disparo: { is: { tenantId, status: { in: ['RODANDO', 'PAUSADA'] } } },
+        },
+        select: { leadId: true, enviadoEm: true, criadoEm: true },
+        orderBy: { criadoEm: 'desc' },
+      });
+      for (const c of contatos) {
+        if (c.leadId && !emCampanhaMap.has(c.leadId)) {
+          emCampanhaMap.set(c.leadId, c.enviadoEm ?? c.criadoEm ?? null);
+        }
+      }
+    }
+
+    const enriched = leads.map((l) => ({
+      ...l,
+      assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
+      interesse: buildLeadInteresseLabel(l as any, productTitleMap),
+      emCampanha: emCampanhaMap.has(l.id),
+      emCampanhaDesde: emCampanhaMap.get(l.id) ?? null,
+    }));
+
+    const fv = await this.getPartnerFieldVisibility(tenantId, role);
+    if (fv) enriched.forEach((l) => this.sanitizeLeadForPartner(l, fv));
+    return enriched;
   }
 
 async getById(user: any, id: string) {
@@ -2509,7 +2601,18 @@ async updateStage(
   user: any,
   leadId: string,
   stageId: string,
-  opts: { evidenceDocumentId?: string; motivo?: string; ipAddress?: string; valorVenda?: number | string; dataVenda?: string } = {},
+  opts: {
+    evidenceDocumentId?: string;
+    motivo?: string;
+    ipAddress?: string;
+    valorVenda?: number | string;
+    dataVenda?: string;
+    // Base Fria — ações opcionais ao mover o lead para a etapa BASE_FRIA
+    baseFria?: {
+      agenda?: { dataHora: string; titulo?: string; descricao?: string };
+      mensagemProgramada?: { dataHora: string; texto: string; sessionId: string; salvarTemplate?: boolean; templateNome?: string };
+    };
+  } = {},
 ) {
   if (!leadId) throw new BadRequestException('leadId ausente');
   if (!stageId) throw new BadRequestException('stageId ausente');
@@ -2570,6 +2673,84 @@ async updateStage(
       where: { id: leadId, tenantId: user.tenantId },
     });
   }
+
+  // Base Fria: marca a data de ingresso ao entrar; limpa ao sair.
+  const enteringBaseFria = toStage.key === 'BASE_FRIA';
+  const leavingBaseFria = fromStageKey === 'BASE_FRIA';
+  const baseFriaData: { baseFriaDesde?: Date | null } = enteringBaseFria
+    ? { baseFriaDesde: new Date() }
+    : leavingBaseFria
+      ? { baseFriaDesde: null }
+      : {};
+
+  // Ações opcionais ao ingressar na Base Fria (agenda + mensagem programada).
+  // Best-effort: nunca quebra a mudança de etapa (já efetivada).
+  const applyBaseFriaIngress = async () => {
+    if (!enteringBaseFria || !opts.baseFria) return;
+    const bf = opts.baseFria;
+
+    // Agenda → evento no calendário vinculado ao lead (lembrete automático pelo ReminderWorker).
+    try {
+      if (bf.agenda?.dataHora) {
+        const start = new Date(bf.agenda.dataHora);
+        if (!Number.isNaN(start.getTime())) {
+          await this.prisma.calendarEvent.create({
+            data: {
+              tenantId: user.tenantId,
+              userId: user.id,
+              leadId,
+              title: bf.agenda.titulo?.trim() || 'Retomar contato (Base Fria)',
+              description: bf.agenda.descricao?.trim() || null,
+              startAt: start,
+              endAt: new Date(start.getTime() + 30 * 60 * 1000),
+              eventType: 'TAREFA',
+            },
+          });
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Base Fria agenda falhou (lead ${leadId}): ${(e as Error).message}`);
+    }
+
+    // Mensagem programada → campanha de 1 contato (o próprio lead) agendada para o horário.
+    try {
+      const mp = bf.mensagemProgramada;
+      if (mp?.dataHora && mp.texto?.trim() && mp.sessionId) {
+        const runAt = new Date(mp.dataHora);
+        const leadInfo = await this.prisma.lead.findFirst({
+          where: { id: leadId, tenantId: user.tenantId },
+          select: { nome: true, nomeCorreto: true, telefone: true },
+        });
+        if (!Number.isNaN(runAt.getTime()) && leadInfo?.telefone) {
+          const nomeModelo = mp.templateNome?.trim() || `Base Fria — ${new Date().toLocaleDateString('pt-BR')}`;
+          const modelo = await this.prisma.campanhaModelo.create({
+            data: { tenantId: user.tenantId, userId: user.id, nome: nomeModelo, mensagem: mp.texto.trim() },
+          });
+          const disparo = await this.prisma.campanhaDisparo.create({
+            data: {
+              tenantId: user.tenantId,
+              userId: user.id,
+              sessionId: mp.sessionId,
+              modeloId: modelo.id,
+              nome: `Programada · ${nomeModelo}`,
+              status: 'RASCUNHO',
+              totalContatos: 1,
+              contatos: {
+                create: {
+                  telefone: leadInfo.telefone.replace(/\D/g, ''),
+                  nome: leadInfo.nomeCorreto || leadInfo.nome || null,
+                  leadId,
+                },
+              },
+            },
+          });
+          await this.queueService.scheduleCampaignStart(disparo.id, runAt);
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Base Fria mensagem programada falhou (lead ${leadId}): ${(e as Error).message}`);
+    }
+  };
 
   if (toStage.ownerOnly && user?.role !== 'OWNER') {
     throw new ForbiddenException('Apenas o OWNER pode mover para esta etapa.');
@@ -2785,7 +2966,7 @@ async updateStage(
     const [updated] = await this.prisma.$transaction([
       this.prisma.lead.update({
         where: { id: leadId },
-        data: { stageId: toStage.id },
+        data: { stageId: toStage.id, ...baseFriaData },
       }),
       this.prisma.leadTransitionLog.create({
         data: {
@@ -2831,6 +3012,7 @@ async updateStage(
       }
     }
 
+    await applyBaseFriaIngress();
     return updated;
   }
 
@@ -2963,6 +3145,7 @@ async updateStage(
   await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
   await applyUnitSideEffects(toStage.unitAction);
 
+  await applyBaseFriaIngress();
   return updated;
 }
 

@@ -273,6 +273,84 @@ export class CampanhasService {
     return disparo;
   }
 
+  /**
+   * Campanha de reaquecimento da Base Fria: os contatos são leads existentes
+   * (na etapa BASE_FRIA). Cada CampanhaContato já nasce com `leadId` semeado, para
+   * que a resposta reative o lead. Disparo único por lead — leads já em campanha
+   * ativa são ignorados. Restrito a OWNER/MANAGER no controller.
+   */
+  async createBaseFriaDisparo(tenantId: string, userId: string, dto: {
+    modeloId: string;
+    sessionId: string;
+    leadIds: string[];
+  }) {
+    const modelo = await this.prisma.campanhaModelo.findFirst({
+      where: { id: dto.modeloId, tenantId },
+    });
+    if (!modelo) throw new NotFoundException('Modelo não encontrado');
+
+    const session = await this.prisma.whatsappUnofficialSession.findFirst({
+      where: { id: dto.sessionId, tenantId, status: 'CONNECTED' },
+    });
+    if (!session) throw new BadRequestException('Sessão não está conectada');
+
+    const leadIds = [...new Set((dto.leadIds ?? []).filter(Boolean))];
+    if (leadIds.length === 0) throw new BadRequestException('Selecione ao menos um lead');
+
+    const leads = await this.prisma.lead.findMany({
+      where: {
+        id: { in: leadIds },
+        tenantId,
+        deletedAt: null,
+        stage: { key: 'BASE_FRIA' },
+        telefone: { not: null },
+      },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true },
+    });
+
+    // Disparo único por lead: ignora quem já está em campanha ativa.
+    const jaEmCampanha = await this.prisma.campanhaContato.findMany({
+      where: {
+        leadId: { in: leads.map((l) => l.id) },
+        status: { in: ['PENDENTE', 'ENVIADO'] },
+        disparo: { is: { tenantId, status: { in: ['RODANDO', 'PAUSADA'] } } },
+      },
+      select: { leadId: true },
+    });
+    const jaSet = new Set(jaEmCampanha.map((c) => c.leadId).filter(Boolean) as string[]);
+
+    const contatos = leads
+      .filter((l) => !jaSet.has(l.id) && l.telefone)
+      .map((l) => ({
+        telefone: (l.telefone as string).replace(/\D/g, ''),
+        nome: l.nomeCorreto || l.nome || null,
+        leadId: l.id,
+      }))
+      .filter((c) => c.telefone);
+
+    if (contatos.length === 0) {
+      throw new BadRequestException('Nenhum lead elegível (sem telefone ou já em campanha ativa).');
+    }
+
+    const nome = `Base Fria · ${modelo.nome} — ${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+
+    const disparo = await this.prisma.campanhaDisparo.create({
+      data: {
+        tenantId, userId,
+        sessionId: dto.sessionId,
+        modeloId: dto.modeloId,
+        nome,
+        status: 'RODANDO',
+        totalContatos: contatos.length,
+        contatos: { createMany: { data: contatos } },
+      },
+    });
+
+    await this.queue.scheduleCampaignNext(disparo.id, 0);
+    logger.log(`Disparo Base Fria iniciado id=${disparo.id} total=${contatos.length} (ignorados=${leads.length - contatos.length})`);
+    return { ...disparo, ignorados: leads.length - contatos.length };
+  }
+
   async pauseDisparo(id: string, tenantId: string) {
     await this.assertDisparoAtivo(id, tenantId);
     await this.prisma.campanhaDisparo.update({ where: { id }, data: { status: 'PAUSADA' } });

@@ -5,7 +5,7 @@
  * Adicionar novos módulos/ações aqui os torna configuráveis sem alterar mais código.
  */
 
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'use' | 'export' | 'send' | 'merge';
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'use' | 'export' | 'send' | 'merge' | 'campaign';
 
 export type PermissionRole = 'manager' | 'agent' | 'partner';
 
@@ -155,6 +155,14 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
     ],
   },
   {
+    key: 'base_fria',
+    label: 'Base Fria',
+    actions: [
+      { key: 'view',     label: 'Ver' },
+      { key: 'campaign', label: 'Disparar campanha de reaquecimento' },
+    ],
+  },
+  {
     key: 'pre_ocupacao',
     label: 'Pré-Ocupação',
     actions: [
@@ -189,6 +197,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     duplicados:             { view: true,  merge: true  },
     exportacao:             { export: true  },
     relatorios:             { view: true  },
+    base_fria:              { view: true,  campaign: true  },
     pre_ocupacao:           { view: true  },
     pos_ocupacao:           { view: true  },
   },
@@ -209,6 +218,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     duplicados:             { view: false, merge: false },
     exportacao:             { export: false },
     relatorios:             { view: false },
+    base_fria:              { view: true,  campaign: false },
     pre_ocupacao:           { view: true  },
     pos_ocupacao:           { view: true  },
   },
@@ -229,6 +239,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     duplicados:             { view: false, merge: false },
     exportacao:             { export: false },
     relatorios:             { view: false },
+    base_fria:              { view: false, campaign: false },
     pre_ocupacao:           { view: true  },
     pos_ocupacao:           { view: true  },
   },

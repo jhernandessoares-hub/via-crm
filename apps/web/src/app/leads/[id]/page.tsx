@@ -2002,6 +2002,15 @@ export default function LeadDetailChatPage() {
   const [vendaModal, setVendaModal] = useState<{ stage: PipelineStage } | null>(null);
   const [vendaValor, setVendaValor] = useState("");
   const [vendaData, setVendaData] = useState("");
+  // Ingresso na Base Fria: modal opcional com agenda + mensagem programada
+  const [baseFriaModal, setBaseFriaModal] = useState<{ stage: PipelineStage } | null>(null);
+  const [bfAgendaData, setBfAgendaData] = useState("");
+  const [bfMsgData, setBfMsgData] = useState("");
+  const [bfMsgTexto, setBfMsgTexto] = useState("");
+  const [bfMsgSessionId, setBfMsgSessionId] = useState("");
+  const [bfSalvarTemplate, setBfSalvarTemplate] = useState(false);
+  const [bfSessions, setBfSessions] = useState<{ id: string; nome: string; status: string; phoneNumber: string | null }[]>([]);
+  const [bfSaving, setBfSaving] = useState(false);
 
   // (preparação pro futuro) etapa —Sfinal⬝ pode sugerir minimizar chat
 
@@ -3700,6 +3709,19 @@ function discardAiSuggestion() {
 
             // Antes de mover: avisa quando a unidade vinculada vai mudar de status pela etapa.
             function handleSelectStage(stage: PipelineStage) {
+              // Ingresso na Base Fria: abre modal opcional (agenda / mensagem programada).
+              if (stage.key === "BASE_FRIA") {
+                setBfAgendaData("");
+                setBfMsgData("");
+                setBfMsgTexto("");
+                setBfMsgSessionId("");
+                setBfSalvarTemplate(false);
+                apiFetch("/whatsapp-unofficial")
+                  .then((d) => setBfSessions(Array.isArray(d) ? d.filter((s: any) => s.status === "CONNECTED") : []))
+                  .catch(() => setBfSessions([]));
+                setBaseFriaModal({ stage });
+                return;
+              }
               const units = (lead as any)?.developmentUnits ?? [];
               const reservedUnit = units.find((u: any) => u.status === "RESERVADO");
               const propostaUnit = units.find((u: any) => u.status === "PROPOSTA");
@@ -3729,6 +3751,27 @@ function discardAiSuggestion() {
                 return;
               }
               proceedSelectStage(stage);
+            }
+
+            async function handleBaseFriaConfirm() {
+              if (!baseFriaModal) return;
+              const baseFria: any = {};
+              if (bfAgendaData) baseFria.agenda = { dataHora: new Date(bfAgendaData).toISOString() };
+              if (bfMsgData && bfMsgTexto.trim() && bfMsgSessionId) {
+                baseFria.mensagemProgramada = {
+                  dataHora: new Date(bfMsgData).toISOString(),
+                  texto: bfMsgTexto.trim(),
+                  sessionId: bfMsgSessionId,
+                  salvarTemplate: bfSalvarTemplate,
+                };
+              }
+              setBfSaving(true);
+              try {
+                await moveToStage(baseFriaModal.stage.id, Object.keys(baseFria).length ? { baseFria } : undefined);
+                setBaseFriaModal(null);
+              } finally {
+                setBfSaving(false);
+              }
             }
 
             async function handleEvidenceConfirm(payload: { file?: File; motivo?: string }) {
@@ -3769,6 +3812,13 @@ function discardAiSuggestion() {
 
             return (
               <>
+                {(lead as any)?.passouBaseFria && (
+                  <div className="mb-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                      ❄️ Reativado da Base Fria — atendimento manual (IA desligada)
+                    </span>
+                  </div>
+                )}
                 <PipelineStepper
                   stages={pipelineStages}
                   currentStageId={currentStageId}
@@ -3779,6 +3829,77 @@ function discardAiSuggestion() {
                   disabled={movingStage || user?.role === "PARTNER"}
                   onSelectStage={handleSelectStage}
                 />
+                {baseFriaModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+                    <div className="w-full max-w-md rounded-xl border p-5 shadow-xl" style={{ background: "var(--shell-card-bg)", borderColor: "var(--shell-card-border)" }}>
+                      <h2 className="text-lg font-semibold text-[var(--shell-text)]">Mover para Base Fria</h2>
+                      <p className="mt-1 text-sm text-[var(--shell-subtext)]">
+                        Opcional: agende um retorno e/ou programe uma mensagem de reaquecimento. Pode confirmar sem preencher nada.
+                      </p>
+
+                      <label className="mt-4 block text-sm font-medium text-[var(--shell-text)]">📅 Agendar retorno</label>
+                      <input
+                        type="datetime-local"
+                        value={bfAgendaData}
+                        onChange={(e) => setBfAgendaData(e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                      />
+
+                      <label className="mt-4 block text-sm font-medium text-[var(--shell-text)]">💬 Mensagem programada (WhatsApp Light)</label>
+                      <input
+                        type="datetime-local"
+                        value={bfMsgData}
+                        onChange={(e) => setBfMsgData(e.target.value)}
+                        className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                      />
+                      <textarea
+                        value={bfMsgTexto}
+                        onChange={(e) => setBfMsgTexto(e.target.value)}
+                        placeholder="Texto da mensagem (use {{nome}} se quiser)"
+                        rows={3}
+                        className="mt-2 w-full rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                      />
+                      <select
+                        value={bfMsgSessionId}
+                        onChange={(e) => setBfMsgSessionId(e.target.value)}
+                        className="mt-2 w-full rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                      >
+                        <option value="">Sessão de WhatsApp (para a mensagem programada)…</option>
+                        {bfSessions.map((s) => <option key={s.id} value={s.id}>{s.nome}{s.phoneNumber ? ` · ${s.phoneNumber}` : ""}</option>)}
+                      </select>
+                      <label className="mt-2 flex items-center gap-2 text-sm text-[var(--shell-subtext)]">
+                        <input type="checkbox" checked={bfSalvarTemplate} onChange={(e) => setBfSalvarTemplate(e.target.checked)} />
+                        Salvar a mensagem como modelo reutilizável
+                      </label>
+                      {bfMsgData && (!bfMsgTexto.trim() || !bfMsgSessionId) && (
+                        <p className="mt-1 text-xs text-amber-600">Para programar a mensagem, preencha texto e sessão.</p>
+                      )}
+
+                      <div className="mt-6 flex justify-end gap-2">
+                        <button
+                          onClick={() => setBaseFriaModal(null)}
+                          disabled={bfSaving}
+                          className="rounded-lg border px-4 py-1.5 text-sm font-medium hover:bg-[var(--shell-hover)]"
+                          style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={handleBaseFriaConfirm}
+                          disabled={bfSaving}
+                          className="rounded-lg px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                          style={{ background: "var(--brand-accent)" }}
+                        >
+                          {bfSaving ? "Movendo…" : "Mover para Base Fria"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <EvidenceUploadModal
                   isOpen={evidenceModalOpen}
                   stageName={pendingStage?.name ?? ""}

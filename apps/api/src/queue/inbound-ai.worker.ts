@@ -586,6 +586,7 @@ async function handleInboundAiJob(
       telefone: true,
       status: true,
       botPaused: true,
+      passouBaseFria: true,
       lastInboundAt: true,
       assignedUserId: true,
       conversaCanal: true,
@@ -593,6 +594,15 @@ async function handleInboundAiJob(
     },
   });
   if (!lead) return;
+
+  // Lead reativado pela Base Fria: a IA NÃO assume. Espera o silêncio e notifica o corretor.
+  if (lead.passouBaseFria) {
+    logger.log(`❄️ Lead passou pela Base Fria — IA suprimida, agendando base-fria-settle leadId=${lead.id}`);
+    await queue?.scheduleBaseFriaSettle(lead.id).catch((e: any) =>
+      logger.warn(`Falha ao agendar base-fria-settle leadId=${lead.id}: ${e?.message ?? e}`),
+    );
+    return;
+  }
 
   const assignedUser = lead.assignedUserId
     ? await prisma.user.findUnique({
@@ -1254,6 +1264,95 @@ async function handleQualSettleJob(
   logger.log(`📢 qual-settle: ${verdict} → corretor leadId=${lead.id}`);
 }
 
+// Base Fria — após o silêncio, notifica o corretor com as mensagens recebidas (sem IA).
+async function handleBaseFriaSettleJob(
+  job: Job,
+  prisma: PrismaService,
+  whatsapp?: WhatsappService,
+) {
+  const leadId = job.data?.leadId as string | undefined;
+  if (!leadId) return;
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true, tenantId: true, nome: true, nomeCorreto: true, telefone: true,
+      assignedUserId: true, deletedAt: true, passouBaseFria: true,
+    },
+  });
+  if (!lead || lead.deletedAt || !lead.passouBaseFria) return;
+
+  // Marco da reativação: pega as mensagens recebidas desde então.
+  const reactivated = await prisma.leadEvent.findFirst({
+    where: { tenantId: lead.tenantId, leadId: lead.id, channel: 'base_fria.reactivated' },
+    orderBy: { criadoEm: 'desc' },
+    select: { criadoEm: true },
+  });
+  const since = reactivated?.criadoEm ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const inboundEvents = await prisma.leadEvent.findMany({
+    where: {
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      channel: { in: ['whatsapp.unofficial.in', 'whatsapp.in'] },
+      criadoEm: { gte: since },
+    },
+    orderBy: { criadoEm: 'asc' },
+    take: 20,
+    select: { id: true, payloadRaw: true, criadoEm: true },
+  });
+  if (inboundEvents.length === 0) {
+    logger.log(`❄️ base-fria-settle: sem mensagens recebidas leadId=${lead.id}`);
+    return;
+  }
+
+  // Dedup: não reenvia se a última mensagem é a mesma do último aviso.
+  const lastEventId = inboundEvents[inboundEvents.length - 1].id;
+  const lastSettle = await prisma.leadEvent.findFirst({
+    where: { tenantId: lead.tenantId, leadId: lead.id, channel: 'base_fria.settle' },
+    orderBy: { criadoEm: 'desc' },
+    select: { payloadRaw: true },
+  });
+  if (lastSettle && (lastSettle.payloadRaw as any)?.lastEventId === lastEventId) {
+    logger.log(`🔁 base-fria-settle: sem mensagens novas leadId=${lead.id}`);
+    return;
+  }
+
+  const nome = lead.nomeCorreto ?? lead.nome;
+  const mensagens = inboundEvents
+    .map((e) => (e.payloadRaw as any)?.text)
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .slice(-5);
+
+  const linhas: string[] = [
+    `❄️ *Lead respondeu (Base Fria): ${nome}*`,
+    `📱 WhatsApp: ${lead.telefone || '—'}`,
+    '',
+    'Este lead voltou a responder após a campanha de reaquecimento. A IA não está atendendo — assuma a conversa.',
+  ];
+  if (mensagens.length) {
+    linhas.push('', '💬 *Mensagens recebidas:*', ...mensagens.map((m) => `• ${m}`));
+  }
+  const msg = linhas.join('\n');
+
+  if (whatsapp) {
+    await notifyAssignedUser(prisma, whatsapp, lead.tenantId, lead.assignedUserId, msg, (uid) =>
+      userWantsEvent(prisma, uid, 'lead_qualified'),
+    );
+  }
+
+  await prisma.leadEvent.create({
+    data: {
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      channel: 'base_fria.settle',
+      payloadRaw: { lastEventId, at: new Date().toISOString() },
+    },
+  });
+
+  logger.log(`📢 base-fria-settle → corretor leadId=${lead.id}`);
+}
+
 // ── Worker bootstrap ───────────────────────────────────────────────────────
 
 export function startInboundAiWorker(
@@ -1270,6 +1369,8 @@ export function startInboundAiWorker(
     async (job) => {
       if (job.name === 'qual-settle') {
         await handleQualSettleJob(job, prisma, whatsapp);
+      } else if (job.name === 'base-fria-settle') {
+        await handleBaseFriaSettleJob(job, prisma, whatsapp);
       } else {
         await handleInboundAiJob(job, prisma, ai, whatsapp, unofficialService, queue);
       }

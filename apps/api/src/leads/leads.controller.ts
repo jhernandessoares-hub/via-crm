@@ -117,6 +117,16 @@ export class LeadsController {
     return this.leadsService.list(req.user);
   }
 
+  @Get('base-fria')
+  async listBaseFria(
+    @Req() req: any,
+    @Query('q') q?: string,
+    @Query('produtoInteresseId') produtoInteresseId?: string,
+  ) {
+    await this.assertPerm(req, 'base_fria', 'view', 'Sem permissão para ver a Base Fria');
+    return this.leadsService.listBaseFria(req.user, { q, produtoInteresseId });
+  }
+
   @Get('duplicates')
   async findDuplicates(@Req() req: any) {
     return this.leadsService.findDuplicates(req.user);
@@ -318,7 +328,7 @@ export class LeadsController {
   async updateStage(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { stageId: string; evidenceDocumentId?: string; motivo?: string; valorVenda?: number | string; dataVenda?: string },
+    @Body() body: { stageId: string; evidenceDocumentId?: string; motivo?: string; valorVenda?: number | string; dataVenda?: string; baseFria?: any },
   ) {
     if (!body?.stageId) {
       throw new BadRequestException('stageId é obrigatório');
@@ -330,6 +340,7 @@ export class LeadsController {
       motivo: body.motivo,
       valorVenda: body.valorVenda,
       dataVenda: body.dataVenda,
+      baseFria: body.baseFria,
       ipAddress: req.ip,
     });
   }

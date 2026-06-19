@@ -40,6 +40,7 @@ type Counts = {
   total: number;
   mine: number;
   groups: Record<string, number>;
+  baseFria?: number;
 };
 
 type PendingReplyLead = {
