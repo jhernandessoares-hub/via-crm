@@ -28,7 +28,16 @@ type Lead = {
   emCampanhaDesde?: string | null;
 };
 
-type Modelo = { id: string; nome: string; mensagem: string };
+type Modelo = {
+  id: string;
+  nome: string;
+  mensagem: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  delayMinSegundos?: number;
+  delayMaxSegundos?: number;
+  _count?: { disparos: number };
+};
 type Session = { id: string; nome: string; status: string; phoneNumber: string | null };
 
 function displayName(l: Lead): string {
@@ -98,6 +107,79 @@ export default function BaseFriaPage() {
       .then((d) => setDisparos(Array.isArray(d) ? d : []))
       .catch(() => setDisparos([]))
       .finally(() => setLoadingDisparos(false));
+  }
+
+  // Modelos de campanha (CRUD)
+  const [modelosOpen, setModelosOpen] = useState(false);
+  const [modelosList, setModelosList] = useState<Modelo[]>([]);
+  const [loadingModelos, setLoadingModelos] = useState(false);
+  const [showNovoModelo, setShowNovoModelo] = useState(false);
+  const [mNome, setMNome] = useState("");
+  const [mMensagem, setMMensagem] = useState("");
+  const [mDelayMin, setMDelayMin] = useState(10);
+  const [mDelayMax, setMDelayMax] = useState(20);
+  const [mMedia, setMMedia] = useState<File | null>(null);
+  const [salvandoModelo, setSalvandoModelo] = useState(false);
+
+  function carregarModelos() {
+    setLoadingModelos(true);
+    apiFetch("/campanhas/modelos")
+      .then((d) => setModelosList(Array.isArray(d) ? d : []))
+      .catch(() => setModelosList([]))
+      .finally(() => setLoadingModelos(false));
+  }
+
+  function openModelos() {
+    setModelosOpen(true);
+    setShowNovoModelo(false);
+    carregarModelos();
+  }
+
+  async function salvarModelo() {
+    if (!mMensagem.trim()) {
+      alert("Escreva a mensagem do modelo.");
+      return;
+    }
+    setSalvandoModelo(true);
+    try {
+      const min = Math.max(10, mDelayMin || 10);
+      const max = Math.max(min, mDelayMax || min);
+      const novo = await apiFetch("/campanhas/modelos", {
+        method: "POST",
+        body: JSON.stringify({
+          nome: mNome.trim() || `Modelo — ${new Date().toLocaleDateString("pt-BR")}`,
+          mensagem: mMensagem.trim(),
+          delayMinSegundos: min,
+          delayMaxSegundos: max,
+        }),
+      });
+      if (novo?.id && mMedia) {
+        const fd = new FormData();
+        fd.append("file", mMedia);
+        await apiFetch(`/campanhas/modelos/${novo.id}/media`, { method: "POST", body: fd });
+      }
+      setMNome("");
+      setMMensagem("");
+      setMDelayMin(10);
+      setMDelayMax(20);
+      setMMedia(null);
+      setShowNovoModelo(false);
+      carregarModelos();
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao salvar o modelo.");
+    } finally {
+      setSalvandoModelo(false);
+    }
+  }
+
+  async function excluirModelo(id: string, nome: string) {
+    if (!confirm(`Excluir o modelo "${nome}"?`)) return;
+    try {
+      await apiFetch(`/campanhas/modelos/${id}`, { method: "DELETE" });
+      carregarModelos();
+    } catch (e: any) {
+      alert(e?.message ?? "Não foi possível excluir (pode haver campanha ativa usando este modelo).");
+    }
   }
 
   function openCampaignModal() {
@@ -302,6 +384,13 @@ export default function BaseFriaPage() {
               <span className="text-xs text-[var(--shell-subtext)]">{selected.size} selecionado(s)</span>
             )}
             <button
+              onClick={openModelos}
+              className="rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--shell-hover)]"
+              style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+            >
+              🗂️ Modelos
+            </button>
+            <button
               onClick={openDisparos}
               className="rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--shell-hover)]"
               style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
@@ -502,6 +591,101 @@ export default function BaseFriaPage() {
               <Button size="sm" onClick={dispararCampanha} loading={enviando} disabled={!sessionId || (modoNovo ? !novaMensagem.trim() : !modeloId)}>
                 Iniciar campanha
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: modelos de campanha (texto + imagem) — ver / criar / excluir */}
+      {modelosOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border shadow-xl" style={{ background: "var(--shell-card-bg)", borderColor: "var(--shell-card-border)" }}>
+            <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <h2 className="text-lg font-semibold text-[var(--shell-text)]">Modelos de campanha</h2>
+              <button onClick={() => setModelosOpen(false)} className="text-[var(--shell-subtext)] hover:text-[var(--shell-text)]">✕</button>
+            </div>
+
+            <div className="flex items-center justify-between border-b px-5 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
+              <span className="text-sm text-[var(--shell-subtext)]">{modelosList.length} modelo(s) salvo(s)</span>
+              <Button size="sm" onClick={() => setShowNovoModelo((v) => !v)}>
+                {showNovoModelo ? "Cancelar" : "+ Novo modelo"}
+              </Button>
+            </div>
+
+            {/* Form de novo modelo */}
+            {showNovoModelo && (
+              <div className="border-b px-5 py-4" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)" }}>
+                <input
+                  value={mNome}
+                  onChange={(e) => setMNome(e.target.value)}
+                  placeholder="Nome do modelo (opcional)"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                />
+                <textarea
+                  value={mMensagem}
+                  onChange={(e) => setMMensagem(e.target.value)}
+                  placeholder="Mensagem (use {{nome}} para personalizar)"
+                  rows={3}
+                  className="mt-2 w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+                />
+                <label className="mt-2 block text-xs text-[var(--shell-subtext)]">Imagem ou vídeo (opcional)</label>
+                <input type="file" accept="image/*,video/*" onChange={(e) => setMMedia(e.target.files?.[0] ?? null)} className="mt-1 w-full text-sm text-[var(--shell-subtext)]" />
+                {mMedia && <p className="mt-1 text-xs text-[var(--shell-subtext)]">📎 {mMedia.name}</p>}
+                <div className="mt-2 flex items-center gap-2">
+                  <label className="text-xs text-[var(--shell-subtext)]">Delay (s):</label>
+                  <input type="number" min={10} value={mDelayMin} onChange={(e) => setMDelayMin(Math.max(10, parseInt(e.target.value) || 10))}
+                    className="w-16 rounded-lg border px-2 py-1 text-sm text-center" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }} />
+                  <span className="text-xs text-[var(--shell-subtext)]">a</span>
+                  <input type="number" min={mDelayMin} value={mDelayMax} onChange={(e) => setMDelayMax(Math.max(mDelayMin, parseInt(e.target.value) || mDelayMin))}
+                    className="w-16 rounded-lg border px-2 py-1 text-sm text-center" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }} />
+                  <div className="ml-auto">
+                    <Button size="sm" onClick={salvarModelo} loading={salvandoModelo} disabled={!mMensagem.trim()}>Salvar modelo</Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Lista de modelos */}
+            <div className="overflow-y-auto p-5">
+              {loadingModelos ? (
+                <p className="text-sm text-[var(--shell-subtext)]">Carregando…</p>
+              ) : modelosList.length === 0 ? (
+                <p className="text-sm text-[var(--shell-subtext)]">Nenhum modelo salvo. Clique em "+ Novo modelo".</p>
+              ) : (
+                <div className="space-y-2">
+                  {modelosList.map((m) => (
+                    <div key={m.id} className="flex gap-3 rounded-lg border p-3" style={{ borderColor: "var(--shell-card-border)" }}>
+                      {m.mediaUrl ? (
+                        m.mediaType === "VIDEO" ? (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-slate-100 text-xl">🎬</div>
+                        ) : (
+                          <img src={m.mediaUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+                        )
+                      ) : (
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-slate-100 text-xl text-slate-400">✉️</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate font-medium text-[var(--shell-text)]" title={m.nome}>{m.nome}</span>
+                          <button onClick={() => excluirModelo(m.id, m.nome)} className="shrink-0 text-xs text-red-600 hover:underline">Excluir</button>
+                        </div>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-[var(--shell-subtext)]" title={m.mensagem}>{m.mensagem}</p>
+                        <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-[var(--shell-subtext)]">
+                          {m.mediaType && <span>{m.mediaType === "VIDEO" ? "🎬 Vídeo" : "🖼️ Imagem"}</span>}
+                          <span>⏱️ {m.delayMinSegundos ?? 10}–{m.delayMaxSegundos ?? 20}s</span>
+                          {m._count?.disparos != null && <span>📨 {m._count.disparos} disparo(s)</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end border-t px-5 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
+              <Button variant="outline" size="sm" onClick={() => setModelosOpen(false)}>Fechar</Button>
             </div>
           </div>
         </div>
