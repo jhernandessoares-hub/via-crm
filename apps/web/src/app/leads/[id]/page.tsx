@@ -5320,18 +5320,12 @@ function discardAiSuggestion() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-[var(--shell-text)]">SLA</span>
-                    {slaData?.lastInboundAt && (
-                      <span
-                        title={slaData.windowExpired ? "Janela WhatsApp (23h) expirada" : "Janela WhatsApp (23h) ativa"}
-                        className={`inline-block h-2 w-2 rounded-full ${
-                          slaData.windowExpired
-                            ? "bg-red-500"
-                            : slaData.windowRemainingMinutes < 120
-                              ? "bg-amber-500"
-                              : "bg-emerald-500"
-                        }`}
-                      />
-                    )}
+                    <span
+                      title={slaData.slaEnabled && slaData.slaInScope ? "SLA ativo neste canal" : "SLA inativo para este lead"}
+                      className={`inline-block h-2 w-2 rounded-full ${
+                        slaData.slaEnabled && slaData.slaInScope ? "bg-emerald-500" : "bg-[var(--shell-card-border)]"
+                      }`}
+                    />
                     {slaLoading && <span className="text-xs text-[var(--shell-subtext)]">atualizando...</span>}
                   </div>
                   <svg
@@ -5344,22 +5338,29 @@ function discardAiSuggestion() {
 
                 {slaOpen && (
                   <div className="mt-3">
-                    {/* Stage group badge */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        slaData.stageGroup === 'PRE_ATENDIMENTO'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-[var(--shell-hover)] text-[var(--shell-subtext)]'
-                      }`}>
+                    {/* Etapa + canal + status do SLA */}
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-[var(--shell-hover)] text-[var(--shell-subtext)]">
                         {slaData.stageName ?? slaData.stageGroup ?? 'Sem etapa'}
                       </span>
-                      {slaData.stageGroup !== 'PRE_ATENDIMENTO' && (
-                        <span className="text-xs text-[var(--shell-subtext)]">SLA inativo nesta etapa</span>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        slaData.canal === 'light' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {slaData.canal === 'light' ? 'WhatsApp Light' : 'WhatsApp Oficial'}
+                      </span>
+                      {!slaData.slaEnabled ? (
+                        <span className="text-xs text-[var(--shell-subtext)]">SLA desligado neste canal</span>
+                      ) : !slaData.slaInScope ? (
+                        <span className="text-xs text-[var(--shell-subtext)]">Fora das etapas configuradas</span>
+                      ) : (
+                        <span className="text-xs text-emerald-600">
+                          SLA ativo · {slaData.slaMode === 'AUTOPILOT' ? 'IA tenta sozinha' : 'Sugere ao corretor'}
+                        </span>
                       )}
                     </div>
 
-                    {/* 23h window */}
-                    {slaData.lastInboundAt && (
+                    {/* Janela 23h — só faz sentido no WhatsApp Oficial (Meta) */}
+                    {slaData.canal === 'oficial' && slaData.lastInboundAt && (
                       <div className={`rounded-md border p-2 mb-3 text-xs ${
                         slaData.windowExpired
                           ? 'border-red-200 bg-red-50 text-red-700'
@@ -5382,35 +5383,26 @@ function discardAiSuggestion() {
                       </div>
                     )}
 
-                    {/* Scheduled jobs */}
+                    {/* Próximas tentativas da cadência */}
                     {slaData.scheduledJobs?.length > 0 ? (
                       <div className="mb-3">
-                        <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Agendados</div>
+                        <div className="text-xs font-medium text-[var(--shell-subtext)] mb-1">Próximas tentativas</div>
                         <div className="space-y-1">
-                          {slaData.scheduledJobs.map((job: any) => {
-                            const urgencyColor: Record<string, string> = {
-                              BAIXA: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-                              MEDIA: 'text-blue-700 bg-blue-50 border-blue-200',
-                              ALTA: 'text-amber-700 bg-amber-50 border-amber-200',
-                              CRITICA: 'text-red-700 bg-red-50 border-red-200',
-                            };
-                            const color = urgencyColor[job.urgency] ?? 'text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]';
-                            return (
-                              <div key={job.jobId} className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${color}`}>
-                                <span className="font-medium">{job.name}</span>
-                                <span>
-                                  {new Date(job.scheduledFor).toLocaleString('pt-BR', {
-                                    day: '2-digit', month: '2-digit',
-                                    hour: '2-digit', minute: '2-digit',
-                                  })}
-                                </span>
-                              </div>
-                            );
-                          })}
+                          {slaData.scheduledJobs.map((job: any) => (
+                            <div key={job.jobId} className="flex items-center justify-between rounded border px-2 py-1 text-xs text-[var(--shell-subtext)] bg-[var(--shell-bg)] border-[var(--shell-card-border)]">
+                              <span className="font-medium">{(job.attemptIndex ?? 0) + 1}ª tentativa</span>
+                              <span>
+                                {new Date(job.scheduledFor).toLocaleString('pt-BR', {
+                                  day: '2-digit', month: '2-digit',
+                                  hour: '2-digit', minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ) : slaData.stageGroup === 'PRE_ATENDIMENTO' ? (
-                      <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhum SLA agendado</div>
+                    ) : slaData.slaEnabled && slaData.slaInScope ? (
+                      <div className="text-xs text-[var(--shell-subtext)] mb-3">Nenhuma tentativa agendada (lead ativo ou já respondeu)</div>
                     ) : null}
 
                     {/* Recent history */}

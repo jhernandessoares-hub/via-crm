@@ -292,7 +292,7 @@ export class QueueService implements OnModuleDestroy {
 
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      select: { tenantId: true, conversaCanal: true, status: true, botPaused: true },
+      select: { tenantId: true, conversaCanal: true, status: true, botPaused: true, stage: { select: { key: true } } },
     });
     if (!lead || lead.status === 'FECHADO' || lead.status === 'PERDIDO' || lead.botPaused) return;
 
@@ -304,6 +304,8 @@ export class QueueService implements OnModuleDestroy {
     const canal: 'light' | 'oficial' = lead.conversaCanal === 'WHATSAPP_LIGHT' ? 'light' : 'oficial';
     const channelCfg = cfg[canal];
     if (!channelCfg.enabled) return;
+    // Escopo configurável: se há etapas selecionadas, só agenda quando o lead está numa delas.
+    if (channelCfg.etapas.length && !(lead.stage?.key && channelCfg.etapas.includes(lead.stage.key))) return;
 
     let horas = [...channelCfg.tentativasHoras].filter((h) => h > 0).sort((a, b) => a - b);
     if (canal === 'light' && channelCfg.maxTentativas) horas = horas.slice(0, channelCfg.maxTentativas);
@@ -614,37 +616,31 @@ export class QueueService implements OnModuleDestroy {
 
   // Retorna os jobs SLA ativos/agendados para um lead (para painel em tempo real)
   async getLeadSlaJobs(leadId: string) {
-    const ids = [
-      `sla-${leadId}-2h`,
-      `sla-${leadId}-10h`,
-      `sla-${leadId}-18h`,
-      `sla-${leadId}-23h`,
-    ];
-
     const result: Array<{
       jobId: string | undefined;
       name: string;
-      urgency: string | null;
+      attemptIndex: number;
       scheduledFor: Date;
       state: string;
       delayMs: number;
     }> = [];
 
-    for (const id of ids) {
-      const job = await this.slaQueue.getJob(id);
+    // Tentativas da cadência configurável (sla-attempt).
+    for (let i = 0; i < 20; i++) {
+      const job = await this.slaQueue.getJob(`sla-${leadId}-att-${i}`);
       if (!job) continue;
       const state = await job.getState();
-      const scheduledFor = new Date(job.timestamp + (job.opts.delay || 0));
       result.push({
         jobId: job.id,
         name: job.name,
-        urgency: job.data.urgency ?? null,
-        scheduledFor,
+        attemptIndex: Number(job.data?.attemptIndex ?? i),
+        scheduledFor: new Date(job.timestamp + (job.opts.delay || 0)),
         state,
         delayMs: job.opts.delay || 0,
       });
     }
 
+    result.sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime());
     return result;
   }
 

@@ -12,6 +12,8 @@ export interface SlaChannelConfig {
   respeitarHorario: boolean;
   /** Cadência de tentativas, em horas a partir da última mensagem do lead. */
   tentativasHoras: number[];
+  /** Keys das etapas do funil onde o SLA age. Vazio = todas as etapas. */
+  etapas: string[];
   /** Oficial: encerra o atendimento ao fim da janela de 24h da Meta. */
   encerrarAoFim24h?: boolean;
   /** Light: número máximo de tentativas antes de desistir. */
@@ -29,6 +31,7 @@ export const DEFAULT_SLA_CONFIG: SlaConfig = {
     mode: 'COPILOT',
     respeitarHorario: true,
     tentativasHoras: [2, 10, 18, 23],
+    etapas: [],
     encerrarAoFim24h: true,
   },
   light: {
@@ -36,6 +39,7 @@ export const DEFAULT_SLA_CONFIG: SlaConfig = {
     mode: 'COPILOT',
     respeitarHorario: true,
     tentativasHoras: [1, 24, 72, 168],
+    etapas: [],
     maxTentativas: 4,
   },
 };
@@ -50,6 +54,7 @@ function resolveChannel(base: SlaChannelConfig, saved: any): SlaChannelConfig {
     mode: s.mode === 'AUTOPILOT' || s.mode === 'COPILOT' ? s.mode : base.mode,
     respeitarHorario: typeof s.respeitarHorario === 'boolean' ? s.respeitarHorario : base.respeitarHorario,
     tentativasHoras: tentativas.length ? tentativas : base.tentativasHoras,
+    etapas: Array.isArray(s.etapas) ? s.etapas.filter((x: any) => typeof x === 'string') : base.etapas,
     ...(base.encerrarAoFim24h !== undefined
       ? { encerrarAoFim24h: typeof s.encerrarAoFim24h === 'boolean' ? s.encerrarAoFim24h : base.encerrarAoFim24h }
       : {}),

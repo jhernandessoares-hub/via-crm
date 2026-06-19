@@ -12,9 +12,12 @@ type ChannelCfg = {
   mode: Mode;
   respeitarHorario: boolean;
   tentativasHoras: number[];
+  etapas: string[];
   encerrarAoFim24h?: boolean;
   maxTentativas?: number;
 };
+
+type PipelineStage = { id: string; key: string; name: string; sortOrder: number };
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -47,8 +50,10 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function ChannelForm({ cfg, onChange, oficial }: { cfg: ChannelCfg; onChange: (c: ChannelCfg) => void; oficial: boolean }) {
+function ChannelForm({ cfg, onChange, oficial, stages }: { cfg: ChannelCfg; onChange: (c: ChannelCfg) => void; oficial: boolean; stages: PipelineStage[] }) {
   const set = (patch: Partial<ChannelCfg>) => onChange({ ...cfg, ...patch });
+  const toggleEtapa = (key: string) =>
+    set({ etapas: cfg.etapas.includes(key) ? cfg.etapas.filter((k) => k !== key) : [...cfg.etapas, key] });
 
   return (
     <div className="rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-6 space-y-1">
@@ -154,6 +159,30 @@ function ChannelForm({ cfg, onChange, oficial }: { cfg: ChannelCfg; onChange: (c
           <Plus className="h-3.5 w-3.5" /> Adicionar tentativa
         </button>
       </div>
+
+      {/* Escopo: em quais etapas o SLA age */}
+      <div className="pt-5">
+        <p className="text-sm font-medium text-[var(--shell-text)]">Etapas onde o SLA age</p>
+        <p className="text-xs text-[var(--shell-subtext)] mt-0.5 mb-3">
+          Marque as etapas em que o lead deve ser perseguido. Se não marcar nenhuma, vale para <strong>todas</strong>.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {stages.map((stage) => (
+            <label
+              key={stage.key}
+              className="flex items-center gap-3 rounded-xl border border-[var(--shell-card-border)] px-4 py-2.5 cursor-pointer hover:bg-[var(--shell-bg)] transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={cfg.etapas.includes(stage.key)}
+                onChange={() => toggleEtapa(stage.key)}
+                className="h-4 w-4 rounded border-[var(--shell-card-border)] accent-emerald-500"
+              />
+              <span className="text-sm text-[var(--shell-subtext)]">{stage.name}</span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -165,12 +194,17 @@ export default function SlaSettingsPage() {
   const [tab, setTab] = useState<"oficial" | "light">("oficial");
   const [oficial, setOficial] = useState<ChannelCfg | null>(null);
   const [light, setLight] = useState<ChannelCfg | null>(null);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
 
   useEffect(() => {
-    apiFetch("/tenants/sla-config")
-      .then((d: any) => {
+    Promise.all([
+      apiFetch("/tenants/sla-config"),
+      apiFetch("/pipeline/active/stages").catch(() => []),
+    ])
+      .then(([d, st]: any[]) => {
         if (d?.oficial) setOficial(d.oficial);
         if (d?.light) setLight(d.light);
+        if (Array.isArray(st)) setStages(st);
       })
       .catch(() => null)
       .finally(() => setLoading(false));
@@ -227,8 +261,8 @@ export default function SlaSettingsPage() {
         </div>
 
         {tab === "oficial"
-          ? <ChannelForm cfg={oficial} onChange={setOficial} oficial />
-          : <ChannelForm cfg={light} onChange={setLight} oficial={false} />}
+          ? <ChannelForm cfg={oficial} onChange={setOficial} oficial stages={stages} />
+          : <ChannelForm cfg={light} onChange={setLight} oficial={false} stages={stages} />}
 
         <div className="flex justify-end">
           <button

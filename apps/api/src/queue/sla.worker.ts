@@ -548,6 +548,12 @@ async function handleSlaAttempt(
     return;
   }
 
+  // Escopo configurável: se há etapas selecionadas, o lead precisa estar numa delas.
+  if (channelCfg.etapas.length && !(lead.stage?.key && channelCfg.etapas.includes(lead.stage.key))) {
+    logger.log(`⏭ SLA: lead fora das etapas configuradas — pulando leadId=${lead.id}`);
+    return;
+  }
+
   // Parte 2b — Oficial: encerrar o atendimento ao fim da janela de 24h da Meta.
   if (!isLight && channelCfg.encerrarAoFim24h) {
     const horasSemInbound = lead.lastInboundAt

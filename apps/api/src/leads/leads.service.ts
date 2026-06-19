@@ -59,6 +59,7 @@ import { buildLeadInteresseLabel } from './lead-interesse.helper';
 import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess, DocumentAccessLevel } from '../tenants/permissions.config';
 import { isValidCPF } from './cpf.util';
 import { digitsOnly, normalizePhoneBR } from '../common/phone.util';
+import { resolveSlaConfig } from '../tenants/sla.config';
 
 @Injectable()
 export class LeadsService {
@@ -565,11 +566,22 @@ export class LeadsService {
       select: {
         id: true,
         lastInboundAt: true,
+        conversaCanal: true,
         stage: { select: { group: true, key: true, name: true } },
       },
     });
 
     if (!lead) throw new NotFoundException('Lead não encontrado');
+
+    // Config do SLA do canal do lead (reflete a tela Config SLA)
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { slaConfig: true },
+    });
+    const slaCfg = resolveSlaConfig(tenant?.slaConfig as any);
+    const canal: 'light' | 'oficial' = lead.conversaCanal === 'WHATSAPP_LIGHT' ? 'light' : 'oficial';
+    const channelCfg = slaCfg[canal];
+    const inScope = !channelCfg.etapas.length || (lead.stage?.key ? channelCfg.etapas.includes(lead.stage.key) : false);
 
     // Scheduled jobs in BullMQ
     const scheduledJobs = await this.queueService.getLeadSlaJobs(leadId);
@@ -603,6 +615,10 @@ export class LeadsService {
 
     return {
       leadId,
+      canal,
+      slaEnabled: channelCfg.enabled,
+      slaMode: channelCfg.mode,
+      slaInScope: inScope,
       stageGroup: lead.stage?.group ?? null,
       stageKey: lead.stage?.key ?? null,
       stageName: lead.stage?.name ?? null,
