@@ -1456,6 +1456,76 @@ export class LeadsService {
     };
   }
 
+  // ── Dashboard funil: breakdown de status por grupo ──────────────────────────
+  async dashboardFunilStatus(
+    user: { id: string; tenantId: string; role: string; branchId?: string | null },
+    groupKey: string,
+    from: Date,
+    to: Date,
+  ) {
+    const { id, tenantId, role, branchId } = user;
+    let roleFilter: Record<string, unknown> = {};
+    if (role === 'AGENT' || role === 'PARTNER') roleFilter = { assignedUserId: id };
+    else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
+
+    const leads = await this.prisma.lead.findMany({
+      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey } },
+      select: { status: true },
+    });
+
+    const counts: Record<string, number> = {};
+    for (const l of leads) counts[l.status] = (counts[l.status] || 0) + 1;
+
+    return Object.entries(counts)
+      .map(([status, count]) => ({ status, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  // ── Dashboard funil: lista de leads por grupo + status ──────────────────────
+  async dashboardFunilLeads(
+    user: { id: string; tenantId: string; role: string; branchId?: string | null },
+    groupKey: string,
+    status: string,
+    from: Date,
+    to: Date,
+  ) {
+    const { id, tenantId, role, branchId } = user;
+    let roleFilter: Record<string, unknown> = {};
+    if (role === 'AGENT' || role === 'PARTNER') roleFilter = { assignedUserId: id };
+    else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
+
+    const leads = await this.prisma.lead.findMany({
+      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey }, status: status as any },
+      select: {
+        id: true, nome: true, nomeCorreto: true, status: true, criadoEm: true,
+        assignedUserId: true, stageId: true,
+      },
+      orderBy: { criadoEm: 'desc' },
+      take: 100,
+    });
+
+    const stageIds = [...new Set(leads.map((l) => l.stageId).filter((x): x is string => !!x))];
+    const stages = stageIds.length > 0
+      ? await this.prisma.pipelineStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, name: true } })
+      : [];
+    const stageMap = new Map(stages.map((s) => [s.id, s.name]));
+
+    const userIds = [...new Set(leads.map((l) => l.assignedUserId).filter((x): x is string => !!x))];
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: userIds }, tenantId }, select: { id: true, nome: true, apelido: true } })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome]));
+
+    return leads.map((l) => ({
+      id: l.id,
+      nome: l.nomeCorreto || l.nome,
+      status: l.status,
+      stageName: l.stageId ? (stageMap.get(l.stageId) ?? null) : null,
+      responsavel: l.assignedUserId ? (userMap.get(l.assignedUserId) ?? null) : null,
+      criadoEm: l.criadoEm,
+    }));
+  }
+
   private async canViewPipeline(tenantId: string, role: string): Promise<boolean> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },

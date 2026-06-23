@@ -101,6 +101,39 @@ export class LeadsController {
     return this.leadsService.counts(req.user);
   }
 
+  @Get('dashboard/funil-status')
+  async dashboardFunilStatus(
+    @Req() req: any,
+    @Query('groupKey') groupKey: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'dashboard', 'view'))) {
+      throw new ForbiddenException('Sem permissão para ver o dashboard operacional');
+    }
+    const now = new Date();
+    const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    const toDate = to ? new Date(to) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return this.leadsService.dashboardFunilStatus(req.user, groupKey, fromDate, toDate);
+  }
+
+  @Get('dashboard/funil-leads')
+  async dashboardFunilLeads(
+    @Req() req: any,
+    @Query('groupKey') groupKey: string,
+    @Query('status') status: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'dashboard', 'view'))) {
+      throw new ForbiddenException('Sem permissão para ver o dashboard operacional');
+    }
+    const now = new Date();
+    const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    const toDate = to ? new Date(to) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return this.leadsService.dashboardFunilLeads(req.user, groupKey, status, fromDate, toDate);
+  }
+
   @Get('dashboard')
   async dashboard(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
     if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'dashboard', 'view'))) {
