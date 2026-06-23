@@ -17,6 +17,18 @@ export class ReportsController {
     return this.svc.vendasReport(req.user.tenantId, req.user.role, from, to, developmentId);
   }
 
+  @Get('vendas/unidades/por-etapa')
+  unidadesPorEtapa(
+    @Request() req: any,
+    @Query('status') status: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('developmentId') developmentId?: string,
+    @Query('source') source?: string,
+  ) {
+    return this.svc.unidadesPorStatusEtapa(req.user.tenantId, req.user.role, status, from, to, developmentId, source);
+  }
+
   @Get('vendas/unidades')
   unidades(
     @Request() req: any,

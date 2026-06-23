@@ -381,4 +381,63 @@ export class ReportsService {
     rows.sort((a, b) => b.valor - a.valor);
     return this.sanitizeRowsForPartner(tenantId, role, rows);
   }
+
+  // ── Contagem de unidades por etapa (para drill-down de etapa) ───────────────
+  async unidadesPorStatusEtapa(
+    tenantId: string,
+    role: string,
+    status: string,
+    fromISO?: string,
+    toISO?: string,
+    developmentId?: string,
+    source?: string,
+  ) {
+    await this.assertCanView(tenantId, role);
+    const from = fromISO ? new Date(fromISO) : null;
+    const to = toISO ? new Date(toISO) : null;
+    const st = String(status || '').toUpperCase();
+    const src = String(source || '').toLowerCase();
+
+    type EtapaItem = { etapaKey: string; etapaNome: string; stageGroup: string | null; qtd: number };
+    const counts = new Map<string, EtapaItem>();
+
+    const accumulate = (stageKey: string | null, stageName: string | null, stageGroup: string | null) => {
+      const key = stageKey ?? '__no_stage__';
+      if (counts.has(key)) {
+        counts.get(key)!.qtd++;
+      } else {
+        counts.set(key, { etapaKey: key, etapaNome: stageName ?? 'Sem etapa', stageGroup, qtd: 1 });
+      }
+    };
+
+    if (src === 'avulso') {
+      if (st !== 'VENDIDO') return [];
+      const avulsos = await this.prisma.lead.findMany({
+        where: {
+          tenantId,
+          deletedAt: null,
+          dataVenda: { not: null, ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) },
+          developmentUnits: { none: {} },
+        },
+        select: { stage: { select: { key: true, name: true, group: true } } },
+      });
+      for (const a of avulsos) {
+        accumulate(a.stage?.key ?? null, a.stage?.name ?? null, a.stage?.group ?? null);
+      }
+    } else {
+      const units = await this.prisma.developmentUnit.findMany({
+        where: { tenantId, ativo: true, status: st, ...(developmentId ? { developmentId } : {}) },
+        select: {
+          soldAt: true,
+          lead: { select: { stage: { select: { key: true, name: true, group: true } } } },
+        },
+      });
+      for (const u of units) {
+        if (st === 'VENDIDO' && !this.inPeriod(u.soldAt, from, to)) continue;
+        accumulate(u.lead?.stage?.key ?? null, u.lead?.stage?.name ?? null, u.lead?.stage?.group ?? null);
+      }
+    }
+
+    return Array.from(counts.values()).sort((a, b) => b.qtd - a.qtd);
+  }
 }
