@@ -117,6 +117,21 @@ export class LeadsController {
     return this.leadsService.dashboardFunilStatus(req.user, groupKey, fromDate, toDate);
   }
 
+  @Get('dashboard/funil-conversao')
+  async dashboardFunilConversao(
+    @Req() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    if (!(await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'dashboard', 'view'))) {
+      throw new ForbiddenException('Sem permissão para ver o dashboard operacional');
+    }
+    const now = new Date();
+    const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    const toDate = to ? new Date(to) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return this.leadsService.dashboardFunilConversao(req.user, fromDate, toDate);
+  }
+
   @Get('dashboard/funil-escapados')
   async dashboardFunilEscapados(
     @Req() req: any,

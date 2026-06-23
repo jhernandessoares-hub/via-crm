@@ -1528,6 +1528,99 @@ export class LeadsService {
     };
   }
 
+  // ── Dashboard funil: conversão cumulativa (quantos leads passaram por cada grupo) ──
+  async dashboardFunilConversao(
+    user: { id: string; tenantId: string; role: string; branchId?: string | null },
+    from: Date,
+    to: Date,
+  ) {
+    const { id, tenantId, role, branchId } = user;
+    let roleFilter: Record<string, unknown> = {};
+    if (role === 'AGENT' || role === 'PARTNER') roleFilter = { assignedUserId: id };
+    else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
+
+    const periodWhere = { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to } };
+
+    const ALL_GROUP_LABELS: Record<string, string> = {
+      PRE_ATENDIMENTO:     'Pré-atendimento',
+      AGENDAMENTO:         'Agendamento',
+      NEGOCIACOES:         'Negociações',
+      CREDITO_IMOBILIARIO: 'Crédito Imobiliário',
+      NEGOCIO_FECHADO:     'Negócio Fechado',
+      POS_VENDA:           'Pós-venda',
+      DOCUMENTACAO:        'Documentação',
+      ESCOLHA_UNIDADE:     'Escolha da Unidade',
+      CONTRATO:            'Contrato',
+      REGISTRO:            'Registro',
+    };
+
+    const todosLeads = await this.prisma.lead.findMany({
+      where: periodWhere,
+      select: { id: true, stageId: true },
+    });
+    const todosLeadIds = todosLeads.map((l) => l.id);
+
+    const todasStages = await this.pipelineService.getActiveStages(tenantId);
+    const stageGroupMap: Record<string, string> = {};
+    const stageNameGroupMap: Record<string, string> = {};
+    for (const s of todasStages) {
+      if (s.group) {
+        stageGroupMap[s.id] = s.group;
+        if (s.name) stageNameGroupMap[s.name.toLowerCase()] = s.group;
+      }
+    }
+
+    const seenGroups = new Set<string>();
+    const GROUPS: string[] = [];
+    for (const s of todasStages) {
+      if (s.group && !seenGroups.has(s.group)) {
+        seenGroups.add(s.group);
+        GROUPS.push(s.group);
+      }
+    }
+    const firstGroup = GROUPS[0] ?? 'PRE_ATENDIMENTO';
+
+    const leadGrupos = new Map<string, Set<string>>();
+    const addGrupo = (leadId: string, stageRef: string) => {
+      const g = stageGroupMap[stageRef] ?? stageNameGroupMap[stageRef.toLowerCase()];
+      if (!g) return;
+      if (!leadGrupos.has(leadId)) leadGrupos.set(leadId, new Set());
+      leadGrupos.get(leadId)!.add(g);
+    };
+
+    for (const l of todosLeads) {
+      if (!leadGrupos.has(l.id)) leadGrupos.set(l.id, new Set());
+      leadGrupos.get(l.id)!.add(firstGroup);
+      if (l.stageId) addGrupo(l.id, l.stageId);
+    }
+
+    const transicoes = todosLeadIds.length > 0
+      ? await this.prisma.leadTransitionLog.findMany({
+          where: { tenantId, leadId: { in: todosLeadIds } },
+          select: { leadId: true, toStage: true },
+        })
+      : [];
+    for (const t of transicoes) addGrupo(t.leadId, t.toStage);
+
+    const groupCounts: Record<string, number> = Object.fromEntries(GROUPS.map((g) => [g, 0]));
+    for (const grupos of leadGrupos.values()) {
+      for (const g of grupos) {
+        if (g in groupCounts) groupCounts[g]++;
+      }
+    }
+
+    const total = groupCounts[firstGroup] ?? 0;
+    return GROUPS.map((g, i) => {
+      const count = groupCounts[g];
+      const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+      const prevCount = i > 0 ? groupCounts[GROUPS[i - 1]] : null;
+      const drop = prevCount != null && prevCount > 0
+        ? Math.round(((prevCount - count) / prevCount) * 100)
+        : null;
+      return { key: g, label: ALL_GROUP_LABELS[g] ?? g, count, pct, drop };
+    });
+  }
+
   // ── Dashboard funil: lista de leads que já passaram pelo grupo mas saíram ──
   async dashboardFunilEscapados(
     user: { id: string; tenantId: string; role: string; branchId?: string | null },
