@@ -1456,7 +1456,7 @@ export class LeadsService {
     };
   }
 
-  // ── Dashboard funil: breakdown de status por grupo ──────────────────────────
+  // ── Dashboard funil: breakdown por etapa (stage name) dentro de um grupo ────
   async dashboardFunilStatus(
     user: { id: string; tenantId: string; role: string; branchId?: string | null },
     groupKey: string,
@@ -1470,22 +1470,29 @@ export class LeadsService {
 
     const leads = await this.prisma.lead.findMany({
       where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey } },
-      select: { status: true },
+      select: { stageId: true },
     });
 
-    const counts: Record<string, number> = {};
-    for (const l of leads) counts[l.status] = (counts[l.status] || 0) + 1;
+    const stageCounts: Record<string, number> = {};
+    for (const l of leads) {
+      if (l.stageId) stageCounts[l.stageId] = (stageCounts[l.stageId] || 0) + 1;
+    }
 
-    return Object.entries(counts)
-      .map(([status, count]) => ({ status, count }))
-      .sort((a, b) => b.count - a.count);
+    const stageIds = Object.keys(stageCounts);
+    const stages = stageIds.length > 0
+      ? await this.prisma.pipelineStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, key: true, name: true, sortOrder: true } })
+      : [];
+
+    return stages
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((s) => ({ stageKey: s.key, stageName: s.name, count: stageCounts[s.id] ?? 0 }));
   }
 
-  // ── Dashboard funil: lista de leads por grupo + status ──────────────────────
+  // ── Dashboard funil: lista de leads por grupo + stageKey ────────────────────
   async dashboardFunilLeads(
     user: { id: string; tenantId: string; role: string; branchId?: string | null },
     groupKey: string,
-    status: string,
+    stageKey: string,
     from: Date,
     to: Date,
   ) {
@@ -1495,13 +1502,13 @@ export class LeadsService {
     else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
 
     const leads = await this.prisma.lead.findMany({
-      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey }, status: status as any },
+      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey, key: stageKey } },
       select: {
-        id: true, nome: true, nomeCorreto: true, status: true, criadoEm: true,
-        assignedUserId: true, stageId: true,
+        id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true,
+        status: true, criadoEm: true, assignedUserId: true, stageId: true,
       },
       orderBy: { criadoEm: 'desc' },
-      take: 100,
+      take: 200,
     });
 
     const stageIds = [...new Set(leads.map((l) => l.stageId).filter((x): x is string => !!x))];
@@ -1518,8 +1525,10 @@ export class LeadsService {
 
     return leads.map((l) => ({
       id: l.id,
+      numero: l.numero ?? null,
+      reentradaCount: l.reentradaCount ?? null,
       nome: l.nomeCorreto || l.nome,
-      status: l.status,
+      status: l.status as string,
       stageName: l.stageId ? (stageMap.get(l.stageId) ?? null) : null,
       responsavel: l.assignedUserId ? (userMap.get(l.assignedUserId) ?? null) : null,
       criadoEm: l.criadoEm,

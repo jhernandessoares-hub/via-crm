@@ -121,7 +121,7 @@ export class LeadsController {
   async dashboardFunilLeads(
     @Req() req: any,
     @Query('groupKey') groupKey: string,
-    @Query('status') status: string,
+    @Query('stageKey') stageKey: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
@@ -131,7 +131,7 @@ export class LeadsController {
     const now = new Date();
     const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
     const toDate = to ? new Date(to) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    return this.leadsService.dashboardFunilLeads(req.user, groupKey, status, fromDate, toDate);
+    return this.leadsService.dashboardFunilLeads(req.user, groupKey, stageKey, fromDate, toDate);
   }
 
   @Get('dashboard')
