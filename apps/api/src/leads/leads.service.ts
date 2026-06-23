@@ -1278,23 +1278,9 @@ export class LeadsService {
       REGISTRO:            'Registro',
     };
 
-    // Funil: leads criados no período
-    const todosLeads = await this.prisma.lead.findMany({
-      where: periodWhere,
-      select: { id: true, stageId: true },
-    });
-    const todosLeadIds = todosLeads.map((l) => l.id);
-
-    // Todas as stages do tenant (ativas) para mapear stageId → group e stageName → group
+    // Funil snapshot — quantos leads estão em cada grupo AGORA (posição atual, não histórico)
+    // Consistente com os chips do drill-down e a lista de leads, evitando discrepâncias.
     const todasStages = await this.pipelineService.getActiveStages(tenantId);
-    const stageGroupMap: Record<string, string> = {};
-    const stageNameGroupMap: Record<string, string> = {};
-    for (const s of todasStages) {
-      if (s.group) {
-        stageGroupMap[s.id] = s.group;
-        if (s.name) stageNameGroupMap[s.name.toLowerCase()] = s.group;
-      }
-    }
 
     // Grupos do tenant na ordem das stages
     const seenGroups = new Set<string>();
@@ -1305,41 +1291,14 @@ export class LeadsService {
         GROUPS.push(s.group);
       }
     }
-    const firstGroup = GROUPS[0] ?? 'PRE_ATENDIMENTO';
 
-    // Monta set de (leadId, group) que o lead atingiu
-    const leadGrupos = new Map<string, Set<string>>();
-    const addGrupo = (leadId: string, stageRef: string) => {
-      // stageRef pode ser UUID (stageId) ou nome (toStage no log)
-      const g = stageGroupMap[stageRef] ?? stageNameGroupMap[stageRef.toLowerCase()];
-      if (!g) return;
-      if (!leadGrupos.has(leadId)) leadGrupos.set(leadId, new Set());
-      leadGrupos.get(leadId)!.add(g);
-    };
-
-    // Todos os leads começam no primeiro grupo do funil
-    for (const l of todosLeads) {
-      if (!leadGrupos.has(l.id)) leadGrupos.set(l.id, new Set());
-      leadGrupos.get(l.id)!.add(firstGroup);
-      if (l.stageId) addGrupo(l.id, l.stageId);
-    }
-
-    // Histórico de transições (toStage = nome da etapa no log)
-    const transicoes = todosLeadIds.length > 0
-      ? await this.prisma.leadTransitionLog.findMany({
-          where: { tenantId, leadId: { in: todosLeadIds } },
-          select: { leadId: true, toStage: true },
-        })
-      : [];
-    for (const t of transicoes) addGrupo(t.leadId, t.toStage);
-
-    // Conta distintos por grupo
-    const groupCounts: Record<string, number> = Object.fromEntries(GROUPS.map((g) => [g, 0]));
-    for (const grupos of leadGrupos.values()) {
-      for (const g of grupos) {
-        if (g in groupCounts) groupCounts[g]++;
-      }
-    }
+    // Conta leads por grupo usando posição atual do lead
+    const groupCountsArr = await Promise.all(
+      GROUPS.map((g) =>
+        this.prisma.lead.count({ where: { ...periodWhere, stage: { group: g } } }).then((c) => [g, c] as const)
+      )
+    );
+    const groupCounts: Record<string, number> = Object.fromEntries(groupCountsArr);
 
     const funil = GROUPS.map((g) => ({ key: g, label: ALL_GROUP_LABELS[g] ?? g, count: groupCounts[g] }));
 
@@ -1470,11 +1429,13 @@ export class LeadsService {
 
     const leads = await this.prisma.lead.findMany({
       where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey } },
-      select: { stageId: true },
+      select: { stageId: true, id: true },
     });
 
     const stageCounts: Record<string, number> = {};
+    const currentLeadIds = new Set<string>();
     for (const l of leads) {
+      currentLeadIds.add(l.id);
       if (l.stageId) stageCounts[l.stageId] = (stageCounts[l.stageId] || 0) + 1;
     }
 
@@ -1483,9 +1444,34 @@ export class LeadsService {
       ? await this.prisma.pipelineStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, key: true, name: true, sortOrder: true } })
       : [];
 
-    return stages
+    // Descobre leads que JÁ PASSARAM por este grupo mas saíram (ex: voltaram para etapa anterior)
+    const todasStagesDoGrupo = await this.pipelineService.getActiveStages(tenantId);
+    const nomesDoGrupo = todasStagesDoGrupo.filter((s) => s.group === groupKey && s.name).map((s) => s.name as string);
+
+    const todosLeadsDoPeriodo = await this.prisma.lead.findMany({
+      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to } },
+      select: { id: true },
+    });
+    const todosPeriodoIds = todosLeadsDoPeriodo.map((l) => l.id);
+
+    const transicoes = todosPeriodoIds.length > 0 && nomesDoGrupo.length > 0
+      ? await this.prisma.leadTransitionLog.findMany({
+          where: { tenantId, leadId: { in: todosPeriodoIds }, toStage: { in: nomesDoGrupo } },
+          select: { leadId: true },
+        })
+      : [];
+    const historicalIds = new Set(transicoes.map((t) => t.leadId));
+    const escapedCount = [...historicalIds].filter((id) => !currentLeadIds.has(id)).length;
+
+    const result = stages
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((s) => ({ stageKey: s.key, stageName: s.name, count: stageCounts[s.id] ?? 0 }));
+
+    if (escapedCount > 0) {
+      result.push({ stageKey: '__escapados__', stageName: 'Saíram desta etapa', count: escapedCount });
+    }
+
+    return result;
   }
 
   // ── Dashboard funil: lista de leads por grupo + stageKey ────────────────────
@@ -1501,14 +1487,98 @@ export class LeadsService {
     if (role === 'AGENT' || role === 'PARTNER') roleFilter = { assignedUserId: id };
     else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
 
+    const where = { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey, key: stageKey } } as const;
+
+    const [total, leads] = await Promise.all([
+      this.prisma.lead.count({ where }),
+      this.prisma.lead.findMany({
+        where,
+        select: {
+          id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true,
+          status: true, criadoEm: true, assignedUserId: true, stageId: true,
+        },
+        orderBy: { criadoEm: 'desc' },
+      }),
+    ]);
+
+    const stageIds = [...new Set(leads.map((l) => l.stageId).filter((x): x is string => !!x))];
+    const stages = stageIds.length > 0
+      ? await this.prisma.pipelineStage.findMany({ where: { id: { in: stageIds } }, select: { id: true, name: true } })
+      : [];
+    const stageMap = new Map(stages.map((s) => [s.id, s.name]));
+
+    const userIds = [...new Set(leads.map((l) => l.assignedUserId).filter((x): x is string => !!x))];
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: userIds }, tenantId }, select: { id: true, nome: true, apelido: true } })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome]));
+
+    return {
+      total,
+      leads: leads.map((l) => ({
+        id: l.id,
+        numero: l.numero ?? null,
+        reentradaCount: l.reentradaCount ?? null,
+        nome: l.nomeCorreto || l.nome,
+        status: l.status as string,
+        stageName: l.stageId ? (stageMap.get(l.stageId) ?? null) : null,
+        responsavel: l.assignedUserId ? (userMap.get(l.assignedUserId) ?? null) : null,
+        criadoEm: l.criadoEm,
+      })),
+    };
+  }
+
+  // ── Dashboard funil: lista de leads que já passaram pelo grupo mas saíram ──
+  async dashboardFunilEscapados(
+    user: { id: string; tenantId: string; role: string; branchId?: string | null },
+    groupKey: string,
+    from: Date,
+    to: Date,
+  ) {
+    const { id, tenantId, role, branchId } = user;
+    let roleFilter: Record<string, unknown> = {};
+    if (role === 'AGENT' || role === 'PARTNER') roleFilter = { assignedUserId: id };
+    else if (role === 'MANAGER' && branchId) roleFilter = { branchId };
+
+    // Nomes de todas as etapas do grupo (para pesquisar no log de transições)
+    const todasStagesDoGrupo = await this.pipelineService.getActiveStages(tenantId);
+    const nomesDoGrupo = todasStagesDoGrupo.filter((s) => s.group === groupKey && s.name).map((s) => s.name as string);
+    if (nomesDoGrupo.length === 0) return { total: 0, leads: [] };
+
+    // Todos os leads do período (com filtro de role)
+    const periodLeads = await this.prisma.lead.findMany({
+      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to } },
+      select: { id: true },
+    });
+    const periodIds = periodLeads.map((l) => l.id);
+    if (periodIds.length === 0) return { total: 0, leads: [] };
+
+    // Leads que já transitaram para alguma etapa deste grupo
+    const transicoes = await this.prisma.leadTransitionLog.findMany({
+      where: { tenantId, leadId: { in: periodIds }, toStage: { in: nomesDoGrupo } },
+      select: { leadId: true },
+    });
+    const historicalIds = [...new Set(transicoes.map((t) => t.leadId))];
+    if (historicalIds.length === 0) return { total: 0, leads: [] };
+
+    // Leads atualmente NO grupo (para excluir)
+    const currentInGroup = await this.prisma.lead.findMany({
+      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey } },
+      select: { id: true },
+    });
+    const currentIds = new Set(currentInGroup.map((l) => l.id));
+
+    // Escapados = histórico - atual
+    const escapedIds = historicalIds.filter((eid) => !currentIds.has(eid));
+    if (escapedIds.length === 0) return { total: 0, leads: [] };
+
     const leads = await this.prisma.lead.findMany({
-      where: { tenantId, ...roleFilter, deletedAt: null, criadoEm: { gte: from, lte: to }, stage: { group: groupKey, key: stageKey } },
+      where: { id: { in: escapedIds } },
       select: {
         id: true, nome: true, nomeCorreto: true, numero: true, reentradaCount: true,
         status: true, criadoEm: true, assignedUserId: true, stageId: true,
       },
       orderBy: { criadoEm: 'desc' },
-      take: 200,
     });
 
     const stageIds = [...new Set(leads.map((l) => l.stageId).filter((x): x is string => !!x))];
@@ -1523,16 +1593,19 @@ export class LeadsService {
       : [];
     const userMap = new Map(users.map((u) => [u.id, u.apelido || u.nome]));
 
-    return leads.map((l) => ({
-      id: l.id,
-      numero: l.numero ?? null,
-      reentradaCount: l.reentradaCount ?? null,
-      nome: l.nomeCorreto || l.nome,
-      status: l.status as string,
-      stageName: l.stageId ? (stageMap.get(l.stageId) ?? null) : null,
-      responsavel: l.assignedUserId ? (userMap.get(l.assignedUserId) ?? null) : null,
-      criadoEm: l.criadoEm,
-    }));
+    return {
+      total: leads.length,
+      leads: leads.map((l) => ({
+        id: l.id,
+        numero: l.numero ?? null,
+        reentradaCount: l.reentradaCount ?? null,
+        nome: l.nomeCorreto || l.nome,
+        status: l.status as string,
+        stageName: l.stageId ? (stageMap.get(l.stageId) ?? null) : null,
+        responsavel: l.assignedUserId ? (userMap.get(l.assignedUserId) ?? null) : null,
+        criadoEm: l.criadoEm,
+      })),
+    };
   }
 
   private async canViewPipeline(tenantId: string, role: string): Promise<boolean> {
