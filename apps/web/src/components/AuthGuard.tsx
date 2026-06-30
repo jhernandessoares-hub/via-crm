@@ -3,7 +3,7 @@
 import { startTransition, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-const PUBLIC_PATHS = ["/", "/login", "/forgot-password", "/reset-password"];
+const PUBLIC_PATHS = ["/", "/login", "/forgot-password", "/reset-password", "/definir-senha"];
 const PUBLIC_PREFIXES = ["/admin", "/s/"];
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
