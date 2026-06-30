@@ -127,6 +127,12 @@ Channel           // 12 fontes de lead (META_ADS, ZAP, OLX, ...)
 5. **Atualize `CLAUDE.md`** se mudou padrão geral do sistema
 6. **Reporte** ao orquestrador: o que mudou (paths + linhas) + o que ainda falta
 
+### Detecção de duplicados (/leads/duplicados)
+- **CERTA:** mesmo `telefoneKey` ou mesmo CPF
+- **POSSIVEL:** Jaro-Winkler ≥ 0.80; excluir pares onde AMBOS têm CPF de 11 dígitos e CPFs distintos (são pessoas diferentes — `continue` no loop)
+- "Não são duplicatas": salva `sorted(ids).join('|')` em `via_crm_ignored_duplicate_groups` no localStorage — sem schema change
+- Merge: transfere eventos/docs/participantes/unidades para o vencedor, soft-delete do fonte com `LEAD_MERGE` no AuditLog
+
 ## Anti-padrões a evitar
 
 - ❌ Mexer fora do seu glob sem escalar

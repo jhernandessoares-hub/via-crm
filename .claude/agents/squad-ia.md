@@ -124,6 +124,10 @@ Condição: apenas `status: ACTIVE` + `publicationStatus: PUBLISHED`.
 - Rate limit em endpoints de execução de agent (custo de API)
 - AuditLog em: criação/edição de agent, aprovação de Learning, mudança de regra global
 
+### Painel da IA (lead page)
+- `GET /tenants/ai-status` (todos os roles) expõe `autopilotEnabled`; lead page condiciona `{tenantAiEnabled && <PainelIA>}` no `loadAll()`
+- `GET /tenants/bot-config` continua restrito a OWNER (expõe detalhes operacionais)
+
 ## Anti-padrões
 
 - ❌ Modelo hardcoded — sempre `resolveAiModel`

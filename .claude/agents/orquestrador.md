@@ -114,12 +114,21 @@ O agent **não tem o histórico da conversa**. O prompt precisa conter:
 - `resolveAiModel(prisma, fn)` para modelo configurável via banco
 - Cloudinary `type: 'authenticated'` para docs de lead (URL assinada de 2 min)
 
-## Pendências críticas atuais
+## Pendências conhecidas (não implementadas)
 
-- Refatorar `leads.service.ts` (3.644 linhas) — extrair `messaging`, `lead-documents`, `lead-participantes`
-- Monetização Fases 3+4 (billing real) pendente
-- Sistema de preferências de notificação por usuário (campo existe, lógica não)
-- Permissões configuráveis aplicadas só em produtos (faltam leads, agenda, KB)
+- `SecretaryService` não usa o dual-provider do `AiService` — hardcoded para OpenAI
+- Verificação HMAC Meta depende do campo `appSecret` no config do canal (opt-in)
+- Google Ads cost API (`fetchGoogleCost`) retorna null — OAuth não implementado
+- Não há conector com CRMs externos (HubSpot, Salesforce, etc.)
+- 2FA para OWNER (TOTP)
+- White-label básico (logo/cor por tenant)
+- Dashboard de uso por tenant (leads este mês, mensagens, canais)
+- Monitoramento de erros por tenant (token WhatsApp expirado, etc.)
+- Permissões configuráveis ainda não aplicadas no frontend além de produtos — `usePermissions()` existe mas falta integrar em leads, agenda, KB, etc.
+- Permissões de exclusão de produtos (hoje hardcoded): mover para `permissionsConfig` do tenant via `/settings/permissions`
+- **Sistema de preferências de notificação por usuário** — campo `User.notificationSettings Json?` existe no banco mas não está conectado. Implementar: (A) toggles "Notificar quando chegar lead" e "Notificar quando lead qualificar" em "Meus Dados"; (B) preferência OWNER para receber notificação de todos os leads qualificados do tenant; (C) incluir nome do corretor na mensagem de qualificação. Requisito: `whatsappNumber` preenchido; janela 24h Meta se aplica.
+- **Validação de etapa da PROPOSTA não é sensível ao pipeline do tenant** — whitelist `ALLOWED` em `developments.service.ts` tem nomes de grupo hardcoded. Fix interim adicionou grupos SP9 (`DOCUMENTACAO`, `ESCOLHA_UNIDADE`, `CONTRATO`, `REGISTRO`). Falta substituir por regra configurável por pipeline/tenant (ex.: flag `allowsUnitLink` no `PipelineStage`).
+- **Editor visual do site institucional (`?editor=1`)** — a home pública `/` renderiza `defaultSiteContent` fixo; edições do editor NÃO refletem no ar. Pendências: (1) `ResizableFrame` vaza estilos pixel para render público; (2) persistência só em localStorage; (3) "publicar" grava na API mas home nunca lê o `publishedJson`. Fix necessário: separar render público do editor e fazer `/` buscar `publishedJson` do servidor.
 
 ---
 

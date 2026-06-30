@@ -73,6 +73,11 @@ Você é o squad dono de **toda comunicação com o cliente final** (WhatsApp + 
 - `GET /inbox?sessionId=X` filtra conversas pela sessão
 - `naoLidos` calculado em 2 queries (não N+1)
 - `Lead.lastReadAt` atualizado em `POST /inbox/:leadId/read`
+- **Sidebar — 5 abas:** Todas | Não lidas (`naoLidos > 0`) | Não respondidas (`isTrackedConversation && !leadId`) | Acompanhadas (`isTrackedConversation`) | Leads (`leadId != null`). Polling a cada 5s. Quando campanha responde → lead criado (`leadId` preenchido) → sai de "Não respondidas", entra em "Não lidas"
+
+### Frontend (inbox e lead page)
+- `isOutgoing()` reconhece `whatsapp.unofficial.out` como enviado (direita) e `whatsapp.unofficial.in` como recebido (esquerda) em `leads/[id]/page.tsx`
+- **Avatar clicável:** `showAvatarModal` em `leads/[id]/page.tsx`, `showPhotoModal` em `inbox-wa-light/[id]/page.tsx` — só abre se `avatarUrl` existir. Preservar em refatores (feature já foi perdida e restaurada uma vez)
 
 ### Secretária IA
 - GPT-4o-mini com function calling (hardcoded — não passa pelo `AiService` dual-provider)
