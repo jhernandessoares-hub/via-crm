@@ -5645,20 +5645,20 @@ function discardAiSuggestion() {
             )}
 
             {/* Histórico de Movimentações — botão que abre popup de consulta (abaixo do SLA) */}
-            {transitions.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setHistoryOpen(true)}
-                className="flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
-              >
-                <span className="flex items-center gap-2">
-                  <span>🕑</span>
-                  Histórico de Movimentações
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+            >
+              <span className="flex items-center gap-2">
+                <span>🕑</span>
+                Histórico de Movimentações
+                {transitions.length > 0 && (
                   <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{transitions.length}</span>
-                </span>
-                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-              </button>
-            )}
+                )}
+              </span>
+              <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+            </button>
 
             {/* Modal de edição inline de evento da agenda */}
             {editingAgendaEvent && (
@@ -7032,6 +7032,11 @@ function discardAiSuggestion() {
             </div>
 
             <ul className="divide-y divide-[var(--shell-card-border)] overflow-y-auto">
+              {transitions.length === 0 && (
+                <li className="px-5 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+                  Nenhuma movimentação registrada.
+                </li>
+              )}
               {transitions.map((t) => (
                 <li key={t.id} className="px-5 py-3 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
