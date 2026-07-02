@@ -17,6 +17,17 @@ const ADDON_CONFIGS = [
     requiresTier: 'BUSINESS' as PlanTier,
     active: true,
   },
+  {
+    key: 'PRE_OCUPACAO',
+    name: 'Pré-Ocupação (TTS)',
+    description: 'Acompanhamento social de famílias entre assinatura do contrato e mudança — sessões, demandas e entregáveis mensais.',
+    limits: null,
+    // Módulo sob medida (feito para o SP9), não comercializado como addon padrão da plataforma:
+    // sem cobrança própria e sem exigência de tier por ora.
+    prices: { months3: 0, months6: 0, months12: 0 },
+    requiresTier: null,
+    active: true,
+  },
 ];
 
 export async function seedPlanConfigs(prisma: PrismaClient | any): Promise<void> {

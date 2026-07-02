@@ -18,6 +18,7 @@ import { formatLeadNumber } from "@/lib/format-lead-number";
 import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
+import { isSP9 } from "@/lib/sp9";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -206,6 +207,33 @@ type AiSuggestedAttachment = {
   mimeType?: string | null;
   filename?: string | null;
 };
+
+// Etapas a partir de "Contrato Assinado" (inclusive) — só a partir daqui o
+// card de Pré-Ocupação aparece no lead. Cobre tanto o pipeline agrupado real
+// do SP9 (setup-sp9-pipeline.ts) quanto o pipeline padrão (pipeline.service.ts),
+// usado em tenants de teste — mesma tela, chaves diferentes por pipeline.
+const SP9_PRE_OCUPACAO_STAGE_KEYS = new Set([
+  // Pipeline agrupado SP9 (produção)
+  "SP9_CONTRATO_ASSINADO",
+  "SP9_SUSPENSAO_CONT",
+  "SP9_EXCLUSAO_CONT",
+  "SP9_DESISTENCIA_CONT",
+  "SP9_EM_REGISTRO",
+  "SP9_REGISTRADO",
+  // Pipeline padrão (tenants de teste)
+  "ASSINATURA_CONTRATO",
+  "BANCO",
+  "REGISTRO",
+  "ENTREGA_CONTRATO_REGISTRADO",
+  "POS_VENDA_IA",
+]);
+
+// Pré-Ocupação (TTS) — exclusivo SP9. Shape confirmado em
+// apps/api/src/pre-ocupacao/familias.service.ts (resumoPorLead). Só o
+// necessário para o atalho — o card não exibe mais detalhes de demandas.
+type PreOcupacaoResumo =
+  | { ativada: false }
+  | { ativada: true; familia: { id: string } };
 
 function normalizeTextForAiScore(input: string) {
   return String(input || "")
@@ -1982,6 +2010,10 @@ export default function LeadDetailChatPage() {
   const [evidencesOpen, setEvidencesOpen] = useState(false);
   const [transitions, setTransitions] = useState<LeadTransition[]>([]);
   const [leadCampanhas, setLeadCampanhas] = useState<any[]>([]);
+  const [preOcupacao, setPreOcupacao] = useState<PreOcupacaoResumo | null>(null);
+  const [preOcupacaoLoading, setPreOcupacaoLoading] = useState(false);
+  const [preOcupacaoErr, setPreOcupacaoErr] = useState<string | null>(null);
+  const [preOcupacaoAtivando, setPreOcupacaoAtivando] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [evidencePreview, setEvidencePreview] = useState<{ url: string; mime: string; nome: string } | null>(null);
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
@@ -2289,6 +2321,37 @@ export default function LeadDetailChatPage() {
     }
   }
 
+  // Pré-Ocupação (TTS) — exclusivo SP9. Carregado sob demanda quando o
+  // usuário logado pertence ao tenant SP9 (gate visual; o backend também
+  // protege via AddonGuard).
+  async function loadPreOcupacao(leadId: string) {
+    setPreOcupacaoLoading(true);
+    setPreOcupacaoErr(null);
+    try {
+      const data = await apiFetch(`/pre-ocupacao/leads/${leadId}`, { method: "GET" });
+      setPreOcupacao(data && typeof data === "object" ? (data as PreOcupacaoResumo) : { ativada: false });
+    } catch (e: any) {
+      setPreOcupacaoErr(e?.message || "Não foi possível carregar o Pré-Ocupação.");
+      setPreOcupacao(null);
+    } finally {
+      setPreOcupacaoLoading(false);
+    }
+  }
+
+  async function ativarPreOcupacao() {
+    if (!id) return;
+    setPreOcupacaoAtivando(true);
+    setPreOcupacaoErr(null);
+    try {
+      await apiFetch(`/pre-ocupacao/leads/${id}/ativar`, { method: "POST" });
+      await loadPreOcupacao(id);
+    } catch (e: any) {
+      setPreOcupacaoErr(e?.message || "Não foi possível ativar o Pré-Ocupação.");
+    } finally {
+      setPreOcupacaoAtivando(false);
+    }
+  }
+
   async function openStatusEvidenceDoc(docId: string, nome: string) {
     try {
       const blob = await authFetchBlob(absApiUrl(`/leads/${id}/documents/${docId}/view`));
@@ -2578,6 +2641,14 @@ export default function LeadDetailChatPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Pré-Ocupação: só carrega para o tenant SP9 e a partir da etapa Contrato Assinado
+  useEffect(() => {
+    if (id && isSP9(user?.tenantId) && SP9_PRE_OCUPACAO_STAGE_KEYS.has((lead as any)?.stageKey)) {
+      loadPreOcupacao(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user?.tenantId, (lead as any)?.stageKey]);
 
   useEffect(() => {
     if (!id) return;
@@ -5641,6 +5712,44 @@ function discardAiSuggestion() {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Pré-Ocupação (TTS) — exclusivo tenant SP9 */}
+            {isSP9(user?.tenantId) && SP9_PRE_OCUPACAO_STAGE_KEYS.has((lead as any)?.stageKey) && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                <div className="mb-2 flex items-center gap-2">
+                  <span>🏘️</span>
+                  <span className="text-sm font-semibold text-[var(--shell-text)]">Pré-Ocupação</span>
+                </div>
+
+                {preOcupacaoLoading ? (
+                  <div className="text-xs text-[var(--shell-subtext)]">Carregando...</div>
+                ) : preOcupacaoErr ? (
+                  <div className="text-xs text-red-600">{preOcupacaoErr}</div>
+                ) : !preOcupacao || preOcupacao.ativada === false ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-[var(--shell-subtext)]">
+                      Esta família ainda não participa do programa de Trabalho Técnico Social.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={ativarPreOcupacao}
+                      disabled={preOcupacaoAtivando}
+                      className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {preOcupacaoAtivando ? "Gerando..." : "Gerar demanda de Pré-Ocupação"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => startTransition(() => router.push(`/pre-ocupacao/familias/${preOcupacao.familia.id}`))}
+                    className="w-full rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 text-left"
+                  >
+                    Ir para o Pré-Ocupação desta família →
+                  </button>
+                )}
               </div>
             )}
 

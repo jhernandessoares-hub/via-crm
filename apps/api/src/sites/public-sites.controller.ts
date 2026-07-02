@@ -24,4 +24,12 @@ export class PublicSitesController {
   submitLead(@Param('slug') slug: string, @Body() body: { nome: string; telefone: string; mensagem?: string }) {
     return this.sitesService.submitContactLead(slug, body);
   }
+
+  @Post(':slug/demanda')
+  submitDemanda(
+    @Param('slug') slug: string,
+    @Body() body: { titulo: string; local?: string; dataAtendimento?: string; horario?: string; observacoes?: string },
+  ) {
+    return this.sitesService.submitDemanda(slug, body);
+  }
 }

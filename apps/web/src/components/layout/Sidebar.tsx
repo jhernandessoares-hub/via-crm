@@ -29,6 +29,10 @@ import {
   KeyRound,
   ClipboardCheck,
   Snowflake,
+  Home,
+  AlertCircle,
+  CalendarDays,
+  Archive,
   type LucideIcon,
 } from "lucide-react";
 import { apiLogout } from "@/lib/api";
@@ -84,11 +88,13 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
 
   const [currentGroup, setCurrentGroup] = useState<string | null>(null);
   const [funnelOpen, setFunnelOpen] = useState<boolean>(false);
+  const [preOcupacaoOpen, setPreOcupacaoOpen] = useState<boolean>(false);
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setFunnelOpen(localStorage.getItem("sidebar_funnel_open") === "true");
+    setPreOcupacaoOpen(localStorage.getItem("sidebar_pre_ocupacao_open") === "true");
     setCollapsed(localStorage.getItem("sidebar_collapsed") === "true");
     setCurrentGroup(new URLSearchParams(window.location.search).get("group"));
   }, [pathname]);
@@ -97,6 +103,14 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
     setFunnelOpen((v) => {
       const next = !v;
       localStorage.setItem("sidebar_funnel_open", String(next));
+      return next;
+    });
+  }
+
+  function togglePreOcupacao() {
+    setPreOcupacaoOpen((v) => {
+      const next = !v;
+      localStorage.setItem("sidebar_pre_ocupacao_open", String(next));
       return next;
     });
   }
@@ -322,8 +336,80 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         {can("gestao_empreendimentos", "view") && (
           <NavItem href="/gestao-empreendimentos" label="Gestão de Empreendimentos" icon={Landmark} mode="prefix" />
         )}
-        {showSP9 && (role === "OWNER" || can("pre_ocupacao", "view")) && (
-          <NavItem href="/pre-ocupacao" label="Pré-Ocupação" icon={KeyRound} />
+        {showSP9 && (role === "OWNER" || can("pre_ocupacao", "view")) && !collapsed && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={togglePreOcupacao}
+              className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              style={{ color: "var(--sidebar-text)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sidebar-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              aria-expanded={preOcupacaoOpen}
+            >
+              <KeyRound className="h-[18px] w-[18px] shrink-0" style={{ color: "var(--sidebar-text-muted)" }} />
+              <span className="flex-1 text-left">Pré-Ocupação</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${preOcupacaoOpen ? "rotate-180" : ""}`}
+                style={{ color: "var(--sidebar-text-muted)" }}
+              />
+            </button>
+            {preOcupacaoOpen && (
+              <div
+                className="mt-1 ml-3 space-y-0.5 border-l pl-3"
+                style={{ borderColor: "var(--sidebar-funnel-border)" }}
+              >
+                {[
+                  { href: "/pre-ocupacao/familias", label: "Famílias", icon: Home },
+                  { href: "/pre-ocupacao/demandas", label: "Demandas", icon: AlertCircle },
+                  { href: "/pre-ocupacao/calendario", label: "Calendário", icon: CalendarDays },
+                  { href: "/pre-ocupacao/entregaveis", label: "Entregáveis Mensais", icon: Archive },
+                ].map((item) => {
+                  const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                  const ItemIcon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors"
+                      style={{
+                        background: active ? "var(--brand-accent-muted)" : "transparent",
+                        color: active ? "var(--brand-accent)" : "var(--sidebar-text-muted)",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = "var(--sidebar-hover)";
+                          e.currentTarget.style.color = "var(--sidebar-text)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.color = "var(--sidebar-text-muted)";
+                        }
+                      }}
+                    >
+                      <ItemIcon className="h-3.5 w-3.5 shrink-0" />
+                      <span className="flex-1 truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {showSP9 && (role === "OWNER" || can("pre_ocupacao", "view")) && collapsed && (
+          <Link
+            href="/pre-ocupacao/familias"
+            title="Pré-Ocupação"
+            className="flex items-center justify-center rounded-lg py-2 transition-colors"
+            style={{ color: "var(--sidebar-text)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sidebar-hover)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <KeyRound className="h-[18px] w-[18px]" style={{ color: "var(--sidebar-text-muted)" }} />
+          </Link>
         )}
         {showSP9 && (role === "OWNER" || can("pos_ocupacao", "view")) && (
           <NavItem href="/pos-ocupacao" label="Pós-Ocupação" icon={ClipboardCheck} />

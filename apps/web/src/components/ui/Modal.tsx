@@ -44,60 +44,58 @@ export function Modal({
       style={{ backgroundColor: "rgba(13, 27, 62, 0.55)" }}
     >
       <div
-        className="w-full rounded-xl border shadow-2xl my-8"
+        className={`${sizes[size]} w-full rounded-xl border shadow-2xl my-8`}
         style={{
           background: "var(--shell-card-bg)",
           borderColor: "var(--shell-card-border)",
         }}
         data-size={size}
       >
-        <div className={`${sizes[size]} mx-auto`}>
-          {(title || description) && (
-            <div
-              className="flex items-start justify-between border-b px-5 py-4"
-              style={{ borderColor: "var(--shell-card-border)" }}
-            >
-              <div>
-                {title && (
-                  <h2
-                    className="text-base font-semibold"
-                    style={{ color: "var(--shell-text)" }}
-                  >
-                    {title}
-                  </h2>
-                )}
-                {description && (
-                  <p
-                    className="text-xs mt-0.5"
-                    style={{ color: "var(--shell-subtext)" }}
-                  >
-                    {description}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md p-1 hover:opacity-70 transition-opacity"
-                style={{ color: "var(--shell-subtext)" }}
-                aria-label="Fechar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+        {(title || description) && (
+          <div
+            className="flex items-start justify-between border-b px-5 py-4"
+            style={{ borderColor: "var(--shell-card-border)" }}
+          >
+            <div>
+              {title && (
+                <h2
+                  className="text-base font-semibold"
+                  style={{ color: "var(--shell-text)" }}
+                >
+                  {title}
+                </h2>
+              )}
+              {description && (
+                <p
+                  className="text-xs mt-0.5"
+                  style={{ color: "var(--shell-subtext)" }}
+                >
+                  {description}
+                </p>
+              )}
             </div>
-          )}
-          <div className="p-5">
-            {children}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 hover:opacity-70 transition-opacity"
+              style={{ color: "var(--shell-subtext)" }}
+              aria-label="Fechar"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          {footer && (
-            <div
-              className="flex justify-end gap-2 border-t px-5 py-3"
-              style={{ borderColor: "var(--shell-card-border)" }}
-            >
-              {footer}
-            </div>
-          )}
+        )}
+        <div className="p-5">
+          {children}
         </div>
+        {footer && (
+          <div
+            className="flex justify-end gap-2 border-t px-5 py-3"
+            style={{ borderColor: "var(--shell-card-border)" }}
+          >
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

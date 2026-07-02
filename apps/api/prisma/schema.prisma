@@ -25,27 +25,27 @@ model Pipeline {
 }
 
 model PipelineStage {
-  id               String    @id @default(uuid())
-  tenantId         String
-  pipelineId       String
-  key              String
-  name             String
-  sortOrder        Int
-  group            String?
-  advancesToGroup  String?
-  returnsToGroup   String?
-  isActive         Boolean   @default(true)
-  requiresEvidence Boolean   @default(false)
-  requiresReason   Boolean   @default(false) // exige justificativa em texto (de todos os roles) ao entrar/sair
-  requiresPendencias Boolean @default(false) // exige registrar pendências ao entrar; bloqueia saída até todas resolvidas
-  unitAction       String?   // espelho: RESERVA (permite reservar) | PROPOSTA (converte reserva→proposta ao entrar) | VENDA (converte proposta→vendido ao entrar)
-  ownerOnly        Boolean   @default(false)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  leads            Lead[]
-  pipeline         Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  slaRules         SlaRule[]
+  id                 String    @id @default(uuid())
+  tenantId           String
+  pipelineId         String
+  key                String
+  name               String
+  sortOrder          Int
+  group              String?
+  advancesToGroup    String?
+  returnsToGroup     String?
+  isActive           Boolean   @default(true)
+  requiresEvidence   Boolean   @default(false)
+  requiresReason     Boolean   @default(false) // exige justificativa em texto (de todos os roles) ao entrar/sair
+  requiresPendencias Boolean   @default(false) // exige registrar pendências ao entrar; bloqueia saída até todas resolvidas
+  unitAction         String? // espelho: RESERVA (permite reservar) | PROPOSTA (converte reserva→proposta ao entrar) | VENDA (converte proposta→vendido ao entrar)
+  ownerOnly          Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  leads              Lead[]
+  pipeline           Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slaRules           SlaRule[]
 
   @@unique([tenantId, pipelineId, key], name: "tenantId_pipelineId_key")
   @@index([tenantId, pipelineId, isActive, sortOrder])
@@ -53,83 +53,90 @@ model PipelineStage {
 }
 
 model Tenant {
-  id                     String                  @id @default(uuid())
-  nome                   String
-  slug                   String                  @unique
-  ativo                  Boolean                 @default(true)
-  plan                   PlanTier                @default(STARTER)
-  addons                 String[]                @default([])
-  limits                 Json?
-  aiLimitFallbackMessage String?
-  autopilotEnabled       Boolean                 @default(true)
-  businessHours          Json?
-  outsideHoursMessage    String?
-  aiDelayMin             Int                     @default(5)
-  aiDelayMax             Int                     @default(15)
-  aiTypingEnabled        Boolean                 @default(true)
-  aiHistoryLimit         Int                     @default(8)
-  aiReassumirBaseFria    Boolean                 @default(false) // IA volta a responder leads reativados pela Base Fria (padrão: corretor assume)
-  logradouro             String?
-  numero                 String?
-  bairro                 String?
-  cep                    String?
-  cidade                 String?
-  estado                 String?
-  site                   String?
-  redesSociais           String?
-  proprietarioNome       String?
-  proprietarioTelefone   String?
-  whatsappPhoneNumberId  String?
-  whatsappToken          String?
-  whatsappVerifyToken    String?
-  criadoEm               DateTime                @default(now())
-  permissionsConfig      Json?
-  roundRobinConfig       Json?
-  slaConfig              Json?
-  brandPalette           String?
-  faviconPublicId        String?
-  faviconUrl             String?
-  logoPublicId           String?
-  logoUrl                String?
-  agentKnowledgeBases    AgentKnowledgeBase[]
-  agentTools             AgentTool[]
-  aiAgents               AiAgent[]
-  aiExecutionLogs        AiExecutionLog[]
-  baseFrias              BaseFria[]
-  branches               Branch[]
-  channels               Channel[]
-  kbTeachings            KbTeaching[]
-  knowledgeBaseDocuments KnowledgeBaseDocument[]
-  knowledgeBaseLinks     KnowledgeBaseLink[]
-  knowledgeBaseVideos    KnowledgeBaseVideo[]
-  knowledgeBases         KnowledgeBase[]
-  leadDocuments          LeadDocument[]
-  events                 LeadEvent[]
-  leadParticipantes      LeadParticipante[]
-  leadSlas               LeadSla[]
-  leadTransitionLogs     LeadTransitionLog[]
-  leads                  Lead[]
-  learnings              Learning[]
-  reasons                ManagerDecisionReason[]
-  reviews                ManagerReview[]
-  pipelineStages         PipelineStage[]
-  pipelines              Pipeline[]
-  productDocuments       ProductDocument[]
-  productImages          ProductImage[]
-  productVideos          ProductVideo[]
-  products               Product[]
-  slaRules               SlaRule[]
-  tenantSites            TenantSite[]
-  users                  User[]
-  developments           Development[]
-  developmentMedia       DevelopmentMedia[]
-  developmentObraUpdates DevelopmentObraUpdate[]
+  id                            String                           @id @default(uuid())
+  nome                          String
+  slug                          String                           @unique
+  ativo                         Boolean                          @default(true)
+  plan                          PlanTier                         @default(STARTER)
+  addons                        String[]                         @default([])
+  limits                        Json?
+  aiLimitFallbackMessage        String?
+  autopilotEnabled              Boolean                          @default(true)
+  businessHours                 Json?
+  outsideHoursMessage           String?
+  aiDelayMin                    Int                              @default(5)
+  aiDelayMax                    Int                              @default(15)
+  aiTypingEnabled               Boolean                          @default(true)
+  aiHistoryLimit                Int                              @default(8)
+  aiReassumirBaseFria           Boolean                          @default(false) // IA volta a responder leads reativados pela Base Fria (padrão: corretor assume)
+  logradouro                    String?
+  numero                        String?
+  bairro                        String?
+  cep                           String?
+  cidade                        String?
+  estado                        String?
+  site                          String?
+  redesSociais                  String?
+  proprietarioNome              String?
+  proprietarioTelefone          String?
+  whatsappPhoneNumberId         String?
+  whatsappToken                 String?
+  whatsappVerifyToken           String?
+  criadoEm                      DateTime                         @default(now())
+  permissionsConfig             Json?
+  roundRobinConfig              Json?
+  slaConfig                     Json?
+  brandPalette                  String?
+  faviconPublicId               String?
+  faviconUrl                    String?
+  logoPublicId                  String?
+  logoUrl                       String?
+  agentKnowledgeBases           AgentKnowledgeBase[]
+  agentTools                    AgentTool[]
+  aiAgents                      AiAgent[]
+  aiExecutionLogs               AiExecutionLog[]
+  baseFrias                     BaseFria[]
+  branches                      Branch[]
+  channels                      Channel[]
+  kbTeachings                   KbTeaching[]
+  knowledgeBaseDocuments        KnowledgeBaseDocument[]
+  knowledgeBaseLinks            KnowledgeBaseLink[]
+  knowledgeBaseVideos           KnowledgeBaseVideo[]
+  knowledgeBases                KnowledgeBase[]
+  leadDocuments                 LeadDocument[]
+  events                        LeadEvent[]
+  leadParticipantes             LeadParticipante[]
+  leadSlas                      LeadSla[]
+  leadTransitionLogs            LeadTransitionLog[]
+  leads                         Lead[]
+  learnings                     Learning[]
+  reasons                       ManagerDecisionReason[]
+  reviews                       ManagerReview[]
+  pipelineStages                PipelineStage[]
+  pipelines                     Pipeline[]
+  productDocuments              ProductDocument[]
+  productImages                 ProductImage[]
+  productVideos                 ProductVideo[]
+  products                      Product[]
+  slaRules                      SlaRule[]
+  tenantSites                   TenantSite[]
+  users                         User[]
+  developments                  Development[]
+  developmentMedia              DevelopmentMedia[]
+  developmentObraUpdates        DevelopmentObraUpdate[]
   creditRequests                CreditRequest[]
   whatsappUnofficialSessions    WhatsappUnofficialSession[]
   campanhaModelos               CampanhaModelo[]
   campanhaDisparos              CampanhaDisparo[]
   leadCounter                   TenantLeadCounter?
   messageTemplates              UserMessageTemplate[]
+  preOcupacaoFamilias           PreOcupacaoFamilia[]
+  preOcupacaoAtividades         PreOcupacaoAtividade[]
+  preOcupacaoEntregaveisMensais PreOcupacaoEntregavelMensal[]
+  preOcupacaoEntregavelVersoes  PreOcupacaoEntregavelVersao[]
+  preOcupacaoOcorrencias        PreOcupacaoOcorrencia[]
+  preOcupacaoFamiliaCounter     TenantPreOcupacaoFamiliaCounter?
+  preOcupacaoDemandaCounter     TenantPreOcupacaoDemandaCounter?
 
   @@map("tenants")
 }
@@ -198,31 +205,31 @@ model Branch {
 }
 
 model User {
-  id                       String            @id @default(uuid())
+  id                       String                @id @default(uuid())
   tenantId                 String
   nome                     String
   email                    String
   senhaHash                String
-  ativo                    Boolean           @default(true)
-  criadoEm                 DateTime          @default(now())
+  ativo                    Boolean               @default(true)
+  criadoEm                 DateTime              @default(now())
   branchId                 String?
-  role                     UserRole          @default(AGENT)
+  role                     UserRole              @default(AGENT)
   whatsappNumber           String?
-  passwordResetToken       String?           @unique
+  passwordResetToken       String?               @unique
   passwordResetExpiry      DateTime?
   secretaryName            String?
   secretaryBotName         String?
-  secretaryGender          String            @default("FEMININO")
+  secretaryGender          String                @default("FEMININO")
   notificationSettings     Json?
   apelido                  String?
   preferences              Json?
-  recebeLeads              Boolean           @default(true)
-  uploadedProductDocuments ProductDocument[] @relation("ProductDocumentUploadedBy")
-  capturedProducts         Product[]         @relation("ProductCapturedBy")
-  productDeletionRequests  Product[]         @relation("ProductDeletionRequest")
+  recebeLeads              Boolean               @default(true)
+  uploadedProductDocuments ProductDocument[]     @relation("ProductDocumentUploadedBy")
+  capturedProducts         Product[]             @relation("ProductCapturedBy")
+  productDeletionRequests  Product[]             @relation("ProductDeletionRequest")
   refreshTokens            RefreshToken[]
-  branch                   Branch?           @relation(fields: [branchId], references: [id])
-  tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch                   Branch?               @relation(fields: [branchId], references: [id])
+  tenant                   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   campanhaModelos          CampanhaModelo[]
   campanhaDisparos         CampanhaDisparo[]
   calendarEvents           CalendarEvent[]
@@ -248,96 +255,96 @@ model RefreshToken {
 }
 
 model Lead {
-  id                      String               @id @default(uuid())
-  tenantId                String
-  numero                  Int?
-  reentradaCount          Int                  @default(1)
-  lastEntryChannel        String?
-  nome                    String
-  telefone                String?
-  email                   String?
-  origem                  String?
-  status                  LeadStatus           @default(NOVO)
-  observacao              String?
-  criadoEm                DateTime             @default(now())
-  atualizadoEm            DateTime             @updatedAt
-  telefoneKey             String?
-  assignedUserId          String?
-  branchId                String?
-  lastInboundAt           DateTime?
-  botPaused               Boolean              @default(false)
-  deletedAt               DateTime?
-  deletedBy               String?
-  deletionReason          String?
-  nomeCorreto             String?
-  rendaBrutaFamiliar      Float?
-  fgts                    Float?
-  valorEntrada            Float?
-  estadoCivil             String?
-  dataNascimento          DateTime?
-  tempoProcurandoImovel   String?
-  conversouComCorretor    Boolean?
-  qualCorretorImobiliaria String?
-  perfilImovel            String?
-  produtoInteresseId           String?
-  empreendimentoInteresseId    String?
-  interesseOrigem              String?              // "IA" | "MANUAL" — origem do interesse real (produto/empreendimento); MANUAL nunca é sobrescrito pela IA
-  resumoLead                   String?
-  valorVenda                   Float?               // valor da venda fechada (imóvel avulso); empreendimento usa DevelopmentUnit.finalPrice
-  dataVenda                    DateTime?            // data da venda fechada (imóvel avulso)
-  pendingRouting          Boolean              @default(false)
-  pendingRoutingScope     PendingRoutingScope?
-  pipelineId              String?
-  stageId                 String?
-  nomeCorretoOrigem       String?
-  cep                     String?
-  cidade                  String?
-  cpf                     String?
-  empresa                 String?
-  endereco                String?
-  naturalidade            String?
-  profissao               String?
-  rg                      String?
-  uf                      String?
-  cadastroOrigem          Json?
-  conversaCanal           String?
-  conversaSessionId       String?
-  avatarUrl               String?
-  lastReadAt              DateTime?
-  conversaAberta          Boolean              @default(false)
-  pendenciasObservacao    String?
-  passouBaseFria          Boolean              @default(false) // lead reativado a partir da Base Fria: SLA pula e rótulo "(Base Fria)"
-  baseFriaDesde           DateTime?            // quando o lead entrou na Base Fria (sort/idade na listagem dedicada)
-  aiExecutionLogs         AiExecutionLog[]
-  baseFria                BaseFria?
-  calendarEvents          CalendarEvent[]
-  kbTeachings             KbTeaching[]
-  documents               LeadDocument[]
-  events                  LeadEvent[]
-  participantes           LeadParticipante[]
-  pendencias              LeadPendencia[]
-  leadSla                 LeadSla?
-  leadTransitionLogs      LeadTransitionLog[]
-  creditRequests          CreditRequest[]
-  branch                  Branch?                    @relation(fields: [branchId], references: [id])
-  pipeline                Pipeline?                  @relation(fields: [pipelineId], references: [id])
-  stage                   PipelineStage?             @relation(fields: [stageId], references: [id])
-  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  reviews                 ManagerReview[]
-  conversaSession              WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
-  empreendimentoInteresse      Development?               @relation("LeadEmpreendimentoInteresse", fields: [empreendimentoInteresseId], references: [id], onDelete: SetNull)
+  id                        String                     @id @default(uuid())
+  tenantId                  String
+  numero                    Int?
+  reentradaCount            Int                        @default(1)
+  lastEntryChannel          String?
+  nome                      String
+  telefone                  String?
+  email                     String?
+  origem                    String?
+  status                    LeadStatus                 @default(NOVO)
+  observacao                String?
+  criadoEm                  DateTime                   @default(now())
+  atualizadoEm              DateTime                   @updatedAt
+  telefoneKey               String?
+  assignedUserId            String?
+  branchId                  String?
+  lastInboundAt             DateTime?
+  botPaused                 Boolean                    @default(false)
+  deletedAt                 DateTime?
+  deletedBy                 String?
+  deletionReason            String?
+  nomeCorreto               String?
+  rendaBrutaFamiliar        Float?
+  fgts                      Float?
+  valorEntrada              Float?
+  estadoCivil               String?
+  dataNascimento            DateTime?
+  tempoProcurandoImovel     String?
+  conversouComCorretor      Boolean?
+  qualCorretorImobiliaria   String?
+  perfilImovel              String?
+  produtoInteresseId        String?
+  empreendimentoInteresseId String?
+  interesseOrigem           String? // "IA" | "MANUAL" — origem do interesse real (produto/empreendimento); MANUAL nunca é sobrescrito pela IA
+  resumoLead                String?
+  valorVenda                Float? // valor da venda fechada (imóvel avulso); empreendimento usa DevelopmentUnit.finalPrice
+  dataVenda                 DateTime? // data da venda fechada (imóvel avulso)
+  pendingRouting            Boolean                    @default(false)
+  pendingRoutingScope       PendingRoutingScope?
+  pipelineId                String?
+  stageId                   String?
+  nomeCorretoOrigem         String?
+  cep                       String?
+  cidade                    String?
+  cpf                       String?
+  empresa                   String?
+  endereco                  String?
+  naturalidade              String?
+  profissao                 String?
+  rg                        String?
+  uf                        String?
+  cadastroOrigem            Json?
+  conversaCanal             String?
+  conversaSessionId         String?
+  avatarUrl                 String?
+  lastReadAt                DateTime?
+  conversaAberta            Boolean                    @default(false)
+  pendenciasObservacao      String?
+  passouBaseFria            Boolean                    @default(false) // lead reativado a partir da Base Fria: SLA pula e rótulo "(Base Fria)"
+  baseFriaDesde             DateTime? // quando o lead entrou na Base Fria (sort/idade na listagem dedicada)
+  aiExecutionLogs           AiExecutionLog[]
+  baseFria                  BaseFria?
+  calendarEvents            CalendarEvent[]
+  kbTeachings               KbTeaching[]
+  documents                 LeadDocument[]
+  events                    LeadEvent[]
+  participantes             LeadParticipante[]
+  pendencias                LeadPendencia[]
+  leadSla                   LeadSla?
+  leadTransitionLogs        LeadTransitionLog[]
+  creditRequests            CreditRequest[]
+  preOcupacaoFamilia        PreOcupacaoFamilia?
+  branch                    Branch?                    @relation(fields: [branchId], references: [id])
+  pipeline                  Pipeline?                  @relation(fields: [pipelineId], references: [id])
+  stage                     PipelineStage?             @relation(fields: [stageId], references: [id])
+  tenant                    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviews                   ManagerReview[]
+  conversaSession           WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
+  empreendimentoInteresse   Development?               @relation("LeadEmpreendimentoInteresse", fields: [empreendimentoInteresseId], references: [id], onDelete: SetNull)
+  aiAttendedMonths          String[]                   @default([])
+  developmentUnits          DevelopmentUnit[]
 
+  @@unique([tenantId, numero])
   @@index([tenantId, telefoneKey])
   @@index([tenantId, status])
   @@index([tenantId, branchId])
   @@index([tenantId, pipelineId])
   @@index([tenantId, stageId])
-  aiAttendedMonths        String[]               @default([])
-
-  @@unique([tenantId, numero])
   @@index([tenantId, conversaCanal])
   @@map("leads")
-  developmentUnits DevelopmentUnit[]
 }
 
 model LeadEvent {
@@ -492,7 +499,6 @@ model Product {
   @@index([tenantId, origin, status])
   @@index([tenantId, city, neighborhood])
   @@index([tenantId, branchId])
-
   @@index([tenantId, kind])
   @@index([tenantId, dealType])
   @@index([tenantId, registrationStatus])
@@ -609,8 +615,8 @@ model LeadTransitionLog {
   fromStage          String?
   toStage            String
   changedBy          String?
-  evidenceDocumentId String?  // documento de evidência anexado em transições com requiresEvidence
-  motivo             String?  // justificativa (obrigatória para OWNER em status com requiresEvidence)
+  evidenceDocumentId String? // documento de evidência anexado em transições com requiresEvidence
+  motivo             String? // justificativa (obrigatória para OWNER em status com requiresEvidence)
   cascade            Boolean  @default(false) // true = movimento automático do sistema (avanço entre grupos)
   createdAt          DateTime @default(now())
   lead               Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1054,8 +1060,9 @@ model CalendarEvent {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  user User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead                 Lead?                 @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  PreOcupacaoAtividade PreOcupacaoAtividade?
 
   @@index([tenantId, userId])
   @@index([tenantId, userId, status])
@@ -1228,9 +1235,9 @@ model LeadPendencia {
   leadId                    String
   descricao                 String
   origem                    String    @default("MANUAL") // DOCUMENTO | MANUAL
-  tipoDocumento             String?   // value de TIPOS_PADRAO quando origem=DOCUMENTO
-  participanteNome          String?   // null = lead principal
-  participanteClassificacao String?   // CONJUGE | SOCIO | FIADOR | OUTRO
+  tipoDocumento             String? // value de TIPOS_PADRAO quando origem=DOCUMENTO
+  participanteNome          String? // null = lead principal
+  participanteClassificacao String? // CONJUGE | SOCIO | FIADOR | OUTRO
   resolvida                 Boolean   @default(false)
   criadoPor                 String?
   resolvidoPor              String?
@@ -1540,8 +1547,8 @@ model Development {
   id                  String    @id @default(uuid())
   tenantId            String
   nome                String
-  tipo                String    // VERTICAL | HORIZONTAL
-  subtipo             String    // APARTAMENTO | CASA | LOTEAMENTO
+  tipo                String // VERTICAL | HORIZONTAL
+  subtipo             String // APARTAMENTO | CASA | LOTEAMENTO
   endereco            String?
   cidade              String?
   estado              String?
@@ -1552,88 +1559,88 @@ model Development {
   gridCols            Int       @default(10)
   gridLayout          Json?
   descricao           String?
-  lat                 Float?    // GPS latitude do centro do terreno
-  lng                 Float?    // GPS longitude do centro do terreno
-  entranceLat         Float?    // GPS latitude da entrada principal (usado pelo Street View 3D)
-  entranceLng         Float?    // GPS longitude da entrada principal
-  implantacaoUrl      String?   // URL Cloudinary da planta de implantação
-  implantacaoPublicId String?   // Cloudinary public ID para delete
-  implantacaoMode     String?   // SATELITE | IMAGEM — modo de posicionamento das torres
-  capaUrl             String?   // URL da foto de capa do card na listagem
-  terrainDesign       Json?     // Desenho do terreno: { version, shapes: [{id, type, points, ...}] }
-  modelUrl            String?   // URL Cloudinary do modelo 3D do arquiteto (.glb/.gltf)
-  modelPublicId       String?   // Cloudinary public ID do modelo 3D para delete
-  areasComuns         Json?     // { piscina, academia, playground, jardim, portaria } (boolean flags)
+  lat                 Float? // GPS latitude do centro do terreno
+  lng                 Float? // GPS longitude do centro do terreno
+  entranceLat         Float? // GPS latitude da entrada principal (usado pelo Street View 3D)
+  entranceLng         Float? // GPS longitude da entrada principal
+  implantacaoUrl      String? // URL Cloudinary da planta de implantação
+  implantacaoPublicId String? // Cloudinary public ID para delete
+  implantacaoMode     String? // SATELITE | IMAGEM — modo de posicionamento das torres
+  capaUrl             String? // URL da foto de capa do card na listagem
+  terrainDesign       Json? // Desenho do terreno: { version, shapes: [{id, type, points, ...}] }
+  modelUrl            String? // URL Cloudinary do modelo 3D do arquiteto (.glb/.gltf)
+  modelPublicId       String? // Cloudinary public ID do modelo 3D para delete
+  areasComuns         Json? // { piscina, academia, playground, jardim, portaria } (boolean flags)
   publishedAt         DateTime? // null = rascunho (visível só para OWNER); preenchido = publicado para todo o tenant
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  tenant           Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   towers           Tower[]
   units            DevelopmentUnit[]
   paymentCondition DevelopmentPaymentCondition?
   mediaItems       DevelopmentMedia[]
   obraUpdates      DevelopmentObraUpdate[]
-  leadInteresses   Lead[]                        @relation("LeadEmpreendimentoInteresse")
+  leadInteresses   Lead[]                       @relation("LeadEmpreendimentoInteresse")
 
   @@index([tenantId])
   @@map("developments")
 }
 
 model Tower {
-  id            String   @id @default(uuid())
-  developmentId String
-  tenantId      String
-  nome          String
-  floors        Int      @default(1)
-  unitsPerFloor Int      @default(1)
-  gridX         Int?
-  gridY         Int?
-  gridWidth     Int      @default(1)
-  gridHeight    Int      @default(1)
-  offsetX       Float    @default(0)    // metros do centro do desenvolvimento (eixo E-W)
-  offsetY       Float    @default(0)    // metros do centro (eixo N-S)
-  larguraM      Float    @default(20)   // largura da torre/quadra em metros
-  profundidadeM Float    @default(15)   // profundidade em metros
-  alturaAndarM  Float    @default(3.0)  // altura por andar (VERTICAL) ou da casa (HORIZONTAL)
-  rotacao       Float    @default(0)    // rotação em graus
-  lados         String   @default("FRENTE,FUNDO,ESQUERDA,DIREITA") // faces com unidades
-  facadeImageUrl String?  // URL da imagem de textura da fachada
-  roofType      String?  @default("FLAT") // FLAT, GABLED, PYRAMID
-  roofColor     String?  @default("#808080") // Cor do telhado
-  facadeColor   String?  @default("#e5e7eb") // Cor da fachada (hex)
-  balconyType   String?  @default("NONE")   // NONE | JULIET | SLAB | GLASS | FRENCH
-  floorPlan     Json?    // Planta do andar: {cols, rows, cells:[APT|HALL|EMPTY], cellWidthM, cellDepthM}
-  hasLobbyFloor Boolean  @default(false)    // Térreo sem apartamentos (só hall/entrada)
+  id                   String   @id @default(uuid())
+  developmentId        String
+  tenantId             String
+  nome                 String
+  floors               Int      @default(1)
+  unitsPerFloor        Int      @default(1)
+  gridX                Int?
+  gridY                Int?
+  gridWidth            Int      @default(1)
+  gridHeight           Int      @default(1)
+  offsetX              Float    @default(0) // metros do centro do desenvolvimento (eixo E-W)
+  offsetY              Float    @default(0) // metros do centro (eixo N-S)
+  larguraM             Float    @default(20) // largura da torre/quadra em metros
+  profundidadeM        Float    @default(15) // profundidade em metros
+  alturaAndarM         Float    @default(3.0) // altura por andar (VERTICAL) ou da casa (HORIZONTAL)
+  rotacao              Float    @default(0) // rotação em graus
+  lados                String   @default("FRENTE,FUNDO,ESQUERDA,DIREITA") // faces com unidades
+  facadeImageUrl       String? // URL da imagem de textura da fachada
+  roofType             String?  @default("FLAT") // FLAT, GABLED, PYRAMID
+  roofColor            String?  @default("#808080") // Cor do telhado
+  facadeColor          String?  @default("#e5e7eb") // Cor da fachada (hex)
+  balconyType          String?  @default("NONE") // NONE | JULIET | SLAB | GLASS | FRENCH
+  floorPlan            Json? // Planta do andar: {cols, rows, cells:[APT|HALL|EMPTY], cellWidthM, cellDepthM}
+  hasLobbyFloor        Boolean  @default(false) // Térreo sem apartamentos (só hall/entrada)
   // Implantação modo IMAGEM — coordenadas relativas (0..1) sobre a imagem de implantação
-  implantacaoX  Float?
-  implantacaoY  Float?
-  implantacaoW  Float?
-  implantacaoH  Float?
+  implantacaoX         Float?
+  implantacaoY         Float?
+  implantacaoW         Float?
+  implantacaoH         Float?
   // Implantação modo SATELITE — coordenadas GPS reais da torre
-  implantacaoLat Float?
-  implantacaoLng Float?
-  ladoConfig       Json?    // legado — { "1": "Norte", "2": "Sul" }
-  subsolos         Int      @default(0)
-  floorUnitsConfig Json?    // legado — { "-1": 4 }
-  fasesConfig      Json?    // [{ "nome": "Sul", "unidades": 4, "subsolos": 2 }, ...]
-  posicaoPad           Int      @default(2)    // dígitos do sufixo: 1=>"11", 2=>"101", 3=>"1001", 4=>"10001"
-  posicaoFinalMap      Json?                  // array de finais por posição global: [3,1,4,...] = posição 1→final 3
-  prefixoUnidade       String?  @default("")  // prefixo antes do código: "Apto", "AP", "" (nenhum)
+  implantacaoLat       Float?
+  implantacaoLng       Float?
+  ladoConfig           Json? // legado — { "1": "Norte", "2": "Sul" }
+  subsolos             Int      @default(0)
+  floorUnitsConfig     Json? // legado — { "-1": 4 }
+  fasesConfig          Json? // [{ "nome": "Sul", "unidades": 4, "subsolos": 2 }, ...]
+  posicaoPad           Int      @default(2) // dígitos do sufixo: 1=>"11", 2=>"101", 3=>"1001", 4=>"10001"
+  posicaoFinalMap      Json? // array de finais por posição global: [3,1,4,...] = posição 1→final 3
+  prefixoUnidade       String?  @default("") // prefixo antes do código: "Apto", "AP", "" (nenhum)
   andarInicialContagem String?  @default("PRIMEIRO_PAV") // "SUBSOLO" | "TERREO" | "PRIMEIRO_PAV"
-  andarInicialDisplay  Int?     @default(1)   // número exibido para o primeiro andar contado
+  andarInicialDisplay  Int?     @default(1) // número exibido para o primeiro andar contado
   subsoloDisplay       String?  @default("PREFIXO_S") // "PREFIXO_S" | "SEQUENCIAL" | "PAV_INFERIOR"
-  terreoConfig         String?  @default("NUMERICO")   // "SEM_APTO" | "NUMERICO" | "TERREO_LABEL"
-  terreoLabelText      String?  @default("T")          // label do térreo quando terreoConfig = "TERREO_LABEL"
+  terreoConfig         String?  @default("NUMERICO") // "SEM_APTO" | "NUMERICO" | "TERREO_LABEL"
+  terreoLabelText      String?  @default("T") // label do térreo quando terreoConfig = "TERREO_LABEL"
   rotuloAcima          String?  @default("NUMERO_PURO") // rótulo dos andares acima: "NUMERO_PURO" | "PAV" | "ANDAR"
   prefixoContagem      String?  @default("DERIVADO_ROTULO") // como calcular o prefixo numérico da unidade: "DERIVADO_ROTULO" | "SEQUENCIAL_TOTAL"
-  blocoIdentificador   String?  @default("")           // identificador do bloco/torre no código: "A", "B", "1", "BL A"
-  blocoPosition        String?  @default("NENHUM")     // posição do bloco no código: "NENHUM" | "INICIO" | "MEIO" | "FIM"
-  blocoSeparador       String?  @default("")           // separador entre bloco e número: "", " ", "-"
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  blocoIdentificador   String?  @default("") // identificador do bloco/torre no código: "A", "B", "1", "BL A"
+  blocoPosition        String?  @default("NENHUM") // posição do bloco no código: "NENHUM" | "INICIO" | "MEIO" | "FIM"
+  blocoSeparador       String?  @default("") // separador entre bloco e número: "", " ", "-"
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  development Development     @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  development Development       @relation(fields: [developmentId], references: [id], onDelete: Cascade)
   units       DevelopmentUnit[]
 
   @@index([developmentId])
@@ -1641,39 +1648,39 @@ model Tower {
 }
 
 model DevelopmentUnit {
-  id             String   @id @default(uuid())
-  towerId        String
-  developmentId  String
-  tenantId       String
-  nome           String
-  andar          Int?
-  posicao        Int?
-  status         String   @default("DISPONIVEL") // DISPONIVEL | PROPOSTA | RESERVADO | VENDIDO | BLOQUEADO
-  bloqueioMotivo String?
-  areaM2         Float?
-  quartos        Int?
-  suites         Int?
-  banheiros      Int?
-  vagas          Int?
-  valorVenda     Float?
-  valorAvaliado  Float?
-  finalPrice     Float?   // preço final negociado (vendido/reservado)
-  comprador      String?  // nome do comprador
-  balconyType    String?  @default("NONE") // NONE, JULIET, STANDARD (sem sacada, sacada julieta, sacada padrão)
-  windowLayout   Json?    // Posições e tamanhos das janelas para renderização 3D
-  loteNum        String?  // identificador do lote (ex: "L01", "Lote 15") — para HORIZONTAL
-  loteAreaM2     Float?   // área real do lote em m²
-  loteFrente     Float?   // dimensão de frente em metros
-  loteFundo      Float?   // dimensão de fundo em metros
+  id                String    @id @default(uuid())
+  towerId           String
+  developmentId     String
+  tenantId          String
+  nome              String
+  andar             Int?
+  posicao           Int?
+  status            String    @default("DISPONIVEL") // DISPONIVEL | PROPOSTA | RESERVADO | VENDIDO | BLOQUEADO
+  bloqueioMotivo    String?
+  areaM2            Float?
+  quartos           Int?
+  suites            Int?
+  banheiros         Int?
+  vagas             Int?
+  valorVenda        Float?
+  valorAvaliado     Float?
+  finalPrice        Float? // preço final negociado (vendido/reservado)
+  comprador         String? // nome do comprador
+  balconyType       String?   @default("NONE") // NONE, JULIET, STANDARD (sem sacada, sacada julieta, sacada padrão)
+  windowLayout      Json? // Posições e tamanhos das janelas para renderização 3D
+  loteNum           String? // identificador do lote (ex: "L01", "Lote 15") — para HORIZONTAL
+  loteAreaM2        Float? // área real do lote em m²
+  loteFrente        Float? // dimensão de frente em metros
+  loteFundo         Float? // dimensão de fundo em metros
   soldAt            DateTime?
-  propostaPagamento String?  // forma de pagamento da proposta (FINANCIAMENTO | FGTS | A_VISTA | CONSORCIO)
-  propostaObs       String?  // observações livres da proposta
-  leadId         String?  // FK para o lead do comprador/interessado
-  lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  pne            Boolean  @default(false) // unidade adaptada para PNE
-  ativo          Boolean  @default(true)  // false = inativo/removido do espelho (não deletado fisicamente)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  propostaPagamento String? // forma de pagamento da proposta (FINANCIAMENTO | FGTS | A_VISTA | CONSORCIO)
+  propostaObs       String? // observações livres da proposta
+  leadId            String? // FK para o lead do comprador/interessado
+  lead              Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  pne               Boolean   @default(false) // unidade adaptada para PNE
+  ativo             Boolean   @default(true) // false = inativo/removido do espelho (não deletado fisicamente)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   bloqueioHistory UnitBloqueioHistory[]
   reservaHistory  UnitReservaHistory[]
@@ -1690,7 +1697,7 @@ model DevelopmentUnit {
 model UnitBloqueioHistory {
   id        String   @id @default(uuid())
   unitId    String
-  acao      String   // BLOQUEADO | DESBLOQUEADO
+  acao      String // BLOQUEADO | DESBLOQUEADO
   motivo    String?
   userName  String?
   userId    String?
@@ -1707,7 +1714,7 @@ model UnitReservaHistory {
   unitId            String
   leadId            String?
   leadNome          String?
-  statusAnterior    String    // PROPOSTA | RESERVADO | VENDIDO
+  statusAnterior    String // PROPOSTA | RESERVADO | VENDIDO
   finalPrice        Float?
   propostaPagamento String?
   propostaObs       String?
@@ -1727,16 +1734,16 @@ model DevelopmentPaymentCondition {
   developmentId           String   @unique
   tenantId                String
   aceitaFinanciamento     Boolean  @default(true)
-  valorAto                Float?   // R$ fixo pago no ato da assinatura
-  entradaPercentual       Float?   // % do valor total para entrada parcelada
-  entradaParcelas         Int?     // quantas parcelas da entrada até entrega
-  descontoAVista          Float?   // % de desconto para pagamento à vista
-  financiamentoBase       String?  // AVALIADO | VENDA
-  financiamentoPercentual Float?   // % sobre a base para financiamento bancário
+  valorAto                Float? // R$ fixo pago no ato da assinatura
+  entradaPercentual       Float? // % do valor total para entrada parcelada
+  entradaParcelas         Int? // quantas parcelas da entrada até entrega
+  descontoAVista          Float? // % de desconto para pagamento à vista
+  financiamentoBase       String? // AVALIADO | VENDA
+  financiamentoPercentual Float? // % sobre a base para financiamento bancário
   proSoluto               Boolean  @default(false)
-  proSolutoPercentual     Float?   // % sobre valor de venda (ex: 3-5%)
-  proSolutoParcelas       Int?     // parcelas do pro-soluto após entrega das chaves
-  obs                     String?  // observações gerais
+  proSolutoPercentual     Float? // % sobre valor de venda (ex: 3-5%)
+  proSolutoParcelas       Int? // parcelas do pro-soluto após entrega das chaves
+  obs                     String? // observações gerais
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -1771,15 +1778,15 @@ model DevelopmentMedia {
 }
 
 model DevelopmentObraUpdate {
-  id              String    @id @default(uuid())
-  developmentId   String
-  tenantId        String
-  dataAtualizacao DateTime
-  titulo            String?
-  observacoes       String?
-  percentualAvanco  Int?      // 0–100
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id               String   @id @default(uuid())
+  developmentId    String
+  tenantId         String
+  dataAtualizacao  DateTime
+  titulo           String?
+  observacoes      String?
+  percentualAvanco Int? // 0–100
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   development Development           @relation(fields: [developmentId], references: [id], onDelete: Cascade)
   tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1823,7 +1830,7 @@ model Correspondent {
 }
 
 model CreditRequest {
-  id              String    @id @default(uuid())
+  id              String @id @default(uuid())
   tenantId        String
   leadId          String
   correspondentId String
@@ -1831,7 +1838,7 @@ model CreditRequest {
   valorImovel       Float?
   valorCredito      Float?
   rendaMensal       Float?
-  tipoFinanciamento String?  // MINHA_CASA_MINHA_VIDA | SBPE | FGTS | CONSORCIO | OUTRO
+  tipoFinanciamento String? // MINHA_CASA_MINHA_VIDA | SBPE | FGTS | CONSORCIO | OUTRO
   observacoes       String?
 
   status      String    @default("EM_ANALISE") // EM_ANALISE | COM_PENDENCIA | APROVADO | REPROVADO | CONDICIONADO
@@ -1841,8 +1848,8 @@ model CreditRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead          Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
   correspondent Correspondent @relation(fields: [correspondentId], references: [id])
 
   @@index([tenantId])
@@ -1851,18 +1858,18 @@ model CreditRequest {
 }
 
 model WhatsappUnofficialSession {
-  id            String     @id @default(uuid())
+  id            String   @id @default(uuid())
   tenantId      String
   nome          String
-  status        String     @default("DISCONNECTED")
+  status        String   @default("DISCONNECTED")
   qrCode        String?
   phoneNumber   String?
   pushName      String?
   authStateJson Json?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   leads    Lead[]
   disparos CampanhaDisparo[]
 
@@ -1871,7 +1878,7 @@ model WhatsappUnofficialSession {
 }
 
 model CampanhaModelo {
-  id               String    @id @default(uuid())
+  id               String   @id @default(uuid())
   tenantId         String
   userId           String
   nome             String
@@ -1879,10 +1886,10 @@ model CampanhaModelo {
   mediaUrl         String?
   mediaPublicId    String?
   mediaType        String?
-  delayMinSegundos Int       @default(10)
-  delayMaxSegundos Int       @default(20)
-  criadoEm         DateTime  @default(now())
-  atualizadoEm     DateTime  @updatedAt
+  delayMinSegundos Int      @default(10)
+  delayMaxSegundos Int      @default(20)
+  criadoEm         DateTime @default(now())
+  atualizadoEm     DateTime @updatedAt
 
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1909,10 +1916,10 @@ model CampanhaDisparo {
   criadoEm      DateTime  @default(now())
   atualizadoEm  DateTime  @updatedAt
 
-  tenant   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   session  WhatsappUnofficialSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  modelo   CampanhaModelo            @relation(fields: [modeloId], references: [id])
+  modelo   CampanhaModelo             @relation(fields: [modeloId], references: [id])
   contatos CampanhaContato[]
 
   @@index([tenantId])
@@ -1941,16 +1948,318 @@ model CampanhaContato {
 }
 
 model UserNotice {
-  id        String    @id @default(uuid())
-  tenantId  String
-  userId    String
-  kind      String    // ex: 'delivery_failed'
-  title     String
-  body      String?
-  readAt    DateTime?
-  criadoEm  DateTime  @default(now())
+  id       String    @id @default(uuid())
+  tenantId String
+  userId   String
+  kind     String // ex: 'delivery_failed'
+  title    String
+  body     String?
+  readAt   DateTime?
+  criadoEm DateTime  @default(now())
 
   @@index([userId, readAt])
   @@index([tenantId])
   @@map("user_notices")
+}
+
+// ============================================================================
+// Pré-Ocupação (TTS — Trabalho Técnico Social) — exclusivo tenant SP9
+// ============================================================================
+// "Família" = o Lead de venda já existente (FK única). "Atividade" = uma sessão
+// agendada (nasce como CalendarEvent) onde várias famílias participam juntas;
+// cada família tem seu próprio registro de preenchimento via
+// PreOcupacaoAtividadeParticipante. Entregáveis Mensais são 100% agregados
+// (não duplicam upload) a partir das sessões/participantes filtrando por
+// competência.
+
+model PreOcupacaoFamilia {
+  id           String                   @id @default(uuid())
+  tenantId     String
+  leadId       String                   @unique
+  numero       Int
+  status       PreOcupacaoFamiliaStatus @default(ATIVA)
+  ativadoEm    DateTime                 @default(now())
+  ativadoPor   String
+  criadoEm     DateTime                 @default(now())
+  atualizadoEm DateTime                 @updatedAt
+
+  lead          Lead                               @relation(fields: [leadId], references: [id], onDelete: Restrict)
+  tenant        Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participacoes PreOcupacaoAtividadeParticipante[]
+  ocorrencias   PreOcupacaoOcorrencia[]
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, status])
+  @@map("pre_ocupacao_familias")
+}
+
+model PreOcupacaoAtividade {
+  id                     String                        @id @default(uuid())
+  tenantId               String
+  categoria              PreOcupacaoAtividadeCategoria
+  calendarEventId        String?                       @unique
+  dataAgendada           DateTime
+  local                  String?
+  titulo                 String?
+  prazoPreenchimentoDias Int                           @default(5)
+  relatorio              String?
+  criadoEm               DateTime                      @default(now())
+  atualizadoEm           DateTime                      @updatedAt
+
+  tenant        Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  calendarEvent CalendarEvent?                     @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  anexos        PreOcupacaoAtividadeAnexo[]
+  participantes PreOcupacaoAtividadeParticipante[]
+
+  @@index([tenantId, categoria])
+  @@index([tenantId, dataAgendada])
+  @@map("pre_ocupacao_atividades")
+}
+
+model PreOcupacaoAtividadeAnexo {
+  id          String               @id @default(uuid())
+  atividadeId String
+  tipo        PreOcupacaoAnexoTipo
+  url         String
+  publicId    String
+  nome        String
+  mimeType    String?
+  legenda     String?
+  criadoEm    DateTime             @default(now())
+
+  atividade PreOcupacaoAtividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+
+  @@index([atividadeId])
+  @@map("pre_ocupacao_atividade_anexos")
+}
+
+model PreOcupacaoAtividadeParticipante {
+  id               String                        @id @default(uuid())
+  atividadeId      String
+  familiaId        String
+  status           PreOcupacaoParticipanteStatus @default(AGUARDANDO_PREENCHIMENTO)
+  preenchidoEm     DateTime?
+  avaliacao        PreOcupacaoAvaliacao?
+  transcricaoFicha String?
+  marcadoFaltaPor  String?
+  criadoEm         DateTime                      @default(now())
+  atualizadoEm     DateTime                      @updatedAt
+
+  atividade PreOcupacaoAtividade           @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+  familia   PreOcupacaoFamilia             @relation(fields: [familiaId], references: [id], onDelete: Cascade)
+  anexos    PreOcupacaoParticipanteAnexo[]
+
+  @@unique([atividadeId, familiaId])
+  @@index([familiaId])
+  @@index([atividadeId, status])
+  @@map("pre_ocupacao_atividade_participantes")
+}
+
+model PreOcupacaoParticipanteAnexo {
+  id             String   @id @default(uuid())
+  participanteId String
+  url            String
+  publicId       String
+  nome           String
+  mimeType       String?
+  criadoEm       DateTime @default(now())
+
+  participante PreOcupacaoAtividadeParticipante @relation(fields: [participanteId], references: [id], onDelete: Cascade)
+
+  @@index([participanteId])
+  @@map("pre_ocupacao_participante_anexos")
+}
+
+model PreOcupacaoEntregavelMensal {
+  id              String                      @id @default(uuid())
+  tenantId        String
+  competencia     String
+  status          PreOcupacaoEntregavelStatus @default(EM_ANDAMENTO)
+  enviadoEm       DateTime?
+  enviadoPor      String?
+  enviadoVersaoId String?
+  criadoEm        DateTime                    @default(now())
+  atualizadoEm    DateTime                    @updatedAt
+
+  tenant        Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  versaoEnviada PreOcupacaoEntregavelVersao? @relation(fields: [enviadoVersaoId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, competencia])
+  @@index([tenantId, status])
+  @@map("pre_ocupacao_entregaveis_mensais")
+}
+
+model PreOcupacaoEntregavelVersao {
+  id          String   @id @default(uuid())
+  tenantId    String
+  competencia String
+  versao      Int
+  arquivoUrl  String
+  publicId    String
+  nomeArquivo String
+  geradoEm    DateTime @default(now())
+  geradoPor   String
+
+  tenant          Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mensaisEnviados PreOcupacaoEntregavelMensal[]
+
+  @@unique([tenantId, competencia, versao])
+  @@index([tenantId, competencia])
+  @@map("pre_ocupacao_entregavel_versoes")
+}
+
+model PreOcupacaoOcorrencia {
+  id              String                      @id @default(uuid())
+  tenantId        String
+  familiaId       String?
+  numero          Int
+  titulo          String
+  tipo            PreOcupacaoOcorrenciaTipo?
+  local           PreOcupacaoOcorrenciaLocal?
+  localDescricao  String?
+  dataAtendimento DateTime
+  horario         String?
+  origem          PreOcupacaoOcorrenciaOrigem @default(MANUAL)
+  status          PreOcupacaoOcorrenciaStatus @default(ABERTA)
+  avaliacao       PreOcupacaoAvaliacao?
+  observacoes     String?
+  resolucao       String?
+  semResposta     Boolean                     @default(false)
+  criadoPor       String?
+  abertaEm        DateTime                    @default(now())
+  encerradaEm     DateTime?
+
+  tenant     Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  familia    PreOcupacaoFamilia?             @relation(fields: [familiaId], references: [id], onDelete: SetNull)
+  anexos     PreOcupacaoOcorrenciaAnexo[]
+  andamentos PreOcupacaoOcorrenciaAndamento[]
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, status])
+  @@index([tenantId, familiaId])
+  @@map("pre_ocupacao_ocorrencias")
+}
+
+// Histórico de atualizações da demanda (tipo comentário de ticket) — o relato
+// original (observacoes/tipo/local) nunca é editado depois de criado;
+// qualquer novidade sobre o atendimento vira um andamento novo, sem apagar
+// o que já foi registrado.
+model PreOcupacaoOcorrenciaAndamento {
+  id           String   @id @default(uuid())
+  ocorrenciaId String
+  texto        String
+  criadoEm     DateTime @default(now())
+  criadoPor    String?
+
+  ocorrencia PreOcupacaoOcorrencia        @relation(fields: [ocorrenciaId], references: [id], onDelete: Cascade)
+  anexos     PreOcupacaoOcorrenciaAnexo[]
+
+  @@index([ocorrenciaId])
+  @@map("pre_ocupacao_ocorrencia_andamentos")
+}
+
+model PreOcupacaoOcorrenciaAnexo {
+  id           String   @id @default(uuid())
+  ocorrenciaId String
+  andamentoId  String?
+  url          String
+  publicId     String
+  nome         String
+  mimeType     String?
+  criadoEm     DateTime @default(now())
+  criadoPor    String?
+
+  ocorrencia PreOcupacaoOcorrencia           @relation(fields: [ocorrenciaId], references: [id], onDelete: Cascade)
+  andamento  PreOcupacaoOcorrenciaAndamento? @relation(fields: [andamentoId], references: [id], onDelete: SetNull)
+
+  @@index([ocorrenciaId])
+  @@index([andamentoId])
+  @@map("pre_ocupacao_ocorrencia_anexos")
+}
+
+model TenantPreOcupacaoFamiliaCounter {
+  tenantId   String   @id
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_pre_ocupacao_familia_counters")
+}
+
+model TenantPreOcupacaoDemandaCounter {
+  tenantId   String   @id
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_pre_ocupacao_demanda_counters")
+}
+
+enum PreOcupacaoFamiliaStatus {
+  ATIVA
+  CONCLUIDA
+  INATIVA
+}
+
+enum PreOcupacaoAtividadeCategoria {
+  DIAGNOSTICO
+  MAPEAMENTO
+  EDUCACAO
+  PLANO_MUDANCA
+  MONITORAMENTO
+  GESTAO_DOCUMENTACAO
+}
+
+enum PreOcupacaoParticipanteStatus {
+  AGUARDANDO_PREENCHIMENTO
+  PENDENTE
+  CONCLUIDA
+  FALTOU
+}
+
+enum PreOcupacaoAvaliacao {
+  PESSIMO
+  RUIM
+  BOM
+  EXCELENTE
+}
+
+enum PreOcupacaoAnexoTipo {
+  LISTA_PRESENCA
+  FOTO
+  VIDEO
+}
+
+enum PreOcupacaoEntregavelStatus {
+  EM_ANDAMENTO
+  CONSOLIDADO
+  ENVIADO
+}
+
+enum PreOcupacaoOcorrenciaOrigem {
+  MANUAL
+  WHATSAPP
+  SITE
+}
+
+enum PreOcupacaoOcorrenciaStatus {
+  ABERTA
+  ENCERRADA
+}
+
+enum PreOcupacaoOcorrenciaLocal {
+  PLANTAO
+  ONLINE
+  OUTRO
+}
+
+enum PreOcupacaoOcorrenciaTipo {
+  DUVIDA
+  DENUNCIA
+  RECLAMACAO
+  SUGESTAO
+  ACOLHIMENTO
+  SOLICITACAO
+  ELOGIO
+  OUTRO
 }
