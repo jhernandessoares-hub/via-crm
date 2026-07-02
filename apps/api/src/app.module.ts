@@ -27,6 +27,7 @@ import { MessageTemplatesModule } from './message-templates/message-templates.mo
 import { DevModule } from './dev/dev.module';
 import { OwnersModule } from './owners/owners.module';
 import { AdminModule } from './admin/admin.module';
+import { FinanceiroModule } from './financeiro/financeiro.module';
 import { SitesModule } from './sites/sites.module';
 import { CorrespondentsModule } from './correspondents/correspondents.module';
 import { CreditRequestsModule } from './credit-requests/credit-requests.module';
@@ -40,6 +41,7 @@ import { LeadDocumentsModule } from './lead-documents/lead-documents.module';
 import { ReportsModule } from './reports/reports.module';
 import { SalesLeadsModule } from './sales-leads/sales-leads.module';
 import { PreOcupacaoModule } from './pre-ocupacao/pre-ocupacao.module';
+import { PreOcupacaoPortalModule } from './pre-ocupacao/portal/portal.module';
 
 @Module({
   imports: [
@@ -71,6 +73,7 @@ import { PreOcupacaoModule } from './pre-ocupacao/pre-ocupacao.module';
     ...(process.env.NODE_ENV !== 'production' ? [DevModule] : []),
     OwnersModule,
     AdminModule,
+    FinanceiroModule,
     SitesModule,
     CorrespondentsModule,
     CreditRequestsModule,
@@ -84,6 +87,7 @@ import { PreOcupacaoModule } from './pre-ocupacao/pre-ocupacao.module';
     ReportsModule,
     SalesLeadsModule,
     PreOcupacaoModule,
+    PreOcupacaoPortalModule,
   ],
   controllers: [AppController],
   providers: [

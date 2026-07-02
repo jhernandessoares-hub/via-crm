@@ -37,6 +37,20 @@ const navItems: NavItem[] = [
       { href: "/admin/usage", label: "Dashboard de Uso" },
     ],
   },
+  {
+    group: "Financeiro",
+    items: [
+      { href: "/admin/financeiro", label: "Visão Geral", exact: true },
+      { href: "/admin/financeiro/contas-a-pagar", label: "Contas a Pagar" },
+      { href: "/admin/financeiro/contas-a-receber", label: "Contas a Receber" },
+      { href: "/admin/financeiro/documentos-fiscais", label: "Documentos Fiscais" },
+      { href: "/admin/financeiro/fluxo-de-caixa", label: "Fluxo de Caixa" },
+      { href: "/admin/financeiro/conciliacao", label: "Conciliação" },
+      { href: "/admin/financeiro/dre", label: "DRE" },
+      { href: "/admin/financeiro/balancete", label: "Balancete" },
+      { href: "/admin/financeiro/configuracoes", label: "Configurações" },
+    ],
+  },
   { href: "/admin/correspondentes", label: "💳 Correspondentes" },
   { href: "/admin/audit", label: "Audit Log" },
   { href: "/admin/filas", label: "Filas & IA" },
@@ -100,7 +114,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               return (
                 <NavGroup key={item.group} label={item.group} defaultOpen={groupActive}>
                   {item.items.map((sub) => {
-                    const active = pathname.startsWith(sub.href);
+                    const active = sub.exact ? pathname === sub.href : pathname.startsWith(sub.href);
                     return (
                       <Link
                         key={sub.href}

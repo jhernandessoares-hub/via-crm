@@ -344,6 +344,7 @@ model Lead {
   @@index([tenantId, pipelineId])
   @@index([tenantId, stageId])
   @@index([tenantId, conversaCanal])
+  @@index([tenantId, cpf])
   @@map("leads")
 }
 
@@ -1987,10 +1988,28 @@ model PreOcupacaoFamilia {
   tenant        Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   participacoes PreOcupacaoAtividadeParticipante[]
   ocorrencias   PreOcupacaoOcorrencia[]
+  sessions      PreOcupacaoFamiliaSession[]
 
   @@unique([tenantId, numero])
   @@index([tenantId, status])
   @@map("pre_ocupacao_familias")
+}
+
+// Sessão do portal de login das famílias (CPF + Data de Nascimento).
+// jti é o identificador do JWT emitido no login; revogar aqui invalida
+// o acesso mesmo com token ainda não expirado (ex.: família virou INATIVA).
+model PreOcupacaoFamiliaSession {
+  id         String    @id @default(uuid())
+  jti        String    @unique
+  familiaId  String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  criadoEm   DateTime  @default(now())
+
+  familia PreOcupacaoFamilia @relation(fields: [familiaId], references: [id], onDelete: Cascade)
+
+  @@index([familiaId])
+  @@map("pre_ocupacao_familia_sessions")
 }
 
 model PreOcupacaoAtividade {
@@ -2240,6 +2259,7 @@ enum PreOcupacaoOcorrenciaOrigem {
   MANUAL
   WHATSAPP
   SITE
+  PORTAL_FAMILIA
 }
 
 enum PreOcupacaoOcorrenciaStatus {
@@ -2262,4 +2282,265 @@ enum PreOcupacaoOcorrenciaTipo {
   SOLICITACAO
   ELOGIO
   OUTRO
+}
+
+// ============================================================
+// FINANCEIRO PLATAFORMA (VEXCIA) — exclusivo do Platform Admin
+// Caixa único da holding; sem tenantId (nível plataforma).
+// Dinheiro: Decimal(18,2). Datas de negócio: @db.Date (YYYY-MM-DD).
+// ============================================================
+
+enum FinCategoryType {
+  RECEITA
+  DESPESA
+}
+
+enum FinEntryType {
+  PAGAR
+  RECEBER
+}
+
+// VENCIDO é sempre computado (vencimento < hoje && status ABERTO/PARCIAL), nunca persistido
+enum FinEntryStatus {
+  ABERTO
+  PARCIAL
+  PAGO
+  CANCELADO
+}
+
+enum FinContactType {
+  CLIENTE
+  FORNECEDOR
+  AMBOS
+}
+
+enum FinTxStatus {
+  PENDENTE
+  CONCILIADO
+  IGNORADO
+}
+
+enum FinImportFormat {
+  OFX
+  CSV
+  XLSX
+}
+
+enum FinDocumentType {
+  NF_EMITIDA
+  NF_RECEBIDA
+  GUIA_IMPOSTO
+  COMPROVANTE
+  BOLETO
+  OUTRO
+}
+
+// Plano de contas 2 níveis: parentId null = grupo; preenchido = analítica.
+// Lançamentos apontam somente para categorias analíticas.
+model FinCategory {
+  id       String          @id @default(uuid())
+  nome     String
+  tipo     FinCategoryType
+  parentId String?
+  parent   FinCategory?    @relation("FinCategoryTree", fields: [parentId], references: [id])
+  children FinCategory[]   @relation("FinCategoryTree")
+  ordem    Int             @default(0)
+  sistema  Boolean         @default(false) // criada pelo seed; não deletável
+  ativo    Boolean         @default(true)
+
+  entries        FinEntry[]
+  recurringRules FinRecurringRule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tipo, parentId, nome])
+  @@index([tipo, ativo])
+  @@map("fin_categories")
+}
+
+model FinBankAccount {
+  id               String   @id @default(uuid())
+  nome             String
+  banco            String?
+  agencia          String?
+  conta            String?
+  saldoInicial     Decimal  @default(0) @db.Decimal(18, 2)
+  saldoInicialData DateTime @db.Date
+  ativo            Boolean  @default(true)
+
+  payments     FinPayment[]
+  transactions FinBankTransaction[]
+  imports      FinBankStatementImport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("fin_bank_accounts")
+}
+
+// Contraparte: fornecedor, cliente ou CNPJ prestador de serviço da holding
+model FinContact {
+  id         String         @id @default(uuid())
+  nome       String
+  documento  String? // CNPJ/CPF sem máscara
+  tipo       FinContactType @default(AMBOS)
+  observacao String?
+  ativo      Boolean        @default(true)
+
+  entries        FinEntry[]
+  recurringRules FinRecurringRule[]
+  documents      FinDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo, ativo])
+  @@map("fin_contacts")
+}
+
+// Recorrência: mensalidade de tenant (tenantId preenchido, 1 regra por tenant)
+// ou receita/despesa fixa da holding
+model FinRecurringRule {
+  id            String       @id @default(uuid())
+  tipo          FinEntryType
+  descricao     String
+  categoriaId   String
+  categoria     FinCategory  @relation(fields: [categoriaId], references: [id])
+  contactId     String?
+  contact       FinContact?  @relation(fields: [contactId], references: [id])
+  tenantId      String?      @unique
+  valor         Decimal      @db.Decimal(18, 2)
+  diaVencimento Int          @default(5) // clamp para último dia do mês quando necessário
+  ativo         Boolean      @default(true)
+  updatedBy     String? // platformAdminId
+
+  entries FinEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ativo, tipo])
+  @@map("fin_recurring_rules")
+}
+
+model FinEntry {
+  id              String            @id @default(uuid())
+  tipo            FinEntryType
+  descricao       String
+  categoriaId     String
+  categoria       FinCategory       @relation(fields: [categoriaId], references: [id])
+  contactId       String?
+  contact         FinContact?       @relation(fields: [contactId], references: [id])
+  tenantId        String? // mensalidade do VIA CRM (sem FK — padrão do projeto)
+  competencia     DateTime          @db.Date // sempre dia 1 do mês
+  vencimento      DateTime          @db.Date
+  valor           Decimal           @db.Decimal(18, 2)
+  status          FinEntryStatus    @default(ABERTO)
+  parcelaNum      Int?
+  parcelaTotal    Int?
+  parcelaGroupId  String?
+  recurringRuleId String?
+  recurringRule   FinRecurringRule? @relation(fields: [recurringRuleId], references: [id])
+  observacao      String?
+  createdBy       String? // platformAdminId
+
+  payments  FinPayment[]
+  documents FinDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([recurringRuleId, competencia])
+  @@index([tipo, status, vencimento])
+  @@index([categoriaId, competencia])
+  @@index([tenantId])
+  @@index([parcelaGroupId])
+  @@map("fin_entries")
+}
+
+// Baixa (pagamento/recebimento) — permite parcial; recálculo de status na mesma transação
+model FinPayment {
+  id                String              @id @default(uuid())
+  entryId           String
+  entry             FinEntry            @relation(fields: [entryId], references: [id])
+  bankAccountId     String
+  bankAccount       FinBankAccount      @relation(fields: [bankAccountId], references: [id])
+  dataPagamento     DateTime            @db.Date
+  valor             Decimal             @db.Decimal(18, 2)
+  observacao        String?
+  bankTransactionId String?             @unique // preenchido = conciliado com linha de extrato
+  bankTransaction   FinBankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  createdBy         String? // platformAdminId
+  createdAt         DateTime            @default(now())
+
+  @@index([bankAccountId, dataPagamento])
+  @@index([entryId])
+  @@map("fin_payments")
+}
+
+// Documento fiscal: NF emitida/recebida, guia de imposto, comprovante, boleto.
+// Arquivo no Cloudinary type 'authenticated' (mesmo padrão de LeadDocument).
+// M2M com FinEntry: uma nota pode gerar N parcelas; um título pode ter nota + comprovante + guia.
+model FinDocument {
+  id                 String          @id @default(uuid())
+  tipo               FinDocumentType
+  numero             String?
+  descricao          String?
+  valor              Decimal?        @db.Decimal(18, 2)
+  dataEmissao        DateTime?       @db.Date
+  contactId          String?
+  contact            FinContact?     @relation(fields: [contactId], references: [id])
+  filename           String
+  mimeType           String
+  cloudinaryPublicId String
+  resourceType       String          @default("raw") // raw | image
+  createdBy          String? // platformAdminId
+
+  entries FinEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo, createdAt])
+  @@map("fin_documents")
+}
+
+model FinBankStatementImport {
+  id            String          @id @default(uuid())
+  bankAccountId String
+  bankAccount   FinBankAccount  @relation(fields: [bankAccountId], references: [id])
+  formato       FinImportFormat
+  filename      String
+  totalLinhas   Int
+  importadas    Int
+  duplicadas    Int
+  createdBy     String? // platformAdminId
+  createdAt     DateTime        @default(now())
+
+  transactions FinBankTransaction[]
+
+  @@map("fin_statement_imports")
+}
+
+// Linha de extrato. valor COM SINAL: negativo = débito/saída.
+// hash = sha256(bankAccountId|fitId) quando há FITID; senão sha256(bankAccountId|data|valor|descricao normalizada)
+model FinBankTransaction {
+  id            String                 @id @default(uuid())
+  importId      String
+  import        FinBankStatementImport @relation(fields: [importId], references: [id])
+  bankAccountId String
+  bankAccount   FinBankAccount         @relation(fields: [bankAccountId], references: [id])
+  data          DateTime               @db.Date
+  valor         Decimal                @db.Decimal(18, 2)
+  descricao     String
+  fitId         String?
+  hash          String
+  status        FinTxStatus            @default(PENDENTE)
+  payment       FinPayment?
+  createdAt     DateTime               @default(now())
+
+  @@unique([bankAccountId, hash])
+  @@index([bankAccountId, status, data])
+  @@map("fin_bank_transactions")
 }

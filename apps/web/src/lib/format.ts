@@ -48,6 +48,34 @@ export function maskPhone(raw: string): string {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
+/** Formata number como moeda BRL: 1234.5 → "R$ 1.234,50" */
+export function formatBRL(n: number): string {
+  return (Number.isFinite(n) ? n : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/** Formata dígitos digitados como moeda em centavos: "123456" → "1.234,56" */
+export function maskMoney(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 15);
+  if (!digits) return "";
+  const num = parseInt(digits, 10);
+  const int = Math.floor(num / 100);
+  const dec = num % 100;
+  return `${int.toLocaleString("pt-BR")},${String(dec).padStart(2, "0")}`;
+}
+
+/** Converte "1.234,56" para number 1234.56 (undefined se vazio/inválido) */
+export function parseMoney(v: string): number | undefined {
+  const clean = (v || "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(clean);
+  return isNaN(n) ? undefined : Math.round(n * 100) / 100;
+}
+
+/** number → string de edição no padrão maskMoney: 1234.56 → "1.234,56" */
+export function moneyToMask(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "";
+  return maskMoney(String(Math.round(n * 100)));
+}
+
 /** Valida CPF (formato + dígitos verificadores). Vazio retorna false. */
 export function isValidCPF(cpf: string): boolean {
   const d = (cpf || "").replace(/\D/g, "");

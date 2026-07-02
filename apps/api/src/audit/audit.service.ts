@@ -48,7 +48,21 @@ export type AuditAction =
   | 'PRE_OCUPACAO_MARCAR_FALTA'
   | 'PRE_OCUPACAO_ENCERRAR_DEMANDA'
   | 'PRE_OCUPACAO_GERAR_ENTREGAVEL'
-  | 'PRE_OCUPACAO_ENVIAR_ENTREGAVEL';
+  | 'PRE_OCUPACAO_ENVIAR_ENTREGAVEL'
+  | 'PORTAL_FAMILIA_LOGIN'
+  | 'PORTAL_FAMILIA_LOGIN_FAILED'
+  | 'PLATFORM_FIN_CREATE_ENTRY'
+  | 'PLATFORM_FIN_UPDATE_ENTRY'
+  | 'PLATFORM_FIN_CANCEL_ENTRY'
+  | 'PLATFORM_FIN_PAYMENT'
+  | 'PLATFORM_FIN_PAYMENT_REVERSAL'
+  | 'PLATFORM_FIN_UPDATE_RECURRING'
+  | 'PLATFORM_FIN_GENERATE_RECURRING'
+  | 'PLATFORM_FIN_IMPORT_STATEMENT'
+  | 'PLATFORM_FIN_RECONCILE'
+  | 'PLATFORM_FIN_UPLOAD_DOCUMENT'
+  | 'PLATFORM_FIN_DELETE_DOCUMENT'
+  | 'PLATFORM_FIN_DOC_GENERATE_ENTRIES';
 
 @Injectable()
 export class AuditService {
@@ -57,6 +71,7 @@ export class AuditService {
   async log(entry: {
     tenantId?: string;
     userId?: string;
+    platformAdminId?: string;
     action: AuditAction;
     resourceType?: string;
     resourceId?: string;
