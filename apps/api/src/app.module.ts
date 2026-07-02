@@ -41,6 +41,7 @@ import { LeadDocumentsModule } from './lead-documents/lead-documents.module';
 import { ReportsModule } from './reports/reports.module';
 import { SalesLeadsModule } from './sales-leads/sales-leads.module';
 import { PreOcupacaoModule } from './pre-ocupacao/pre-ocupacao.module';
+import { PreOcupacaoPortalModule } from './pre-ocupacao/portal/portal.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { PreOcupacaoModule } from './pre-ocupacao/pre-ocupacao.module';
     ReportsModule,
     SalesLeadsModule,
     PreOcupacaoModule,
+    PreOcupacaoPortalModule,
   ],
   controllers: [AppController],
   providers: [

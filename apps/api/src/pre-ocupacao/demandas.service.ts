@@ -5,34 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { FamiliasService } from './familias.service';
 import { getNextDemandaNumber } from './pre-ocupacao-numbering.helper';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
-
-const TIPO_LABEL: Record<string, string> = {
-  DUVIDA: 'Dúvida',
-  DENUNCIA: 'Denúncia',
-  RECLAMACAO: 'Reclamação',
-  SUGESTAO: 'Sugestão',
-  ACOLHIMENTO: 'Acolhimento',
-  SOLICITACAO: 'Solicitação',
-  ELOGIO: 'Elogio',
-  OUTRO: 'Outro',
-};
-const TIPOS_VALIDOS = Object.keys(TIPO_LABEL);
-const LOCAIS_VALIDOS = ['PLANTAO', 'ONLINE', 'OUTRO'];
-
-function validarTipo(tipo: unknown): string {
-  if (typeof tipo !== 'string' || !TIPOS_VALIDOS.includes(tipo)) {
-    throw new BadRequestException(`tipo é obrigatório e deve ser um de: ${TIPOS_VALIDOS.join(', ')}.`);
-  }
-  return tipo;
-}
-
-function validarLocal(local: unknown): string | null {
-  if (local == null || local === '') return null;
-  if (typeof local !== 'string' || !LOCAIS_VALIDOS.includes(local)) {
-    throw new BadRequestException(`local deve ser um de: ${LOCAIS_VALIDOS.join(', ')}.`);
-  }
-  return local;
-}
+import { TIPO_LABEL, validarLocal, validarTipo } from './pre-ocupacao-demanda-validation.util';
 
 @Injectable()
 export class DemandasService {
