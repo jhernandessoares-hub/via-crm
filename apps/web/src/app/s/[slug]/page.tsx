@@ -10,8 +10,14 @@ import {
   normalizeSiteContent,
 } from "@/lib/site-content";
 import { ContactFormBlock } from "@/components/site/ContactFormBlock";
+import SimJoseBonifacioSite from "@/components/sites/SimJoseBonifacioSite";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
+
+// Sites com página escrita à mão (não passam pelo editor visual genérico —
+// ver comentário em SimJoseBonifacioSite.tsx). O registro em TenantSite
+// continua existindo normalmente em /my-site.
+const HANDWRITTEN_SITE_SLUGS = ["sim-jose-bonifacio"];
 
 async function fetchPublicSite(slug: string): Promise<{
   id: string;
@@ -51,6 +57,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  if (HANDWRITTEN_SITE_SLUGS.includes(slug)) return { title: "SIM José Bonifácio" };
   const site = await fetchPublicSite(slug);
   if (!site) return { title: "Site não encontrado" };
   return { title: site.name };
@@ -324,6 +331,11 @@ export default async function PublicSitePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+
+  if (slug === "sim-jose-bonifacio") {
+    return <SimJoseBonifacioSite slug={slug} />;
+  }
+
   const [site, products] = await Promise.all([
     fetchPublicSite(slug),
     fetchPublicProducts(slug),

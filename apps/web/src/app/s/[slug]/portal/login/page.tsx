@@ -1,8 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { portalLogin } from "@/lib/portal-familia.service";
+
+const LOGO_URL =
+  "https://res.cloudinary.com/divurdnpz/image/upload/e_trim/v1783042264/via-crm/sites/sp9/yvzu4cu5xuswjbgayc35.jpg";
 
 export default function PortalFamiliaLoginPage() {
   const params = useParams<{ slug: string }>();
@@ -31,9 +35,14 @@ export default function PortalFamiliaLoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-slate-950 mb-1">Área do Cliente</p>
-          <p className="text-sm text-slate-500">Acompanhe seus atendimentos e solicitações</p>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-2xl font-bold text-slate-950 mb-1">Área da Família</p>
+            <p className="text-sm text-slate-500">Acompanhe seus atendimentos e solicitações</p>
+          </div>
+          <div className="relative h-14 w-14 shrink-0">
+            <Image src={LOGO_URL} alt="SIM José Bonifácio" fill unoptimized className="object-contain" />
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-sm space-y-4">

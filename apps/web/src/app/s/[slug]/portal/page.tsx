@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -60,19 +61,38 @@ export default function PortalFamiliaDashboardPage() {
             <p className="text-xl font-bold text-slate-950">Olá, {nome}</p>
             <p className="text-sm text-slate-500">Suas solicitações de atendimento</p>
           </div>
-          <button onClick={handleLogout} className="text-sm font-medium text-slate-500 hover:text-slate-950">
-            Sair
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="relative h-12 w-28 shrink-0">
+              <Image
+                src="https://res.cloudinary.com/divurdnpz/image/upload/e_trim/v1783042264/via-crm/sites/sp9/yvzu4cu5xuswjbgayc35.jpg"
+                alt="SIM José Bonifácio"
+                fill
+                unoptimized
+                className="object-contain"
+              />
+            </div>
+            <button onClick={handleLogout} className="text-sm font-medium text-slate-500 hover:text-slate-950">
+              Sair
+            </button>
+          </div>
         </div>
 
         {error && <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <Link
-          href={`/s/${slug}/portal/nova`}
-          className="block w-full rounded-full bg-slate-950 py-3 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
-        >
-          Nova solicitação
-        </Link>
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href={`/s/${slug}/portal/nova`}
+            className="block w-full rounded-full bg-slate-950 py-3 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Nova solicitação
+          </Link>
+          <Link
+            href={`/s/${slug}/portal/conteudo`}
+            className="block w-full rounded-full border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+          >
+            Conteúdo Educacional
+          </Link>
+        </div>
 
         <div className="space-y-3">
           {demandas.length === 0 && (
