@@ -41,7 +41,11 @@ export class TenantSitesController {
   }
 
   @Patch(':id')
-  updateSite(@Req() req: any, @Param('id') id: string, @Body() body: Partial<{ name: string; contentJson: object }>) {
+  updateSite(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: Partial<{ name: string; contentJson: object; customDomain: string | null }>,
+  ) {
     if (req.user.role !== 'OWNER') {
       return { ok: false, error: 'Apenas OWNERs podem editar sites.' };
     }

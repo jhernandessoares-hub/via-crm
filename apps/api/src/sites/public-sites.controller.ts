@@ -5,6 +5,12 @@ import { SitesService } from './sites.service';
 export class PublicSitesController {
   constructor(private readonly sitesService: SitesService) {}
 
+  // Antes de ':slug' — NestJS resolve rotas na ordem de declaração
+  @Get('domain/:host')
+  getPublicSiteByDomain(@Param('host') host: string) {
+    return this.sitesService.getPublicSiteSlugByDomain(host);
+  }
+
   @Get(':slug')
   getPublicSite(@Param('slug') slug: string) {
     return this.sitesService.getPublicSite(slug);

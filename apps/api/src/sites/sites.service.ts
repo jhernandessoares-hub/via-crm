@@ -7,6 +7,21 @@ import { LimitExceededException } from '../plans/usage.service';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
 import { getNextDemandaNumber } from '../pre-ocupacao/pre-ocupacao-numbering.helper';
 
+const DOMAIN_REGEX = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+
+/**
+ * Normaliza um domínio custom para a forma canônica guardada no banco:
+ * lowercase, sem protocolo, sem porta, sem path e sem prefixo `www.`.
+ * Retorna null se o resultado não for um domínio válido.
+ */
+export function normalizeCustomDomain(input: string): string | null {
+  let domain = input.trim().toLowerCase();
+  domain = domain.replace(/^https?:\/\//, '');
+  domain = domain.split('/')[0].split(':')[0];
+  if (domain.startsWith('www.')) domain = domain.slice(4);
+  return DOMAIN_REGEX.test(domain) ? domain : null;
+}
+
 @Injectable()
 export class SitesService {
   private readonly logger = new Logger('SitesService');
@@ -199,9 +214,32 @@ export class SitesService {
 
   // ── Tenant: update own site (save draft) ────────────────────────────────────
 
-  async updateTenantSite(tenantId: string, id: string, data: Partial<{ name: string; contentJson: object }>) {
+  async updateTenantSite(
+    tenantId: string,
+    id: string,
+    data: Partial<{ name: string; contentJson: object; customDomain: string | null }>,
+  ) {
     await this.getTenantSite(tenantId, id);
-    return this.prisma.tenantSite.update({ where: { id }, data });
+
+    const update: Prisma.TenantSiteUpdateInput = {};
+    if (data.name !== undefined) update.name = data.name;
+    if (data.contentJson !== undefined) update.contentJson = data.contentJson as Prisma.InputJsonValue;
+    if (data.customDomain !== undefined) {
+      const domain = data.customDomain ? normalizeCustomDomain(data.customDomain) : null;
+      if (data.customDomain && !domain) {
+        throw new BadRequestException('Domínio inválido. Use o formato meusite.com.br (sem https:// e sem barras).');
+      }
+      update.customDomain = domain;
+    }
+
+    try {
+      return await this.prisma.tenantSite.update({ where: { id }, data: update });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new BadRequestException('Este domínio já está em uso por outro site.');
+      }
+      throw e;
+    }
   }
 
   // ── Tenant: publish ─────────────────────────────────────────────────────────
@@ -254,6 +292,19 @@ export class SitesService {
     }
     await this.prisma.siteTemplate.delete({ where: { id } });
     return { ok: true };
+  }
+
+  // ── Public: resolve slug by custom domain (usado pelo proxy do frontend) ────
+
+  async getPublicSiteSlugByDomain(host: string) {
+    const domain = normalizeCustomDomain(host);
+    if (!domain) throw new NotFoundException('Site não encontrado.');
+    const site = await this.prisma.tenantSite.findFirst({
+      where: { customDomain: domain, status: 'PUBLISHED' },
+      select: { slug: true },
+    });
+    if (!site) throw new NotFoundException('Site não encontrado.');
+    return { slug: site.slug };
   }
 
   // ── Public: get published site by slug ──────────────────────────────────────
