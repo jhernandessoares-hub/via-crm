@@ -31,6 +31,15 @@ const IMG = {
   planta8: "https://res.cloudinary.com/divurdnpz/image/upload/v1783042274/via-crm/sites/sp9/bkdij2s7mva779aulh8f.jpg",
 };
 
+const OBRA_FOTOS = [
+  "https://res.cloudinary.com/divurdnpz/image/upload/v1783048612/via-crm/sites/sp9/obra/mcx5ch8xcejbv9mkbvng.jpg",
+  "https://res.cloudinary.com/divurdnpz/image/upload/v1783048613/via-crm/sites/sp9/obra/eteopgf4kvqjajrbzym7.jpg",
+  "https://res.cloudinary.com/divurdnpz/image/upload/v1783048613/via-crm/sites/sp9/obra/qxeqav0ghhqasxatx0do.jpg",
+  "https://res.cloudinary.com/divurdnpz/image/upload/v1783048614/via-crm/sites/sp9/obra/zgzgqjzgm94ekukdm7n4.jpg",
+  "https://res.cloudinary.com/divurdnpz/image/upload/v1783048615/via-crm/sites/sp9/obra/xkfbaiwra0offttbzoqc.jpg",
+  "https://res.cloudinary.com/divurdnpz/image/upload/v1783048616/via-crm/sites/sp9/obra/udp6oiejdnwtjmrawpxc.jpg",
+];
+
 const PARCEIROS = [
   { src: "https://res.cloudinary.com/divurdnpz/image/upload/v1783044095/via-crm/sites/sp9/parceiros/eprugi0in8r2jq2s5wx7.jpg", alt: "Governo do Estado de São Paulo" },
   { src: "https://res.cloudinary.com/divurdnpz/image/upload/v1783044095/via-crm/sites/sp9/parceiros/vw3jksmffpcowlhazt59.png", alt: "Prefeitura de São Paulo" },
@@ -265,7 +274,13 @@ export default function SimJoseBonifacioSite({ slug }: { slug: string }) {
       <section id="obra" className="border-t border-slate-200 bg-slate-50 py-20">
         <div className="mx-auto max-w-6xl px-6">
           <SectionTitle eyebrow="Acompanhamento" title="A Obra" />
-          <p className="text-base leading-7 text-slate-600">Fotos do andamento da obra em breve.</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {OBRA_FOTOS.map((src, i) => (
+              <div key={src} className="relative aspect-[4/3] overflow-hidden rounded-2xl shadow-lg shadow-slate-200">
+                <Image src={src} alt={`Andamento da obra ${i + 1}`} fill unoptimized className="object-cover" />
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
