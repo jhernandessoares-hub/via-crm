@@ -27,11 +27,18 @@ function resolveResourceType(mimetype: string | undefined): 'image' | 'video' | 
   return 'raw';
 }
 
-/** Upload de anexo (foto/vídeo/lista de presença/ficha) para Cloudinary — retorna { url, publicId }. */
+/**
+ * Upload de anexo (foto/vídeo/lista de presença/ficha) para Cloudinary — retorna { url, publicId }.
+ *
+ * Por padrão privado (`type: 'authenticated'`). Passar `{ public: true }` para
+ * conteúdo institucional/educacional sem dado pessoal (ex.: "Conteúdo e Mídias"),
+ * evitando a necessidade de URL assinada a cada visualização.
+ */
 export async function uploadPreOcupacaoFile(
   file: any,
   tenantId: string,
   subfolder: string,
+  opts?: { public?: boolean },
 ): Promise<{ url: string; publicId: string }> {
   ensurePreOcupacaoCloudinaryConfigured();
   const resourceType = resolveResourceType(file?.mimetype);
@@ -41,7 +48,7 @@ export async function uploadPreOcupacaoFile(
         {
           folder: `via-crm/pre-ocupacao/${tenantId}/${subfolder}`,
           resource_type: resourceType,
-          type: 'authenticated', // 🔒 privado — só acessível via URL assinada pelo backend
+          type: opts?.public ? 'upload' : 'authenticated', // 🔒 privado por padrão — só acessível via URL assinada pelo backend
           use_filename: false,
           unique_filename: true,
         },

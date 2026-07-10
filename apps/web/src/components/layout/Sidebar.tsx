@@ -33,6 +33,7 @@ import {
   AlertCircle,
   CalendarDays,
   Archive,
+  Image as ImageIcon,
   type LucideIcon,
 } from "lucide-react";
 import { apiLogout } from "@/lib/api";
@@ -364,6 +365,7 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
                   { href: "/pre-ocupacao/demandas", label: "Demandas", icon: AlertCircle },
                   { href: "/pre-ocupacao/calendario", label: "Calendário", icon: CalendarDays },
                   { href: "/pre-ocupacao/entregaveis", label: "Entregáveis Mensais", icon: Archive },
+                  { href: "/pre-ocupacao/conteudo", label: "Conteúdo e Mídias", icon: ImageIcon },
                 ].map((item) => {
                   const active = pathname === item.href || pathname.startsWith(item.href + "/");
                   const ItemIcon = item.icon;

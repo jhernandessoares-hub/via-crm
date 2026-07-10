@@ -48,6 +48,15 @@ export type PortalFamiliaSession = {
   lead: { nome: string; numero: number | null };
 };
 
+export type PortalConteudo = {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  url: string;
+  mimeType: string | null;
+  criadoEm: string;
+};
+
 function tokenKey(slug: string) {
   return `portalFamiliaToken_${slug}`;
 }
@@ -121,6 +130,11 @@ export async function portalCriarDemanda(
   body: { tipo: DemandaTipo; tituloPersonalizado?: string; observacoes?: string },
 ): Promise<PortalDemanda> {
   return portalFetch(slug, `/pre-ocupacao-portal/demandas`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function portalListarConteudos(slug: string): Promise<PortalConteudo[]> {
+  const data = await portalFetch(slug, `/pre-ocupacao-portal/conteudo`);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function portalAdicionarAndamento(slug: string, id: string, texto: string, file?: File | null) {

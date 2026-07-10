@@ -137,6 +137,7 @@ model Tenant {
   preOcupacaoOcorrencias        PreOcupacaoOcorrencia[]
   preOcupacaoFamiliaCounter     TenantPreOcupacaoFamiliaCounter?
   preOcupacaoDemandaCounter     TenantPreOcupacaoDemandaCounter?
+  preOcupacaoConteudos          PreOcupacaoConteudo[]
 
   @@map("tenants")
 }
@@ -1995,7 +1996,7 @@ model PreOcupacaoFamilia {
   @@map("pre_ocupacao_familias")
 }
 
-// Sessão do portal de login das famílias (CPF + Data de Nascimento).
+// Sessão do portal de login das famílias (CPF + últimos 4 dígitos do telefone).
 // jti é o identificador do JWT emitido no login; revogar aqui invalida
 // o acesso mesmo com token ainda não expirado (ex.: família virou INATIVA).
 model PreOcupacaoFamiliaSession {
@@ -2010,6 +2011,28 @@ model PreOcupacaoFamiliaSession {
 
   @@index([familiaId])
   @@map("pre_ocupacao_familia_sessions")
+}
+
+// Conteúdo educacional (vídeo/imagem/apresentação) subido pela equipe e exibido
+// na área logada da família (Portal Família). Armazenamento público no Cloudinary
+// (não é dado pessoal/LGPD como os anexos de demanda/atividade).
+model PreOcupacaoConteudo {
+  id           String   @id @default(uuid())
+  tenantId     String
+  titulo       String
+  descricao    String?
+  url          String
+  publicId     String
+  mimeType     String?
+  oculto       Boolean  @default(false)
+  criadoPor    String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, oculto])
+  @@map("pre_ocupacao_conteudos")
 }
 
 model PreOcupacaoAtividade {

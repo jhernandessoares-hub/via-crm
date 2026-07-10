@@ -9,11 +9,13 @@ import { EntregaveisController } from './entregaveis.controller';
 import { EntregaveisService } from './entregaveis.service';
 import { DemandasController } from './demandas.controller';
 import { DemandasService } from './demandas.service';
+import { ConteudoController } from './conteudo.controller';
+import { ConteudoService } from './conteudo.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [FamiliasController, AtividadesController, EntregaveisController, DemandasController],
-  providers: [AddonGuard, FamiliasService, AtividadesService, EntregaveisService, DemandasService],
-  exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService],
+  controllers: [FamiliasController, AtividadesController, EntregaveisController, DemandasController, ConteudoController],
+  providers: [AddonGuard, FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService],
+  exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService],
 })
 export class PreOcupacaoModule {}
