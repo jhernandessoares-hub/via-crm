@@ -1,6 +1,7 @@
 import { Controller, Get, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { QueueService } from './queue/queue.service';
+import { APP_VERSION, CHANGELOG } from './version/version.data';
 
 @Controller()
 export class AppController {
@@ -13,8 +14,19 @@ export class AppController {
     const status = redis.ok ? 'ok' : 'degraded';
     return {
       status,
+      version: APP_VERSION,
       redis,
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('version')
+  getVersion() {
+    return {
+      version: APP_VERSION,
+      commitSha: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || null,
+      branch: process.env.RAILWAY_GIT_BRANCH || null,
+      changelog: CHANGELOG,
     };
   }
 
