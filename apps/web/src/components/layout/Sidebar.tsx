@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
@@ -24,7 +24,6 @@ import {
   Shield,
   Globe,
   Palette,
-  LogOut,
   GitMerge,
   KeyRound,
   ClipboardCheck,
@@ -35,8 +34,8 @@ import {
   Archive,
   type LucideIcon,
 } from "lucide-react";
-import { apiLogout } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
+import { VersionBadge } from "@/components/VersionBadge";
 import { isSP9 } from "@/lib/sp9";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
@@ -83,7 +82,6 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
   const isBusiness = plan === 'BUSINESS';
   const logoSrc = branding?.logoUrl || "/Novo%20modelo%20de%20Logo.png";
   const pathname = usePathname();
-  const router = useRouter();
   const { can } = usePermissions();
 
   const [currentGroup, setCurrentGroup] = useState<string | null>(null);
@@ -121,11 +119,6 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
       localStorage.setItem("sidebar_collapsed", String(next));
       return next;
     });
-  }
-
-  async function logout() {
-    await apiLogout();
-    router.push("/login");
   }
 
   function isActive(href: string, mode: "exact" | "prefix" = "exact"): boolean {
@@ -456,19 +449,9 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         {role === "OWNER" && <NavItem href="/my-site" label="Meu Site" icon={Globe} mode="prefix" />}
       </nav>
 
-      {/* Logout */}
+      {/* Versão do sistema */}
       <div className="p-2 border-t" style={{ borderColor: "var(--sidebar-border)" }}>
-        <button
-          onClick={logout}
-          title={collapsed ? "Sair" : undefined}
-          className="group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-          style={{ color: "var(--sidebar-text)", justifyContent: collapsed ? "center" : undefined }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sidebar-hover)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-        >
-          <LogOut className="h-[18px] w-[18px]" style={{ color: "var(--sidebar-text-muted)" }} />
-          {!collapsed && <span>Sair</span>}
-        </button>
+        <VersionBadge collapsed={collapsed} />
       </div>
     </aside>
   );

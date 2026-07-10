@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import EnvBanner from "@/components/EnvBanner";
+import { VersionBadge } from "@/components/VersionBadge";
 
 type AdminUser = {
   nome?: string;
@@ -152,6 +153,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           >
             Sair
           </button>
+          <div className="mt-2">
+            <VersionBadge />
+          </div>
         </div>
       </aside>
       <main className="flex-1 overflow-auto">{children}</main>
