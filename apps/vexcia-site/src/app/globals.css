@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  --vx-navy: #050a30;
+  --vx-navy-soft: #0b1550;
+  --vx-cyan: #0fa3d2;
+  --vx-lime: #99c73c;
+  --vx-ink: #1a2036;
+  --vx-muted: #5b5f77;
+  --vx-border: #e3e5ee;
+  --vx-offwhite: #f6f7fb;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #ffffff;
+  color: var(--vx-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.vx-container {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.vx-section {
+  padding: 88px 0;
+}
+
+.vx-eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vx-cyan);
+}
+
+.vx-h2 {
+  font-size: clamp(28px, 3.2vw, 40px);
+  font-weight: 700;
+  color: var(--vx-navy);
+  letter-spacing: -0.01em;
+}
+
+.vx-lead {
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--vx-muted);
+}
+
+.vx-card {
+  background: #ffffff;
+  border: 1px solid var(--vx-border);
+  border-radius: 14px;
+  padding: 28px;
+}
+
+.vx-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--vx-cyan);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 10px;
+  transition: filter 0.15s ease;
+}
+
+.vx-btn-primary:hover {
+  filter: brightness(0.92);
+}
+
+.vx-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: #ffffff;
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  transition: background 0.15s ease;
+}
+
+.vx-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
