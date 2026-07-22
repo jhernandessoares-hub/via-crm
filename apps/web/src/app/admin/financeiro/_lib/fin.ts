@@ -4,7 +4,7 @@ import { adminFetch } from "@/lib/admin-api";
 
 export type FinEntryType = "PAGAR" | "RECEBER";
 export type FinEntryStatus = "ABERTO" | "PARCIAL" | "PAGO" | "CANCELADO";
-export type FinDocumentType = "NF_EMITIDA" | "NF_RECEBIDA" | "GUIA_IMPOSTO" | "COMPROVANTE" | "BOLETO" | "OUTRO";
+export type FinDocumentType = "CONTRATO" | "NF_EMITIDA" | "NF_RECEBIDA" | "GUIA_IMPOSTO" | "COMPROVANTE" | "BOLETO" | "OUTRO";
 export type FinTxStatus = "PENDENTE" | "CONCILIADO" | "IGNORADO";
 
 export interface FinCategoria {
@@ -259,6 +259,7 @@ export const STATUS_STYLE: Record<string, string> = {
 };
 
 export const DOC_TIPO_LABEL: Record<FinDocumentType, string> = {
+  CONTRATO: "Contrato",
   NF_EMITIDA: "NF emitida",
   NF_RECEBIDA: "NF recebida",
   GUIA_IMPOSTO: "Guia de imposto",
@@ -268,6 +269,7 @@ export const DOC_TIPO_LABEL: Record<FinDocumentType, string> = {
 };
 
 export const DOC_TIPO_STYLE: Record<FinDocumentType, string> = {
+  CONTRATO: "bg-indigo-50 text-indigo-700 border border-indigo-200",
   NF_EMITIDA: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   NF_RECEBIDA: "bg-blue-50 text-blue-700 border border-blue-200",
   GUIA_IMPOSTO: "bg-purple-50 text-purple-700 border border-purple-200",

@@ -4,20 +4,25 @@ import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-api";
 import { formatBRL } from "@/lib/format";
 import {
+  DOC_TIPO_LABEL,
   FinCategoria,
   FinContato,
   FinContrato,
+  FinDocumentType,
+  FinDocumento,
   FinEmpresa,
   FinEntryType,
   btnPrimary,
   btnSecondary,
   cardCls,
   finApi,
+  fmtDate,
+  hojeStr,
   inputCls,
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, ErrorBanner, MoneyInput, PageHeader, useToast } from "../_components/shared";
+import { AdminModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
 
 export default function ContratosPage() {
   const [contratos, setContratos] = useState<FinContrato[]>([]);
@@ -30,6 +35,17 @@ export default function ContratosPage() {
   const [saving, setSaving] = useState(false);
   const { showToast, toastNode } = useToast();
 
+  // documentos do contrato aberto no modal
+  const [docs, setDocs] = useState<FinDocumento[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [docTipo, setDocTipo] = useState<FinDocumentType>("CONTRATO");
+  const [docNumero, setDocNumero] = useState("");
+  const [docDescricao, setDocDescricao] = useState("");
+  const [docValor, setDocValor] = useState<number | undefined>(undefined);
+  const [docDataEmissao, setDocDataEmissao] = useState(hojeStr());
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     finApi.contratos(true).then(setContratos).catch((e) => setError(e.message)).finally(() => setLoading(false));
@@ -41,6 +57,62 @@ export default function ContratosPage() {
       .then(([c, ct, e]) => { setCategorias(c); setContatos(ct); setEmpresas(e); })
       .catch((e) => setError(e.message));
   }, []);
+
+  const carregarDocs = useCallback((contractId: string) => {
+    setDocsLoading(true);
+    finApi.documentos({ contractId }).then(setDocs).catch((e) => setError(e.message)).finally(() => setDocsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (modal?.id) carregarDocs(modal.id);
+    else setDocs([]);
+    setPendingFile(null);
+    setDocTipo("CONTRATO");
+    setDocNumero("");
+    setDocDescricao("");
+    setDocValor(undefined);
+    setDocDataEmissao(hojeStr());
+  }, [modal?.id, carregarDocs]);
+
+  const baixarDoc = async (docId: string) => {
+    try {
+      const r = await adminFetch(`/admin/financeiro/documentos/${docId}/download`);
+      window.open(r.url, "_blank");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const enviarDocumento = async () => {
+    if (!pendingFile || !modal?.id) return;
+    setUploadingDoc(true);
+    try {
+      const form = new FormData();
+      form.append("file", pendingFile);
+      form.append("tipo", docTipo);
+      if (docNumero.trim()) form.append("numero", docNumero.trim());
+      if (docDescricao.trim()) form.append("descricao", docDescricao.trim());
+      if (docValor) form.append("valor", String(docValor));
+      if (docDataEmissao) form.append("dataEmissao", docDataEmissao);
+      form.append("contractId", modal.id);
+      if (modal.companyId) form.append("companyId", modal.companyId);
+      if (modal.contactId) form.append("contactId", modal.contactId);
+      await adminFetch("/admin/financeiro/documentos", { method: "POST", body: form });
+      showToast("Documento enviado");
+      setPendingFile(null);
+      setDocNumero("");
+      setDocDescricao("");
+      setDocValor(undefined);
+      carregarDocs(modal.id);
+      // saldo a faturar pode ter mudado — recarrega o contrato
+      const atualizado = await adminFetch(`/admin/financeiro/contratos/${modal.id}`);
+      setModal((m) => (m ? { ...m, valorFaturado: atualizado.valorFaturado, saldoAFaturar: atualizado.saldoAFaturar } : m));
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
 
   const salvar = async () => {
     if (!modal?.descricao?.trim() || !modal.tipo) return;
@@ -251,6 +323,80 @@ export default function ContratosPage() {
                 <input type="checkbox" checked={modal.ativo !== false} onChange={(e) => setModal({ ...modal, ativo: e.target.checked })} />
                 Contrato ativo
               </label>
+            )}
+
+            {modal.id ? (
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold text-slate-600">Documentos do contrato</div>
+                  <FileButton
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.xml"
+                    label="+ Enviar documento"
+                    className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                    busy={uploadingDoc}
+                    onSelect={(f) => setPendingFile(f)}
+                  />
+                </div>
+
+                {docsLoading ? (
+                  <p className="text-xs text-slate-400">Carregando...</p>
+                ) : docs.length === 0 ? (
+                  <p className="text-xs text-slate-400">Nenhum documento vinculado ainda — envie o contrato assinado e as notas fiscais emitidas aqui.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {docs.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs">
+                        <span className="text-slate-700">
+                          <span className="mr-2 text-slate-400">{DOC_TIPO_LABEL[d.tipo]}</span>
+                          {d.numero || d.filename}
+                          {d.valor != null && <span className="ml-2 text-slate-400">{formatBRL(d.valor)}</span>}
+                        </span>
+                        <button className="text-slate-500 hover:text-slate-800" onClick={() => baixarDoc(d.id)}>Ver / Baixar</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {pendingFile && (
+                  <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                    <div className="mb-2 text-xs text-slate-600">📄 {pendingFile.name}</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500">Tipo</label>
+                        <select className={selectCls} value={docTipo} onChange={(e) => setDocTipo(e.target.value as FinDocumentType)}>
+                          {Object.entries(DOC_TIPO_LABEL).map(([k, v]) => (
+                            <option key={k} value={k}>{v}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500">Número</label>
+                        <input className={inputCls} value={docNumero} onChange={(e) => setDocNumero(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      <label className="mb-1 block text-xs font-medium text-slate-500">Descrição</label>
+                      <input className={inputCls} value={docDescricao} onChange={(e) => setDocDescricao(e.target.value)} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500">Valor</label>
+                        <MoneyInput value={docValor} onValue={setDocValor} />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500">Data de emissão</label>
+                        <input type="date" className={inputCls} value={docDataEmissao} onChange={(e) => setDocDataEmissao(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button className={btnSecondary} disabled={uploadingDoc} onClick={() => setPendingFile(null)}>Cancelar</button>
+                      <button className={btnPrimary} disabled={uploadingDoc} onClick={enviarDocumento}>{uploadingDoc ? "Enviando..." : "Enviar"}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">Salve o contrato primeiro para poder anexar o documento assinado e as notas fiscais.</p>
             )}
           </div>
         </AdminModal>

@@ -392,6 +392,7 @@ export class FinDocumentosService {
 
   private tipoDocLabel(tipo: FinDocumentType): string {
     const map: Record<FinDocumentType, string> = {
+      CONTRATO: 'Contrato',
       NF_EMITIDA: 'NF emitida',
       NF_RECEBIDA: 'NF recebida',
       GUIA_IMPOSTO: 'Guia de imposto',
