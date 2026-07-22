@@ -85,6 +85,8 @@ export interface FinContrato {
   ativo: boolean;
   valorFaturado: number;
   saldoAFaturar: number | null;
+  valorRealizado: number;
+  valorEmAberto: number;
   _count?: { documents: number; entries: number };
 }
 
