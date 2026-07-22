@@ -2605,6 +2605,7 @@ model FinDocument {
   descricao          String?
   valor              Decimal?        @db.Decimal(18, 2)
   dataEmissao        DateTime?       @db.Date
+  dataPagamento      DateTime?       @db.Date
   contactId          String?
   contact            FinContact?     @relation(fields: [contactId], references: [id])
   companyId          String?

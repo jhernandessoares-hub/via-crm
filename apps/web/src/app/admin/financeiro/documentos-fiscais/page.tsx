@@ -186,7 +186,10 @@ export default function DocumentosFiscaisPage() {
             ) : (
               docs.map((d) => (
                 <tr key={d.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">{fmtDate(d.dataEmissao) !== "—" ? fmtDate(d.dataEmissao) : fmtDate(d.createdAt.slice(0, 10))}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
+                    {fmtDate(d.dataEmissao) !== "—" ? fmtDate(d.dataEmissao) : fmtDate(d.createdAt.slice(0, 10))}
+                    {d.dataPagamento && <div className="text-xs text-emerald-600">pago {fmtDate(d.dataPagamento)}</div>}
+                  </td>
                   <td className="px-4 py-2.5">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${DOC_TIPO_STYLE[d.tipo]}`}>{DOC_TIPO_LABEL[d.tipo]}</span>
                   </td>
@@ -277,6 +280,7 @@ function UploadModal({
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState<number | undefined>(undefined);
   const [dataEmissao, setDataEmissao] = useState(hojeStr());
+  const [dataPagamento, setDataPagamento] = useState("");
   const [contactId, setContactId] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [contractId, setContractId] = useState("");
@@ -301,6 +305,7 @@ function UploadModal({
       if (descricao.trim()) form.append("descricao", descricao.trim());
       if (valor) form.append("valor", String(valor));
       if (dataEmissao) form.append("dataEmissao", dataEmissao);
+      if (dataPagamento) form.append("dataPagamento", dataPagamento);
       if (contactId) form.append("contactId", contactId);
       if (companyId) form.append("companyId", companyId);
       if (contractId) form.append("contractId", contractId);
@@ -360,7 +365,7 @@ function UploadModal({
           <label className="mb-1 block text-xs font-medium text-slate-500">Descrição</label>
           <input className={inputCls} placeholder="Ex.: NF serviço de consultoria julho" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Valor</label>
             <MoneyInput value={valor} onValue={setValor} />
@@ -368,6 +373,10 @@ function UploadModal({
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Data de emissão</label>
             <input type="date" className={inputCls} value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Data de pagamento <span className="font-normal text-slate-400">(se já pago)</span></label>
+            <input type="date" className={inputCls} value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">

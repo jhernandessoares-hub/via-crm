@@ -52,6 +52,7 @@ export class FinDocumentosService {
       descricao?: string;
       valor?: number | string;
       dataEmissao?: string;
+      dataPagamento?: string;
       contactId?: string;
       companyId?: string;
       contractId?: string;
@@ -95,6 +96,7 @@ export class FinDocumentosService {
         descricao: meta.descricao?.trim() || null,
         valor,
         dataEmissao: meta.dataEmissao ? parseDateOnly(meta.dataEmissao, 'dataEmissao') : null,
+        dataPagamento: meta.dataPagamento ? parseDateOnly(meta.dataPagamento, 'dataPagamento') : null,
         contactId: meta.contactId || null,
         companyId: meta.companyId || null,
         contractId: meta.contractId || null,
@@ -227,6 +229,7 @@ export class FinDocumentosService {
       descricao?: string | null;
       valor?: number | null;
       dataEmissao?: string | null;
+      dataPagamento?: string | null;
       contactId?: string | null;
       companyId?: string | null;
       contractId?: string | null;
@@ -245,6 +248,9 @@ export class FinDocumentosService {
           : {}),
         ...(data.dataEmissao !== undefined
           ? { dataEmissao: data.dataEmissao ? parseDateOnly(data.dataEmissao, 'dataEmissao') : null }
+          : {}),
+        ...(data.dataPagamento !== undefined
+          ? { dataPagamento: data.dataPagamento ? parseDateOnly(data.dataPagamento, 'dataPagamento') : null }
           : {}),
         ...(data.contactId !== undefined ? { contactId: data.contactId || null } : {}),
         ...(data.companyId !== undefined ? { companyId: data.companyId || null } : {}),

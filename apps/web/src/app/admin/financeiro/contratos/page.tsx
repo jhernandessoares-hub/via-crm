@@ -130,6 +130,7 @@ export default function ContratosPage() {
   const [docDescricao, setDocDescricao] = useState("");
   const [docValor, setDocValor] = useState<number | undefined>(undefined);
   const [docDataEmissao, setDocDataEmissao] = useState(hojeStr());
+  const [docDataPagamento, setDocDataPagamento] = useState("");
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [previewInfo, setPreviewInfo] = useState<DocPreviewInfo | null>(null);
 
@@ -165,6 +166,7 @@ export default function ContratosPage() {
     setDocDescricao("");
     setDocValor(undefined);
     setDocDataEmissao(hojeStr());
+    setDocDataPagamento("");
     setRenovando(false);
     setRenovInicio("");
     setRenovFim("");
@@ -195,6 +197,7 @@ export default function ContratosPage() {
       if (docDescricao.trim()) form.append("descricao", docDescricao.trim());
       if (docValor) form.append("valor", String(docValor));
       if (docDataEmissao) form.append("dataEmissao", docDataEmissao);
+      if (docDataPagamento) form.append("dataPagamento", docDataPagamento);
       form.append("contractId", modal.id);
       if (modal.companyId) form.append("companyId", modal.companyId);
       if (modal.contactId) form.append("contactId", modal.contactId);
@@ -204,6 +207,7 @@ export default function ContratosPage() {
       setDocNumero("");
       setDocDescricao("");
       setDocValor(undefined);
+      setDocDataPagamento("");
       carregarDocs(modal.id);
       // saldo a faturar pode ter mudado — recarrega o contrato
       const atualizado = await adminFetch(`/admin/financeiro/contratos/${modal.id}`);
@@ -647,7 +651,7 @@ export default function ContratosPage() {
                       <label className="mb-1 block text-xs font-medium text-slate-500">Descrição</label>
                       <input className={inputCls} value={docDescricao} onChange={(e) => setDocDescricao(e.target.value)} />
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="mt-2 grid grid-cols-3 gap-2">
                       <div>
                         <label className="mb-1 block text-xs font-medium text-slate-500">Valor</label>
                         <MoneyInput value={docValor} onValue={setDocValor} />
@@ -655,6 +659,10 @@ export default function ContratosPage() {
                       <div>
                         <label className="mb-1 block text-xs font-medium text-slate-500">Data de emissão</label>
                         <input type="date" className={inputCls} value={docDataEmissao} onChange={(e) => setDocDataEmissao(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-500">Data de pagamento</label>
+                        <input type="date" className={inputCls} value={docDataPagamento} onChange={(e) => setDocDataPagamento(e.target.value)} />
                       </div>
                     </div>
                     <div className="mt-3 flex justify-end gap-2">

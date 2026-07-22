@@ -36,6 +36,10 @@ export class UploadDocumentoDto {
   dataEmissao?: string;
 
   @IsOptional()
+  @Matches(DATE_RE, { message: 'dataPagamento deve ser YYYY-MM-DD' })
+  dataPagamento?: string;
+
+  @IsOptional()
   @IsString()
   contactId?: string;
 
@@ -68,6 +72,10 @@ export class UpdateDocumentoDto {
   @IsOptional()
   @Matches(DATE_RE, { message: 'dataEmissao deve ser YYYY-MM-DD' })
   dataEmissao?: string | null;
+
+  @IsOptional()
+  @Matches(DATE_RE, { message: 'dataPagamento deve ser YYYY-MM-DD' })
+  dataPagamento?: string | null;
 
   @IsOptional()
   @IsString()
