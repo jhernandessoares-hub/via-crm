@@ -10,6 +10,7 @@ import {
   FinEmpresa,
   FinMensalidade,
   FinRecorrencia,
+  PIX_TIPO_LABEL,
   btnPrimary,
   btnSecondary,
   cardCls,
@@ -427,6 +428,12 @@ function ContatosTab({ onError, showToast }: TabProps) {
         documento: modal.documento || undefined,
         tipo: modal.tipo || "AMBOS",
         observacao: modal.observacao || undefined,
+        chavePix: modal.chavePix || undefined,
+        tipoChavePix: modal.tipoChavePix || undefined,
+        banco: modal.banco || undefined,
+        agencia: modal.agencia || undefined,
+        conta: modal.conta || undefined,
+        tipoConta: modal.tipoConta || undefined,
       };
       if (modal.id) {
         await adminFetch(`/admin/financeiro/contatos/${modal.id}`, { method: "PATCH", body: JSON.stringify({ ...body, ativo: modal.ativo !== false }) });
@@ -480,7 +487,10 @@ function ContatosTab({ onError, showToast }: TabProps) {
           ) : (
             contatos.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5 font-medium text-slate-700">{c.nome}</td>
+                <td className="px-4 py-2.5 font-medium text-slate-700">
+                  {c.nome}
+                  {c.chavePix && <span className="ml-2 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">PIX</span>}
+                </td>
                 <td className="px-4 py-2.5 text-slate-500">{c.documento || "—"}</td>
                 <td className="px-4 py-2.5 text-slate-500">{TIPO_LABEL[c.tipo]}</td>
                 <td className="px-4 py-2.5 text-slate-400">{c._count ? `${c._count.entries} lançamento(s)` : "—"}</td>
@@ -526,6 +536,55 @@ function ContatosTab({ onError, showToast }: TabProps) {
                 </select>
               </div>
             </div>
+            {modal.tipo !== "CLIENTE" && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-600">Dados de recebimento (para pagar este fornecedor)</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Chave PIX</label>
+                    <input className={inputCls} value={modal.chavePix || ""} onChange={(e) => setModal({ ...modal, chavePix: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Tipo de chave</label>
+                    <select className={selectCls} value={modal.tipoChavePix || ""} onChange={(e) => setModal({ ...modal, tipoChavePix: (e.target.value || null) as FinContato["tipoChavePix"] })}>
+                      <option value="">—</option>
+                      {Object.entries(PIX_TIPO_LABEL).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-4 gap-3">
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Banco</label>
+                    <input className={inputCls} value={modal.banco || ""} onChange={(e) => setModal({ ...modal, banco: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Agência</label>
+                    <input className={inputCls} value={modal.agencia || ""} onChange={(e) => setModal({ ...modal, agencia: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Conta</label>
+                    <input className={inputCls} value={modal.conta || ""} onChange={(e) => setModal({ ...modal, conta: e.target.value })} />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Tipo de conta</label>
+                  <div className="flex gap-2">
+                    {(["CORRENTE", "POUPANCA"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`rounded-lg border px-3 py-1.5 text-xs ${modal.tipoConta === t ? "border-slate-800 bg-slate-800 text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                        onClick={() => setModal({ ...modal, tipoConta: modal.tipoConta === t ? null : t })}
+                      >
+                        {t === "CORRENTE" ? "Corrente" : "Poupança"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Observação</label>
               <input className={inputCls} value={modal.observacao || ""} onChange={(e) => setModal({ ...modal, observacao: e.target.value })} />

@@ -88,7 +88,18 @@ export class FinLancamentosService {
         take: pageSize,
         include: {
           categoria: { select: { id: true, nome: true, parent: { select: { nome: true } } } },
-          contact: { select: { id: true, nome: true } },
+          contact: {
+            select: {
+              id: true,
+              nome: true,
+              chavePix: true,
+              tipoChavePix: true,
+              banco: true,
+              agencia: true,
+              conta: true,
+              tipoConta: true,
+            },
+          },
           company: { select: { id: true, nome: true } },
           contract: { select: { id: true, descricao: true } },
           payments: {

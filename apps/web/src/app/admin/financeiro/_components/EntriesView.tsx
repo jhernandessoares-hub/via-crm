@@ -12,6 +12,7 @@ import {
   FinEmpresa,
   FinEntry,
   FinEntryType,
+  PIX_TIPO_LABEL,
   STATUS_LABEL,
   STATUS_STYLE,
   btnPrimary,
@@ -605,6 +606,24 @@ function BaixaModal({
           saldo <b>{formatBRL(entry.saldo)}</b>
         </div>
       </div>
+      {!isReceber && entry.contact && (entry.contact.chavePix || entry.contact.banco) && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+          <div className="mb-1 text-xs font-semibold text-emerald-800">Dados para pagar {entry.contact.nome}</div>
+          {entry.contact.chavePix && (
+            <div className="text-emerald-900">
+              PIX{entry.contact.tipoChavePix ? ` (${PIX_TIPO_LABEL[entry.contact.tipoChavePix]})` : ""}: <b>{entry.contact.chavePix}</b>
+            </div>
+          )}
+          {entry.contact.banco && (
+            <div className="mt-0.5 text-xs text-emerald-800">
+              {entry.contact.banco}
+              {entry.contact.agencia ? ` · Ag. ${entry.contact.agencia}` : ""}
+              {entry.contact.conta ? ` · Conta ${entry.contact.conta}` : ""}
+              {entry.contact.tipoConta ? ` (${entry.contact.tipoConta === "CORRENTE" ? "Corrente" : "Poupança"})` : ""}
+            </div>
+          )}
+        </div>
+      )}
       {contas.length === 0 ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Nenhuma conta bancária ativa — cadastre uma em Configurações → Contas bancárias.

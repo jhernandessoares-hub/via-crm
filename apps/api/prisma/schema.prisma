@@ -2337,6 +2337,18 @@ enum FinContactType {
   AMBOS
 }
 
+enum FinPixKeyType {
+  CPF_CNPJ
+  EMAIL
+  TELEFONE
+  ALEATORIA
+}
+
+enum FinContactBankAccountType {
+  CORRENTE
+  POUPANCA
+}
+
 enum FinTxStatus {
   PENDENTE
   CONCILIADO
@@ -2434,6 +2446,14 @@ model FinContact {
   tipo       FinContactType @default(AMBOS)
   observacao String?
   ativo      Boolean        @default(true)
+
+  // Dados de recebimento — só relevantes para FORNECEDOR/AMBOS, exibidos na hora de pagar
+  chavePix     String?
+  tipoChavePix FinPixKeyType?
+  banco        String?
+  agencia      String?
+  conta        String?
+  tipoConta    FinContactBankAccountType?
 
   entries        FinEntry[]
   recurringRules FinRecurringRule[]

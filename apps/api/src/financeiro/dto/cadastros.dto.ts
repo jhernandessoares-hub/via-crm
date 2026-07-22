@@ -1,4 +1,4 @@
-import { FinCategoryType, FinContactType } from '@prisma/client';
+import { FinCategoryType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
 import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -141,6 +141,30 @@ export class CreateContatoDto {
   @IsOptional()
   @IsString()
   observacao?: string;
+
+  @IsOptional()
+  @IsString()
+  chavePix?: string;
+
+  @IsOptional()
+  @IsEnum(FinPixKeyType)
+  tipoChavePix?: FinPixKeyType;
+
+  @IsOptional()
+  @IsString()
+  banco?: string;
+
+  @IsOptional()
+  @IsString()
+  agencia?: string;
+
+  @IsOptional()
+  @IsString()
+  conta?: string;
+
+  @IsOptional()
+  @IsEnum(FinContactBankAccountType)
+  tipoConta?: FinContactBankAccountType;
 }
 
 export class UpdateContatoDto {
@@ -163,6 +187,30 @@ export class UpdateContatoDto {
   @IsOptional()
   @IsBoolean()
   ativo?: boolean;
+
+  @IsOptional()
+  @IsString()
+  chavePix?: string | null;
+
+  @IsOptional()
+  @IsEnum(FinPixKeyType)
+  tipoChavePix?: FinPixKeyType | null;
+
+  @IsOptional()
+  @IsString()
+  banco?: string | null;
+
+  @IsOptional()
+  @IsString()
+  agencia?: string | null;
+
+  @IsOptional()
+  @IsString()
+  conta?: string | null;
+
+  @IsOptional()
+  @IsEnum(FinContactBankAccountType)
+  tipoConta?: FinContactBankAccountType | null;
 }
 
 export class DiaVencimentoMixin {
