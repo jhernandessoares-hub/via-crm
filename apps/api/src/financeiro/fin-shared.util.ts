@@ -10,6 +10,8 @@ const DATE_ONLY_FIELDS = new Set([
   'dataEmissao',
   'data',
   'saldoInicialData',
+  'dataInicio',
+  'dataFim',
 ]);
 
 /** "YYYY-MM-DD" → Date UTC meia-noite (evita deslocamento UTC-3). */
