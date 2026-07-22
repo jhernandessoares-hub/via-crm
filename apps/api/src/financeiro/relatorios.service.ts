@@ -9,8 +9,11 @@ import {
   parseCompetencia,
   parseDateOnly,
   roundMoney,
+  sumAmortizado,
   sumMoney,
 } from './fin-shared.util';
+
+const PAYMENT_AMORT_SELECT = { valor: true, desconto: true, jurosMulta: true } as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -29,43 +32,44 @@ export class FinRelatoriosService {
 
   // ---------- Dashboard ----------
 
-  async dashboard(mes?: string, adminId?: string) {
+  async dashboard(mes?: string, adminId?: string, companyId?: string) {
     // Geração automática das mensalidades da competência corrente (idempotente, nunca quebra o GET)
     await this.recorrencias.gerarCompetenciaCorrenteSilencioso(adminId);
 
     const hoje = this.hoje();
     const comp = mes ? parseCompetencia(mes) : new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), 1));
     const fimMes = new Date(Date.UTC(comp.getUTCFullYear(), comp.getUTCMonth() + 1, 0));
+    const companyFilter = companyId ? { companyId } : {};
 
     // Títulos com vencimento no mês (não cancelados) — saldo restante por tipo
     const entriesMes = await this.prisma.finEntry.findMany({
-      where: { status: { not: 'CANCELADO' }, vencimento: { gte: comp, lte: fimMes } },
-      select: { tipo: true, valor: true, payments: { select: { valor: true } } },
+      where: { status: { not: 'CANCELADO' }, vencimento: { gte: comp, lte: fimMes }, ...companyFilter },
+      select: { tipo: true, valor: true, payments: { select: PAYMENT_AMORT_SELECT } },
     });
     let aReceberMes = 0;
     let aPagarMes = 0;
     for (const e of entriesMes) {
-      const saldo = roundMoney(e.valor.toNumber() - sumMoney(e.payments.map((p) => p.valor)));
+      const saldo = roundMoney(e.valor.toNumber() - sumAmortizado(e.payments));
       if (e.tipo === 'RECEBER') aReceberMes += saldo;
       else aPagarMes += saldo;
     }
 
     // Vencidos (qualquer período)
     const vencidos = await this.prisma.finEntry.findMany({
-      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { lt: hoje } },
-      select: { tipo: true, valor: true, payments: { select: { valor: true } } },
+      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { lt: hoje }, ...companyFilter },
+      select: { tipo: true, valor: true, payments: { select: PAYMENT_AMORT_SELECT } },
     });
     let vencidosReceber = 0;
     let vencidosPagar = 0;
     for (const e of vencidos) {
-      const saldo = roundMoney(e.valor.toNumber() - sumMoney(e.payments.map((p) => p.valor)));
+      const saldo = roundMoney(e.valor.toNumber() - sumAmortizado(e.payments));
       if (e.tipo === 'RECEBER') vencidosReceber += saldo;
       else vencidosPagar += saldo;
     }
 
-    // Realizado no mês (baixas)
+    // Realizado no mês (baixas) — caixa real, não filtra por desconto/juros
     const paymentsMes = await this.prisma.finPayment.findMany({
-      where: { dataPagamento: { gte: comp, lte: fimMes } },
+      where: { dataPagamento: { gte: comp, lte: fimMes }, entry: companyFilter },
       select: { valor: true, entry: { select: { tipo: true } } },
     });
     const recebidoMes = sumMoney(paymentsMes.filter((p) => p.entry.tipo === 'RECEBER').map((p) => p.valor));
@@ -74,7 +78,7 @@ export class FinRelatoriosService {
     // Gráfico 6 meses (realizado)
     const inicio6m = new Date(Date.UTC(comp.getUTCFullYear(), comp.getUTCMonth() - 5, 1));
     const payments6m = await this.prisma.finPayment.findMany({
-      where: { dataPagamento: { gte: inicio6m, lte: fimMes } },
+      where: { dataPagamento: { gte: inicio6m, lte: fimMes }, entry: companyFilter },
       select: { valor: true, dataPagamento: true, entry: { select: { tipo: true } } },
     });
     const meses6: { mes: string; receitas: number; despesas: number }[] = [];
@@ -91,14 +95,14 @@ export class FinRelatoriosService {
     }
 
     // Projeção de saldo 30 dias
-    const saldoContas = await this.cadastros.saldoConsolidado();
+    const saldoContas = await this.cadastros.saldoConsolidado(companyId);
     const fim30 = new Date(hoje.getTime() + 30 * DAY_MS);
-    const projecao = await this.serieProjetada(hoje, fim30, saldoContas);
+    const projecao = await this.serieProjetada(hoje, fim30, saldoContas, companyId);
 
     // Próximos vencimentos (7 dias)
     const fim7 = new Date(hoje.getTime() + 7 * DAY_MS);
     const proximos = await this.prisma.finEntry.findMany({
-      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { gte: hoje, lte: fim7 } },
+      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { gte: hoje, lte: fim7 }, ...companyFilter },
       orderBy: { vencimento: 'asc' },
       take: 10,
       select: {
@@ -107,7 +111,7 @@ export class FinRelatoriosService {
         descricao: true,
         vencimento: true,
         valor: true,
-        payments: { select: { valor: true } },
+        payments: { select: PAYMENT_AMORT_SELECT },
         contact: { select: { nome: true } },
       },
     });
@@ -132,7 +136,7 @@ export class FinRelatoriosService {
         tipo: e.tipo,
         descricao: e.descricao,
         vencimento: formatDateOnly(e.vencimento),
-        saldo: roundMoney(e.valor.toNumber() - sumMoney(e.payments.map((p) => p.valor))),
+        saldo: roundMoney(e.valor.toNumber() - sumAmortizado(e.payments)),
         contactNome: e.contact?.nome ?? null,
       })),
       mensalidades,
@@ -140,14 +144,14 @@ export class FinRelatoriosService {
   }
 
   /** Série diária de saldo projetado: saldo atual + títulos em aberto por vencimento (vencidos → hoje). */
-  private async serieProjetada(de: Date, ate: Date, saldoInicial: number) {
+  private async serieProjetada(de: Date, ate: Date, saldoInicial: number, companyId?: string) {
     const abertos = await this.prisma.finEntry.findMany({
-      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { lte: ate } },
-      select: { tipo: true, valor: true, vencimento: true, payments: { select: { valor: true } } },
+      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { lte: ate }, ...(companyId ? { companyId } : {}) },
+      select: { tipo: true, valor: true, vencimento: true, payments: { select: PAYMENT_AMORT_SELECT } },
     });
     const porDia = new Map<string, number>();
     for (const e of abertos) {
-      const saldo = roundMoney(e.valor.toNumber() - sumMoney(e.payments.map((p) => p.valor)));
+      const saldo = roundMoney(e.valor.toNumber() - sumAmortizado(e.payments));
       if (saldo <= 0) continue;
       // Vencido e não pago aparece re-datado para hoje na projeção
       const dia = e.vencimento < de ? de : e.vencimento;
@@ -167,7 +171,7 @@ export class FinRelatoriosService {
 
   // ---------- Fluxo de caixa ----------
 
-  async fluxoCaixa(deStr?: string, ateStr?: string, granularidade: 'dia' | 'mes' = 'dia') {
+  async fluxoCaixa(deStr?: string, ateStr?: string, granularidade: 'dia' | 'mes' = 'dia', companyId?: string) {
     const hoje = this.hoje();
     const de = deStr ? parseDateOnly(deStr, 'de') : new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), 1));
     const ate = ateStr
@@ -178,10 +182,11 @@ export class FinRelatoriosService {
     if (granularidade === 'dia' && dias > 92) {
       throw new BadRequestException('Granularidade diária limitada a 92 dias — use granularidade=mes');
     }
+    const companyFilter = companyId ? { companyId } : {};
 
     // Saldo no início do período = saldo inicial das contas + baixas anteriores a "de"
     const contas = await this.prisma.finBankAccount.findMany({
-      where: { ativo: true },
+      where: { ativo: true, ...companyFilter },
       select: { id: true, saldoInicial: true },
     });
     const paymentsAntes = contas.length
@@ -195,16 +200,16 @@ export class FinRelatoriosService {
       saldoInicial = roundMoney(saldoInicial + (p.entry.tipo === 'RECEBER' ? p.valor.toNumber() : -p.valor.toNumber()));
     }
 
-    // Realizado (baixas no período)
+    // Realizado (baixas no período) — caixa real
     const payments = await this.prisma.finPayment.findMany({
-      where: { dataPagamento: { gte: de, lte: ate } },
+      where: { dataPagamento: { gte: de, lte: ate }, entry: companyFilter },
       select: { valor: true, dataPagamento: true, entry: { select: { tipo: true } } },
     });
 
     // Projetado (títulos em aberto por vencimento; vencidos re-datados para hoje)
     const abertos = await this.prisma.finEntry.findMany({
-      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { lte: ate } },
-      select: { tipo: true, valor: true, vencimento: true, payments: { select: { valor: true } } },
+      where: { status: { in: ['ABERTO', 'PARCIAL'] }, vencimento: { lte: ate }, ...companyFilter },
+      select: { tipo: true, valor: true, vencimento: true, payments: { select: PAYMENT_AMORT_SELECT } },
     });
 
     const bucketKey = (d: Date) =>
@@ -244,7 +249,7 @@ export class FinRelatoriosService {
     }
 
     for (const e of abertos) {
-      const saldo = roundMoney(e.valor.toNumber() - sumMoney(e.payments.map((p) => p.valor)));
+      const saldo = roundMoney(e.valor.toNumber() - sumAmortizado(e.payments));
       if (saldo <= 0) continue;
       let dia = e.vencimento < hoje ? hoje : e.vencimento; // vencido → projeta em "hoje"
       if (dia < de) dia = de;
@@ -266,12 +271,13 @@ export class FinRelatoriosService {
 
   // ---------- DRE (regime de competência) ----------
 
-  async dre(deStr?: string, ateStr?: string) {
+  async dre(deStr?: string, ateStr?: string, companyId?: string) {
     const hoje = this.hoje();
     const de = deStr ? parseCompetencia(deStr) : new Date(Date.UTC(hoje.getUTCFullYear(), 0, 1));
     const ateComp = ateStr ? parseCompetencia(ateStr) : new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), 1));
     const ate = new Date(Date.UTC(ateComp.getUTCFullYear(), ateComp.getUTCMonth() + 1, 0));
     if (ate < de) throw new BadRequestException('Período inválido: fim antes do início');
+    const companyClause = companyId ? Prisma.sql`AND "companyId" = ${companyId}` : Prisma.empty;
 
     const linhas = await this.prisma.$queryRaw<
       { mes: string; categoriaId: string; total: number }[]
@@ -283,6 +289,7 @@ export class FinRelatoriosService {
       WHERE "status" <> 'CANCELADO'
         AND "competencia" >= ${de}
         AND "competencia" <= ${ate}
+        ${companyClause}
       GROUP BY 1, 2
     `);
 
@@ -360,27 +367,33 @@ export class FinRelatoriosService {
 
   // ---------- Balancete gerencial ----------
 
-  async balancete(deStr?: string, ateStr?: string) {
+  async balancete(deStr?: string, ateStr?: string, companyId?: string) {
     const hoje = this.hoje();
     const de = deStr ? parseDateOnly(deStr, 'de') : new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), 1));
     const ate = ateStr
       ? parseDateOnly(ateStr, 'ate')
       : new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() + 1, 0));
     if (ate < de) throw new BadRequestException('Período inválido: fim antes do início');
+    const companyClause = companyId ? Prisma.sql`AND e."companyId" = ${companyId}` : Prisma.empty;
 
     // Previsto: títulos por competência no período (não cancelados) + suas baixas (qualquer data)
     const entries = await this.prisma.finEntry.findMany({
-      where: { status: { not: 'CANCELADO' }, competencia: { gte: de, lte: ate } },
-      select: { categoriaId: true, valor: true, payments: { select: { valor: true } } },
+      where: {
+        status: { not: 'CANCELADO' },
+        competencia: { gte: de, lte: ate },
+        ...(companyId ? { companyId } : {}),
+      },
+      select: { categoriaId: true, valor: true, payments: { select: PAYMENT_AMORT_SELECT } },
     });
 
-    // Realizado: baixas com dataPagamento no período (independente da competência do título)
+    // Realizado: baixas com dataPagamento no período (independente da competência do título) — caixa real
     const realizadoRaw = await this.prisma.$queryRaw<{ categoriaId: string; total: number }[]>(Prisma.sql`
       SELECT e."categoriaId", SUM(p."valor")::float8 AS total
       FROM "fin_payments" p
       JOIN "fin_entries" e ON e."id" = p."entryId"
       WHERE p."dataPagamento" >= ${de} AND p."dataPagamento" <= ${ate}
         AND e."status" <> 'CANCELADO'
+        ${companyClause}
       GROUP BY 1
     `);
     const realizadoPorCat = new Map(realizadoRaw.map((r) => [r.categoriaId, roundMoney(r.total)]));
@@ -388,7 +401,7 @@ export class FinRelatoriosService {
     const previstoPorCat = new Map<string, number>();
     const abertoPorCat = new Map<string, number>();
     for (const e of entries) {
-      const pago = sumMoney(e.payments.map((p) => p.valor));
+      const pago = sumAmortizado(e.payments);
       previstoPorCat.set(e.categoriaId, roundMoney((previstoPorCat.get(e.categoriaId) || 0) + e.valor.toNumber()));
       abertoPorCat.set(
         e.categoriaId,

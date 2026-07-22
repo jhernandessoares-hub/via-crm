@@ -7,6 +7,7 @@ import {
   FinCategoria,
   FinConta,
   FinContato,
+  FinEmpresa,
   FinMensalidade,
   FinRecorrencia,
   btnPrimary,
@@ -21,12 +22,13 @@ import {
 } from "../_lib/fin";
 import { AdminModal, ErrorBanner, MoneyInput, PageHeader, useToast } from "../_components/shared";
 
-type Tab = "categorias" | "contas" | "contatos" | "mensalidades" | "fixas";
+type Tab = "categorias" | "contas" | "contatos" | "empresas" | "mensalidades" | "fixas";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "categorias", label: "Categorias" },
   { id: "contas", label: "Contas bancárias" },
   { id: "contatos", label: "Contatos" },
+  { id: "empresas", label: "Empresas" },
   { id: "mensalidades", label: "Mensalidades" },
   { id: "fixas", label: "Receitas/Despesas fixas" },
 ];
@@ -58,6 +60,7 @@ export default function FinConfiguracoesPage() {
       {tab === "categorias" && <CategoriasTab onError={setError} showToast={showToast} />}
       {tab === "contas" && <ContasTab onError={setError} showToast={showToast} />}
       {tab === "contatos" && <ContatosTab onError={setError} showToast={showToast} />}
+      {tab === "empresas" && <EmpresasTab onError={setError} showToast={showToast} />}
       {tab === "mensalidades" && <MensalidadesTab onError={setError} showToast={showToast} />}
       {tab === "fixas" && <FixasTab onError={setError} showToast={showToast} />}
       {toastNode}
@@ -237,6 +240,7 @@ function CategoriasTab({ onError, showToast }: TabProps) {
 
 function ContasTab({ onError, showToast }: TabProps) {
   const [contas, setContas] = useState<FinConta[]>([]);
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<Partial<FinConta> | null>(null);
   const [saving, setSaving] = useState(false);
@@ -247,9 +251,12 @@ function ContasTab({ onError, showToast }: TabProps) {
   }, [onError]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { finApi.empresas().then(setEmpresas).catch(() => {}); }, []);
+
+  const nomeEmpresa = (id: string | null) => empresas.find((e) => e.id === id)?.nome || "—";
 
   const salvar = async () => {
-    if (!modal?.nome?.trim() || !modal.saldoInicialData) return;
+    if (!modal?.nome?.trim() || !modal.saldoInicialData || !modal.companyId) return;
     setSaving(true);
     try {
       const body = {
@@ -259,6 +266,7 @@ function ContasTab({ onError, showToast }: TabProps) {
         conta: modal.conta || undefined,
         saldoInicial: modal.saldoInicial ?? 0,
         saldoInicialData: modal.saldoInicialData,
+        companyId: modal.companyId,
       };
       if (modal.id) {
         await adminFetch(`/admin/financeiro/contas-bancarias/${modal.id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -295,6 +303,7 @@ function ContasTab({ onError, showToast }: TabProps) {
         <thead className="border-b border-slate-200 bg-slate-50">
           <tr>
             <th className={thCls}>Nome</th>
+            <th className={thCls}>Empresa</th>
             <th className={thCls}>Banco</th>
             <th className={thCls}>Ag. / Conta</th>
             <th className={`${thCls} text-right`}>Saldo inicial</th>
@@ -305,13 +314,14 @@ function ContasTab({ onError, showToast }: TabProps) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {loading ? (
-            <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Carregando...</td></tr>
+            <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Carregando...</td></tr>
           ) : contas.length === 0 ? (
-            <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Nenhuma conta cadastrada — crie a primeira para registrar baixas e importar extratos.</td></tr>
+            <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Nenhuma conta cadastrada — crie a primeira para registrar baixas e importar extratos.</td></tr>
           ) : (
             contas.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50">
                 <td className="px-4 py-2.5 font-medium text-slate-700">{c.nome}</td>
+                <td className="px-4 py-2.5 text-slate-500">{nomeEmpresa(c.companyId)}</td>
                 <td className="px-4 py-2.5 text-slate-500">{c.banco || "—"}</td>
                 <td className="px-4 py-2.5 text-slate-500">{[c.agencia, c.conta].filter(Boolean).join(" / ") || "—"}</td>
                 <td className="px-4 py-2.5 text-right text-slate-500">{formatBRL(c.saldoInicial)} <span className="text-xs text-slate-400">em {fmtDate(c.saldoInicialData)}</span></td>
@@ -335,7 +345,7 @@ function ContasTab({ onError, showToast }: TabProps) {
           footer={
             <>
               <button className={btnSecondary} onClick={() => setModal(null)}>Cancelar</button>
-              <button className={btnPrimary} disabled={saving || !modal.nome?.trim() || !modal.saldoInicialData} onClick={salvar}>{saving ? "Salvando..." : "Salvar"}</button>
+              <button className={btnPrimary} disabled={saving || !modal.nome?.trim() || !modal.saldoInicialData || !modal.companyId} onClick={salvar}>{saving ? "Salvando..." : "Salvar"}</button>
             </>
           }
         >
@@ -343,6 +353,18 @@ function ContasTab({ onError, showToast }: TabProps) {
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-500">Nome *</label>
               <input className={inputCls} placeholder="Ex.: Itaú PJ VEXCIA" value={modal.nome || ""} onChange={(e) => setModal({ ...modal, nome: e.target.value })} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Empresa *</label>
+              <select className={selectCls} value={modal.companyId || ""} onChange={(e) => setModal({ ...modal, companyId: e.target.value })}>
+                <option value="">Selecione...</option>
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>{e.nome}</option>
+                ))}
+              </select>
+              {empresas.length === 0 && (
+                <p className="mt-1 text-xs text-amber-600">Cadastre uma empresa na aba "Empresas" antes de criar a conta.</p>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
@@ -512,6 +534,137 @@ function ContatosTab({ onError, showToast }: TabProps) {
               <label className="mt-1 flex items-center gap-2 text-sm text-slate-600">
                 <input type="checkbox" checked={modal.ativo !== false} onChange={(e) => setModal({ ...modal, ativo: e.target.checked })} />
                 Contato ativo
+              </label>
+            )}
+          </div>
+        </AdminModal>
+      )}
+    </div>
+  );
+}
+
+// ============================ Empresas ============================
+
+function EmpresasTab({ onError, showToast }: TabProps) {
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState<Partial<FinEmpresa> | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    finApi.empresas(true).then(setEmpresas).catch((e) => onError(e.message)).finally(() => setLoading(false));
+  }, [onError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const salvar = async () => {
+    if (!modal?.nome?.trim()) return;
+    setSaving(true);
+    try {
+      const body = {
+        nome: modal.nome.trim(),
+        nomeFantasia: modal.nomeFantasia || undefined,
+        cnpj: modal.cnpj || undefined,
+      };
+      if (modal.id) {
+        await adminFetch(`/admin/financeiro/empresas/${modal.id}`, { method: "PATCH", body: JSON.stringify({ ...body, ativo: modal.ativo !== false }) });
+      } else {
+        await adminFetch("/admin/financeiro/empresas", { method: "POST", body: JSON.stringify(body) });
+      }
+      showToast("Empresa salva");
+      setModal(null);
+      load();
+    } catch (e: any) {
+      onError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const excluir = async (e: FinEmpresa) => {
+    try {
+      const r = await adminFetch(`/admin/financeiro/empresas/${e.id}`, { method: "DELETE" });
+      showToast(r.deleted ? "Empresa excluída" : "Empresa em uso — foi desativada");
+      load();
+    } catch (err: any) {
+      onError(err.message);
+    }
+  };
+
+  return (
+    <div className={`${cardCls} overflow-hidden`}>
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <h2 className="text-sm font-semibold text-slate-700">Empresas (CNPJs da holding)</h2>
+        <button className={btnPrimary} onClick={() => setModal({})}>+ Nova empresa</button>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="border-b border-slate-200 bg-slate-50">
+          <tr>
+            <th className={thCls}>Razão social</th>
+            <th className={thCls}>Nome fantasia</th>
+            <th className={thCls}>CNPJ</th>
+            <th className={thCls}>Uso</th>
+            <th className={thCls}>Status</th>
+            <th className={thCls}></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {loading ? (
+            <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Carregando...</td></tr>
+          ) : empresas.length === 0 ? (
+            <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Nenhuma empresa cadastrada — crie a primeira para marcar contas bancárias, títulos e contratos.</td></tr>
+          ) : (
+            empresas.map((e) => (
+              <tr key={e.id} className="hover:bg-slate-50">
+                <td className="px-4 py-2.5 font-medium text-slate-700">{e.nome}</td>
+                <td className="px-4 py-2.5 text-slate-500">{e.nomeFantasia || "—"}</td>
+                <td className="px-4 py-2.5 text-slate-500">{e.cnpj || "—"}</td>
+                <td className="px-4 py-2.5 text-slate-400">
+                  {e._count ? `${e._count.bankAccounts} conta(s), ${e._count.entries} título(s)` : "—"}
+                </td>
+                <td className="px-4 py-2.5">
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${e.ativo ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{e.ativo ? "Ativa" : "Inativa"}</span>
+                </td>
+                <td className="px-4 py-2.5 text-right text-xs">
+                  <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => setModal(e)}>Editar</button>
+                  {e.ativo && <button className="text-red-300 hover:text-red-600" onClick={() => excluir(e)}>Excluir</button>}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      {modal && (
+        <AdminModal
+          title={modal.id ? "Editar empresa" : "Nova empresa"}
+          footer={
+            <>
+              <button className={btnSecondary} onClick={() => setModal(null)}>Cancelar</button>
+              <button className={btnPrimary} disabled={saving || !modal.nome?.trim()} onClick={salvar}>{saving ? "Salvando..." : "Salvar"}</button>
+            </>
+          }
+        >
+          <div className="grid gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Razão social *</label>
+              <input className={inputCls} value={modal.nome || ""} onChange={(e) => setModal({ ...modal, nome: e.target.value })} autoFocus />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Nome fantasia</label>
+                <input className={inputCls} value={modal.nomeFantasia || ""} onChange={(e) => setModal({ ...modal, nomeFantasia: e.target.value })} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">CNPJ</label>
+                <input className={inputCls} value={modal.cnpj || ""} onChange={(e) => setModal({ ...modal, cnpj: e.target.value })} />
+              </div>
+            </div>
+            {modal.id && (
+              <label className="mt-1 flex items-center gap-2 text-sm text-slate-600">
+                <input type="checkbox" checked={modal.ativo !== false} onChange={(e) => setModal({ ...modal, ativo: e.target.checked })} />
+                Empresa ativa
               </label>
             )}
           </div>

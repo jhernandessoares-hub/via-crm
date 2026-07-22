@@ -5,9 +5,11 @@ import {
   CreateCategoriaDto,
   CreateContaBancariaDto,
   CreateContatoDto,
+  CreateEmpresaDto,
   UpdateCategoriaDto,
   UpdateContaBancariaDto,
   UpdateContatoDto,
+  UpdateEmpresaDto,
 } from './dto/cadastros.dto';
 
 @Controller('admin/financeiro')
@@ -79,5 +81,27 @@ export class FinCadastrosController {
   @Delete('contatos/:id')
   deleteContato(@Param('id') id: string) {
     return this.service.deleteContato(id);
+  }
+
+  // ---------- Empresas ----------
+
+  @Get('empresas')
+  listEmpresas(@Query('incluirInativas') incluirInativas?: string) {
+    return this.service.listEmpresas(incluirInativas === 'true');
+  }
+
+  @Post('empresas')
+  createEmpresa(@Body() dto: CreateEmpresaDto) {
+    return this.service.createEmpresa(dto);
+  }
+
+  @Patch('empresas/:id')
+  updateEmpresa(@Param('id') id: string, @Body() dto: UpdateEmpresaDto) {
+    return this.service.updateEmpresa(id, dto);
+  }
+
+  @Delete('empresas/:id')
+  deleteEmpresa(@Param('id') id: string) {
+    return this.service.deleteEmpresa(id);
   }
 }

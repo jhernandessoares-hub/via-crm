@@ -4,12 +4,14 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { FamiliaAuthGuard } from './familia-auth.guard';
 import { PortalAuthService } from './portal-auth.service';
 import { PortalDemandasService } from './portal-demandas.service';
+import { PortalConteudoService } from './portal-conteudo.service';
 
 @Controller('pre-ocupacao-portal')
 export class PortalController {
   constructor(
     private readonly auth: PortalAuthService,
     private readonly demandas: PortalDemandasService,
+    private readonly conteudo: PortalConteudoService,
   ) {}
 
   @UseGuards(ThrottlerGuard)
@@ -29,6 +31,12 @@ export class PortalController {
   @Get('me')
   me(@Request() req: any) {
     return this.auth.me(req.familia.familiaId);
+  }
+
+  @UseGuards(FamiliaAuthGuard)
+  @Get('conteudo')
+  listarConteudo(@Request() req: any) {
+    return this.conteudo.listar(req.familia.tenantId);
   }
 
   @UseGuards(FamiliaAuthGuard)

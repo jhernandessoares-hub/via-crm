@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { adminFetch } from "@/lib/admin-api";
 import { formatBRL } from "@/lib/format";
-import { cardCls, fmtCompetencia, fmtDate, hojeStr, inputCls, selectCls, thCls } from "../_lib/fin";
+import { FinEmpresa, cardCls, finApi, fmtCompetencia, fmtDate, hojeStr, inputCls, selectCls, thCls } from "../_lib/fin";
 import { CHART, brlAxis } from "../_lib/chart";
 import { ErrorBanner, PageHeader } from "../_components/shared";
 
@@ -49,6 +49,8 @@ export default function FluxoDeCaixaPage() {
   const [de, setDe] = useState(primeiroDiaDoMes());
   const [ate, setAte] = useState(ultimoDiaDoMes());
   const [gran, setGran] = useState<"dia" | "mes">("dia");
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
+  const [companyId, setCompanyId] = useState("");
   const [data, setData] = useState<FluxoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -56,13 +58,14 @@ export default function FluxoDeCaixaPage() {
   const load = useCallback(() => {
     if (!de || !ate) return;
     setLoading(true);
-    adminFetch(`/admin/financeiro/fluxo-caixa?de=${de}&ate=${ate}&granularidade=${gran}`)
+    adminFetch(`/admin/financeiro/fluxo-caixa?de=${de}&ate=${ate}&granularidade=${gran}${companyId ? `&companyId=${companyId}` : ""}`)
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [de, ate, gran]);
+  }, [de, ate, gran, companyId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { finApi.empresas().then(setEmpresas).catch(() => {}); }, []);
 
   const serie = (data?.serie || []).map((s) => ({
     ...s,
@@ -94,6 +97,15 @@ export default function FluxoDeCaixaPage() {
           <select className={selectCls} value={gran} onChange={(e) => setGran(e.target.value as "dia" | "mes")}>
             <option value="dia">Por dia (até 92 dias)</option>
             <option value="mes">Por mês</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+          <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)} style={{ width: 160 }}>
+            <option value="">Todas</option>
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>{e.nome}</option>
+            ))}
           </select>
         </div>
         <div className="ml-auto flex gap-4 text-sm">

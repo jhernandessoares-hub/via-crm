@@ -53,6 +53,8 @@ async function bootstrap() {
     'http://127.0.0.1:3001',
     'http://localhost:3010',
     'http://127.0.0.1:3010',
+    'http://localhost:3020',
+    'http://127.0.0.1:3020',
   ];
 
   const extraOrigins = process.env.CORS_ALLOWED_ORIGINS;

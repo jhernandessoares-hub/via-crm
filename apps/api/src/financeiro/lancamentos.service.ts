@@ -11,6 +11,7 @@ import {
   parseCompetencia,
   parseDateOnly,
   roundMoney,
+  sumAmortizado,
   sumMoney,
 } from './fin-shared.util';
 
@@ -24,6 +25,8 @@ export interface ListLancamentosQuery {
   categoriaId?: string;
   contactId?: string;
   tenantId?: string;
+  companyId?: string;
+  contractId?: string;
   busca?: string;
   page?: number;
   pageSize?: number;
@@ -52,6 +55,8 @@ export class FinLancamentosService {
     if (query.categoriaId) where.categoriaId = query.categoriaId;
     if (query.contactId) where.contactId = query.contactId;
     if (query.tenantId) where.tenantId = query.tenantId;
+    if (query.companyId) where.companyId = query.companyId;
+    if (query.contractId) where.contractId = query.contractId;
     if (query.de || query.ate) {
       where.vencimento = {
         ...(query.de ? { gte: parseDateOnly(query.de, 'de') } : {}),
@@ -84,7 +89,11 @@ export class FinLancamentosService {
         include: {
           categoria: { select: { id: true, nome: true, parent: { select: { nome: true } } } },
           contact: { select: { id: true, nome: true } },
-          payments: { select: { id: true, valor: true, dataPagamento: true, bankAccountId: true } },
+          company: { select: { id: true, nome: true } },
+          contract: { select: { id: true, descricao: true } },
+          payments: {
+            select: { id: true, valor: true, desconto: true, jurosMulta: true, dataPagamento: true, bankAccountId: true },
+          },
           documents: { select: { id: true, tipo: true, numero: true, filename: true } },
         },
       }),
@@ -98,7 +107,7 @@ export class FinLancamentosService {
     const tenantNome = new Map(tenants.map((t) => [t.id, t.nome]));
 
     const mapped = items.map((e) => {
-      const valorPago = sumMoney(e.payments.map((p) => p.valor));
+      const valorPago = sumAmortizado(e.payments);
       const vencido = (e.status === 'ABERTO' || e.status === 'PARCIAL') && e.vencimento < hoje;
       return {
         ...finSerialize(e),
@@ -112,10 +121,10 @@ export class FinLancamentosService {
     // Totalizadores do filtro (sem paginação)
     const allForTotals = await this.prisma.finEntry.findMany({
       where,
-      select: { valor: true, payments: { select: { valor: true } } },
+      select: { valor: true, payments: { select: { valor: true, desconto: true, jurosMulta: true } } },
     });
     const totalValor = sumMoney(allForTotals.map((e) => e.valor));
-    const totalPago = sumMoney(allForTotals.flatMap((e) => e.payments.map((p) => p.valor)));
+    const totalPago = sumMoney(allForTotals.map((e) => sumAmortizado(e.payments)));
 
     return {
       items: mapped,
@@ -133,6 +142,8 @@ export class FinLancamentosService {
       categoriaId: string;
       contactId?: string;
       tenantId?: string;
+      companyId?: string;
+      contractId?: string;
       competencia: string;
       vencimento: string;
       valor: number;
@@ -156,6 +167,8 @@ export class FinLancamentosService {
       categoriaId: data.categoriaId,
       contactId: data.contactId || null,
       tenantId: data.tenantId || null,
+      companyId: data.companyId || null,
+      contractId: data.contractId || null,
       observacao: data.observacao?.trim() || null,
       createdBy: adminId || null,
     };
@@ -207,6 +220,8 @@ export class FinLancamentosService {
       descricao?: string;
       categoriaId?: string;
       contactId?: string | null;
+      companyId?: string | null;
+      contractId?: string | null;
       competencia?: string;
       vencimento?: string;
       valor?: number;
@@ -216,7 +231,7 @@ export class FinLancamentosService {
   ) {
     const entry = await this.prisma.finEntry.findUnique({
       where: { id },
-      include: { payments: { select: { valor: true } } },
+      include: { payments: { select: { valor: true, desconto: true, jurosMulta: true } } },
     });
     if (!entry) throw new NotFoundException('Lançamento não encontrado');
     if (entry.status === 'CANCELADO') throw new BadRequestException('Lançamento cancelado não pode ser editado');
@@ -244,15 +259,21 @@ export class FinLancamentosService {
     if (data.contactId !== undefined) {
       patch.contact = data.contactId ? { connect: { id: data.contactId } } : { disconnect: true };
     }
+    if (data.companyId !== undefined) {
+      patch.company = data.companyId ? { connect: { id: data.companyId } } : { disconnect: true };
+    }
+    if (data.contractId !== undefined) {
+      patch.contract = data.contractId ? { connect: { id: data.contractId } } : { disconnect: true };
+    }
     if (data.competencia !== undefined) patch.competencia = parseCompetencia(data.competencia);
     if (data.vencimento !== undefined) patch.vencimento = parseDateOnly(data.vencimento, 'vencimento');
     if (data.observacao !== undefined) patch.observacao = data.observacao?.trim() || null;
     if (data.valor !== undefined) {
       const novoValor = assertPositiveMoney(data.valor, 'valor');
-      const valorPago = sumMoney(entry.payments.map((p) => p.valor));
+      const valorPago = sumAmortizado(entry.payments);
       if (novoValor < valorPago) {
         throw new BadRequestException(
-          `Valor não pode ser menor que o já pago (R$ ${valorPago.toFixed(2)}) — estorne as baixas antes`,
+          `Valor não pode ser menor que o já amortizado (R$ ${valorPago.toFixed(2)}) — estorne as baixas antes`,
         );
       }
       patch.valor = novoValor;
@@ -298,12 +319,19 @@ export class FinLancamentosService {
 
   async baixar(
     id: string,
-    data: { bankAccountId: string; dataPagamento: string; valor: number; observacao?: string },
+    data: {
+      bankAccountId: string;
+      dataPagamento: string;
+      valor: number;
+      desconto?: number;
+      jurosMulta?: number;
+      observacao?: string;
+    },
     adminId?: string,
   ) {
     const entry = await this.prisma.finEntry.findUnique({
       where: { id },
-      include: { payments: { select: { valor: true } } },
+      include: { payments: { select: { valor: true, desconto: true, jurosMulta: true } } },
     });
     if (!entry) throw new NotFoundException('Lançamento não encontrado');
     if (entry.status === 'CANCELADO' || entry.status === 'PAGO') {
@@ -314,10 +342,18 @@ export class FinLancamentosService {
     if (!conta || !conta.ativo) throw new BadRequestException('Conta bancária inválida ou inativa');
 
     const valor = assertPositiveMoney(data.valor, 'valor');
-    const valorPago = sumMoney(entry.payments.map((p) => p.valor));
+    const desconto = data.desconto !== undefined ? roundMoney(Math.max(0, Number(data.desconto) || 0)) : 0;
+    const jurosMulta = data.jurosMulta !== undefined ? roundMoney(Math.max(0, Number(data.jurosMulta) || 0)) : 0;
+    const amortizacao = roundMoney(valor + desconto - jurosMulta);
+    if (amortizacao <= 0) {
+      throw new BadRequestException('Desconto não pode ser maior que o valor recebido/pago + juros');
+    }
+    const valorPago = sumAmortizado(entry.payments);
     const saldo = roundMoney(entry.valor.toNumber() - valorPago);
-    if (valor > saldo + 0.005) {
-      throw new BadRequestException(`Valor da baixa (R$ ${valor.toFixed(2)}) maior que o saldo (R$ ${saldo.toFixed(2)})`);
+    if (amortizacao > saldo + 0.005) {
+      throw new BadRequestException(
+        `Baixa (R$ ${amortizacao.toFixed(2)}, já considerando desconto/juros) maior que o saldo (R$ ${saldo.toFixed(2)})`,
+      );
     }
 
     const dataPagamento = parseDateOnly(data.dataPagamento, 'dataPagamento');
@@ -329,6 +365,8 @@ export class FinLancamentosService {
           bankAccountId: data.bankAccountId,
           dataPagamento,
           valor,
+          desconto,
+          jurosMulta,
           observacao: data.observacao?.trim() || null,
           createdBy: adminId || null,
         },
@@ -342,7 +380,7 @@ export class FinLancamentosService {
       action: 'PLATFORM_FIN_PAYMENT',
       resourceType: 'FinPayment',
       resourceId: payment.id,
-      metadata: { entryId: id, valor, dataPagamento: data.dataPagamento },
+      metadata: { entryId: id, valor, desconto, jurosMulta, dataPagamento: data.dataPagamento },
     });
 
     const updated = await this.prisma.finEntry.findUnique({
@@ -394,10 +432,10 @@ export class FinLancamentosService {
   async recomputeStatus(tx: Prisma.TransactionClient, entryId: string) {
     const entry = await tx.finEntry.findUnique({
       where: { id: entryId },
-      include: { payments: { select: { valor: true } } },
+      include: { payments: { select: { valor: true, desconto: true, jurosMulta: true } } },
     });
     if (!entry || entry.status === 'CANCELADO') return;
-    const valorPago = sumMoney(entry.payments.map((p) => p.valor));
+    const valorPago = sumAmortizado(entry.payments);
     const valor = entry.valor.toNumber();
     const status: FinEntryStatus = valorPago >= valor - 0.005 && entry.payments.length > 0 ? 'PAGO' : valorPago > 0 ? 'PARCIAL' : 'ABERTO';
     if (status !== entry.status) {

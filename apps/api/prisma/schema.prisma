@@ -137,6 +137,7 @@ model Tenant {
   preOcupacaoOcorrencias        PreOcupacaoOcorrencia[]
   preOcupacaoFamiliaCounter     TenantPreOcupacaoFamiliaCounter?
   preOcupacaoDemandaCounter     TenantPreOcupacaoDemandaCounter?
+  preOcupacaoConteudos          PreOcupacaoConteudo[]
 
   @@map("tenants")
 }
@@ -1995,21 +1996,43 @@ model PreOcupacaoFamilia {
   @@map("pre_ocupacao_familias")
 }
 
-// Sessão do portal de login das famílias (CPF + Data de Nascimento).
+// Sessão do portal de login das famílias (CPF + últimos 4 dígitos do telefone).
 // jti é o identificador do JWT emitido no login; revogar aqui invalida
 // o acesso mesmo com token ainda não expirado (ex.: família virou INATIVA).
 model PreOcupacaoFamiliaSession {
-  id         String    @id @default(uuid())
-  jti        String    @unique
-  familiaId  String
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  criadoEm   DateTime  @default(now())
+  id        String    @id @default(uuid())
+  jti       String    @unique
+  familiaId String
+  expiresAt DateTime
+  revokedAt DateTime?
+  criadoEm  DateTime  @default(now())
 
   familia PreOcupacaoFamilia @relation(fields: [familiaId], references: [id], onDelete: Cascade)
 
   @@index([familiaId])
   @@map("pre_ocupacao_familia_sessions")
+}
+
+// Conteúdo educacional (vídeo/imagem/apresentação) subido pela equipe e exibido
+// na área logada da família (Portal Família). Armazenamento público no Cloudinary
+// (não é dado pessoal/LGPD como os anexos de demanda/atividade).
+model PreOcupacaoConteudo {
+  id           String   @id @default(uuid())
+  tenantId     String
+  titulo       String
+  descricao    String?
+  url          String
+  publicId     String
+  mimeType     String?
+  oculto       Boolean  @default(false)
+  criadoPor    String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, oculto])
+  @@map("pre_ocupacao_conteudos")
 }
 
 model PreOcupacaoAtividade {
@@ -2148,8 +2171,8 @@ model PreOcupacaoOcorrencia {
   abertaEm        DateTime                    @default(now())
   encerradaEm     DateTime?
 
-  tenant     Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  familia    PreOcupacaoFamilia?             @relation(fields: [familiaId], references: [id], onDelete: SetNull)
+  tenant     Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  familia    PreOcupacaoFamilia?              @relation(fields: [familiaId], references: [id], onDelete: SetNull)
   anexos     PreOcupacaoOcorrenciaAnexo[]
   andamentos PreOcupacaoOcorrenciaAndamento[]
 
@@ -2350,6 +2373,7 @@ model FinCategory {
 
   entries        FinEntry[]
   recurringRules FinRecurringRule[]
+  contracts      FinContract[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2359,15 +2383,37 @@ model FinCategory {
   @@map("fin_categories")
 }
 
+// Empresa/CNPJ da holding — cada conta bancária, lançamento, documento e contrato pode ser marcado
+// como sendo de uma empresa específica. Nullable em todo lugar: registros antigos ficam "sem empresa".
+model FinCompany {
+  id           String  @id @default(uuid())
+  nome         String // razão social
+  nomeFantasia String?
+  cnpj         String? // sem máscara
+  ativo        Boolean @default(true)
+
+  bankAccounts FinBankAccount[]
+  entries      FinEntry[]
+  documents    FinDocument[]
+  contracts    FinContract[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("fin_companies")
+}
+
 model FinBankAccount {
-  id               String   @id @default(uuid())
+  id               String      @id @default(uuid())
   nome             String
   banco            String?
   agencia          String?
   conta            String?
-  saldoInicial     Decimal  @default(0) @db.Decimal(18, 2)
-  saldoInicialData DateTime @db.Date
-  ativo            Boolean  @default(true)
+  saldoInicial     Decimal     @default(0) @db.Decimal(18, 2)
+  saldoInicialData DateTime    @db.Date
+  ativo            Boolean     @default(true)
+  companyId        String?
+  company          FinCompany? @relation(fields: [companyId], references: [id])
 
   payments     FinPayment[]
   transactions FinBankTransaction[]
@@ -2376,6 +2422,7 @@ model FinBankAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([companyId])
   @@map("fin_bank_accounts")
 }
 
@@ -2391,12 +2438,45 @@ model FinContact {
   entries        FinEntry[]
   recurringRules FinRecurringRule[]
   documents      FinDocument[]
+  contracts      FinContract[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([tipo, ativo])
   @@map("fin_contacts")
+}
+
+// Contrato de prestação de serviço (RECEBER) ou despesa contratual (PAGAR).
+// valorTotal preenchido = contrato fechado, abate com cada nota fiscal vinculada até zerar.
+// valorTotal nulo = contrato aberto/recorrente, sem "saldo a faturar" — só valorRecorrente como referência.
+model FinContract {
+  id              String       @id @default(uuid())
+  numero          String? // identificador interno do contrato
+  descricao       String // objeto do contrato
+  tipo            FinEntryType
+  contactId       String?
+  contact         FinContact?  @relation(fields: [contactId], references: [id])
+  companyId       String?
+  company         FinCompany?  @relation(fields: [companyId], references: [id])
+  categoriaId     String?
+  categoria       FinCategory? @relation(fields: [categoriaId], references: [id])
+  valorTotal      Decimal?     @db.Decimal(18, 2)
+  valorRecorrente Decimal?     @db.Decimal(18, 2)
+  dataInicio      DateTime?    @db.Date
+  dataFim         DateTime?    @db.Date
+  observacao      String?
+  ativo           Boolean      @default(true)
+
+  documents FinDocument[]
+  entries   FinEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo, ativo])
+  @@index([companyId])
+  @@map("fin_contracts")
 }
 
 // Recorrência: mensalidade de tenant (tenantId preenchido, 1 regra por tenant)
@@ -2433,6 +2513,10 @@ model FinEntry {
   contactId       String?
   contact         FinContact?       @relation(fields: [contactId], references: [id])
   tenantId        String? // mensalidade do VIA CRM (sem FK — padrão do projeto)
+  companyId       String?
+  company         FinCompany?       @relation(fields: [companyId], references: [id])
+  contractId      String?
+  contract        FinContract?      @relation(fields: [contractId], references: [id])
   competencia     DateTime          @db.Date // sempre dia 1 do mês
   vencimento      DateTime          @db.Date
   valor           Decimal           @db.Decimal(18, 2)
@@ -2456,10 +2540,16 @@ model FinEntry {
   @@index([categoriaId, competencia])
   @@index([tenantId])
   @@index([parcelaGroupId])
+  @@index([companyId])
+  @@index([contractId])
   @@map("fin_entries")
 }
 
-// Baixa (pagamento/recebimento) — permite parcial; recálculo de status na mesma transação
+// Baixa (pagamento/recebimento) — permite parcial; recálculo de status na mesma transação.
+// valor = caixa real (bate com o extrato, conciliação usa este campo sem mudança).
+// desconto = abatimento concedido, não é caixa mas quita parte do título.
+// jurosMulta = cobrado por atraso, é caixa extra mas não quita o principal.
+// Amortização do título = valor + desconto - jurosMulta (ver sumAmortizado em fin-shared.util.ts).
 model FinPayment {
   id                String              @id @default(uuid())
   entryId           String
@@ -2468,6 +2558,8 @@ model FinPayment {
   bankAccount       FinBankAccount      @relation(fields: [bankAccountId], references: [id])
   dataPagamento     DateTime            @db.Date
   valor             Decimal             @db.Decimal(18, 2)
+  desconto          Decimal             @default(0) @db.Decimal(18, 2)
+  jurosMulta        Decimal             @default(0) @db.Decimal(18, 2)
   observacao        String?
   bankTransactionId String?             @unique // preenchido = conciliado com linha de extrato
   bankTransaction   FinBankTransaction? @relation(fields: [bankTransactionId], references: [id])
@@ -2491,6 +2583,10 @@ model FinDocument {
   dataEmissao        DateTime?       @db.Date
   contactId          String?
   contact            FinContact?     @relation(fields: [contactId], references: [id])
+  companyId          String?
+  company            FinCompany?     @relation(fields: [companyId], references: [id])
+  contractId         String?
+  contract           FinContract?    @relation(fields: [contractId], references: [id])
   filename           String
   mimeType           String
   cloudinaryPublicId String
@@ -2503,6 +2599,8 @@ model FinDocument {
   updatedAt DateTime @updatedAt
 
   @@index([tipo, createdAt])
+  @@index([companyId])
+  @@index([contractId])
   @@map("fin_documents")
 }
 

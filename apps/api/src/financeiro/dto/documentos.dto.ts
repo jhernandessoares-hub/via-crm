@@ -38,6 +38,14 @@ export class UploadDocumentoDto {
   @IsOptional()
   @IsString()
   contactId?: string;
+
+  @IsOptional()
+  @IsString()
+  companyId?: string;
+
+  @IsOptional()
+  @IsString()
+  contractId?: string;
 }
 
 export class UpdateDocumentoDto {
@@ -64,6 +72,14 @@ export class UpdateDocumentoDto {
   @IsOptional()
   @IsString()
   contactId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  companyId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  contractId?: string | null;
 }
 
 export class JaPagoDto {

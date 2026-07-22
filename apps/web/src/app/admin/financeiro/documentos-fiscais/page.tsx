@@ -9,8 +9,10 @@ import {
   FinCategoria,
   FinConta,
   FinContato,
+  FinContrato,
   FinDocumentType,
   FinDocumento,
+  FinEmpresa,
   btnPrimary,
   btnSecondary,
   cardCls,
@@ -32,6 +34,8 @@ export default function DocumentosFiscaisPage() {
   // filtros
   const [tipo, setTipo] = useState("");
   const [vinculado, setVinculado] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [contractId, setContractId] = useState("");
   const [busca, setBusca] = useState("");
   const [buscaDebounced, setBuscaDebounced] = useState("");
 
@@ -39,6 +43,8 @@ export default function DocumentosFiscaisPage() {
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
   const [contas, setContas] = useState<FinConta[]>([]);
   const [contatos, setContatos] = useState<FinContato[]>([]);
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
+  const [contratos, setContratos] = useState<FinContrato[]>([]);
 
   // modais
   const [uploadModal, setUploadModal] = useState<{ file: File } | null>(null);
@@ -53,20 +59,22 @@ export default function DocumentosFiscaisPage() {
   const load = useCallback(() => {
     setLoading(true);
     finApi
-      .documentos({ tipo, vinculado, busca: buscaDebounced })
+      .documentos({ tipo, vinculado, companyId, contractId, busca: buscaDebounced })
       .then(setDocs)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [tipo, vinculado, buscaDebounced]);
+  }, [tipo, vinculado, companyId, contractId, buscaDebounced]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([finApi.categorias(), finApi.contas(), finApi.contatos()])
-      .then(([c, ct, ctt]) => {
+    Promise.all([finApi.categorias(), finApi.contas(), finApi.contatos(), finApi.empresas(), finApi.contratos()])
+      .then(([c, ct, ctt, emps, contrs]) => {
         setCategorias(c);
         setContas(ct.filter((x) => x.ativo));
         setContatos(ctt);
+        setEmpresas(emps);
+        setContratos(contrs);
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -123,6 +131,24 @@ export default function DocumentosFiscaisPage() {
             <option value="">Todos</option>
             <option value="sim">Com lançamento</option>
             <option value="nao">Sem lançamento</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+          <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)} style={{ width: 160 }}>
+            <option value="">Todas</option>
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>{e.nome}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
+          <select className={selectCls} value={contractId} onChange={(e) => setContractId(e.target.value)} style={{ width: 160 }}>
+            <option value="">Todos</option>
+            {contratos.map((c) => (
+              <option key={c.id} value={c.id}>{c.descricao}</option>
+            ))}
           </select>
         </div>
         <div className="min-w-[220px] flex-1">
@@ -189,6 +215,8 @@ export default function DocumentosFiscaisPage() {
         <UploadModal
           file={uploadModal.file}
           contatos={contatos}
+          empresas={empresas}
+          contratos={contratos}
           uploading={uploading}
           setUploading={setUploading}
           onClose={() => setUploadModal(null)}
@@ -216,6 +244,8 @@ export default function DocumentosFiscaisPage() {
 function UploadModal({
   file,
   contatos,
+  empresas,
+  contratos,
   uploading,
   setUploading,
   onClose,
@@ -224,6 +254,8 @@ function UploadModal({
 }: {
   file: File;
   contatos: FinContato[];
+  empresas: FinEmpresa[];
+  contratos: FinContrato[];
   uploading: boolean;
   setUploading: (b: boolean) => void;
   onClose: () => void;
@@ -236,6 +268,10 @@ function UploadModal({
   const [valor, setValor] = useState<number | undefined>(undefined);
   const [dataEmissao, setDataEmissao] = useState(hojeStr());
   const [contactId, setContactId] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [contractId, setContractId] = useState("");
+
+  const contratoSelecionado = contratos.find((c) => c.id === contractId) || null;
 
   const enviar = async () => {
     setUploading(true);
@@ -248,6 +284,8 @@ function UploadModal({
       if (valor) form.append("valor", String(valor));
       if (dataEmissao) form.append("dataEmissao", dataEmissao);
       if (contactId) form.append("contactId", contactId);
+      if (companyId) form.append("companyId", companyId);
+      if (contractId) form.append("contractId", contractId);
       await adminFetch("/admin/financeiro/documentos", { method: "POST", body: form });
       onSaved();
     } catch (e: any) {
@@ -299,15 +337,65 @@ function UploadModal({
             <input type="date" className={inputCls} value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} />
           </div>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Contraparte</label>
-          <select className={selectCls} value={contactId} onChange={(e) => setContactId(e.target.value)}>
-            <option value="">—</option>
-            {contatos.map((c) => (
-              <option key={c.id} value={c.id}>{c.nome}</option>
-            ))}
-          </select>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Contraparte</label>
+            <select className={selectCls} value={contactId} onChange={(e) => setContactId(e.target.value)}>
+              <option value="">—</option>
+              {contatos.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+            <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+              <option value="">—</option>
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>{e.nome}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
+            <select className={selectCls} value={contractId} onChange={(e) => setContractId(e.target.value)}>
+              <option value="">—</option>
+              {contratos.map((c) => (
+                <option key={c.id} value={c.id}>{c.descricao}</option>
+              ))}
+            </select>
+          </div>
         </div>
+        {contratoSelecionado && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            <div className="mb-1 font-semibold text-slate-700">Resumo do contrato</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div>Contraparte: <b>{contratoSelecionado.contact?.nome || "—"}</b></div>
+              <div>Empresa: <b>{contratoSelecionado.company?.nome || "—"}</b></div>
+              <div>Categoria: <b>{contratoSelecionado.categoria?.nome || "—"}</b></div>
+              <div>
+                Vigência: <b>{fmtDate(contratoSelecionado.dataInicio) !== "—" ? fmtDate(contratoSelecionado.dataInicio) : "—"}
+                {" a "}
+                {fmtDate(contratoSelecionado.dataFim) !== "—" ? fmtDate(contratoSelecionado.dataFim) : "—"}</b>
+              </div>
+              {contratoSelecionado.valorTotal != null ? (
+                <>
+                  <div>Valor total: <b>{formatBRL(contratoSelecionado.valorTotal)}</b></div>
+                  <div>Já faturado: <b>{formatBRL(contratoSelecionado.valorFaturado)}</b></div>
+                  <div className="col-span-2">
+                    Saldo a faturar:{" "}
+                    <b className={(contratoSelecionado.saldoAFaturar ?? 0) < 0 ? "text-red-600" : "text-slate-800"}>
+                      {formatBRL(contratoSelecionado.saldoAFaturar ?? 0)}
+                      {(contratoSelecionado.saldoAFaturar ?? 0) < 0 ? " (excedido)" : ""}
+                    </b>
+                  </div>
+                </>
+              ) : (
+                <div className="col-span-2">Contrato recorrente — sem teto definido, sem saldo a faturar.</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </AdminModal>
   );

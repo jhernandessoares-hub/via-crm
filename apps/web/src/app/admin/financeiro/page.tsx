@@ -16,7 +16,7 @@ import {
 } from "recharts";
 import { adminFetch } from "@/lib/admin-api";
 import { formatBRL } from "@/lib/format";
-import { cardCls, fmtCompetencia, fmtDate } from "./_lib/fin";
+import { FinEmpresa, cardCls, finApi, fmtCompetencia, fmtDate, selectCls } from "./_lib/fin";
 import { CHART, brlAxis } from "./_lib/chart";
 import { ErrorBanner, PageHeader, useToast } from "./_components/shared";
 
@@ -39,6 +39,8 @@ interface DashboardData {
 
 export default function FinanceiroDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
+  const [companyId, setCompanyId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [gerando, setGerando] = useState(false);
@@ -46,15 +48,17 @@ export default function FinanceiroDashboardPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    adminFetch("/admin/financeiro/dashboard")
+    adminFetch(`/admin/financeiro/dashboard${companyId ? `?companyId=${companyId}` : ""}`)
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => { finApi.empresas().then(setEmpresas).catch(() => {}); }, []);
 
   const gerar = async () => {
     setGerando(true);
@@ -83,6 +87,16 @@ export default function FinanceiroDashboardPage() {
       <PageHeader
         title="Financeiro VEXCIA"
         subtitle={`Visão geral de ${data ? fmtCompetencia(data.mes + "-01") : ""} — caixa único da holding`}
+        actions={
+          empresas.length > 0 ? (
+            <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)} style={{ width: 200 }}>
+              <option value="">Todas as empresas</option>
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>{e.nome}</option>
+              ))}
+            </select>
+          ) : undefined
+        }
       />
       <ErrorBanner error={error} onClose={() => setError("")} />
 

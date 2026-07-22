@@ -14,6 +14,8 @@ import { FinConciliacaoController } from './conciliacao.controller';
 import { FinConciliacaoService } from './conciliacao.service';
 import { FinRelatoriosController } from './relatorios.controller';
 import { FinRelatoriosService } from './relatorios.service';
+import { FinContratosController } from './contratos.controller';
+import { FinContratosService } from './contratos.service';
 
 // Módulo Financeiro da VEXCIA (holding) — exclusivo do Platform Admin.
 // Mesmo JWT do AdminModule (PLATFORM_ADMIN_JWT_SECRET) para o guard funcionar.
@@ -34,6 +36,7 @@ import { FinRelatoriosService } from './relatorios.service';
     FinDocumentosController,
     FinConciliacaoController,
     FinRelatoriosController,
+    FinContratosController,
   ],
   providers: [
     PlatformAdminGuard,
@@ -43,6 +46,7 @@ import { FinRelatoriosService } from './relatorios.service';
     FinDocumentosService,
     FinConciliacaoService,
     FinRelatoriosService,
+    FinContratosService,
   ],
 })
 export class FinanceiroModule {}

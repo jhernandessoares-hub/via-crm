@@ -11,6 +11,7 @@ export type CreateSalesLeadInput = {
   empresa?: string;
   numFuncionarios?: string;
   mensagem?: string;
+  origem?: string;
 };
 
 @Injectable()
@@ -34,7 +35,7 @@ export class SalesLeadsService {
         empresa: data.empresa?.trim() || null,
         numFuncionarios: data.numFuncionarios?.trim() || null,
         mensagem: data.mensagem?.trim() || null,
-        origem: 'SITE',
+        origem: data.origem?.trim() || 'SITE',
         status: 'NOVO',
       },
     });

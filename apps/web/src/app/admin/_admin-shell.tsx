@@ -45,6 +45,7 @@ const navItems: NavItem[] = [
       { href: "/admin/financeiro/contas-a-pagar", label: "Contas a Pagar" },
       { href: "/admin/financeiro/contas-a-receber", label: "Contas a Receber" },
       { href: "/admin/financeiro/documentos-fiscais", label: "Documentos Fiscais" },
+      { href: "/admin/financeiro/contratos", label: "Contratos" },
       { href: "/admin/financeiro/fluxo-de-caixa", label: "Fluxo de Caixa" },
       { href: "/admin/financeiro/conciliacao", label: "Conciliação" },
       { href: "/admin/financeiro/dre", label: "DRE" },
