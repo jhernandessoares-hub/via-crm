@@ -53,6 +53,8 @@ export class FinDocumentosService {
       valor?: number | string;
       dataEmissao?: string;
       contactId?: string;
+      companyId?: string;
+      contractId?: string;
     },
     adminId?: string,
   ) {
@@ -94,6 +96,8 @@ export class FinDocumentosService {
         valor,
         dataEmissao: meta.dataEmissao ? parseDateOnly(meta.dataEmissao, 'dataEmissao') : null,
         contactId: meta.contactId || null,
+        companyId: meta.companyId || null,
+        contractId: meta.contractId || null,
         filename: file.originalname,
         mimeType: file.mimetype,
         cloudinaryPublicId: result.public_id,
@@ -113,9 +117,19 @@ export class FinDocumentosService {
     return finSerialize(doc);
   }
 
-  async list(query: { tipo?: FinDocumentType; vinculado?: string; busca?: string; de?: string; ate?: string }) {
+  async list(query: {
+    tipo?: FinDocumentType;
+    vinculado?: string;
+    busca?: string;
+    de?: string;
+    ate?: string;
+    companyId?: string;
+    contractId?: string;
+  }) {
     const where: Prisma.FinDocumentWhereInput = {};
     if (query.tipo) where.tipo = query.tipo;
+    if (query.companyId) where.companyId = query.companyId;
+    if (query.contractId) where.contractId = query.contractId;
     if (query.vinculado === 'sim') where.entries = { some: {} };
     if (query.vinculado === 'nao') where.entries = { none: {} };
     if (query.de || query.ate) {
@@ -140,6 +154,8 @@ export class FinDocumentosService {
       take: 300,
       include: {
         contact: { select: { id: true, nome: true } },
+        company: { select: { id: true, nome: true } },
+        contract: { select: { id: true, descricao: true } },
         entries: { select: { id: true, tipo: true, descricao: true, status: true, valor: true, vencimento: true } },
       },
     });
@@ -185,6 +201,8 @@ export class FinDocumentosService {
       valor?: number | null;
       dataEmissao?: string | null;
       contactId?: string | null;
+      companyId?: string | null;
+      contractId?: string | null;
     },
   ) {
     const doc = await this.prisma.finDocument.findUnique({ where: { id } });
@@ -202,6 +220,8 @@ export class FinDocumentosService {
           ? { dataEmissao: data.dataEmissao ? parseDateOnly(data.dataEmissao, 'dataEmissao') : null }
           : {}),
         ...(data.contactId !== undefined ? { contactId: data.contactId || null } : {}),
+        ...(data.companyId !== undefined ? { companyId: data.companyId || null } : {}),
+        ...(data.contractId !== undefined ? { contractId: data.contractId || null } : {}),
       },
     });
     return finSerialize(updated);
@@ -302,6 +322,8 @@ export class FinDocumentosService {
             descricao: parcelas > 1 ? `${descricaoBase} (${i + 1}/${parcelas})` : descricaoBase,
             categoriaId: data.categoriaId,
             contactId: doc.contactId,
+            companyId: doc.companyId,
+            contractId: doc.contractId,
             competencia: addMonthsClamped(competencia, i),
             vencimento: addMonthsClamped(vencimento, i),
             valor: cents / 100,

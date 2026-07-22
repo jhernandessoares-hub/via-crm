@@ -8,8 +8,8 @@ export class FinRelatoriosController {
   constructor(private readonly service: FinRelatoriosService) {}
 
   @Get('dashboard')
-  dashboard(@Req() req: any, @Query('mes') mes?: string) {
-    return this.service.dashboard(mes, req.platformAdmin?.sub);
+  dashboard(@Req() req: any, @Query('mes') mes?: string, @Query('companyId') companyId?: string) {
+    return this.service.dashboard(mes, req.platformAdmin?.sub, companyId);
   }
 
   @Get('fluxo-caixa')
@@ -17,17 +17,18 @@ export class FinRelatoriosController {
     @Query('de') de?: string,
     @Query('ate') ate?: string,
     @Query('granularidade') granularidade?: 'dia' | 'mes',
+    @Query('companyId') companyId?: string,
   ) {
-    return this.service.fluxoCaixa(de, ate, granularidade === 'mes' ? 'mes' : 'dia');
+    return this.service.fluxoCaixa(de, ate, granularidade === 'mes' ? 'mes' : 'dia', companyId);
   }
 
   @Get('dre')
-  dre(@Query('de') de?: string, @Query('ate') ate?: string) {
-    return this.service.dre(de, ate);
+  dre(@Query('de') de?: string, @Query('ate') ate?: string, @Query('companyId') companyId?: string) {
+    return this.service.dre(de, ate, companyId);
   }
 
   @Get('balancete')
-  balancete(@Query('de') de?: string, @Query('ate') ate?: string) {
-    return this.service.balancete(de, ate);
+  balancete(@Query('de') de?: string, @Query('ate') ate?: string, @Query('companyId') companyId?: string) {
+    return this.service.balancete(de, ate, companyId);
   }
 }

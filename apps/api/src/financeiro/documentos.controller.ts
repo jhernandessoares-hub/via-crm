@@ -49,8 +49,10 @@ export class FinDocumentosController {
     @Query('busca') busca?: string,
     @Query('de') de?: string,
     @Query('ate') ate?: string,
+    @Query('companyId') companyId?: string,
+    @Query('contractId') contractId?: string,
   ) {
-    return this.service.list({ tipo, vinculado, busca, de, ate });
+    return this.service.list({ tipo, vinculado, busca, de, ate, companyId, contractId });
   }
 
   @Get('documentos/:id/download')

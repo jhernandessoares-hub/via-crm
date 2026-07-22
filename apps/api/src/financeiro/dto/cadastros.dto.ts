@@ -55,6 +55,10 @@ export class CreateContaBancariaDto {
 
   @Matches(DATE_RE, { message: 'saldoInicialData deve ser YYYY-MM-DD' })
   saldoInicialData!: string;
+
+  @IsOptional()
+  @IsString()
+  companyId?: string;
 }
 
 export class UpdateContaBancariaDto {
@@ -81,6 +85,41 @@ export class UpdateContaBancariaDto {
   @IsOptional()
   @Matches(DATE_RE, { message: 'saldoInicialData deve ser YYYY-MM-DD' })
   saldoInicialData?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  ativo?: boolean;
+
+  @IsOptional()
+  @IsString()
+  companyId?: string | null;
+}
+
+export class CreateEmpresaDto {
+  @IsString()
+  nome!: string;
+
+  @IsOptional()
+  @IsString()
+  nomeFantasia?: string;
+
+  @IsOptional()
+  @IsString()
+  cnpj?: string;
+}
+
+export class UpdateEmpresaDto {
+  @IsOptional()
+  @IsString()
+  nome?: string;
+
+  @IsOptional()
+  @IsString()
+  nomeFantasia?: string;
+
+  @IsOptional()
+  @IsString()
+  cnpj?: string;
 
   @IsOptional()
   @IsBoolean()

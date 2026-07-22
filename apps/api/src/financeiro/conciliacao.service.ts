@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { FinLancamentosService } from './lancamentos.service';
 import { FinCadastrosService } from './cadastros.service';
-import { finSerialize, parseDateOnly, roundMoney, sumMoney } from './fin-shared.util';
+import { finSerialize, parseDateOnly, roundMoney, sumAmortizado } from './fin-shared.util';
 import { parseOfx } from './parsers/ofx.parser';
 import { parsePlanilha } from './parsers/planilha.parser';
 import { ParsedTransaction } from './parsers/parser.types';
@@ -205,11 +205,12 @@ export class FinConciliacaoService {
         },
       },
       take: 20,
-      include: { payments: { select: { valor: true } }, contact: { select: { nome: true } } },
+      include: {
+        payments: { select: { valor: true, desconto: true, jurosMulta: true } },
+        contact: { select: { nome: true } },
+      },
     });
-    const candidatos = entries.filter(
-      (e) => roundMoney(e.valor.toNumber() - sumMoney(e.payments.map((p) => p.valor))) === abs,
-    );
+    const candidatos = entries.filter((e) => roundMoney(e.valor.toNumber() - sumAmortizado(e.payments)) === abs);
     if (candidatos.length === 1) {
       const e = candidatos[0];
       return {
@@ -243,7 +244,7 @@ export class FinConciliacaoService {
         // Baixa o título com a data e o valor da linha do extrato
         const entry = await ptx.finEntry.findUnique({
           where: { id: data.entryId },
-          include: { payments: { select: { valor: true } } },
+          include: { payments: { select: { valor: true, desconto: true, jurosMulta: true } } },
         });
         if (!entry) throw new NotFoundException('Lançamento não encontrado');
         if (entry.status === 'CANCELADO' || entry.status === 'PAGO') {
@@ -256,7 +257,7 @@ export class FinConciliacaoService {
           );
         }
         const abs = roundMoney(Math.abs(tx.valor.toNumber()));
-        const saldo = roundMoney(entry.valor.toNumber() - sumMoney(entry.payments.map((p) => p.valor)));
+        const saldo = roundMoney(entry.valor.toNumber() - sumAmortizado(entry.payments));
         if (abs > saldo + 0.005) {
           throw new BadRequestException(
             `Valor da transação (R$ ${abs.toFixed(2)}) maior que o saldo do título (R$ ${saldo.toFixed(2)})`,

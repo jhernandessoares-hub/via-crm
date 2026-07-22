@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-api";
 import { formatBRL } from "@/lib/format";
-import { cardCls, fmtCompetencia, inputCls, mesAtualStr, thCls } from "../_lib/fin";
+import { FinEmpresa, cardCls, finApi, fmtCompetencia, inputCls, mesAtualStr, selectCls, thCls } from "../_lib/fin";
 import { ErrorBanner, PageHeader } from "../_components/shared";
 
 interface DreData {
@@ -30,6 +30,8 @@ function inicioDoAno(): string {
 export default function DrePage() {
   const [de, setDe] = useState(inicioDoAno());
   const [ate, setAte] = useState(mesAtualStr());
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
+  const [companyId, setCompanyId] = useState("");
   const [data, setData] = useState<DreData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -37,13 +39,14 @@ export default function DrePage() {
   const load = useCallback(() => {
     if (!de || !ate) return;
     setLoading(true);
-    adminFetch(`/admin/financeiro/dre?de=${de}&ate=${ate}`)
+    adminFetch(`/admin/financeiro/dre?de=${de}&ate=${ate}${companyId ? `&companyId=${companyId}` : ""}`)
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [de, ate]);
+  }, [de, ate, companyId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { finApi.empresas().then(setEmpresas).catch(() => {}); }, []);
 
   const meses = data?.meses || [];
   const num = (v: number) => (v === 0 ? <span className="text-slate-300">—</span> : formatBRL(v));
@@ -64,6 +67,15 @@ export default function DrePage() {
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Até (mês)</label>
           <input type="month" className={inputCls} value={ate} onChange={(e) => setAte(e.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+          <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)} style={{ width: 160 }}>
+            <option value="">Todas</option>
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>{e.nome}</option>
+            ))}
+          </select>
         </div>
         {data && (
           <div className="ml-auto flex gap-4 text-sm">

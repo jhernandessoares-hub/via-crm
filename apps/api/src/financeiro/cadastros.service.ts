@@ -182,6 +182,7 @@ export class FinCadastrosService implements OnModuleInit {
     conta?: string;
     saldoInicial?: number;
     saldoInicialData: string;
+    companyId?: string;
   }) {
     const nome = (data.nome || '').trim();
     if (!nome) throw new BadRequestException('Nome da conta é obrigatório');
@@ -193,6 +194,7 @@ export class FinCadastrosService implements OnModuleInit {
         conta: data.conta?.trim() || null,
         saldoInicial: roundMoney(Number(data.saldoInicial ?? 0) || 0),
         saldoInicialData: parseDateOnly(data.saldoInicialData, 'saldoInicialData'),
+        companyId: data.companyId || null,
       },
     });
     return finSerialize(created);
@@ -208,6 +210,7 @@ export class FinCadastrosService implements OnModuleInit {
       saldoInicial?: number;
       saldoInicialData?: string;
       ativo?: boolean;
+      companyId?: string | null;
     },
   ) {
     const conta = await this.prisma.finBankAccount.findUnique({ where: { id } });
@@ -224,6 +227,7 @@ export class FinCadastrosService implements OnModuleInit {
           ? { saldoInicialData: parseDateOnly(data.saldoInicialData, 'saldoInicialData') }
           : {}),
         ...(data.ativo !== undefined ? { ativo: data.ativo } : {}),
+        ...(data.companyId !== undefined ? { companyId: data.companyId || null } : {}),
       },
     });
     return finSerialize(updated);
@@ -303,9 +307,70 @@ export class FinCadastrosService implements OnModuleInit {
     return { deleted: true, deactivated: false };
   }
 
-  /** Saldo consolidado de todas as contas ativas (para dashboard/fluxo). */
-  async saldoConsolidado(): Promise<number> {
-    const contas = await this.prisma.finBankAccount.findMany({ where: { ativo: true }, select: { id: true, saldoInicial: true } });
+  // ---------- Empresas ----------
+
+  async listEmpresas(incluirInativas = false) {
+    const empresas = await this.prisma.finCompany.findMany({
+      where: incluirInativas ? {} : { ativo: true },
+      orderBy: { nome: 'asc' },
+      include: { _count: { select: { bankAccounts: true, entries: true, documents: true, contracts: true } } },
+    });
+    return finSerialize(empresas);
+  }
+
+  async createEmpresa(data: { nome: string; nomeFantasia?: string; cnpj?: string }) {
+    const nome = (data.nome || '').trim();
+    if (!nome) throw new BadRequestException('Nome da empresa é obrigatório');
+    const created = await this.prisma.finCompany.create({
+      data: {
+        nome,
+        nomeFantasia: data.nomeFantasia?.trim() || null,
+        cnpj: data.cnpj?.replace(/\D/g, '') || null,
+      },
+    });
+    return finSerialize(created);
+  }
+
+  async updateEmpresa(id: string, data: { nome?: string; nomeFantasia?: string; cnpj?: string; ativo?: boolean }) {
+    const empresa = await this.prisma.finCompany.findUnique({ where: { id } });
+    if (!empresa) throw new NotFoundException('Empresa não encontrada');
+    const updated = await this.prisma.finCompany.update({
+      where: { id },
+      data: {
+        ...(data.nome !== undefined ? { nome: data.nome.trim() } : {}),
+        ...(data.nomeFantasia !== undefined ? { nomeFantasia: data.nomeFantasia.trim() || null } : {}),
+        ...(data.cnpj !== undefined ? { cnpj: data.cnpj.replace(/\D/g, '') || null } : {}),
+        ...(data.ativo !== undefined ? { ativo: data.ativo } : {}),
+      },
+    });
+    return finSerialize(updated);
+  }
+
+  async deleteEmpresa(id: string) {
+    const empresa = await this.prisma.finCompany.findUnique({
+      where: { id },
+      include: { _count: { select: { bankAccounts: true, entries: true, documents: true, contracts: true } } },
+    });
+    if (!empresa) throw new NotFoundException('Empresa não encontrada');
+    const emUso =
+      empresa._count.bankAccounts > 0 ||
+      empresa._count.entries > 0 ||
+      empresa._count.documents > 0 ||
+      empresa._count.contracts > 0;
+    if (emUso) {
+      await this.prisma.finCompany.update({ where: { id }, data: { ativo: false } });
+      return { deleted: false, deactivated: true };
+    }
+    await this.prisma.finCompany.delete({ where: { id } });
+    return { deleted: true, deactivated: false };
+  }
+
+  /** Saldo consolidado das contas ativas (para dashboard/fluxo) — opcionalmente restrito a uma empresa. */
+  async saldoConsolidado(companyId?: string): Promise<number> {
+    const contas = await this.prisma.finBankAccount.findMany({
+      where: { ativo: true, ...(companyId ? { companyId } : {}) },
+      select: { id: true, saldoInicial: true },
+    });
     if (contas.length === 0) return 0;
     const payments = await this.prisma.finPayment.findMany({
       where: { bankAccountId: { in: contas.map((c) => c.id) } },

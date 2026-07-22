@@ -100,3 +100,16 @@ export function sumMoney(values: Array<Prisma.Decimal | number>): number {
     values.reduce<number>((acc, v) => acc + (v instanceof Prisma.Decimal ? v.toNumber() : v), 0),
   );
 }
+
+/**
+ * Quanto de baixas quita o título (não é caixa real — ver FinPayment no schema).
+ * = soma(valor) + soma(desconto) - soma(jurosMulta).
+ * Usar para status/saldo do título. Para caixa real (saldo bancário, fluxo de caixa
+ * realizado), somar `valor` puro com sumMoney — nunca esta função.
+ */
+export function sumAmortizado(
+  payments: Array<{ valor: Prisma.Decimal | number; desconto: Prisma.Decimal | number; jurosMulta: Prisma.Decimal | number }>,
+): number {
+  const toNum = (v: Prisma.Decimal | number) => (v instanceof Prisma.Decimal ? v.toNumber() : v);
+  return roundMoney(payments.reduce((acc, p) => acc + toNum(p.valor) + toNum(p.desconto) - toNum(p.jurosMulta), 0));
+}

@@ -31,6 +31,14 @@ export class CreateLancamentoDto {
   @IsString()
   tenantId?: string;
 
+  @IsOptional()
+  @IsString()
+  companyId?: string;
+
+  @IsOptional()
+  @IsString()
+  contractId?: string;
+
   @Matches(COMP_RE, { message: 'competencia deve ser YYYY-MM' })
   competencia!: string;
 
@@ -65,6 +73,14 @@ export class UpdateLancamentoDto {
   contactId?: string | null;
 
   @IsOptional()
+  @IsString()
+  companyId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  contractId?: string | null;
+
+  @IsOptional()
   @Matches(COMP_RE, { message: 'competencia deve ser YYYY-MM' })
   competencia?: string;
 
@@ -90,6 +106,16 @@ export class BaixarLancamentoDto {
 
   @IsNumber()
   valor!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  desconto?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  jurosMulta?: number;
 
   @IsOptional()
   @IsString()

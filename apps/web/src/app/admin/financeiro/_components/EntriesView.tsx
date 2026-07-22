@@ -7,7 +7,9 @@ import {
   DOC_TIPO_LABEL,
   FinCategoria,
   FinContato,
+  FinContrato,
   FinDocumento,
+  FinEmpresa,
   FinEntry,
   FinEntryType,
   STATUS_LABEL,
@@ -46,6 +48,8 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [contractId, setContractId] = useState("");
   const [busca, setBusca] = useState("");
   const [buscaDebounced, setBuscaDebounced] = useState("");
 
@@ -53,6 +57,8 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
   const [contas, setContas] = useState<ContaOption[]>([]);
   const [contatos, setContatos] = useState<FinContato[]>([]);
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
+  const [contratos, setContratos] = useState<FinContrato[]>([]);
 
   // modais
   const [formModal, setFormModal] = useState<Partial<FinEntry> | null>(null);
@@ -72,7 +78,7 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
   const load = useCallback(() => {
     setLoading(true);
     finApi
-      .lancamentos({ tipo, status, de, ate, categoriaId, busca: buscaDebounced, page })
+      .lancamentos({ tipo, status, de, ate, categoriaId, companyId, contractId, busca: buscaDebounced, page })
       .then((r) => {
         setItems(r.items);
         setTotais(r.totais);
@@ -80,18 +86,20 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [tipo, status, de, ate, categoriaId, buscaDebounced, page]);
+  }, [tipo, status, de, ate, categoriaId, companyId, contractId, buscaDebounced, page]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    Promise.all([finApi.categorias(), finApi.contas(), finApi.contatos()])
-      .then(([cats, cts, ctts]) => {
+    Promise.all([finApi.categorias(), finApi.contas(), finApi.contatos(), finApi.empresas(), finApi.contratos()])
+      .then(([cats, cts, ctts, emps, contrs]) => {
         setCategorias(cats.filter((g) => g.tipo === (isReceber ? "RECEITA" : "DESPESA")));
         setContas(cts.filter((c) => c.ativo).map((c) => ({ id: c.id, nome: c.nome })));
         setContatos(ctts);
+        setEmpresas(emps);
+        setContratos(contrs.filter((c) => c.tipo === tipo));
       })
       .catch((e) => setError(e.message));
     if (isReceber) {
@@ -184,6 +192,24 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
                   <option key={c.id} value={c.id}>{c.nome}</option>
                 ))}
               </optgroup>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+          <select className={selectCls} value={companyId} onChange={(e) => { setCompanyId(e.target.value); setPage(1); }} style={{ width: 160 }}>
+            <option value="">Todas</option>
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>{e.nome}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
+          <select className={selectCls} value={contractId} onChange={(e) => { setContractId(e.target.value); setPage(1); }} style={{ width: 160 }}>
+            <option value="">Todos</option>
+            {contratos.map((c) => (
+              <option key={c.id} value={c.id}>{c.descricao}</option>
             ))}
           </select>
         </div>
@@ -289,6 +315,8 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
           tipo={tipo}
           categorias={categorias}
           contatos={contatos}
+          empresas={empresas}
+          contratos={contratos}
           onClose={() => setFormModal(null)}
           onSaved={() => { setFormModal(null); showToast("Título salvo"); load(); }}
           onError={setError}
@@ -335,6 +363,8 @@ function EntryFormModal({
   tipo,
   categorias,
   contatos,
+  empresas,
+  contratos,
   onClose,
   onSaved,
   onError,
@@ -343,6 +373,8 @@ function EntryFormModal({
   tipo: FinEntryType;
   categorias: FinCategoria[];
   contatos: FinContato[];
+  empresas: FinEmpresa[];
+  contratos: FinContrato[];
   onClose: () => void;
   onSaved: () => void;
   onError: (m: string) => void;
@@ -352,6 +384,8 @@ function EntryFormModal({
   const [descricao, setDescricao] = useState(entry.descricao || "");
   const [categoriaId, setCategoriaId] = useState(entry.categoriaId || "");
   const [contactId, setContactId] = useState(entry.contactId || "");
+  const [companyId, setCompanyId] = useState(entry.companyId || "");
+  const [contractId, setContractId] = useState(entry.contractId || "");
   const [competencia, setCompetencia] = useState((entry.competencia || mesAtualStr()).slice(0, 7));
   const [vencimento, setVencimento] = useState(entry.vencimento || hojeStr());
   const [valor, setValor] = useState<number | undefined>(entry.valor);
@@ -370,6 +404,8 @@ function EntryFormModal({
             descricao: descricao.trim(),
             categoriaId,
             contactId: contactId || null,
+            companyId: companyId || null,
+            contractId: contractId || null,
             observacao: observacao || null,
             ...(isPago ? {} : { competencia, vencimento, valor }),
           }),
@@ -382,6 +418,8 @@ function EntryFormModal({
             descricao: descricao.trim(),
             categoriaId,
             contactId: contactId || undefined,
+            companyId: companyId || undefined,
+            contractId: contractId || undefined,
             competencia,
             vencimento,
             valor,
@@ -435,6 +473,26 @@ function EntryFormModal({
               <option value="">—</option>
               {contatos.map((c) => (
                 <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+            <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+              <option value="">—</option>
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>{e.nome}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
+            <select className={selectCls} value={contractId} onChange={(e) => setContractId(e.target.value)}>
+              <option value="">—</option>
+              {contratos.map((c) => (
+                <option key={c.id} value={c.id}>{c.descricao}</option>
               ))}
             </select>
           </div>
@@ -499,8 +557,12 @@ function BaixaModal({
   const [bankAccountId, setBankAccountId] = useState(contas[0]?.id || "");
   const [dataPagamento, setDataPagamento] = useState(hojeStr());
   const [valor, setValor] = useState<number | undefined>(entry.saldo);
+  const [desconto, setDesconto] = useState<number | undefined>(undefined);
+  const [jurosMulta, setJurosMulta] = useState<number | undefined>(undefined);
   const [observacao, setObservacao] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const amortizacao = Math.round(((valor || 0) + (desconto || 0) - (jurosMulta || 0) + Number.EPSILON) * 100) / 100;
 
   const salvar = async () => {
     if (!bankAccountId || !dataPagamento || !valor) return;
@@ -508,7 +570,14 @@ function BaixaModal({
     try {
       await adminFetch(`/admin/financeiro/lancamentos/${entry.id}/baixar`, {
         method: "POST",
-        body: JSON.stringify({ bankAccountId, dataPagamento, valor, observacao: observacao || undefined }),
+        body: JSON.stringify({
+          bankAccountId,
+          dataPagamento,
+          valor,
+          desconto: desconto || undefined,
+          jurosMulta: jurosMulta || undefined,
+          observacao: observacao || undefined,
+        }),
       });
       onSaved();
     } catch (e: any) {
@@ -560,6 +629,21 @@ function BaixaModal({
               <MoneyInput value={valor} onValue={setValor} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Desconto <span className="font-normal text-slate-400">(opcional)</span></label>
+              <MoneyInput value={desconto} onValue={setDesconto} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Juros/Multa <span className="font-normal text-slate-400">(opcional)</span></label>
+              <MoneyInput value={jurosMulta} onValue={setJurosMulta} />
+            </div>
+          </div>
+          {(desconto || jurosMulta) ? (
+            <p className="text-xs text-slate-400">
+              {isReceber ? "Cai na conta" : "Sai da conta"} {formatBRL(valor || 0)} — isso quita <b>{formatBRL(amortizacao)}</b> do título.
+            </p>
+          ) : null}
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Observação</label>
             <input className={inputCls} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
@@ -722,6 +806,8 @@ function DetalheModal({
         <div><span className="text-slate-400">Saldo:</span> <span className="font-semibold text-slate-800">{formatBRL(entry.saldo)}</span></div>
         <div><span className="text-slate-400">Categoria:</span> <span className="text-slate-700">{entry.categoria?.nome || "—"}</span></div>
         <div><span className="text-slate-400">Contraparte:</span> <span className="text-slate-700">{entry.tenantNome || entry.contact?.nome || "—"}</span></div>
+        <div><span className="text-slate-400">Empresa:</span> <span className="text-slate-700">{entry.company?.nome || "—"}</span></div>
+        <div><span className="text-slate-400">Contrato:</span> <span className="text-slate-700">{entry.contract?.descricao || "—"}</span></div>
         {entry.parcelaNum && (
           <div><span className="text-slate-400">Parcela:</span> <span className="text-slate-700">{entry.parcelaNum}/{entry.parcelaTotal}</span></div>
         )}
@@ -739,6 +825,8 @@ function DetalheModal({
             <div key={p.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
               <span className="text-slate-700">
                 {fmtDate(p.dataPagamento)} · <b>{formatBRL(p.valor)}</b>
+                {p.desconto > 0 && <span className="ml-1 text-xs text-emerald-600">(desconto {formatBRL(p.desconto)})</span>}
+                {p.jurosMulta > 0 && <span className="ml-1 text-xs text-amber-600">(juros/multa {formatBRL(p.jurosMulta)})</span>}
                 <span className="ml-2 text-xs text-slate-400">{contaNome(p.bankAccountId)}{p.bankTransactionId ? " · conciliado" : ""}</span>
               </span>
               <button className="text-xs text-red-300 hover:text-red-600 disabled:opacity-50" disabled={busy} onClick={() => estornar(p.id)}>

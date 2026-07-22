@@ -28,6 +28,7 @@ export interface FinConta {
   saldoInicialData: string;
   ativo: boolean;
   saldoAtual: number;
+  companyId: string | null;
 }
 
 export interface FinContato {
@@ -40,9 +41,42 @@ export interface FinContato {
   _count?: { entries: number; documents: number };
 }
 
+export interface FinEmpresa {
+  id: string;
+  nome: string;
+  nomeFantasia: string | null;
+  cnpj: string | null;
+  ativo: boolean;
+  _count?: { bankAccounts: number; entries: number; documents: number; contracts: number };
+}
+
+export interface FinContrato {
+  id: string;
+  numero: string | null;
+  descricao: string;
+  tipo: FinEntryType;
+  contactId: string | null;
+  contact?: { id: string; nome: string } | null;
+  companyId: string | null;
+  company?: { id: string; nome: string } | null;
+  categoriaId: string | null;
+  categoria?: { id: string; nome: string; parent?: { nome: string } | null } | null;
+  valorTotal: number | null;
+  valorRecorrente: number | null;
+  dataInicio: string | null;
+  dataFim: string | null;
+  observacao: string | null;
+  ativo: boolean;
+  valorFaturado: number;
+  saldoAFaturar: number | null;
+  _count?: { documents: number; entries: number };
+}
+
 export interface FinPayment {
   id: string;
   valor: number;
+  desconto: number;
+  jurosMulta: number;
   dataPagamento: string;
   bankAccountId: string;
   observacao?: string | null;
@@ -66,6 +100,10 @@ export interface FinEntry {
   contact?: { id: string; nome: string } | null;
   tenantId: string | null;
   tenantNome?: string | null;
+  companyId: string | null;
+  company?: { id: string; nome: string } | null;
+  contractId: string | null;
+  contract?: { id: string; descricao: string } | null;
   competencia: string;
   vencimento: string;
   valor: number;
@@ -89,6 +127,10 @@ export interface FinDocumento {
   valor: number | null;
   dataEmissao: string | null;
   contact?: { id: string; nome: string } | null;
+  companyId: string | null;
+  company?: { id: string; nome: string } | null;
+  contractId: string | null;
+  contract?: { id: string; descricao: string } | null;
   filename: string;
   mimeType: string;
   createdAt: string;
@@ -148,6 +190,10 @@ export const finApi = {
     adminFetch(`${BASE}/contas-bancarias${incluirInativas ? "?incluirInativas=true" : ""}`),
   contatos: (incluirInativos = false): Promise<FinContato[]> =>
     adminFetch(`${BASE}/contatos${incluirInativos ? "?incluirInativos=true" : ""}`),
+  empresas: (incluirInativas = false): Promise<FinEmpresa[]> =>
+    adminFetch(`${BASE}/empresas${incluirInativas ? "?incluirInativas=true" : ""}`),
+  contratos: (incluirInativos = false): Promise<FinContrato[]> =>
+    adminFetch(`${BASE}/contratos${incluirInativos ? "?incluirInativos=true" : ""}`),
   lancamentos: (params: Record<string, string | number | undefined>): Promise<{
     items: FinEntry[];
     total: number;
