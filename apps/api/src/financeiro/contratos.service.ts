@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { FinDocumentType, FinEntryType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { finSerialize, parseDateOnly, roundMoney, sumMoney } from './fin-shared.util';
+import { finSerialize, parseDateOnly, roundMoney, sumAmortizado, sumMoney } from './fin-shared.util';
 
 @Injectable()
 export class FinContratosService {
@@ -34,6 +34,39 @@ export class FinContratosService {
     });
   }
 
+  /**
+   * valorRealizado = soma (amortizada) das baixas de todos os títulos vinculados ao contrato.
+   * valorEmAberto = soma do saldo restante dos títulos ainda ABERTO/PARCIAL vinculados ao contrato.
+   * Reflete cobrança/pagamento real — diferente de valorFaturado (baseado na nota fiscal).
+   */
+  private async comCobranca<T extends { id: string }>(
+    contratos: T[],
+  ): Promise<Array<T & { valorRealizado: number; valorEmAberto: number }>> {
+    if (contratos.length === 0) return [];
+    const entries = await this.prisma.finEntry.findMany({
+      where: { contractId: { in: contratos.map((c) => c.id) }, status: { not: 'CANCELADO' } },
+      select: {
+        contractId: true,
+        valor: true,
+        status: true,
+        payments: { select: { valor: true, desconto: true, jurosMulta: true } },
+      },
+    });
+    return contratos.map((c) => {
+      let valorRealizado = 0;
+      let valorEmAberto = 0;
+      for (const e of entries) {
+        if (e.contractId !== c.id) continue;
+        const amortizado = sumAmortizado(e.payments);
+        valorRealizado = roundMoney(valorRealizado + amortizado);
+        if (e.status === 'ABERTO' || e.status === 'PARCIAL') {
+          valorEmAberto = roundMoney(valorEmAberto + Math.max(0, e.valor.toNumber() - amortizado));
+        }
+      }
+      return { ...c, valorRealizado, valorEmAberto };
+    });
+  }
+
   async list(incluirInativos = false) {
     const contratos = await this.prisma.finContract.findMany({
       where: incluirInativos ? {} : { ativo: true },
@@ -45,7 +78,8 @@ export class FinContratosService {
         _count: { select: { documents: true, entries: true } },
       },
     });
-    return finSerialize(await this.comFaturamento(contratos));
+    const comFat = await this.comFaturamento(contratos);
+    return finSerialize(await this.comCobranca(comFat));
   }
 
   async get(id: string) {
@@ -59,7 +93,8 @@ export class FinContratosService {
     });
     if (!contrato) throw new NotFoundException('Contrato não encontrado');
     const [comFat] = await this.comFaturamento([contrato]);
-    return finSerialize(comFat);
+    const [comCob] = await this.comCobranca([comFat]);
+    return finSerialize(comCob);
   }
 
   async create(data: {
