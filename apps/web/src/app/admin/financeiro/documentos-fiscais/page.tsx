@@ -23,7 +23,7 @@ import {
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
+import { AdminModal, DownloadModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
 
 export default function DocumentosFiscaisPage() {
   const [docs, setDocs] = useState<FinDocumento[]>([]);
@@ -49,6 +49,7 @@ export default function DocumentosFiscaisPage() {
   // modais
   const [uploadModal, setUploadModal] = useState<{ file: File } | null>(null);
   const [gerarModal, setGerarModal] = useState<FinDocumento | null>(null);
+  const [downloadInfo, setDownloadInfo] = useState<{ url: string; filename: string } | null>(null);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export default function DocumentosFiscaisPage() {
   const baixar = async (doc: FinDocumento) => {
     try {
       const r = await adminFetch(`/admin/financeiro/documentos/${doc.id}/download`);
-      window.open(r.url, "_blank");
+      setDownloadInfo({ url: r.url, filename: doc.filename });
     } catch (e: any) {
       setError(e.message);
     }
@@ -234,6 +235,7 @@ export default function DocumentosFiscaisPage() {
           onError={setError}
         />
       )}
+      <DownloadModal info={downloadInfo} onClose={() => setDownloadInfo(null)} />
       {toastNode}
     </div>
   );

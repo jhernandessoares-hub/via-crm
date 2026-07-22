@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { maskMoney, moneyToMask, parseMoney } from "@/lib/format";
-import { inputCls } from "../_lib/fin";
+import { btnPrimary, btnSecondary, inputCls } from "../_lib/fin";
 
 /** Input de moeda BRL: digitação em centavos, retorna number via onValue. */
 export function MoneyInput({
@@ -90,6 +90,28 @@ export function AdminModal({
         {footer && <div className="mt-6 flex justify-end gap-3">{footer}</div>}
       </div>
     </div>
+  );
+}
+
+/** Modal simples de download — evita abrir aba nova direto (bloqueio de pop-up, erro cru do Cloudinary). */
+export function DownloadModal({
+  info,
+  onClose,
+}: {
+  info: { url: string; filename: string } | null;
+  onClose: () => void;
+}) {
+  if (!info) return null;
+  return (
+    <AdminModal
+      title="Baixar documento"
+      footer={<button className={btnSecondary} onClick={onClose}>Fechar</button>}
+    >
+      <p className="mb-4 text-sm text-slate-600">📄 {info.filename}</p>
+      <a href={info.url} target="_blank" rel="noreferrer" className={`inline-block ${btnPrimary}`} onClick={onClose}>
+        Baixar arquivo
+      </a>
+    </AdminModal>
   );
 }
 

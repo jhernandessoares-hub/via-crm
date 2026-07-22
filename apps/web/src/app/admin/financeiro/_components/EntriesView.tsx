@@ -27,7 +27,7 @@ import {
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, ErrorBanner, MoneyInput, PageHeader, useToast } from "./shared";
+import { AdminModal, DownloadModal, ErrorBanner, MoneyInput, PageHeader, useToast } from "./shared";
 
 interface ContaOption {
   id: string;
@@ -690,6 +690,7 @@ function AnexosModal({
   const [disponiveis, setDisponiveis] = useState<FinDocumento[]>([]);
   const [vinculandoId, setVinculandoId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [downloadInfo, setDownloadInfo] = useState<{ url: string; filename: string } | null>(null);
 
   useEffect(() => {
     finApi.documentos({}).then(setDisponiveis).catch(() => {});
@@ -727,7 +728,8 @@ function AnexosModal({
   const baixarDoc = async (docId: string) => {
     try {
       const r = await adminFetch(`/admin/financeiro/documentos/${docId}/download`);
-      window.open(r.url, "_blank");
+      const filename = docs.find((d) => d.id === docId)?.filename || "documento";
+      setDownloadInfo({ url: r.url, filename });
     } catch (e: any) {
       onError(e.message);
     }
@@ -773,6 +775,7 @@ function AnexosModal({
         </div>
         <p className="mt-2 text-xs text-slate-400">Para enviar um arquivo novo, use a página Documentos Fiscais.</p>
       </div>
+      <DownloadModal info={downloadInfo} onClose={() => setDownloadInfo(null)} />
     </AdminModal>
   );
 }
