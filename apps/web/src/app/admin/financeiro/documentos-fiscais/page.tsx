@@ -212,9 +212,13 @@ export default function DocumentosFiscaisPage() {
                     <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => ver(d)}>Ver</button>
                     <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => baixar(d)}>Baixar</button>
                     <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => setEditModal(d)}>Editar</button>
-                    <button className="mr-3 font-medium text-emerald-600 hover:text-emerald-800" onClick={() => setGerarModal(d)}>Gerar lançamento</button>
-                    {d.entries.length === 0 && (
-                      <button className="text-red-300 hover:text-red-600" onClick={() => excluir(d)}>Excluir</button>
+                    {d.entries.length === 0 ? (
+                      <>
+                        <button className="mr-3 font-medium text-emerald-600 hover:text-emerald-800" onClick={() => setGerarModal(d)}>Gerar lançamento</button>
+                        <button className="text-red-300 hover:text-red-600" onClick={() => excluir(d)}>Excluir</button>
+                      </>
+                    ) : (
+                      <span className="text-slate-300">Lançamento já gerado</span>
                     )}
                   </td>
                 </tr>
