@@ -64,6 +64,7 @@ export default function DocumentosFiscaisPage() {
   // modais
   const [uploadModal, setUploadModal] = useState<{ file: File } | null>(null);
   const [gerarModal, setGerarModal] = useState<FinDocumento | null>(null);
+  const [editModal, setEditModal] = useState<FinDocumento | null>(null);
   const [previewInfo, setPreviewInfo] = useState<DocPreviewInfo | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -210,6 +211,7 @@ export default function DocumentosFiscaisPage() {
                   <td className="px-4 py-2.5 text-right text-xs whitespace-nowrap">
                     <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => ver(d)}>Ver</button>
                     <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => baixar(d)}>Baixar</button>
+                    <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => setEditModal(d)}>Editar</button>
                     <button className="mr-3 font-medium text-emerald-600 hover:text-emerald-800" onClick={() => setGerarModal(d)}>Gerar lançamento</button>
                     {d.entries.length === 0 && (
                       <button className="text-red-300 hover:text-red-600" onClick={() => excluir(d)}>Excluir</button>
@@ -242,6 +244,17 @@ export default function DocumentosFiscaisPage() {
           contas={contas}
           onClose={() => setGerarModal(null)}
           onSaved={() => { setGerarModal(null); showToast("Lançamento(s) criado(s) a partir do documento"); load(); }}
+          onError={setError}
+        />
+      )}
+      {editModal && (
+        <EditarDocumentoModal
+          doc={editModal}
+          contatos={contatos}
+          empresas={empresas}
+          contratos={contratos}
+          onClose={() => setEditModal(null)}
+          onSaved={() => { setEditModal(null); showToast("Documento atualizado"); load(); }}
           onError={setError}
         />
       )}
@@ -376,6 +389,7 @@ function UploadModal({
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Data de pagamento <span className="font-normal text-slate-400">(se já pago)</span></label>
             <input type="date" className={inputCls} value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
+            {dataPagamento && <p className="mt-1 text-xs text-slate-400">Ao gerar o lançamento, "Já pago" já vem marcado com essa data.</p>}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -455,9 +469,9 @@ function GerarLancamentoModal({
   const [vencimento, setVencimento] = useState(hojeStr());
   const [valor, setValor] = useState<number | undefined>(doc.valor ?? undefined);
   const [parcelas, setParcelas] = useState(1);
-  const [jaPago, setJaPago] = useState(doc.tipo === "COMPROVANTE");
+  const [jaPago, setJaPago] = useState(doc.tipo === "COMPROVANTE" || !!doc.dataPagamento);
   const [bankAccountId, setBankAccountId] = useState(contas[0]?.id || "");
-  const [dataPagamento, setDataPagamento] = useState(hojeStr());
+  const [dataPagamento, setDataPagamento] = useState(doc.dataPagamento || hojeStr());
   const [saving, setSaving] = useState(false);
 
   const gruposDoTipo = categorias.filter((g) => g.tipo === (tipo === "RECEBER" ? "RECEITA" : "DESPESA"));
@@ -554,10 +568,15 @@ function GerarLancamentoModal({
         </div>
 
         {parcelas === 1 && (
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={jaPago} onChange={(e) => setJaPago(e.target.checked)} />
-            Já {tipo === "RECEBER" ? "recebido" : "pago"} — registrar a baixa junto
-          </label>
+          <div>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={jaPago} onChange={(e) => setJaPago(e.target.checked)} />
+              Já {tipo === "RECEBER" ? "recebido" : "pago"} — registrar a baixa junto
+            </label>
+            {doc.dataPagamento && (
+              <p className="ml-6 mt-0.5 text-xs text-slate-400">Pré-marcado com a data de pagamento do documento ({fmtDate(doc.dataPagamento)}).</p>
+            )}
+          </div>
         )}
         {jaPago && parcelas === 1 && (
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3">
@@ -575,6 +594,150 @@ function GerarLancamentoModal({
               <input type="date" className={inputCls} value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
             </div>
           </div>
+        )}
+      </div>
+    </AdminModal>
+  );
+}
+
+// ============================ Editar documento ============================
+
+function EditarDocumentoModal({
+  doc,
+  contatos,
+  empresas,
+  contratos,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  doc: FinDocumento;
+  contatos: FinContato[];
+  empresas: FinEmpresa[];
+  contratos: FinContrato[];
+  onClose: () => void;
+  onSaved: () => void;
+  onError: (m: string) => void;
+}) {
+  const [tipo, setTipo] = useState<FinDocumentType>(doc.tipo);
+  const [numero, setNumero] = useState(doc.numero || "");
+  const [descricao, setDescricao] = useState(doc.descricao || "");
+  const [valor, setValor] = useState<number | undefined>(doc.valor ?? undefined);
+  const [dataEmissao, setDataEmissao] = useState(doc.dataEmissao || "");
+  const [dataPagamento, setDataPagamento] = useState(doc.dataPagamento || "");
+  const [contactId, setContactId] = useState(doc.contact?.id || "");
+  const [companyId, setCompanyId] = useState(doc.companyId || "");
+  const [contractId, setContractId] = useState(doc.contractId || "");
+  const [saving, setSaving] = useState(false);
+
+  const contratosDaContraparte = contactId ? contratos.filter((c) => c.contactId === contactId) : [];
+
+  const salvar = async () => {
+    setSaving(true);
+    try {
+      await adminFetch(`/admin/financeiro/documentos/${doc.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          tipo,
+          numero: numero.trim() || null,
+          descricao: descricao.trim() || null,
+          valor: valor ?? null,
+          dataEmissao: dataEmissao || null,
+          dataPagamento: dataPagamento || null,
+          contactId: contactId || null,
+          companyId: companyId || null,
+          contractId: contractId || null,
+        }),
+      });
+      onSaved();
+    } catch (e: any) {
+      onError(e.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminModal
+      title={`Editar documento — ${doc.filename}`}
+      footer={
+        <>
+          <button className={btnSecondary} onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className={btnPrimary} disabled={saving} onClick={salvar}>{saving ? "Salvando..." : "Salvar"}</button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Tipo *</label>
+            <select className={selectCls} value={tipo} onChange={(e) => setTipo(e.target.value as FinDocumentType)}>
+              {Object.entries(DOC_TIPO_LABEL_SEM_CONTRATO).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Número</label>
+            <input className={inputCls} value={numero} onChange={(e) => setNumero(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Descrição</label>
+          <input className={inputCls} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Valor</label>
+            <MoneyInput value={valor} onValue={setValor} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Data de emissão</label>
+            <input type="date" className={inputCls} value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Data de pagamento</label>
+            <input type="date" className={inputCls} value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Contraparte</label>
+            <select
+              className={selectCls}
+              value={contactId}
+              onChange={(e) => { setContactId(e.target.value); setContractId(""); }}
+            >
+              <option value="">—</option>
+              {contatos.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+            <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+              <option value="">—</option>
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>{e.nome}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {contactId && contratosDaContraparte.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
+            <select className={selectCls} value={contractId} onChange={(e) => setContractId(e.target.value)}>
+              <option value="">—</option>
+              {contratosDaContraparte.map((c) => (
+                <option key={c.id} value={c.id}>{c.descricao}{c.numero ? ` (nº ${c.numero})` : ""}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {doc.entries.length > 0 && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Esse documento já tem {doc.entries.length} lançamento(s) vinculado(s) — editar aqui não altera o valor/dados dos títulos já criados.
+          </p>
         )}
       </div>
     </AdminModal>
