@@ -162,6 +162,7 @@ export interface FinDocumento {
   descricao: string | null;
   valor: number | null;
   dataEmissao: string | null;
+  dataPagamento: string | null;
   contact?: { id: string; nome: string } | null;
   companyId: string | null;
   company?: { id: string; nome: string } | null;
