@@ -22,7 +22,17 @@ import {
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, DownloadModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
+import {
+  AdminModal,
+  DocPreviewInfo,
+  DownloadModal,
+  ErrorBanner,
+  FileButton,
+  MoneyInput,
+  PageHeader,
+  baixarDocumentoDireto,
+  useToast,
+} from "../_components/shared";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -61,7 +71,7 @@ export default function ContratosPage() {
   const [docValor, setDocValor] = useState<number | undefined>(undefined);
   const [docDataEmissao, setDocDataEmissao] = useState(hojeStr());
   const [uploadingDoc, setUploadingDoc] = useState(false);
-  const [downloadInfo, setDownloadInfo] = useState<{ url: string; filename: string } | null>(null);
+  const [previewInfo, setPreviewInfo] = useState<DocPreviewInfo | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -91,11 +101,15 @@ export default function ContratosPage() {
     setDocDataEmissao(hojeStr());
   }, [modal?.id, carregarDocs]);
 
+  const verDoc = (docId: string) => {
+    const doc = docs.find((d) => d.id === docId);
+    if (doc) setPreviewInfo({ id: doc.id, filename: doc.filename, mimeType: doc.mimeType });
+  };
+
   const baixarDoc = async (docId: string) => {
+    const filename = docs.find((d) => d.id === docId)?.filename || "documento";
     try {
-      const r = await adminFetch(`/admin/financeiro/documentos/${docId}/download`);
-      const filename = docs.find((d) => d.id === docId)?.filename || "documento";
-      setDownloadInfo({ url: r.url, filename });
+      await baixarDocumentoDireto(docId, filename);
     } catch (e: any) {
       setError(e.message);
     }
@@ -399,7 +413,10 @@ export default function ContratosPage() {
                           {d.numero || d.filename}
                           {d.valor != null && <span className="ml-2 text-slate-400">{formatBRL(d.valor)}</span>}
                         </span>
-                        <button className="text-slate-500 hover:text-slate-800" onClick={() => baixarDoc(d.id)}>Ver / Baixar</button>
+                        <span className="flex gap-2">
+                          <button className="text-slate-500 hover:text-slate-800" onClick={() => verDoc(d.id)}>Ver</button>
+                          <button className="text-slate-500 hover:text-slate-800" onClick={() => baixarDoc(d.id)}>Baixar</button>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -449,7 +466,7 @@ export default function ContratosPage() {
           </div>
         </AdminModal>
       )}
-      <DownloadModal info={downloadInfo} onClose={() => setDownloadInfo(null)} />
+      <DownloadModal info={previewInfo} onClose={() => setPreviewInfo(null)} />
       {toastNode}
     </div>
   );

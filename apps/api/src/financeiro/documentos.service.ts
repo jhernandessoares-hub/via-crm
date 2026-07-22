@@ -162,35 +162,54 @@ export class FinDocumentosService {
     return finSerialize(docs);
   }
 
-  /** URL assinada 2min — raw guarda a extensão NO public_id (format ''); image separa. */
-  async download(id: string) {
-    const doc = await this.prisma.finDocument.findUnique({ where: { id } });
-    if (!doc) throw new NotFoundException('Documento não encontrado');
+  /**
+   * URL assinada temporária no Cloudinary (Admin API "/download"). Esse endpoint sempre força
+   * Content-Disposition: attachment com um nome derivado do public_id (ignora filename/attachment
+   * customizados) — por isso não serve para preview nem para baixar com o nome original; usar
+   * apenas como fonte para o proxy em fetchFile().
+   */
+  private buildSourceUrl(doc: { resourceType: string; cloudinaryPublicId: string; filename: string }): string {
     this.ensureCloudinaryConfigured();
-
     const expiresAt = Math.floor(Date.now() / 1000) + 120;
-    let url: string;
     if (doc.resourceType === 'raw') {
       // Upload usa use_filename:false/unique_filename:true — o public_id gerado pelo Cloudinary
       // NÃO carrega a extensão (ao contrário de outros fluxos do projeto). A extensão vai no
       // parâmetro "format" do private_download_url, nunca concatenada ao public_id.
       const ext = doc.filename.includes('.') ? doc.filename.split('.').pop()!.toLowerCase() : '';
-      url = (cloudinary.utils as any).private_download_url(doc.cloudinaryPublicId, ext, {
+      return (cloudinary.utils as any).private_download_url(doc.cloudinaryPublicId, ext, {
         resource_type: 'raw',
         type: 'authenticated',
         expires_at: expiresAt,
         attachment: false,
       });
-    } else {
-      const ext = doc.filename.includes('.') ? doc.filename.split('.').pop()!.toLowerCase() : 'jpg';
-      url = (cloudinary.utils as any).private_download_url(doc.cloudinaryPublicId, ext, {
-        resource_type: 'image',
-        type: 'authenticated',
-        expires_at: expiresAt,
-        attachment: false,
-      });
     }
+    const ext = doc.filename.includes('.') ? doc.filename.split('.').pop()!.toLowerCase() : 'jpg';
+    return (cloudinary.utils as any).private_download_url(doc.cloudinaryPublicId, ext, {
+      resource_type: 'image',
+      type: 'authenticated',
+      expires_at: expiresAt,
+      attachment: false,
+    });
+  }
+
+  /** Mantido por compatibilidade — prefira fetchFile() para exibir/baixar com nome e tipo corretos. */
+  async download(id: string) {
+    const doc = await this.prisma.finDocument.findUnique({ where: { id } });
+    if (!doc) throw new NotFoundException('Documento não encontrado');
+    const url = this.buildSourceUrl(doc);
     return { url, filename: doc.filename, mimeType: doc.mimeType };
+  }
+
+  /** Busca o arquivo real do Cloudinary no servidor e devolve os bytes — evita depender do
+   * Content-Type/Content-Disposition genéricos que o Cloudinary retorna nesse endpoint. */
+  async fetchFile(id: string): Promise<{ buffer: Buffer; filename: string; mimeType: string }> {
+    const doc = await this.prisma.finDocument.findUnique({ where: { id } });
+    if (!doc) throw new NotFoundException('Documento não encontrado');
+    const sourceUrl = this.buildSourceUrl(doc);
+    const res = await fetch(sourceUrl);
+    if (!res.ok) throw new BadRequestException('Não foi possível obter o arquivo do Cloudinary');
+    const buffer = Buffer.from(await res.arrayBuffer());
+    return { buffer, filename: doc.filename, mimeType: doc.mimeType };
   }
 
   async update(

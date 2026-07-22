@@ -27,7 +27,16 @@ import {
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, DownloadModal, ErrorBanner, MoneyInput, PageHeader, useToast } from "./shared";
+import {
+  AdminModal,
+  DocPreviewInfo,
+  DownloadModal,
+  ErrorBanner,
+  MoneyInput,
+  PageHeader,
+  baixarDocumentoDireto,
+  useToast,
+} from "./shared";
 
 interface ContaOption {
   id: string;
@@ -690,7 +699,7 @@ function AnexosModal({
   const [disponiveis, setDisponiveis] = useState<FinDocumento[]>([]);
   const [vinculandoId, setVinculandoId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [downloadInfo, setDownloadInfo] = useState<{ url: string; filename: string } | null>(null);
+  const [previewInfo, setPreviewInfo] = useState<DocPreviewInfo | null>(null);
 
   useEffect(() => {
     finApi.documentos({}).then(setDisponiveis).catch(() => {});
@@ -702,7 +711,7 @@ function AnexosModal({
     try {
       await adminFetch(`/admin/financeiro/lancamentos/${entry.id}/documentos/${vinculandoId}`, { method: "POST" });
       const doc = disponiveis.find((d) => d.id === vinculandoId);
-      if (doc) setDocs((p) => [...p, { id: doc.id, tipo: doc.tipo, numero: doc.numero, filename: doc.filename }]);
+      if (doc) setDocs((p) => [...p, { id: doc.id, tipo: doc.tipo, numero: doc.numero, filename: doc.filename, mimeType: doc.mimeType }]);
       setVinculandoId("");
       showToast("Documento vinculado");
     } catch (e: any) {
@@ -725,11 +734,15 @@ function AnexosModal({
     }
   };
 
+  const verDoc = (docId: string) => {
+    const doc = docs.find((d) => d.id === docId);
+    if (doc) setPreviewInfo({ id: doc.id, filename: doc.filename, mimeType: doc.mimeType });
+  };
+
   const baixarDoc = async (docId: string) => {
+    const filename = docs.find((d) => d.id === docId)?.filename || "documento";
     try {
-      const r = await adminFetch(`/admin/financeiro/documentos/${docId}/download`);
-      const filename = docs.find((d) => d.id === docId)?.filename || "documento";
-      setDownloadInfo({ url: r.url, filename });
+      await baixarDocumentoDireto(docId, filename);
     } catch (e: any) {
       onError(e.message);
     }
@@ -753,7 +766,8 @@ function AnexosModal({
                 {d.numero || d.filename}
               </span>
               <span className="flex gap-3 text-xs">
-                <button className="text-slate-500 hover:text-slate-800" onClick={() => baixarDoc(d.id)}>Ver / Baixar</button>
+                <button className="text-slate-500 hover:text-slate-800" onClick={() => verDoc(d.id)}>Ver</button>
+                <button className="text-slate-500 hover:text-slate-800" onClick={() => baixarDoc(d.id)}>Baixar</button>
                 <button className="text-red-300 hover:text-red-600" disabled={busy} onClick={() => desvincular(d.id)}>Desvincular</button>
               </span>
             </div>
@@ -775,7 +789,7 @@ function AnexosModal({
         </div>
         <p className="mt-2 text-xs text-slate-400">Para enviar um arquivo novo, use a página Documentos Fiscais.</p>
       </div>
-      <DownloadModal info={downloadInfo} onClose={() => setDownloadInfo(null)} />
+      <DownloadModal info={previewInfo} onClose={() => setPreviewInfo(null)} />
     </AdminModal>
   );
 }
