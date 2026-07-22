@@ -1,7 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { FinDocumentType, FinEntryType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { finSerialize, parseDateOnly, roundMoney, sumAmortizado, sumMoney } from './fin-shared.util';
+import { finSerialize, formatDateOnly, parseDateOnly, roundMoney, sumAmortizado, sumMoney } from './fin-shared.util';
+
+interface RenovacaoHistorico {
+  dataInicioAnterior: string | null;
+  dataFimAnterior: string | null;
+  renovadoEm: string;
+}
 
 @Injectable()
 export class FinContratosService {
@@ -168,6 +174,43 @@ export class FinContratosService {
         ...(data.dataFim !== undefined ? { dataFim: data.dataFim ? parseDateOnly(data.dataFim, 'dataFim') : null } : {}),
         ...(data.observacao !== undefined ? { observacao: data.observacao?.trim() || null } : {}),
         ...(data.ativo !== undefined ? { ativo: data.ativo } : {}),
+      },
+    });
+    return finSerialize(updated);
+  }
+
+  /**
+   * Renova um contrato vencido: define a nova vigência, soma 1 em renovacoes, guarda a vigência
+   * anterior em historicoRenovacoes e reativa o contrato (se estava inativo por ter vencido).
+   */
+  async renovar(id: string, data: { dataInicio: string; dataFim: string }) {
+    const contrato = await this.prisma.finContract.findUnique({ where: { id } });
+    if (!contrato) throw new NotFoundException('Contrato não encontrado');
+
+    const novaInicio = parseDateOnly(data.dataInicio, 'dataInicio');
+    const novaFim = parseDateOnly(data.dataFim, 'dataFim');
+    if (novaFim < novaInicio) throw new BadRequestException('Fim da vigência não pode ser antes do início');
+
+    const historicoAtual = Array.isArray(contrato.historicoRenovacoes)
+      ? (contrato.historicoRenovacoes as unknown as RenovacaoHistorico[])
+      : [];
+    const novoHistorico: RenovacaoHistorico[] = [
+      ...historicoAtual,
+      {
+        dataInicioAnterior: contrato.dataInicio ? formatDateOnly(contrato.dataInicio) : null,
+        dataFimAnterior: contrato.dataFim ? formatDateOnly(contrato.dataFim) : null,
+        renovadoEm: new Date().toISOString(),
+      },
+    ];
+
+    const updated = await this.prisma.finContract.update({
+      where: { id },
+      data: {
+        dataInicio: novaInicio,
+        dataFim: novaFim,
+        renovacoes: { increment: 1 },
+        historicoRenovacoes: novoHistorico as any,
+        ativo: true,
       },
     });
     return finSerialize(updated);

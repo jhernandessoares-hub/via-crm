@@ -92,3 +92,11 @@ export class UpdateContratoDto {
   @IsBoolean()
   ativo?: boolean;
 }
+
+export class RenovarContratoDto {
+  @Matches(DATE_RE, { message: 'dataInicio deve ser YYYY-MM-DD' })
+  dataInicio!: string;
+
+  @Matches(DATE_RE, { message: 'dataFim deve ser YYYY-MM-DD' })
+  dataFim!: string;
+}

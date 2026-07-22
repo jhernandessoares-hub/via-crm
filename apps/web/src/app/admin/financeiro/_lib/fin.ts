@@ -87,7 +87,15 @@ export interface FinContrato {
   saldoAFaturar: number | null;
   valorRealizado: number;
   valorEmAberto: number;
+  renovacoes: number;
+  historicoRenovacoes: FinRenovacaoContrato[] | null;
   _count?: { documents: number; entries: number };
+}
+
+export interface FinRenovacaoContrato {
+  dataInicioAnterior: string | null;
+  dataFimAnterior: string | null;
+  renovadoEm: string;
 }
 
 export interface FinPayment {
