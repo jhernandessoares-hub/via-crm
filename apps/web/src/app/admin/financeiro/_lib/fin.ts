@@ -31,6 +31,9 @@ export interface FinConta {
   companyId: string | null;
 }
 
+export type FinPixKeyType = "CPF_CNPJ" | "EMAIL" | "TELEFONE" | "ALEATORIA";
+export type FinContactBankAccountType = "CORRENTE" | "POUPANCA";
+
 export interface FinContato {
   id: string;
   nome: string;
@@ -38,8 +41,21 @@ export interface FinContato {
   tipo: "CLIENTE" | "FORNECEDOR" | "AMBOS";
   observacao: string | null;
   ativo: boolean;
+  chavePix: string | null;
+  tipoChavePix: FinPixKeyType | null;
+  banco: string | null;
+  agencia: string | null;
+  conta: string | null;
+  tipoConta: FinContactBankAccountType | null;
   _count?: { entries: number; documents: number };
 }
+
+export const PIX_TIPO_LABEL: Record<FinPixKeyType, string> = {
+  CPF_CNPJ: "CPF/CNPJ",
+  EMAIL: "E-mail",
+  TELEFONE: "Telefone",
+  ALEATORIA: "Aleatória",
+};
 
 export interface FinEmpresa {
   id: string;
@@ -97,7 +113,16 @@ export interface FinEntry {
   categoriaId: string;
   categoria?: { id: string; nome: string; parent?: { nome: string } | null };
   contactId: string | null;
-  contact?: { id: string; nome: string } | null;
+  contact?: {
+    id: string;
+    nome: string;
+    chavePix: string | null;
+    tipoChavePix: FinPixKeyType | null;
+    banco: string | null;
+    agencia: string | null;
+    conta: string | null;
+    tipoConta: FinContactBankAccountType | null;
+  } | null;
   tenantId: string | null;
   tenantNome?: string | null;
   companyId: string | null;

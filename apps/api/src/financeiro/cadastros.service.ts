@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { FinCategoryType, FinContactType } from '@prisma/client';
+import { FinCategoryType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Logger } from '../logger';
 import { finSerialize, parseDateOnly, roundMoney, sumMoney } from './fin-shared.util';
@@ -259,7 +259,18 @@ export class FinCadastrosService implements OnModuleInit {
     return finSerialize(contatos);
   }
 
-  async createContato(data: { nome: string; documento?: string; tipo?: FinContactType; observacao?: string }) {
+  async createContato(data: {
+    nome: string;
+    documento?: string;
+    tipo?: FinContactType;
+    observacao?: string;
+    chavePix?: string;
+    tipoChavePix?: FinPixKeyType;
+    banco?: string;
+    agencia?: string;
+    conta?: string;
+    tipoConta?: FinContactBankAccountType;
+  }) {
     const nome = (data.nome || '').trim();
     if (!nome) throw new BadRequestException('Nome do contato é obrigatório');
     const created = await this.prisma.finContact.create({
@@ -268,6 +279,12 @@ export class FinCadastrosService implements OnModuleInit {
         documento: data.documento?.replace(/\D/g, '') || null,
         tipo: data.tipo ?? 'AMBOS',
         observacao: data.observacao?.trim() || null,
+        chavePix: data.chavePix?.trim() || null,
+        tipoChavePix: data.tipoChavePix ?? null,
+        banco: data.banco?.trim() || null,
+        agencia: data.agencia?.trim() || null,
+        conta: data.conta?.trim() || null,
+        tipoConta: data.tipoConta ?? null,
       },
     });
     return finSerialize(created);
@@ -275,7 +292,19 @@ export class FinCadastrosService implements OnModuleInit {
 
   async updateContato(
     id: string,
-    data: { nome?: string; documento?: string; tipo?: FinContactType; observacao?: string; ativo?: boolean },
+    data: {
+      nome?: string;
+      documento?: string;
+      tipo?: FinContactType;
+      observacao?: string;
+      ativo?: boolean;
+      chavePix?: string | null;
+      tipoChavePix?: FinPixKeyType | null;
+      banco?: string | null;
+      agencia?: string | null;
+      conta?: string | null;
+      tipoConta?: FinContactBankAccountType | null;
+    },
   ) {
     const contato = await this.prisma.finContact.findUnique({ where: { id } });
     if (!contato) throw new NotFoundException('Contato não encontrado');
@@ -287,6 +316,12 @@ export class FinCadastrosService implements OnModuleInit {
         ...(data.tipo !== undefined ? { tipo: data.tipo } : {}),
         ...(data.observacao !== undefined ? { observacao: data.observacao.trim() || null } : {}),
         ...(data.ativo !== undefined ? { ativo: data.ativo } : {}),
+        ...(data.chavePix !== undefined ? { chavePix: data.chavePix?.trim() || null } : {}),
+        ...(data.tipoChavePix !== undefined ? { tipoChavePix: data.tipoChavePix } : {}),
+        ...(data.banco !== undefined ? { banco: data.banco?.trim() || null } : {}),
+        ...(data.agencia !== undefined ? { agencia: data.agencia?.trim() || null } : {}),
+        ...(data.conta !== undefined ? { conta: data.conta?.trim() || null } : {}),
+        ...(data.tipoConta !== undefined ? { tipoConta: data.tipoConta } : {}),
       },
     });
     return finSerialize(updated);
