@@ -127,7 +127,14 @@ export class FinDocumentosService {
     contractId?: string;
   }) {
     const where: Prisma.FinDocumentWhereInput = {};
-    if (query.tipo) where.tipo = query.tipo;
+    if (query.tipo) {
+      where.tipo = query.tipo;
+    } else if (!query.contractId) {
+      // Documento tipo CONTRATO (arquivo do contrato/aditivo) só aparece na listagem geral
+      // quando explicitamente filtrado, ou quando a consulta já é por contractId (tela de
+      // Contratos) — não deve poluir a listagem padrão de Documentos Fiscais.
+      where.tipo = { not: 'CONTRATO' };
+    }
     if (query.companyId) where.companyId = query.companyId;
     if (query.contractId) where.contractId = query.contractId;
     if (query.vinculado === 'sim') where.entries = { some: {} };

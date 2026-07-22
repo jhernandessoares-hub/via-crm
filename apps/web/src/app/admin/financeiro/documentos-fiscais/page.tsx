@@ -34,6 +34,12 @@ import {
   useToast,
 } from "../_components/shared";
 
+// Documentos tipo Contrato (arquivo do contrato/aditivo) só existem dentro da tela de Contratos —
+// não aparecem nem são enviáveis por aqui, pra não misturar com notas/guias/comprovantes.
+const DOC_TIPO_LABEL_SEM_CONTRATO = Object.fromEntries(
+  Object.entries(DOC_TIPO_LABEL).filter(([k]) => k !== "CONTRATO"),
+) as typeof DOC_TIPO_LABEL;
+
 export default function DocumentosFiscaisPage() {
   const [docs, setDocs] = useState<FinDocumento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,7 +134,7 @@ export default function DocumentosFiscaisPage() {
           <label className="mb-1 block text-xs font-medium text-slate-500">Tipo</label>
           <select className={selectCls} value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ width: 170 }}>
             <option value="">Todos</option>
-            {Object.entries(DOC_TIPO_LABEL).map(([k, v]) => (
+            {Object.entries(DOC_TIPO_LABEL_SEM_CONTRATO).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
@@ -307,7 +313,7 @@ function UploadModal({
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Tipo *</label>
             <select className={selectCls} value={tipo} onChange={(e) => setTipo(e.target.value as FinDocumentType)}>
-              {Object.entries(DOC_TIPO_LABEL).map(([k, v]) => (
+              {Object.entries(DOC_TIPO_LABEL_SEM_CONTRATO).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
