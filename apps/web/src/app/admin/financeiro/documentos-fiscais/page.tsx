@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminFetch } from "@/lib/admin-api";
 import { formatBRL } from "@/lib/format";
 import {
@@ -285,6 +285,12 @@ function UploadModal({
   const contratosDaContraparte = contactId ? contratos.filter((c) => c.contactId === contactId) : [];
   const contratoSelecionado = contratosDaContraparte.find((c) => c.id === contractId) || null;
 
+  // preview do arquivo local — nada sobe pro servidor só pra visualizar
+  const previewUrl = useMemo(() => URL.createObjectURL(file), [file]);
+  useEffect(() => () => URL.revokeObjectURL(previewUrl), [previewUrl]);
+  const isPdf = file.type === "application/pdf";
+  const isImage = file.type.startsWith("image/");
+
   const enviar = async () => {
     setUploading(true);
     try {
@@ -310,6 +316,7 @@ function UploadModal({
   return (
     <AdminModal
       title="Enviar documento fiscal"
+      width="max-w-6xl"
       footer={
         <>
           <button className={btnSecondary} onClick={onClose} disabled={uploading}>Cancelar</button>
@@ -317,10 +324,24 @@ function UploadModal({
         </>
       }
     >
-      <div className="mb-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        📄 {file.name} <span className="text-xs text-slate-400">({(file.size / 1024 / 1024).toFixed(2)} MB — máx. 10 MB)</span>
-      </div>
-      <div className="grid gap-3">
+      <div className="grid gap-6 md:grid-cols-2">
+        <div>
+          <div className="mb-2 text-xs text-slate-500">
+            📄 {file.name} <span className="text-slate-400">({(file.size / 1024 / 1024).toFixed(2)} MB — máx. 10 MB)</span>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100" style={{ height: "65vh" }}>
+            {isPdf ? (
+              <iframe src={previewUrl} title={file.name} className="h-full w-full" />
+            ) : isImage ? (
+              <img src={previewUrl} alt={file.name} className="h-full w-full object-contain" />
+            ) : (
+              <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-400">
+                Pré-visualização não disponível para este tipo de arquivo — confira o conteúdo depois de enviar.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="grid content-start gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Tipo *</label>
@@ -396,6 +417,7 @@ function UploadModal({
             )}
           </p>
         )}
+        </div>
       </div>
     </AdminModal>
   );
