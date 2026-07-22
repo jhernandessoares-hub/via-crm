@@ -65,6 +65,45 @@ function diaSeguinte(data: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+const VENCE_EM_DIAS_LIMIAR = 30;
+
+type StatusContratoKey = "ATIVO" | "A_VENCER" | "VENCIDO" | "INATIVO";
+
+const STATUS_CONTRATO_LABEL: Record<StatusContratoKey, string> = {
+  ATIVO: "Ativo",
+  A_VENCER: "A vencer",
+  VENCIDO: "Vencido",
+  INATIVO: "Inativo",
+};
+
+const STATUS_CONTRATO_STYLE: Record<StatusContratoKey, string> = {
+  ATIVO: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  A_VENCER: "bg-amber-50 text-amber-700 border border-amber-200",
+  VENCIDO: "bg-red-50 text-red-700 border border-red-200",
+  INATIVO: "bg-slate-100 text-slate-500 border border-slate-200",
+};
+
+const STATUS_CONTRATO_ROW: Record<StatusContratoKey, string> = {
+  ATIVO: "",
+  A_VENCER: "bg-amber-50/50",
+  VENCIDO: "bg-red-50/50",
+  INATIVO: "",
+};
+
+/** Status combina ativo + vigência: sem data de fim, "Ativo" enquanto ativo=true. */
+function contratoStatus(c: { ativo: boolean; dataFim: string | null }): StatusContratoKey {
+  if (!c.ativo) return "INATIVO";
+  if (c.dataFim) {
+    const df = new Date(`${c.dataFim.slice(0, 10)}T00:00:00Z`).getTime();
+    const hoje = new Date();
+    const hojeUTC = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const diasRestantes = Math.round((df - hojeUTC) / DAY_MS);
+    if (diasRestantes < 0) return "VENCIDO";
+    if (diasRestantes <= VENCE_EM_DIAS_LIMIAR) return "A_VENCER";
+  }
+  return "ATIVO";
+}
+
 export default function ContratosPage() {
   const [contratos, setContratos] = useState<FinContrato[]>([]);
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
@@ -75,6 +114,12 @@ export default function ContratosPage() {
   const [modal, setModal] = useState<Partial<FinContrato> | null>(null);
   const [saving, setSaving] = useState(false);
   const { showToast, toastNode } = useToast();
+
+  // filtros da listagem
+  const [filtroStatus, setFiltroStatus] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("");
+  const [filtroCompanyId, setFiltroCompanyId] = useState("");
+  const [filtroBusca, setFiltroBusca] = useState("");
 
   // documentos do contrato aberto no modal
   const [docs, setDocs] = useState<FinDocumento[]>([]);
@@ -238,6 +283,27 @@ export default function ContratosPage() {
 
   const gruposDoTipo = (tipo: FinEntryType) => categorias.filter((g) => g.tipo === (tipo === "RECEBER" ? "RECEITA" : "DESPESA"));
 
+  const buscaNorm = filtroBusca.trim().toLowerCase();
+  const contratosFiltrados = contratos.filter((c) => {
+    if (filtroStatus && contratoStatus(c) !== filtroStatus) return false;
+    if (filtroTipo && c.tipo !== filtroTipo) return false;
+    if (filtroCompanyId && c.companyId !== filtroCompanyId) return false;
+    if (buscaNorm) {
+      const alvo = `${c.descricao} ${c.numero || ""} ${c.contact?.nome || ""}`.toLowerCase();
+      if (!alvo.includes(buscaNorm)) return false;
+    }
+    return true;
+  });
+
+  const contadorStatus = contratos.reduce(
+    (acc, c) => {
+      const s = contratoStatus(c);
+      acc[s] = (acc[s] || 0) + 1;
+      return acc;
+    },
+    {} as Record<StatusContratoKey, number>,
+  );
+
   return (
     <div className="p-8">
       <PageHeader
@@ -246,6 +312,39 @@ export default function ContratosPage() {
         actions={<button className={btnPrimary} onClick={() => setModal({ tipo: "RECEBER" })}>+ Novo contrato</button>}
       />
       <ErrorBanner error={error} onClose={() => setError("")} />
+
+      <div className={`${cardCls} mb-4 flex flex-wrap items-end gap-3 p-4`}>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Status</label>
+          <select className={selectCls} value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{ width: 160 }}>
+            <option value="">Todos ({contratos.length})</option>
+            {(Object.keys(STATUS_CONTRATO_LABEL) as StatusContratoKey[]).map((k) => (
+              <option key={k} value={k}>{STATUS_CONTRATO_LABEL[k]} ({contadorStatus[k] || 0})</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Tipo</label>
+          <select className={selectCls} value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} style={{ width: 140 }}>
+            <option value="">Todos</option>
+            <option value="RECEBER">Receita</option>
+            <option value="PAGAR">Despesa</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+          <select className={selectCls} value={filtroCompanyId} onChange={(e) => setFiltroCompanyId(e.target.value)} style={{ width: 160 }}>
+            <option value="">Todas</option>
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>{e.nome}</option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[200px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-slate-500">Busca</label>
+          <input className={inputCls} placeholder="Objeto, número ou contraparte..." value={filtroBusca} onChange={(e) => setFiltroBusca(e.target.value)} />
+        </div>
+      </div>
 
       <div className={`${cardCls} overflow-x-auto`}>
         <table className="w-full text-sm">
@@ -267,13 +366,14 @@ export default function ContratosPage() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">Carregando...</td></tr>
-            ) : contratos.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">Nenhum contrato cadastrado.</td></tr>
+            ) : contratosFiltrados.length === 0 ? (
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">{contratos.length === 0 ? "Nenhum contrato cadastrado." : "Nenhum contrato encontrado com esses filtros."}</td></tr>
             ) : (
-              contratos.map((c) => {
+              contratosFiltrados.map((c) => {
                 const dias = vigenciaDias(c.dataInicio, c.dataFim);
+                const status = contratoStatus(c);
                 return (
-                  <tr key={c.id} className="hover:bg-slate-50">
+                  <tr key={c.id} className={`hover:bg-slate-100 ${STATUS_CONTRATO_ROW[status]}`}>
                     <td className="px-4 py-2.5">
                       <button className="text-left font-medium text-slate-700 hover:underline" onClick={() => setModal(c)}>{c.descricao}</button>
                       {c.numero && <div className="text-xs text-slate-400">nº {c.numero}</div>}
@@ -311,7 +411,7 @@ export default function ContratosPage() {
                       {formatBRL(c.valorEmAberto)}
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${c.ativo ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{c.ativo ? "Ativo" : "Inativo"}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CONTRATO_STYLE[status]}`}>{STATUS_CONTRATO_LABEL[status]}</span>
                     </td>
                     <td className="px-4 py-2.5 text-right text-xs">
                       <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => setModal(c)}>Editar</button>
@@ -482,6 +582,12 @@ export default function ContratosPage() {
               <label className="mt-1 flex items-center gap-2 text-sm text-slate-600">
                 <input type="checkbox" checked={modal.ativo !== false} onChange={(e) => setModal({ ...modal, ativo: e.target.checked })} />
                 Contrato ativo
+                {(() => {
+                  const status = contratoStatus({ ativo: modal.ativo !== false, dataFim: modal.dataFim || null });
+                  return (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CONTRATO_STYLE[status]}`}>{STATUS_CONTRATO_LABEL[status]}</span>
+                  );
+                })()}
               </label>
             )}
 
