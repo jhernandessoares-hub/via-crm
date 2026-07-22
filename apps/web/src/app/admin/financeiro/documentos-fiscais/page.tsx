@@ -9,6 +9,7 @@ import {
   FinCategoria,
   FinConta,
   FinContato,
+  FinContrato,
   FinDocumentType,
   FinDocumento,
   FinEmpresa,
@@ -58,6 +59,7 @@ export default function DocumentosFiscaisPage() {
   const [contas, setContas] = useState<FinConta[]>([]);
   const [contatos, setContatos] = useState<FinContato[]>([]);
   const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
+  const [contratos, setContratos] = useState<FinContrato[]>([]);
 
   // modais
   const [uploadModal, setUploadModal] = useState<{ file: File } | null>(null);
@@ -82,12 +84,13 @@ export default function DocumentosFiscaisPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    Promise.all([finApi.categorias(), finApi.contas(), finApi.contatos(), finApi.empresas()])
-      .then(([c, ct, ctt, emps]) => {
+    Promise.all([finApi.categorias(), finApi.contas(), finApi.contatos(), finApi.empresas(), finApi.contratos()])
+      .then(([c, ct, ctt, emps, contrs]) => {
         setCategorias(c);
         setContas(ct.filter((x) => x.ativo));
         setContatos(ctt);
         setEmpresas(emps);
+        setContratos(contrs);
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -222,6 +225,7 @@ export default function DocumentosFiscaisPage() {
           file={uploadModal.file}
           contatos={contatos}
           empresas={empresas}
+          contratos={contratos}
           uploading={uploading}
           setUploading={setUploading}
           onClose={() => setUploadModal(null)}
@@ -251,6 +255,7 @@ function UploadModal({
   file,
   contatos,
   empresas,
+  contratos,
   uploading,
   setUploading,
   onClose,
@@ -260,6 +265,7 @@ function UploadModal({
   file: File;
   contatos: FinContato[];
   empresas: FinEmpresa[];
+  contratos: FinContrato[];
   uploading: boolean;
   setUploading: (b: boolean) => void;
   onClose: () => void;
@@ -273,6 +279,11 @@ function UploadModal({
   const [dataEmissao, setDataEmissao] = useState(hojeStr());
   const [contactId, setContactId] = useState("");
   const [companyId, setCompanyId] = useState("");
+  const [contractId, setContractId] = useState("");
+
+  // só sugere contratos dessa contraparte — sem contraparte escolhida, não faz sentido mostrar
+  const contratosDaContraparte = contactId ? contratos.filter((c) => c.contactId === contactId) : [];
+  const contratoSelecionado = contratosDaContraparte.find((c) => c.id === contractId) || null;
 
   const enviar = async () => {
     setUploading(true);
@@ -286,6 +297,7 @@ function UploadModal({
       if (dataEmissao) form.append("dataEmissao", dataEmissao);
       if (contactId) form.append("contactId", contactId);
       if (companyId) form.append("companyId", companyId);
+      if (contractId) form.append("contractId", contractId);
       await adminFetch("/admin/financeiro/documentos", { method: "POST", body: form });
       onSaved();
     } catch (e: any) {
@@ -340,7 +352,11 @@ function UploadModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">Contraparte</label>
-            <select className={selectCls} value={contactId} onChange={(e) => setContactId(e.target.value)}>
+            <select
+              className={selectCls}
+              value={contactId}
+              onChange={(e) => { setContactId(e.target.value); setContractId(""); }}
+            >
               <option value="">—</option>
               {contatos.map((c) => (
                 <option key={c.id} value={c.id}>{c.nome}</option>
@@ -357,6 +373,29 @@ function UploadModal({
             </select>
           </div>
         </div>
+        {contactId && contratosDaContraparte.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Contrato <span className="font-normal text-slate-400">(opcional — computa no faturamento do contrato)</span></label>
+            <select className={selectCls} value={contractId} onChange={(e) => setContractId(e.target.value)}>
+              <option value="">—</option>
+              {contratosDaContraparte.map((c) => (
+                <option key={c.id} value={c.id}>{c.descricao}{c.numero ? ` (nº ${c.numero})` : ""}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {contratoSelecionado && (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            {contratoSelecionado.valorTotal != null ? (
+              <>
+                Já faturado: <b>{formatBRL(contratoSelecionado.valorFaturado)}</b> de <b>{formatBRL(contratoSelecionado.valorTotal)}</b> · Saldo a faturar:{" "}
+                <b className={(contratoSelecionado.saldoAFaturar ?? 0) < 0 ? "text-red-600" : "text-slate-700"}>{formatBRL(contratoSelecionado.saldoAFaturar ?? 0)}</b>
+              </>
+            ) : (
+              "Contrato recorrente — sem teto definido, sem saldo a faturar."
+            )}
+          </p>
+        )}
       </div>
     </AdminModal>
   );
