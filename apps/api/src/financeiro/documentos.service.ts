@@ -171,10 +171,11 @@ export class FinDocumentosService {
     const expiresAt = Math.floor(Date.now() / 1000) + 120;
     let url: string;
     if (doc.resourceType === 'raw') {
+      // Upload usa use_filename:false/unique_filename:true — o public_id gerado pelo Cloudinary
+      // NÃO carrega a extensão (ao contrário de outros fluxos do projeto). A extensão vai no
+      // parâmetro "format" do private_download_url, nunca concatenada ao public_id.
       const ext = doc.filename.includes('.') ? doc.filename.split('.').pop()!.toLowerCase() : '';
-      const alreadyHasExt = ext && doc.cloudinaryPublicId.toLowerCase().endsWith(`.${ext}`);
-      const rawPublicId = !ext || alreadyHasExt ? doc.cloudinaryPublicId : `${doc.cloudinaryPublicId}.${ext}`;
-      url = (cloudinary.utils as any).private_download_url(rawPublicId, '', {
+      url = (cloudinary.utils as any).private_download_url(doc.cloudinaryPublicId, ext, {
         resource_type: 'raw',
         type: 'authenticated',
         expires_at: expiresAt,

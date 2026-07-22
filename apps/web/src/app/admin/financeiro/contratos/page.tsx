@@ -22,7 +22,7 @@ import {
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
+import { AdminModal, DownloadModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -61,6 +61,7 @@ export default function ContratosPage() {
   const [docValor, setDocValor] = useState<number | undefined>(undefined);
   const [docDataEmissao, setDocDataEmissao] = useState(hojeStr());
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [downloadInfo, setDownloadInfo] = useState<{ url: string; filename: string } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -93,7 +94,8 @@ export default function ContratosPage() {
   const baixarDoc = async (docId: string) => {
     try {
       const r = await adminFetch(`/admin/financeiro/documentos/${docId}/download`);
-      window.open(r.url, "_blank");
+      const filename = docs.find((d) => d.id === docId)?.filename || "documento";
+      setDownloadInfo({ url: r.url, filename });
     } catch (e: any) {
       setError(e.message);
     }
@@ -447,6 +449,7 @@ export default function ContratosPage() {
           </div>
         </AdminModal>
       )}
+      <DownloadModal info={downloadInfo} onClose={() => setDownloadInfo(null)} />
       {toastNode}
     </div>
   );
