@@ -35,3 +35,16 @@ export async function adminFetch(path: string, init: RequestInit = {}): Promise<
   }
   return json;
 }
+
+/** Como adminFetch, mas para respostas binárias (arquivo) — usado em preview/download de documentos. */
+export async function adminFetchBlob(path: string): Promise<Blob> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("adminToken") : null;
+  const res = await fetch(`${API}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new Error(json?.message || `Erro ${res.status}`);
+  }
+  return res.blob();
+}

@@ -105,7 +105,7 @@ export class FinLancamentosService {
           payments: {
             select: { id: true, valor: true, desconto: true, jurosMulta: true, dataPagamento: true, bankAccountId: true },
           },
-          documents: { select: { id: true, tipo: true, numero: true, filename: true } },
+          documents: { select: { id: true, tipo: true, numero: true, filename: true, mimeType: true } },
         },
       }),
     ]);

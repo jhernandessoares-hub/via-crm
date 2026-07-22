@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { adminFetchBlob } from "@/lib/admin-api";
 import { maskMoney, moneyToMask, parseMoney } from "@/lib/format";
 import { btnPrimary, btnSecondary, inputCls } from "../_lib/fin";
 
@@ -93,24 +94,86 @@ export function AdminModal({
   );
 }
 
-/** Modal simples de download — evita abrir aba nova direto (bloqueio de pop-up, erro cru do Cloudinary). */
-export function DownloadModal({
-  info,
-  onClose,
-}: {
-  info: { url: string; filename: string } | null;
-  onClose: () => void;
-}) {
+export interface DocPreviewInfo {
+  id: string;
+  filename: string;
+  mimeType: string;
+}
+
+/** Baixa o arquivo direto (sem abrir modal) com o nome original — usado pelo botão "Baixar". */
+export async function baixarDocumentoDireto(id: string, filename: string) {
+  const blob = await adminFetchBlob(`/admin/financeiro/documentos/${id}/file?disposition=attachment`);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+/**
+ * Busca o arquivo via /documentos/:id/file (proxy do backend, Content-Type correto) e mostra
+ * preview inline (imagem/PDF) quando possível. "Baixar" usa o mesmo blob com o nome original —
+ * não depende do Content-Disposition do Cloudinary, que ignora nome customizado.
+ */
+export function DownloadModal({ info, onClose }: { info: DocPreviewInfo | null; onClose: () => void }) {
+  const [blob, setBlob] = useState<Blob | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!info) return;
+    setBlob(null);
+    setBlobUrl(null);
+    setError("");
+    setLoading(true);
+    adminFetchBlob(`/admin/financeiro/documentos/${info.id}/file?disposition=inline`)
+      .then((b) => {
+        setBlob(b);
+        setBlobUrl(URL.createObjectURL(b));
+      })
+      .catch((e: any) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [info?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
   if (!info) return null;
+
+  const isImage = info.mimeType.startsWith("image/");
+  const isPdf = info.mimeType === "application/pdf";
+
+  const baixar = () => {
+    if (!blob) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = info.filename;
+    a.click();
+  };
+
   return (
     <AdminModal
-      title="Baixar documento"
-      footer={<button className={btnSecondary} onClick={onClose}>Fechar</button>}
+      title={info.filename}
+      width="max-w-3xl"
+      footer={
+        <>
+          <button className={btnSecondary} onClick={onClose}>Fechar</button>
+          <button className={btnPrimary} disabled={!blob} onClick={baixar}>Baixar</button>
+        </>
+      }
     >
-      <p className="mb-4 text-sm text-slate-600">📄 {info.filename}</p>
-      <a href={info.url} target="_blank" rel="noreferrer" className={`inline-block ${btnPrimary}`} onClick={onClose}>
-        Baixar arquivo
-      </a>
+      {loading && <p className="py-10 text-center text-sm text-slate-400">Carregando...</p>}
+      {error && <p className="py-10 text-center text-sm text-red-600">{error}</p>}
+      {blobUrl && isImage && (
+        <img src={blobUrl} alt={info.filename} className="mx-auto max-h-[70vh] w-auto max-w-full rounded-lg object-contain" />
+      )}
+      {blobUrl && isPdf && <iframe src={blobUrl} title={info.filename} className="h-[70vh] w-full rounded-lg border border-slate-200" />}
+      {blobUrl && !isImage && !isPdf && (
+        <p className="py-10 text-center text-sm text-slate-500">Pré-visualização não disponível para este tipo de arquivo — use o botão Baixar.</p>
+      )}
     </AdminModal>
   );
 }

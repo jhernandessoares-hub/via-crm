@@ -9,10 +9,12 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FinDocumentType } from '@prisma/client';
 import { PlatformAdminGuard } from '../admin/admin-auth.guard';
@@ -58,6 +60,24 @@ export class FinDocumentosController {
   @Get('documentos/:id/download')
   download(@Param('id') id: string) {
     return this.service.download(id);
+  }
+
+  /** Serve o arquivo em si (proxy do Cloudinary) com Content-Type/nome corretos — usado para
+   * preview inline no modal (?disposition=inline) e download com o nome original (=attachment). */
+  @Get('documentos/:id/file')
+  async file(
+    @Param('id') id: string,
+    @Query('disposition') disposition: 'inline' | 'attachment' = 'inline',
+    @Res() res: Response,
+  ) {
+    const { buffer, filename, mimeType } = await this.service.fetchFile(id);
+    const safeFilename = filename.replace(/["\r\n]/g, '');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `${disposition === 'attachment' ? 'attachment' : 'inline'}; filename="${safeFilename}"`,
+    );
+    res.send(buffer);
   }
 
   @Post('documentos/:id/gerar-lancamentos')

@@ -23,7 +23,17 @@ import {
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, DownloadModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
+import {
+  AdminModal,
+  DocPreviewInfo,
+  DownloadModal,
+  ErrorBanner,
+  FileButton,
+  MoneyInput,
+  PageHeader,
+  baixarDocumentoDireto,
+  useToast,
+} from "../_components/shared";
 
 export default function DocumentosFiscaisPage() {
   const [docs, setDocs] = useState<FinDocumento[]>([]);
@@ -49,7 +59,7 @@ export default function DocumentosFiscaisPage() {
   // modais
   const [uploadModal, setUploadModal] = useState<{ file: File } | null>(null);
   const [gerarModal, setGerarModal] = useState<FinDocumento | null>(null);
-  const [downloadInfo, setDownloadInfo] = useState<{ url: string; filename: string } | null>(null);
+  const [previewInfo, setPreviewInfo] = useState<DocPreviewInfo | null>(null);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -80,10 +90,11 @@ export default function DocumentosFiscaisPage() {
       .catch((e) => setError(e.message));
   }, []);
 
+  const ver = (doc: FinDocumento) => setPreviewInfo({ id: doc.id, filename: doc.filename, mimeType: doc.mimeType });
+
   const baixar = async (doc: FinDocumento) => {
     try {
-      const r = await adminFetch(`/admin/financeiro/documentos/${doc.id}/download`);
-      setDownloadInfo({ url: r.url, filename: doc.filename });
+      await baixarDocumentoDireto(doc.id, doc.filename);
     } catch (e: any) {
       setError(e.message);
     }
@@ -199,7 +210,8 @@ export default function DocumentosFiscaisPage() {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs whitespace-nowrap">
-                    <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => baixar(d)}>Ver / Baixar</button>
+                    <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => ver(d)}>Ver</button>
+                    <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => baixar(d)}>Baixar</button>
                     <button className="mr-3 font-medium text-emerald-600 hover:text-emerald-800" onClick={() => setGerarModal(d)}>Gerar lançamento</button>
                     {d.entries.length === 0 && (
                       <button className="text-red-300 hover:text-red-600" onClick={() => excluir(d)}>Excluir</button>
@@ -235,7 +247,7 @@ export default function DocumentosFiscaisPage() {
           onError={setError}
         />
       )}
-      <DownloadModal info={downloadInfo} onClose={() => setDownloadInfo(null)} />
+      <DownloadModal info={previewInfo} onClose={() => setPreviewInfo(null)} />
       {toastNode}
     </div>
   );

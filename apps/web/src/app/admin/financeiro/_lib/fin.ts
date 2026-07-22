@@ -106,6 +106,7 @@ export interface FinDocumentoResumo {
   tipo: FinDocumentType;
   numero: string | null;
   filename: string;
+  mimeType: string;
 }
 
 export interface FinEntry {
