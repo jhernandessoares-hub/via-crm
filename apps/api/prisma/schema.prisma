@@ -2362,6 +2362,7 @@ enum FinImportFormat {
 }
 
 enum FinDocumentType {
+  CONTRATO
   NF_EMITIDA
   NF_RECEBIDA
   GUIA_IMPOSTO
