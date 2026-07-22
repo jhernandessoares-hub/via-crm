@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { PlatformAdminGuard } from '../admin/admin-auth.guard';
 import { FinContratosService } from './contratos.service';
-import { CreateContratoDto, UpdateContratoDto } from './dto/contratos.dto';
+import { CreateContratoDto, RenovarContratoDto, UpdateContratoDto } from './dto/contratos.dto';
 
 @Controller('admin/financeiro')
 @UseGuards(PlatformAdminGuard)
@@ -26,6 +26,11 @@ export class FinContratosController {
   @Patch('contratos/:id')
   update(@Param('id') id: string, @Body() dto: UpdateContratoDto) {
     return this.service.update(id, dto);
+  }
+
+  @Post('contratos/:id/renovar')
+  renovar(@Param('id') id: string, @Body() dto: RenovarContratoDto) {
+    return this.service.renovar(id, dto);
   }
 
   @Delete('contratos/:id')

@@ -50,6 +50,21 @@ function vigenciaDias(dataInicio: string | null, dataFim: string | null): string
   return `${decorridos}/${duracao} dias · faltam ${restantes}`;
 }
 
+function isVencido(dataFim: string | null | undefined): boolean {
+  if (!dataFim) return false;
+  const df = new Date(`${dataFim.slice(0, 10)}T00:00:00Z`).getTime();
+  const hoje = new Date();
+  const hojeUTC = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  return df < hojeUTC;
+}
+
+/** dia seguinte a uma data "YYYY-MM-DD" */
+function diaSeguinte(data: string): string {
+  const d = new Date(`${data.slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function ContratosPage() {
   const [contratos, setContratos] = useState<FinContrato[]>([]);
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
@@ -72,6 +87,12 @@ export default function ContratosPage() {
   const [docDataEmissao, setDocDataEmissao] = useState(hojeStr());
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [previewInfo, setPreviewInfo] = useState<DocPreviewInfo | null>(null);
+
+  // renovação de contrato vencido
+  const [renovando, setRenovando] = useState(false);
+  const [renovInicio, setRenovInicio] = useState("");
+  const [renovFim, setRenovFim] = useState("");
+  const [renovSaving, setRenovSaving] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -99,6 +120,9 @@ export default function ContratosPage() {
     setDocDescricao("");
     setDocValor(undefined);
     setDocDataEmissao(hojeStr());
+    setRenovando(false);
+    setRenovInicio("");
+    setRenovFim("");
   }, [modal?.id, carregarDocs]);
 
   const verDoc = (docId: string) => {
@@ -143,6 +167,31 @@ export default function ContratosPage() {
       setError(e.message);
     } finally {
       setUploadingDoc(false);
+    }
+  };
+
+  const abrirRenovacao = () => {
+    setRenovInicio(modal?.dataFim ? diaSeguinte(modal.dataFim) : hojeStr());
+    setRenovFim("");
+    setRenovando(true);
+  };
+
+  const confirmarRenovacao = async () => {
+    if (!modal?.id || !renovInicio || !renovFim) return;
+    setRenovSaving(true);
+    try {
+      const atualizado = await adminFetch(`/admin/financeiro/contratos/${modal.id}/renovar`, {
+        method: "POST",
+        body: JSON.stringify({ dataInicio: renovInicio, dataFim: renovFim }),
+      });
+      setModal(atualizado);
+      setRenovando(false);
+      showToast(`Contrato renovado — ${atualizado.renovacoes}ª renovação`);
+      load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setRenovSaving(false);
     }
   };
 
@@ -239,7 +288,14 @@ export default function ContratosPage() {
                     <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">
                       {c.dataInicio || c.dataFim ? (
                         <>
-                          <div>{fmtDate(c.dataInicio)} → {fmtDate(c.dataFim)}</div>
+                          <div>
+                            {fmtDate(c.dataInicio)} → {fmtDate(c.dataFim)}
+                            {c.renovacoes > 0 && (
+                              <span className="ml-2 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                                Renovado {c.renovacoes}x
+                              </span>
+                            )}
+                          </div>
                           {dias && <div className="text-xs text-slate-400">{dias}</div>}
                         </>
                       ) : "—"}
@@ -374,6 +430,48 @@ export default function ContratosPage() {
                 {vigenciaDias(modal.dataInicio || null, modal.dataFim || null) && (
                   <div>{vigenciaDias(modal.dataInicio || null, modal.dataFim || null)}</div>
                 )}
+                {(modal.renovacoes || 0) > 0 && (
+                  <div>
+                    Renovado <b>{modal.renovacoes}x</b>
+                    {modal.historicoRenovacoes && modal.historicoRenovacoes.length > 0 && (
+                      <span className="text-slate-400">
+                        {" "}— vigência(s) anterior(es): {modal.historicoRenovacoes.map((h, i) => (
+                          <span key={i}>{i > 0 ? ", " : ""}{fmtDate(h.dataInicioAnterior)}→{fmtDate(h.dataFimAnterior)}</span>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {modal.id && isVencido(modal.dataFim) && !renovando && (
+              <button className="w-fit rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100" onClick={abrirRenovacao}>
+                🔄 Renovar contrato vencido
+              </button>
+            )}
+            {renovando && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="mb-2 text-xs font-semibold text-amber-800">Nova vigência do contrato</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Novo início *</label>
+                    <input type="date" className={inputCls} value={renovInicio} onChange={(e) => setRenovInicio(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Novo fim *</label>
+                    <input type="date" className={inputCls} value={renovFim} onChange={(e) => setRenovFim(e.target.value)} />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Depois de renovar, envie o novo contrato assinado em "Documentos do contrato" abaixo.
+                </p>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button className={btnSecondary} disabled={renovSaving} onClick={() => setRenovando(false)}>Cancelar</button>
+                  <button className={btnPrimary} disabled={renovSaving || !renovInicio || !renovFim} onClick={confirmarRenovacao}>
+                    {renovSaving ? "Renovando..." : "Confirmar renovação"}
+                  </button>
+                </div>
               </div>
             )}
             <div>

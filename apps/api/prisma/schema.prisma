@@ -2472,22 +2472,25 @@ model FinContact {
 // valorTotal preenchido = contrato fechado, abate com cada nota fiscal vinculada até zerar.
 // valorTotal nulo = contrato aberto/recorrente, sem "saldo a faturar" — só valorRecorrente como referência.
 model FinContract {
-  id              String       @id @default(uuid())
-  numero          String? // identificador interno do contrato
-  descricao       String // objeto do contrato
-  tipo            FinEntryType
-  contactId       String?
-  contact         FinContact?  @relation(fields: [contactId], references: [id])
-  companyId       String?
-  company         FinCompany?  @relation(fields: [companyId], references: [id])
-  categoriaId     String?
-  categoria       FinCategory? @relation(fields: [categoriaId], references: [id])
-  valorTotal      Decimal?     @db.Decimal(18, 2)
-  valorRecorrente Decimal?     @db.Decimal(18, 2)
-  dataInicio      DateTime?    @db.Date
-  dataFim         DateTime?    @db.Date
-  observacao      String?
-  ativo           Boolean      @default(true)
+  id                  String       @id @default(uuid())
+  numero              String? // identificador interno do contrato
+  descricao           String // objeto do contrato
+  tipo                FinEntryType
+  contactId           String?
+  contact             FinContact?  @relation(fields: [contactId], references: [id])
+  companyId           String?
+  company             FinCompany?  @relation(fields: [companyId], references: [id])
+  categoriaId         String?
+  categoria           FinCategory? @relation(fields: [categoriaId], references: [id])
+  valorTotal          Decimal?     @db.Decimal(18, 2)
+  valorRecorrente     Decimal?     @db.Decimal(18, 2)
+  dataInicio          DateTime?    @db.Date
+  dataFim             DateTime?    @db.Date
+  observacao          String?
+  ativo               Boolean      @default(true)
+  renovacoes          Int          @default(0)
+  // Array de { dataInicioAnterior, dataFimAnterior, renovadoEm } — uma entrada por renovação
+  historicoRenovacoes Json?
 
   documents FinDocument[]
   entries   FinEntry[]
