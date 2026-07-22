@@ -188,7 +188,6 @@ export default function DocumentosFiscaisPage() {
                 <tr key={d.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2.5 whitespace-nowrap text-slate-600">
                     {fmtDate(d.dataEmissao) !== "—" ? fmtDate(d.dataEmissao) : fmtDate(d.createdAt.slice(0, 10))}
-                    {d.dataPagamento && <div className="text-xs text-emerald-600">pago {fmtDate(d.dataPagamento)}</div>}
                   </td>
                   <td className="px-4 py-2.5">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${DOC_TIPO_STYLE[d.tipo]}`}>{DOC_TIPO_LABEL[d.tipo]}</span>
