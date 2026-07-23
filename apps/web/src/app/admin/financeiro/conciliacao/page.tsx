@@ -8,6 +8,7 @@ import {
   FinCategoria,
   FinConta,
   FinContrato,
+  FinEmpresa,
   FinEntry,
   FinImportacao,
   FinTxStatus,
@@ -45,6 +46,7 @@ export default function ConciliacaoPage() {
 
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
   const [contratos, setContratos] = useState<FinContrato[]>([]);
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
   const [vincularTx, setVincularTx] = useState<FinBankTx | null>(null);
   const [criarTx, setCriarTx] = useState<FinBankTx | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -52,12 +54,13 @@ export default function ConciliacaoPage() {
   const [historico, setHistorico] = useState(false);
 
   useEffect(() => {
-    Promise.all([finApi.contas(), finApi.categorias(), finApi.contratos()])
-      .then(([c, cats, contrs]) => {
+    Promise.all([finApi.contas(), finApi.categorias(), finApi.contratos(), finApi.empresas()])
+      .then(([c, cats, contrs, emps]) => {
         const ativas = c.filter((x) => x.ativo);
         setContas(ativas);
         setCategorias(cats);
         setContratos(contrs.filter((c) => c.ativo));
+        setEmpresas(emps);
         if (ativas.length > 0) setContaId((prev) => prev || ativas[0].id);
       })
       .catch((e) => setError(e.message));
@@ -266,6 +269,7 @@ export default function ConciliacaoPage() {
       {transferindo && (
         <TransferModal
           contas={contas}
+          empresas={empresas}
           contaSelecionada={contaId}
           onClose={() => setTransferindo(false)}
           onSaved={() => { setTransferindo(false); showToast("Transferência registrada"); load(); }}
@@ -450,12 +454,14 @@ function CriarLancamentoModal({
 
 function TransferModal({
   contas,
+  empresas,
   contaSelecionada,
   onClose,
   onSaved,
   onError,
 }: {
   contas: FinConta[];
+  empresas: FinEmpresa[];
   contaSelecionada: string;
   onClose: () => void;
   onSaved: () => void;
@@ -471,12 +477,11 @@ function TransferModal({
   const [descricao, setDescricao] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const nomeEmpresa = (id: string | null) => empresas.find((e) => e.id === id)?.nome || null;
   const origem = contas.find((c) => c.id === contaOrigemId);
-  const destinosPossiveis = contas.filter((c) => {
-    if (c.id === contaOrigemId) return false;
-    if (!origem?.companyId || !c.companyId) return true; // sem empresa definida — não bloqueia aqui, backend valida
-    return c.companyId === origem.companyId;
-  });
+  const destino = contas.find((c) => c.id === contaDestinoId);
+  const destinosPossiveis = contas.filter((c) => c.id !== contaOrigemId);
+  const empresasDiferentes = Boolean(origem?.companyId && destino?.companyId && origem.companyId !== destino.companyId);
 
   const salvar = async () => {
     if (!contaOrigemId || !contaDestinoId || !valor || !data) return;
@@ -503,8 +508,13 @@ function TransferModal({
       }
     >
       <div className="mb-3 rounded-lg bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
-        Só é possível transferir entre contas da mesma empresa. Cria uma saída já paga na origem e uma entrada já recebida no destino — os dois saldos se ajustam na hora.
+        Cria uma saída já paga na origem e uma entrada já recebida no destino — os dois saldos se ajustam na hora.
       </div>
+      {empresasDiferentes && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          {nomeEmpresa(origem!.companyId) || "A empresa da origem"} e {nomeEmpresa(destino!.companyId) || "a do destino"} são CNPJs diferentes — isso será lançado como <b>repasse entre empresas do grupo</b> (categoria própria, separada da transferência entre contas da mesma empresa), não como despesa/receita real. Se for recorrente, considere formalizar como mútuo entre empresas com o contador.
+        </div>
+      )}
       <div className="grid gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div>

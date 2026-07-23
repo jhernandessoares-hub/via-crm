@@ -15,6 +15,7 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     'Receitas de Serviços': ['Correspondente bancário', 'Consultoria', 'Outros CNPJs prestadores'],
     'Receitas Financeiras': ['Rendimentos', 'Outras receitas'],
     'Movimentação entre contas': ['Transferência recebida'],
+    'Movimentação entre empresas do grupo': ['Repasse recebido de outra empresa do grupo'],
   },
   DESPESA: {
     Infraestrutura: ['Servidores / Cloud', 'APIs de IA', 'WhatsApp / Meta', 'Domínios / SaaS'],
@@ -24,14 +25,22 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     Impostos: ['Simples / DAS', 'ISS', 'Outros impostos'],
     Financeiras: ['Tarifas bancárias', 'Juros / Multas'],
     'Movimentação entre contas': ['Transferência enviada'],
+    'Movimentação entre empresas do grupo': ['Repasse enviado para outra empresa do grupo'],
   },
 };
 
 // Nomes fixos usados pela transferência entre contas (ver transferirEntreContas) —
 // identificam as categorias de sistema criadas pelo seed acima, sem hardcodar IDs.
+// "entre contas" = mesma empresa (neutro, não é receita/despesa real).
+// "entre empresas" = CNPJs diferentes do mesmo grupo — mesmo mecanismo, mas fica
+// separado no plano de contas porque é um repasse entre pessoas jurídicas distintas
+// (pode exigir formalização como mútuo entre empresas — revisar com o contador).
 const TRANSFER_GRUPO_NOME = 'Movimentação entre contas';
 const TRANSFER_CATEGORIA_SAIDA_NOME = 'Transferência enviada';
 const TRANSFER_CATEGORIA_ENTRADA_NOME = 'Transferência recebida';
+const REPASSE_GRUPO_NOME = 'Movimentação entre empresas do grupo';
+const REPASSE_CATEGORIA_SAIDA_NOME = 'Repasse enviado para outra empresa do grupo';
+const REPASSE_CATEGORIA_ENTRADA_NOME = 'Repasse recebido de outra empresa do grupo';
 
 @Injectable()
 export class FinCadastrosService implements OnModuleInit {
@@ -263,35 +272,37 @@ export class FinCadastrosService implements OnModuleInit {
 
   // ---------- Transferência entre contas ----------
 
-  /** Categorias de sistema (seed) usadas para registrar as 2 pontas da transferência. */
-  private async transferCategorias() {
+  /** Categorias de sistema (seed) usadas para registrar as 2 pontas do movimento. */
+  private async transferCategorias(grupoNome: string, categoriaSaidaNome: string, categoriaEntradaNome: string) {
     const grupoSaida = await this.prisma.finCategory.findFirst({
-      where: { tipo: 'DESPESA', parentId: null, nome: TRANSFER_GRUPO_NOME },
+      where: { tipo: 'DESPESA', parentId: null, nome: grupoNome },
     });
     const grupoEntrada = await this.prisma.finCategory.findFirst({
-      where: { tipo: 'RECEITA', parentId: null, nome: TRANSFER_GRUPO_NOME },
+      where: { tipo: 'RECEITA', parentId: null, nome: grupoNome },
     });
     const saida =
       grupoSaida &&
       (await this.prisma.finCategory.findFirst({
-        where: { tipo: 'DESPESA', parentId: grupoSaida.id, nome: TRANSFER_CATEGORIA_SAIDA_NOME },
+        where: { tipo: 'DESPESA', parentId: grupoSaida.id, nome: categoriaSaidaNome },
       }));
     const entrada =
       grupoEntrada &&
       (await this.prisma.finCategory.findFirst({
-        where: { tipo: 'RECEITA', parentId: grupoEntrada.id, nome: TRANSFER_CATEGORIA_ENTRADA_NOME },
+        where: { tipo: 'RECEITA', parentId: grupoEntrada.id, nome: categoriaEntradaNome },
       }));
     if (!saida || !entrada) {
-      throw new BadRequestException('Categorias de transferência não encontradas — reinicie a API para rodar o seed');
+      throw new BadRequestException('Categorias de movimentação não encontradas — reinicie a API para rodar o seed');
     }
     return { saida, entrada };
   }
 
   /**
-   * Move dinheiro entre 2 contas da MESMA empresa: cria um título PAGAR (já pago) na origem
-   * e um título RECEBER (já recebido) no destino, ambos com o mesmo transferGroupId — não é
-   * receita/despesa real, mas usa o mesmo mecanismo de FinEntry+FinPayment para os saldos
-   * baterem (ver saldoAtual em listContasBancarias).
+   * Move dinheiro entre 2 contas: cria um título PAGAR (já pago) na origem e um título RECEBER
+   * (já recebido) no destino, ambos com o mesmo transferGroupId — usa o mesmo mecanismo de
+   * FinEntry+FinPayment para os saldos baterem (ver saldoAtual em listContasBancarias).
+   * Mesma empresa (CNPJ) → categoria "Movimentação entre contas" (neutro, não é receita/despesa real).
+   * Empresas diferentes do grupo → categoria "Movimentação entre empresas do grupo" (repasse — pode
+   * exigir formalização como mútuo entre empresas; fica separado no plano de contas de propósito).
    */
   async transferirEntreContas(
     data: { contaOrigemId: string; contaDestinoId: string; valor: number; data: string; descricao?: string; observacao?: string },
@@ -306,16 +317,14 @@ export class FinCadastrosService implements OnModuleInit {
     ]);
     if (!origem || !origem.ativo) throw new BadRequestException('Conta de origem inválida ou inativa');
     if (!destino || !destino.ativo) throw new BadRequestException('Conta de destino inválida ou inativa');
-    if (origem.companyId && destino.companyId && origem.companyId !== destino.companyId) {
-      throw new BadRequestException(
-        'Transferência só é permitida entre contas da mesma empresa — para mover valor entre empresas diferentes, lance como despesa/receita normal',
-      );
-    }
+    const mesmaEmpresa = !origem.companyId || !destino.companyId || origem.companyId === destino.companyId;
 
     const valor = assertPositiveMoney(data.valor, 'valor');
     const dataMov = parseDateOnly(data.data, 'data');
     const competencia = new Date(Date.UTC(dataMov.getUTCFullYear(), dataMov.getUTCMonth(), 1));
-    const { saida, entrada } = await this.transferCategorias();
+    const { saida, entrada } = mesmaEmpresa
+      ? await this.transferCategorias(TRANSFER_GRUPO_NOME, TRANSFER_CATEGORIA_SAIDA_NOME, TRANSFER_CATEGORIA_ENTRADA_NOME)
+      : await this.transferCategorias(REPASSE_GRUPO_NOME, REPASSE_CATEGORIA_SAIDA_NOME, REPASSE_CATEGORIA_ENTRADA_NOME);
     const groupId = randomUUID();
     const descricaoBase = data.descricao?.trim();
 
@@ -366,10 +375,10 @@ export class FinCadastrosService implements OnModuleInit {
       action: 'PLATFORM_FIN_TRANSFER',
       resourceType: 'FinEntry',
       resourceId: groupId,
-      metadata: { contaOrigemId: origem.id, contaDestinoId: destino.id, valor, data: data.data },
+      metadata: { contaOrigemId: origem.id, contaDestinoId: destino.id, valor, data: data.data, mesmaEmpresa },
     });
 
-    return { transferGroupId: groupId, saida: finSerialize(entrySaida), entrada: finSerialize(entryEntrada) };
+    return { transferGroupId: groupId, mesmaEmpresa, saida: finSerialize(entrySaida), entrada: finSerialize(entryEntrada) };
   }
 
   /** Desfaz a transferência: cancela as 2 pontas (só permitido enquanto nenhuma baixa foi conciliada/alterada). */
