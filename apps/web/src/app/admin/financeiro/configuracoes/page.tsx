@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-api";
 import { formatBRL } from "@/lib/format";
 import {
+  CONTATO_TIPO_LABEL,
   FinCategoria,
   FinConta,
   FinContato,
@@ -461,8 +462,6 @@ function ContatosTab({ onError, showToast }: TabProps) {
     }
   };
 
-  const TIPO_LABEL = { CLIENTE: "Cliente", FORNECEDOR: "Fornecedor", AMBOS: "Ambos" } as const;
-
   return (
     <div className={`${cardCls} overflow-hidden`}>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
@@ -493,7 +492,7 @@ function ContatosTab({ onError, showToast }: TabProps) {
                   {c.chavePix && <span className="ml-2 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">PIX</span>}
                 </td>
                 <td className="px-4 py-2.5 text-slate-500">{c.documento || "—"}</td>
-                <td className="px-4 py-2.5 text-slate-500">{TIPO_LABEL[c.tipo]}</td>
+                <td className="px-4 py-2.5 text-slate-500">{CONTATO_TIPO_LABEL[c.tipo]}</td>
                 <td className="px-4 py-2.5 text-slate-400">{c._count ? `${c._count.entries} lançamento(s)` : "—"}</td>
                 <td className="px-4 py-2.5">
                   <span className={`rounded-full px-2 py-0.5 text-xs ${c.ativo ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{c.ativo ? "Ativo" : "Inativo"}</span>
@@ -531,9 +530,9 @@ function ContatosTab({ onError, showToast }: TabProps) {
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-500">Tipo</label>
                 <select className={selectCls} value={modal.tipo || "AMBOS"} onChange={(e) => setModal({ ...modal, tipo: e.target.value as FinContato["tipo"] })}>
-                  <option value="CLIENTE">Cliente</option>
-                  <option value="FORNECEDOR">Fornecedor</option>
-                  <option value="AMBOS">Ambos</option>
+                  {Object.entries(CONTATO_TIPO_LABEL).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
                 </select>
               </div>
             </div>
