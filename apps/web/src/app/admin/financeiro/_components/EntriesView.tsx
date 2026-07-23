@@ -278,6 +278,11 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
                             📎 {e.documents.length}
                           </button>
                         )}
+                        {e.recurringRuleId && (
+                          <span className="ml-2 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700" title={e.recurringRule ? `Gerado pela recorrência: ${e.recurringRule.descricao}` : "Gerado por recorrência"}>
+                            🔁 Recorrente
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-slate-500">{e.categoria?.nome || "—"}</td>
@@ -844,6 +849,7 @@ function DetalheModal({
         <div><span className="text-slate-400">Contraparte:</span> <span className="text-slate-700">{entry.tenantNome || entry.contact?.nome || "—"}</span></div>
         <div><span className="text-slate-400">Empresa:</span> <span className="text-slate-700">{entry.company?.nome || "—"}</span></div>
         <div><span className="text-slate-400">Contrato:</span> <span className="text-slate-700">{entry.contract?.descricao || "—"}</span></div>
+        <div><span className="text-slate-400">Recorrência:</span> <span className="text-slate-700">{entry.recurringRule?.descricao || (entry.recurringRuleId ? "Sim" : "—")}</span></div>
         {entry.parcelaNum && (
           <div><span className="text-slate-400">Parcela:</span> <span className="text-slate-700">{entry.parcelaNum}/{entry.parcelaTotal}</span></div>
         )}

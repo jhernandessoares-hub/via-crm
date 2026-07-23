@@ -2407,10 +2407,11 @@ model FinCompany {
   cnpj         String? // sem máscara
   ativo        Boolean @default(true)
 
-  bankAccounts FinBankAccount[]
-  entries      FinEntry[]
-  documents    FinDocument[]
-  contracts    FinContract[]
+  bankAccounts   FinBankAccount[]
+  entries        FinEntry[]
+  documents      FinDocument[]
+  contracts      FinContract[]
+  recurringRules FinRecurringRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2515,6 +2516,8 @@ model FinRecurringRule {
   categoria     FinCategory  @relation(fields: [categoriaId], references: [id])
   contactId     String?
   contact       FinContact?  @relation(fields: [contactId], references: [id])
+  companyId     String?
+  company       FinCompany?  @relation(fields: [companyId], references: [id])
   tenantId      String?      @unique
   valor         Decimal      @db.Decimal(18, 2) // fixa: valor usado todo mês. variável: só referência (último valor)
   valorVariavel Boolean      @default(false) // true = não gera sozinho; espera o valor do mês (energia, água)

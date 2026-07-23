@@ -860,6 +860,7 @@ function FixasTab({ onError, showToast }: TabProps) {
   const [rules, setRules] = useState<FinRecorrencia[]>([]);
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
   const [contatos, setContatos] = useState<FinContato[]>([]);
+  const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<Partial<FinRecorrencia> | null>(null);
   const [saving, setSaving] = useState(false);
@@ -871,11 +872,12 @@ function FixasTab({ onError, showToast }: TabProps) {
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([adminFetch("/admin/financeiro/recorrencias"), finApi.categorias(), finApi.contatos()])
-      .then(([r, c, ct]) => {
+    Promise.all([adminFetch("/admin/financeiro/recorrencias"), finApi.categorias(), finApi.contatos(), finApi.empresas()])
+      .then(([r, c, ct, emp]) => {
         setRules(r.filter((x: FinRecorrencia) => !x.tenantId)); // mensalidades ficam na outra aba
         setCategorias(c);
         setContatos(ct);
+        setEmpresas(emp);
       })
       .catch((e) => onError(e.message))
       .finally(() => setLoading(false));
@@ -896,6 +898,7 @@ function FixasTab({ onError, showToast }: TabProps) {
         descricao: modal.descricao.trim(),
         categoriaId: modal.categoriaId,
         contactId: modal.contact?.id || undefined,
+        companyId: modal.company?.id || undefined,
         valor: modal.valor,
         diaVencimento: modal.diaVencimento ?? 5,
         valorVariavel: modal.valorVariavel ?? false,
@@ -964,7 +967,7 @@ function FixasTab({ onError, showToast }: TabProps) {
                 <div>
                   <div className="text-sm font-medium text-slate-700">{p.descricao}</div>
                   <div className="text-xs text-slate-500">
-                    {p.categoriaNome || "—"} · vence dia {p.diaVencimento} · última vez: {formatBRL(p.valorReferencia)}
+                    {p.categoriaNome || "—"}{p.companyNome ? ` · ${p.companyNome}` : ""} · vence dia {p.diaVencimento} · última vez: {formatBRL(p.valorReferencia)}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1002,6 +1005,7 @@ function FixasTab({ onError, showToast }: TabProps) {
             <th className={thCls}>Tipo</th>
             <th className={thCls}>Descrição</th>
             <th className={thCls}>Categoria</th>
+            <th className={thCls}>Empresa</th>
             <th className={`${thCls} text-right`}>Valor</th>
             <th className={thCls}>Dia</th>
             <th className={thCls}>Status</th>
@@ -1010,9 +1014,9 @@ function FixasTab({ onError, showToast }: TabProps) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {loading ? (
-            <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Carregando...</td></tr>
+            <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Carregando...</td></tr>
           ) : rules.length === 0 ? (
-            <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Nenhuma recorrência fixa cadastrada.</td></tr>
+            <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Nenhuma recorrência fixa cadastrada.</td></tr>
           ) : (
             rules.map((r) => (
               <tr key={r.id} className="hover:bg-slate-50">
@@ -1026,6 +1030,7 @@ function FixasTab({ onError, showToast }: TabProps) {
                   {r.valorVariavel && <span className="ml-2 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">Variável</span>}
                 </td>
                 <td className="px-4 py-2.5 text-slate-500">{r.categoria ? `${r.categoria.parent?.nome ? r.categoria.parent.nome + " › " : ""}${r.categoria.nome}` : "—"}</td>
+                <td className="px-4 py-2.5 text-slate-500">{r.company?.nome || "—"}</td>
                 <td className="px-4 py-2.5 text-right text-slate-700">{r.valorVariavel ? `~${formatBRL(r.valor)}` : formatBRL(r.valor)}</td>
                 <td className="px-4 py-2.5 text-slate-500">{r.diaVencimento}</td>
                 <td className="px-4 py-2.5">
@@ -1105,6 +1110,15 @@ function FixasTab({ onError, showToast }: TabProps) {
                   ))}
                 </select>
               </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Empresa</label>
+              <select className={selectCls} value={modal.company?.id || ""} onChange={(e) => setModal({ ...modal, company: e.target.value ? { id: e.target.value, nome: "" } : null })}>
+                <option value="">—</option>
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>{e.nome}</option>
+                ))}
+              </select>
             </div>
             <label className="flex items-start gap-2 text-sm text-slate-600">
               <input type="checkbox" className="mt-0.5" checked={modal.valorVariavel || false} onChange={(e) => setModal({ ...modal, valorVariavel: e.target.checked })} />
