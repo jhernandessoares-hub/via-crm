@@ -4,6 +4,7 @@ import { FinRecorrenciasService } from './recorrencias.service';
 import {
   CreateRecorrenciaDto,
   GerarCompetenciaDto,
+  GerarValorVariavelDto,
   UpdateRecorrenciaDto,
   UpsertMensalidadeDto,
 } from './dto/recorrencias.dto';
@@ -33,6 +34,16 @@ export class FinRecorrenciasController {
   @Post('recorrencias/gerar')
   gerar(@Body() dto: GerarCompetenciaDto, @Req() req: any) {
     return this.service.gerar(dto.competencia, req.platformAdmin?.sub, 'manual');
+  }
+
+  @Get('recorrencias/pendencias-variaveis')
+  pendenciasVariaveis(@Query('competencia') competencia?: string) {
+    return this.service.pendenciasVariaveis(competencia);
+  }
+
+  @Post('recorrencias/:id/gerar-variavel')
+  gerarValorVariavel(@Param('id') id: string, @Body() dto: GerarValorVariavelDto, @Req() req: any) {
+    return this.service.gerarValorVariavel(id, dto, req.platformAdmin?.sub);
   }
 
   @Get('recorrencias')

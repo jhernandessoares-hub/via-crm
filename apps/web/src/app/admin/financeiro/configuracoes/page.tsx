@@ -9,6 +9,7 @@ import {
   FinContato,
   FinEmpresa,
   FinMensalidade,
+  FinPendenciaVariavel,
   FinRecorrencia,
   PIX_TIPO_LABEL,
   btnPrimary,
@@ -864,6 +865,11 @@ function FixasTab({ onError, showToast }: TabProps) {
   const [modal, setModal] = useState<Partial<FinRecorrencia> | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // pendências de valor variável (água, energia) da competência atual
+  const [pendencias, setPendencias] = useState<FinPendenciaVariavel[]>([]);
+  const [valoresInformados, setValoresInformados] = useState<Record<string, number | undefined>>({});
+  const [gerandoId, setGerandoId] = useState<string | null>(null);
+
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([adminFetch("/admin/financeiro/recorrencias"), finApi.categorias(), finApi.contatos()])
@@ -876,7 +882,12 @@ function FixasTab({ onError, showToast }: TabProps) {
       .finally(() => setLoading(false));
   }, [onError]);
 
+  const loadPendencias = useCallback(() => {
+    adminFetch("/admin/financeiro/recorrencias/pendencias-variaveis").then(setPendencias).catch(() => {});
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadPendencias(); }, [loadPendencias]);
 
   const salvar = async () => {
     if (!modal?.descricao?.trim() || !modal.categoriaId || !modal.valor) return;
@@ -888,6 +899,7 @@ function FixasTab({ onError, showToast }: TabProps) {
         contactId: modal.contact?.id || undefined,
         valor: modal.valor,
         diaVencimento: modal.diaVencimento ?? 5,
+        valorVariavel: modal.valorVariavel ?? false,
       };
       if (modal.id) {
         await adminFetch(`/admin/financeiro/recorrencias/${modal.id}`, { method: "PATCH", body: JSON.stringify({ ...body, ativo: modal.ativo !== false }) });
@@ -897,6 +909,7 @@ function FixasTab({ onError, showToast }: TabProps) {
       showToast("Recorrência salva");
       setModal(null);
       load();
+      loadPendencias();
     } catch (e: any) {
       onError(e.message);
     } finally {
@@ -909,8 +922,29 @@ function FixasTab({ onError, showToast }: TabProps) {
       const res = await adminFetch(`/admin/financeiro/recorrencias/${r.id}`, { method: "DELETE" });
       showToast(res.deleted ? "Recorrência excluída" : "Já gerou lançamentos — foi desativada");
       load();
+      loadPendencias();
     } catch (e: any) {
       onError(e.message);
+    }
+  };
+
+  const gerarValorVariavel = async (p: FinPendenciaVariavel) => {
+    const valor = valoresInformados[p.id];
+    if (!valor) return;
+    setGerandoId(p.id);
+    try {
+      await adminFetch(`/admin/financeiro/recorrencias/${p.id}/gerar-variavel`, {
+        method: "POST",
+        body: JSON.stringify({ valor }),
+      });
+      showToast(`Título de "${p.descricao}" gerado`);
+      setValoresInformados((v) => ({ ...v, [p.id]: undefined }));
+      loadPendencias();
+      load();
+    } catch (e: any) {
+      onError(e.message);
+    } finally {
+      setGerandoId(null);
     }
   };
 
@@ -918,11 +952,48 @@ function FixasTab({ onError, showToast }: TabProps) {
   type FinEntryTypeLocal = "PAGAR" | "RECEBER";
 
   return (
-    <div className={`${cardCls} overflow-hidden`}>
+    <div className="space-y-4">
+      {pendencias.length > 0 && (
+        <div className={`${cardCls} border-amber-200 bg-amber-50 overflow-hidden`}>
+          <div className="border-b border-amber-200 px-5 py-3">
+            <h2 className="text-sm font-semibold text-amber-800">Valor variável pendente este mês</h2>
+            <p className="mt-0.5 text-xs text-amber-700">Água, energia e outras contas que mudam de valor todo mês — informe o valor atual pra gerar o título.</p>
+          </div>
+          <div className="divide-y divide-amber-100">
+            {pendencias.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-700">{p.descricao}</div>
+                  <div className="text-xs text-slate-500">
+                    {p.categoriaNome || "—"} · vence dia {p.diaVencimento} · última vez: {formatBRL(p.valorReferencia)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div style={{ width: 140 }}>
+                    <MoneyInput
+                      value={valoresInformados[p.id]}
+                      onValue={(n) => setValoresInformados((v) => ({ ...v, [p.id]: n }))}
+                      placeholder={String(p.valorReferencia)}
+                    />
+                  </div>
+                  <button
+                    className={btnPrimary}
+                    disabled={!valoresInformados[p.id] || gerandoId === p.id}
+                    onClick={() => gerarValorVariavel(p)}
+                  >
+                    {gerandoId === p.id ? "Gerando..." : "Gerar título"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className={`${cardCls} overflow-hidden`}>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-700">Receitas e despesas fixas</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Geradas automaticamente todo mês (aluguel, contabilidade, contratos de serviço...)</p>
+          <p className="mt-0.5 text-xs text-slate-400">Geradas automaticamente todo mês (aluguel, contabilidade, contratos de serviço...) — ou com valor variável, quando marcado</p>
         </div>
         <button className={btnPrimary} onClick={() => setModal({ tipo: "PAGAR", diaVencimento: 5 })}>+ Nova recorrência</button>
       </div>
@@ -951,9 +1022,12 @@ function FixasTab({ onError, showToast }: TabProps) {
                     {r.tipo === "RECEBER" ? "Receita" : "Despesa"}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 font-medium text-slate-700">{r.descricao}</td>
+                <td className="px-4 py-2.5 font-medium text-slate-700">
+                  {r.descricao}
+                  {r.valorVariavel && <span className="ml-2 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">Variável</span>}
+                </td>
                 <td className="px-4 py-2.5 text-slate-500">{r.categoria ? `${r.categoria.parent?.nome ? r.categoria.parent.nome + " › " : ""}${r.categoria.nome}` : "—"}</td>
-                <td className="px-4 py-2.5 text-right text-slate-700">{formatBRL(r.valor)}</td>
+                <td className="px-4 py-2.5 text-right text-slate-700">{r.valorVariavel ? `~${formatBRL(r.valor)}` : formatBRL(r.valor)}</td>
                 <td className="px-4 py-2.5 text-slate-500">{r.diaVencimento}</td>
                 <td className="px-4 py-2.5">
                   <span className={`rounded-full px-2 py-0.5 text-xs ${r.ativo ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{r.ativo ? "Ativa" : "Pausada"}</span>
@@ -1016,7 +1090,7 @@ function FixasTab({ onError, showToast }: TabProps) {
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-1">
-                <label className="mb-1 block text-xs font-medium text-slate-500">Valor mensal *</label>
+                <label className="mb-1 block text-xs font-medium text-slate-500">{modal.valorVariavel ? "Valor de referência *" : "Valor mensal *"}</label>
                 <MoneyInput value={modal.valor} onValue={(n) => setModal({ ...modal, valor: n })} />
               </div>
               <div>
@@ -1033,6 +1107,13 @@ function FixasTab({ onError, showToast }: TabProps) {
                 </select>
               </div>
             </div>
+            <label className="flex items-start gap-2 text-sm text-slate-600">
+              <input type="checkbox" className="mt-0.5" checked={modal.valorVariavel || false} onChange={(e) => setModal({ ...modal, valorVariavel: e.target.checked })} />
+              <span>
+                Valor variável (água, energia...)
+                <span className="block text-xs font-normal text-slate-400">Não gera sozinho — todo mês você informa o valor da conta antes de criar o título.</span>
+              </span>
+            </label>
             {modal.id && (
               <label className="mt-1 flex items-center gap-2 text-sm text-slate-600">
                 <input type="checkbox" checked={modal.ativo !== false} onChange={(e) => setModal({ ...modal, ativo: e.target.checked })} />
@@ -1042,6 +1123,7 @@ function FixasTab({ onError, showToast }: TabProps) {
           </div>
         </AdminModal>
       )}
+      </div>
     </div>
   );
 }
