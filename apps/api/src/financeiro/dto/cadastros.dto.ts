@@ -95,6 +95,28 @@ export class UpdateContaBancariaDto {
   companyId?: string | null;
 }
 
+export class TransferenciaContasDto {
+  @IsString()
+  contaOrigemId!: string;
+
+  @IsString()
+  contaDestinoId!: string;
+
+  @IsNumber()
+  valor!: number;
+
+  @Matches(DATE_RE, { message: 'data deve ser YYYY-MM-DD' })
+  data!: string;
+
+  @IsOptional()
+  @IsString()
+  descricao?: string;
+
+  @IsOptional()
+  @IsString()
+  observacao?: string;
+}
+
 export class CreateEmpresaDto {
   @IsString()
   nome!: string;

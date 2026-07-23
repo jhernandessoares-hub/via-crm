@@ -26,4 +26,8 @@ export class CriarLancamentoConciliacaoDto {
   @IsOptional()
   @IsString()
   contactId?: string;
+
+  @IsOptional()
+  @IsString()
+  contractId?: string;
 }

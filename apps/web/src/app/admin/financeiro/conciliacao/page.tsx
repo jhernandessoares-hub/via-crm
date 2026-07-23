@@ -7,7 +7,9 @@ import {
   FinBankTx,
   FinCategoria,
   FinConta,
+  FinContrato,
   FinEntry,
+  FinImportacao,
   FinTxStatus,
   btnPrimary,
   btnSecondary,
@@ -18,7 +20,12 @@ import {
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, ErrorBanner, FileButton, PageHeader, useToast } from "../_components/shared";
+import { AdminModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
+
+/** "Itaú — Conta Principal" quando há banco, senão só o nome. */
+function contaLabel(c: FinConta): string {
+  return c.banco ? `${c.banco} — ${c.nome}` : c.nome;
+}
 
 const ABAS: { id: FinTxStatus; label: string }[] = [
   { id: "PENDENTE", label: "Pendentes" },
@@ -37,16 +44,20 @@ export default function ConciliacaoPage() {
   const { showToast, toastNode } = useToast();
 
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
+  const [contratos, setContratos] = useState<FinContrato[]>([]);
   const [vincularTx, setVincularTx] = useState<FinBankTx | null>(null);
   const [criarTx, setCriarTx] = useState<FinBankTx | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [transferindo, setTransferindo] = useState(false);
+  const [historico, setHistorico] = useState(false);
 
   useEffect(() => {
-    Promise.all([finApi.contas(), finApi.categorias()])
-      .then(([c, cats]) => {
+    Promise.all([finApi.contas(), finApi.categorias(), finApi.contratos()])
+      .then(([c, cats, contrs]) => {
         const ativas = c.filter((x) => x.ativo);
         setContas(ativas);
         setCategorias(cats);
+        setContratos(contrs.filter((c) => c.ativo));
         if (ativas.length > 0) setContaId((prev) => prev || ativas[0].id);
       })
       .catch((e) => setError(e.message));
@@ -109,13 +120,17 @@ export default function ConciliacaoPage() {
         title="Conciliação Bancária"
         subtitle="Importe o extrato do banco (OFX recomendado; CSV/Excel com colunas Data, Descrição e Valor) e confira lançamento a lançamento"
         actions={
-          <FileButton
-            accept=".ofx,.csv,.xls,.xlsx"
-            label="⬆ Importar extrato"
-            className={btnPrimary}
-            busy={importando}
-            onSelect={importar}
-          />
+          <>
+            <button className={btnSecondary} onClick={() => setHistorico(true)}>Histórico de importações</button>
+            <button className={btnSecondary} onClick={() => setTransferindo(true)}>⇄ Transferir entre contas</button>
+            <FileButton
+              accept=".ofx,.csv,.xls,.xlsx"
+              label="⬆ Importar extrato"
+              className={btnPrimary}
+              busy={importando}
+              onSelect={importar}
+            />
+          </>
         }
       />
       <ErrorBanner error={error} onClose={() => setError("")} />
@@ -123,10 +138,10 @@ export default function ConciliacaoPage() {
       <div className={`${cardCls} mb-4 flex flex-wrap items-center justify-between gap-3 p-4`}>
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-slate-500">Conta bancária</label>
-          <select className={selectCls} style={{ width: 260 }} value={contaId} onChange={(e) => setContaId(e.target.value)}>
+          <select className={selectCls} style={{ width: 300 }} value={contaId} onChange={(e) => setContaId(e.target.value)}>
             {contas.length === 0 && <option value="">Nenhuma conta cadastrada</option>}
             {contas.map((c) => (
-              <option key={c.id} value={c.id}>{c.nome} · saldo {formatBRL(c.saldoAtual)}</option>
+              <option key={c.id} value={c.id}>{contaLabel(c)} · saldo {formatBRL(c.saldoAtual)}</option>
             ))}
           </select>
         </div>
@@ -242,11 +257,22 @@ export default function ConciliacaoPage() {
         <CriarLancamentoModal
           tx={criarTx}
           categorias={categorias}
+          contratos={contratos}
           onClose={() => setCriarTx(null)}
           onSaved={() => { setCriarTx(null); showToast("Lançamento criado e conciliado"); load(); }}
           onError={setError}
         />
       )}
+      {transferindo && (
+        <TransferModal
+          contas={contas}
+          contaSelecionada={contaId}
+          onClose={() => setTransferindo(false)}
+          onSaved={() => { setTransferindo(false); showToast("Transferência registrada"); load(); }}
+          onError={setError}
+        />
+      )}
+      {historico && <HistoricoImportacoesModal contas={contas} onClose={() => setHistorico(false)} />}
       {toastNode}
     </div>
   );
@@ -339,20 +365,24 @@ function VincularModal({
 function CriarLancamentoModal({
   tx,
   categorias,
+  contratos,
   onClose,
   onSaved,
   onError,
 }: {
   tx: FinBankTx;
   categorias: FinCategoria[];
+  contratos: FinContrato[];
   onClose: () => void;
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
   const tipo = tx.valor < 0 ? "PAGAR" : "RECEBER";
   const grupos = categorias.filter((g) => g.tipo === (tipo === "RECEBER" ? "RECEITA" : "DESPESA"));
+  const contratosDoTipo = contratos.filter((c) => c.tipo === tipo);
   const [categoriaId, setCategoriaId] = useState("");
   const [descricao, setDescricao] = useState(tx.descricao);
+  const [contractId, setContractId] = useState("");
   const [saving, setSaving] = useState(false);
 
   const salvar = async () => {
@@ -361,7 +391,7 @@ function CriarLancamentoModal({
     try {
       await adminFetch(`/admin/financeiro/conciliacao/transacoes/${tx.id}/criar-lancamento`, {
         method: "POST",
-        body: JSON.stringify({ categoriaId, descricao: descricao.trim() || undefined }),
+        body: JSON.stringify({ categoriaId, descricao: descricao.trim() || undefined, contractId: contractId || undefined }),
       });
       onSaved();
     } catch (e: any) {
@@ -402,7 +432,160 @@ function CriarLancamentoModal({
           <label className="mb-1 block text-xs font-medium text-slate-500">Descrição</label>
           <input className={inputCls} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
+          <select className={selectCls} value={contractId} onChange={(e) => setContractId(e.target.value)}>
+            <option value="">—</option>
+            {contratosDoTipo.map((c) => (
+              <option key={c.id} value={c.id}>{c.descricao}</option>
+            ))}
+          </select>
+        </div>
       </div>
+    </AdminModal>
+  );
+}
+
+// ============================ Transferência entre contas ============================
+
+function TransferModal({
+  contas,
+  contaSelecionada,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  contas: FinConta[];
+  contaSelecionada: string;
+  onClose: () => void;
+  onSaved: () => void;
+  onError: (m: string) => void;
+}) {
+  const [contaOrigemId, setContaOrigemId] = useState(contaSelecionada || "");
+  const [contaDestinoId, setContaDestinoId] = useState("");
+  const [valor, setValor] = useState<number | undefined>(undefined);
+  const [data, setData] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const [descricao, setDescricao] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const origem = contas.find((c) => c.id === contaOrigemId);
+  const destinosPossiveis = contas.filter((c) => {
+    if (c.id === contaOrigemId) return false;
+    if (!origem?.companyId || !c.companyId) return true; // sem empresa definida — não bloqueia aqui, backend valida
+    return c.companyId === origem.companyId;
+  });
+
+  const salvar = async () => {
+    if (!contaOrigemId || !contaDestinoId || !valor || !data) return;
+    setSaving(true);
+    try {
+      await finApi.transferir({ contaOrigemId, contaDestinoId, valor, data, descricao: descricao.trim() || undefined });
+      onSaved();
+    } catch (e: any) {
+      onError(e.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminModal
+      title="Transferir entre contas"
+      footer={
+        <>
+          <button className={btnSecondary} onClick={onClose}>Cancelar</button>
+          <button className={btnPrimary} disabled={saving || !contaOrigemId || !contaDestinoId || !valor} onClick={salvar}>
+            {saving ? "Transferindo..." : "Transferir"}
+          </button>
+        </>
+      }
+    >
+      <div className="mb-3 rounded-lg bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
+        Só é possível transferir entre contas da mesma empresa. Cria uma saída já paga na origem e uma entrada já recebida no destino — os dois saldos se ajustam na hora.
+      </div>
+      <div className="grid gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">De (origem) *</label>
+            <select className={selectCls} value={contaOrigemId} onChange={(e) => { setContaOrigemId(e.target.value); if (e.target.value === contaDestinoId) setContaDestinoId(""); }}>
+              <option value="">Selecione...</option>
+              {contas.map((c) => (
+                <option key={c.id} value={c.id}>{contaLabel(c)} · saldo {formatBRL(c.saldoAtual)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Para (destino) *</label>
+            <select className={selectCls} value={contaDestinoId} onChange={(e) => setContaDestinoId(e.target.value)} disabled={!contaOrigemId}>
+              <option value="">Selecione...</option>
+              {destinosPossiveis.map((c) => (
+                <option key={c.id} value={c.id}>{contaLabel(c)} · saldo {formatBRL(c.saldoAtual)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Valor *</label>
+            <MoneyInput value={valor} onValue={setValor} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Data *</label>
+            <input type="date" className={inputCls} value={data} onChange={(e) => setData(e.target.value)} />
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Descrição</label>
+          <input className={inputCls} placeholder="Opcional — padrão: “Transferência para/de …”" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+        </div>
+      </div>
+    </AdminModal>
+  );
+}
+
+// ============================ Histórico de importações ============================
+
+function HistoricoImportacoesModal({ contas, onClose }: { contas: FinConta[]; onClose: () => void }) {
+  const [importacoes, setImportacoes] = useState<FinImportacao[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    finApi.importacoes()
+      .then(setImportacoes)
+      .catch((e: any) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const contaInfo = (id: string) => contas.find((c) => c.id === id);
+
+  return (
+    <AdminModal title="Histórico de importações" width="max-w-2xl" footer={<button className={btnSecondary} onClick={onClose}>Fechar</button>}>
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {loading ? (
+        <p className="py-6 text-center text-sm text-slate-400">Carregando...</p>
+      ) : importacoes.length === 0 ? (
+        <p className="py-6 text-center text-sm text-slate-400">Nenhuma importação ainda.</p>
+      ) : (
+        <div className="max-h-96 space-y-2 overflow-auto">
+          {importacoes.map((imp) => {
+            const conta = contaInfo(imp.bankAccountId);
+            return (
+              <div key={imp.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-slate-700">{imp.filename}</span>
+                  <span className="text-xs text-slate-400">{new Date(imp.createdAt).toLocaleString("pt-BR")}</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {conta ? contaLabel(conta) : imp.bankAccount?.nome || "conta removida"} · {imp.formato} · {imp.importadas} importada(s){imp.duplicadas > 0 ? `, ${imp.duplicadas} duplicada(s)` : ""} de {imp.totalLinhas} linha(s)
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </AdminModal>
   );
 }

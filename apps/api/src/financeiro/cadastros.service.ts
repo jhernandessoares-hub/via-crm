@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { FinCategoryType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { Logger } from '../logger';
-import { finSerialize, parseDateOnly, roundMoney, sumMoney } from './fin-shared.util';
+import { assertPositiveMoney, finSerialize, parseDateOnly, roundMoney, sumMoney } from './fin-shared.util';
 
 const logger = new Logger('FinCadastros');
 
@@ -12,6 +14,7 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     'Receitas VIA CRM': ['Mensalidades', 'Setup / Implantação', 'Add-ons'],
     'Receitas de Serviços': ['Correspondente bancário', 'Consultoria', 'Outros CNPJs prestadores'],
     'Receitas Financeiras': ['Rendimentos', 'Outras receitas'],
+    'Movimentação entre contas': ['Transferência recebida'],
   },
   DESPESA: {
     Infraestrutura: ['Servidores / Cloud', 'APIs de IA', 'WhatsApp / Meta', 'Domínios / SaaS'],
@@ -20,12 +23,22 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     'Comercial / Marketing': ['Anúncios', 'Comissões', 'Eventos'],
     Impostos: ['Simples / DAS', 'ISS', 'Outros impostos'],
     Financeiras: ['Tarifas bancárias', 'Juros / Multas'],
+    'Movimentação entre contas': ['Transferência enviada'],
   },
 };
 
+// Nomes fixos usados pela transferência entre contas (ver transferirEntreContas) —
+// identificam as categorias de sistema criadas pelo seed acima, sem hardcodar IDs.
+const TRANSFER_GRUPO_NOME = 'Movimentação entre contas';
+const TRANSFER_CATEGORIA_SAIDA_NOME = 'Transferência enviada';
+const TRANSFER_CATEGORIA_ENTRADA_NOME = 'Transferência recebida';
+
 @Injectable()
 export class FinCadastrosService implements OnModuleInit {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async onModuleInit() {
     try {
@@ -246,6 +259,191 @@ export class FinCadastrosService implements OnModuleInit {
     }
     await this.prisma.finBankAccount.delete({ where: { id } });
     return { deleted: true, deactivated: false };
+  }
+
+  // ---------- Transferência entre contas ----------
+
+  /** Categorias de sistema (seed) usadas para registrar as 2 pontas da transferência. */
+  private async transferCategorias() {
+    const grupoSaida = await this.prisma.finCategory.findFirst({
+      where: { tipo: 'DESPESA', parentId: null, nome: TRANSFER_GRUPO_NOME },
+    });
+    const grupoEntrada = await this.prisma.finCategory.findFirst({
+      where: { tipo: 'RECEITA', parentId: null, nome: TRANSFER_GRUPO_NOME },
+    });
+    const saida =
+      grupoSaida &&
+      (await this.prisma.finCategory.findFirst({
+        where: { tipo: 'DESPESA', parentId: grupoSaida.id, nome: TRANSFER_CATEGORIA_SAIDA_NOME },
+      }));
+    const entrada =
+      grupoEntrada &&
+      (await this.prisma.finCategory.findFirst({
+        where: { tipo: 'RECEITA', parentId: grupoEntrada.id, nome: TRANSFER_CATEGORIA_ENTRADA_NOME },
+      }));
+    if (!saida || !entrada) {
+      throw new BadRequestException('Categorias de transferência não encontradas — reinicie a API para rodar o seed');
+    }
+    return { saida, entrada };
+  }
+
+  /**
+   * Move dinheiro entre 2 contas da MESMA empresa: cria um título PAGAR (já pago) na origem
+   * e um título RECEBER (já recebido) no destino, ambos com o mesmo transferGroupId — não é
+   * receita/despesa real, mas usa o mesmo mecanismo de FinEntry+FinPayment para os saldos
+   * baterem (ver saldoAtual em listContasBancarias).
+   */
+  async transferirEntreContas(
+    data: { contaOrigemId: string; contaDestinoId: string; valor: number; data: string; descricao?: string; observacao?: string },
+    adminId?: string,
+  ) {
+    if (data.contaOrigemId === data.contaDestinoId) {
+      throw new BadRequestException('Conta de origem e destino não podem ser a mesma');
+    }
+    const [origem, destino] = await Promise.all([
+      this.prisma.finBankAccount.findUnique({ where: { id: data.contaOrigemId } }),
+      this.prisma.finBankAccount.findUnique({ where: { id: data.contaDestinoId } }),
+    ]);
+    if (!origem || !origem.ativo) throw new BadRequestException('Conta de origem inválida ou inativa');
+    if (!destino || !destino.ativo) throw new BadRequestException('Conta de destino inválida ou inativa');
+    if (origem.companyId && destino.companyId && origem.companyId !== destino.companyId) {
+      throw new BadRequestException(
+        'Transferência só é permitida entre contas da mesma empresa — para mover valor entre empresas diferentes, lance como despesa/receita normal',
+      );
+    }
+
+    const valor = assertPositiveMoney(data.valor, 'valor');
+    const dataMov = parseDateOnly(data.data, 'data');
+    const competencia = new Date(Date.UTC(dataMov.getUTCFullYear(), dataMov.getUTCMonth(), 1));
+    const { saida, entrada } = await this.transferCategorias();
+    const groupId = randomUUID();
+    const descricaoBase = data.descricao?.trim();
+
+    const [entrySaida, entryEntrada] = await this.prisma.$transaction(async (tx) => {
+      const eSaida = await tx.finEntry.create({
+        data: {
+          tipo: 'PAGAR',
+          descricao: descricaoBase || `Transferência para ${destino.nome}`,
+          categoriaId: saida.id,
+          companyId: origem.companyId,
+          competencia,
+          vencimento: dataMov,
+          valor,
+          status: 'PAGO',
+          observacao: data.observacao?.trim() || null,
+          transferGroupId: groupId,
+          createdBy: adminId || null,
+        },
+      });
+      await tx.finPayment.create({
+        data: { entryId: eSaida.id, bankAccountId: origem.id, dataPagamento: dataMov, valor, createdBy: adminId || null },
+      });
+
+      const eEntrada = await tx.finEntry.create({
+        data: {
+          tipo: 'RECEBER',
+          descricao: descricaoBase || `Transferência de ${origem.nome}`,
+          categoriaId: entrada.id,
+          companyId: destino.companyId,
+          competencia,
+          vencimento: dataMov,
+          valor,
+          status: 'PAGO',
+          observacao: data.observacao?.trim() || null,
+          transferGroupId: groupId,
+          createdBy: adminId || null,
+        },
+      });
+      await tx.finPayment.create({
+        data: { entryId: eEntrada.id, bankAccountId: destino.id, dataPagamento: dataMov, valor, createdBy: adminId || null },
+      });
+
+      return [eSaida, eEntrada];
+    });
+
+    this.audit.log({
+      platformAdminId: adminId,
+      action: 'PLATFORM_FIN_TRANSFER',
+      resourceType: 'FinEntry',
+      resourceId: groupId,
+      metadata: { contaOrigemId: origem.id, contaDestinoId: destino.id, valor, data: data.data },
+    });
+
+    return { transferGroupId: groupId, saida: finSerialize(entrySaida), entrada: finSerialize(entryEntrada) };
+  }
+
+  /** Desfaz a transferência: cancela as 2 pontas (só permitido enquanto nenhuma baixa foi conciliada/alterada). */
+  async estornarTransferencia(transferGroupId: string, adminId?: string) {
+    const entries = await this.prisma.finEntry.findMany({
+      where: { transferGroupId },
+      include: { payments: true },
+    });
+    if (entries.length === 0) throw new NotFoundException('Transferência não encontrada');
+    if (entries.some((e) => e.status === 'CANCELADO')) {
+      throw new BadRequestException('Transferência já foi estornada');
+    }
+    if (entries.some((e) => e.payments.some((p) => p.bankTransactionId))) {
+      throw new BadRequestException(
+        'Uma das pontas já foi conciliada com o extrato — desfaça a conciliação antes de estornar a transferência',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const e of entries) {
+        await tx.finPayment.deleteMany({ where: { entryId: e.id } });
+        await tx.finEntry.update({ where: { id: e.id }, data: { status: 'CANCELADO' } });
+      }
+    });
+
+    this.audit.log({
+      platformAdminId: adminId,
+      action: 'PLATFORM_FIN_TRANSFER_REVERSAL',
+      resourceType: 'FinEntry',
+      resourceId: transferGroupId,
+      metadata: { entryIds: entries.map((e) => e.id) },
+    });
+
+    return { estornado: true };
+  }
+
+  async listTransferencias(bankAccountId?: string) {
+    const entries = await this.prisma.finEntry.findMany({
+      where: {
+        transferGroupId: { not: null },
+        ...(bankAccountId ? { payments: { some: { bankAccountId } } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: { payments: { select: { bankAccountId: true, valor: true, dataPagamento: true } } },
+    });
+    const groups = new Map<string, typeof entries>();
+    for (const e of entries) {
+      const key = e.transferGroupId!;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(e);
+    }
+    const contaIds = [...new Set(entries.flatMap((e) => e.payments.map((p) => p.bankAccountId)))];
+    const contas = contaIds.length
+      ? await this.prisma.finBankAccount.findMany({ where: { id: { in: contaIds } }, select: { id: true, nome: true, banco: true } })
+      : [];
+    const contaNome = new Map(contas.map((c) => [c.id, c]));
+
+    const result = [...groups.entries()].map(([transferGroupId, pair]) => {
+      const saida = pair.find((e) => e.tipo === 'PAGAR');
+      const entrada = pair.find((e) => e.tipo === 'RECEBER');
+      const contaOrigem = saida?.payments[0] ? contaNome.get(saida.payments[0].bankAccountId) : null;
+      const contaDestino = entrada?.payments[0] ? contaNome.get(entrada.payments[0].bankAccountId) : null;
+      return finSerialize({
+        transferGroupId,
+        data: saida?.vencimento ?? entrada?.vencimento,
+        valor: saida?.valor ?? entrada?.valor,
+        descricao: saida?.descricao ?? entrada?.descricao,
+        status: saida?.status ?? entrada?.status,
+        contaOrigem,
+        contaDestino,
+      });
+    });
+    return result.sort((a, b) => (a.data < b.data ? 1 : -1));
   }
 
   // ---------- Contatos ----------

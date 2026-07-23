@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { PlatformAdminGuard } from '../admin/admin-auth.guard';
 import { FinCadastrosService } from './cadastros.service';
 import {
@@ -6,6 +6,7 @@ import {
   CreateContaBancariaDto,
   CreateContatoDto,
   CreateEmpresaDto,
+  TransferenciaContasDto,
   UpdateCategoriaDto,
   UpdateContaBancariaDto,
   UpdateContatoDto,
@@ -59,6 +60,23 @@ export class FinCadastrosController {
   @Delete('contas-bancarias/:id')
   deleteConta(@Param('id') id: string) {
     return this.service.deleteContaBancaria(id);
+  }
+
+  // ---------- Transferência entre contas ----------
+
+  @Get('contas-bancarias/transferencias')
+  listTransferencias(@Query('bankAccountId') bankAccountId?: string) {
+    return this.service.listTransferencias(bankAccountId);
+  }
+
+  @Post('contas-bancarias/transferencia')
+  transferir(@Body() dto: TransferenciaContasDto, @Req() req: any) {
+    return this.service.transferirEntreContas(dto, req.platformAdmin?.sub);
+  }
+
+  @Post('contas-bancarias/transferencia/:transferGroupId/estornar')
+  estornarTransferencia(@Param('transferGroupId') transferGroupId: string, @Req() req: any) {
+    return this.service.estornarTransferencia(transferGroupId, req.platformAdmin?.sub);
   }
 
   // ---------- Contatos ----------
