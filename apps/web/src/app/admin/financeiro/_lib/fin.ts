@@ -34,11 +34,13 @@ export interface FinConta {
 export type FinPixKeyType = "CPF_CNPJ" | "EMAIL" | "TELEFONE" | "ALEATORIA";
 export type FinContactBankAccountType = "CORRENTE" | "POUPANCA";
 
+export type FinContatoTipo = "CLIENTE" | "FORNECEDOR" | "PRESTADOR" | "FUNCIONARIO_CLT" | "AMBOS";
+
 export interface FinContato {
   id: string;
   nome: string;
   documento: string | null;
-  tipo: "CLIENTE" | "FORNECEDOR" | "AMBOS";
+  tipo: FinContatoTipo;
   observacao: string | null;
   ativo: boolean;
   chavePix: string | null;
@@ -49,6 +51,14 @@ export interface FinContato {
   tipoConta: FinContactBankAccountType | null;
   _count?: { entries: number; documents: number };
 }
+
+export const CONTATO_TIPO_LABEL: Record<FinContatoTipo, string> = {
+  CLIENTE: "Cliente",
+  FORNECEDOR: "Fornecedor",
+  PRESTADOR: "Prestador de Serviço",
+  FUNCIONARIO_CLT: "Funcionário CLT",
+  AMBOS: "Ambos",
+};
 
 export const PIX_TIPO_LABEL: Record<FinPixKeyType, string> = {
   CPF_CNPJ: "CPF/CNPJ",

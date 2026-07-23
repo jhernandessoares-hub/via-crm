@@ -2334,6 +2334,8 @@ enum FinEntryStatus {
 enum FinContactType {
   CLIENTE
   FORNECEDOR
+  PRESTADOR
+  FUNCIONARIO_CLT
   AMBOS
 }
 
