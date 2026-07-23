@@ -185,6 +185,28 @@ export interface FinDocumento {
   entries: { id: string; tipo: FinEntryType; descricao: string; status: FinEntryStatus; valor: number; vencimento: string }[];
 }
 
+export interface FinImportacao {
+  id: string;
+  bankAccountId: string;
+  bankAccount: { id: string; nome: string } | null;
+  formato: "OFX" | "CSV" | "XLSX";
+  filename: string;
+  totalLinhas: number;
+  importadas: number;
+  duplicadas: number;
+  createdAt: string;
+}
+
+export interface FinTransferencia {
+  transferGroupId: string;
+  data: string;
+  valor: number;
+  descricao: string;
+  status: FinEntryStatus;
+  contaOrigem: { id: string; nome: string; banco: string | null } | null;
+  contaDestino: { id: string; nome: string; banco: string | null } | null;
+}
+
 export interface FinBankTx {
   id: string;
   data: string;
@@ -276,6 +298,14 @@ export const finApi = {
       .join("&");
     return adminFetch(`${BASE}/documentos${qs ? `?${qs}` : ""}`);
   },
+  importacoes: (bankAccountId?: string): Promise<FinImportacao[]> =>
+    adminFetch(`${BASE}/conciliacao/importacoes${bankAccountId ? `?bankAccountId=${bankAccountId}` : ""}`),
+  transferencias: (bankAccountId?: string): Promise<FinTransferencia[]> =>
+    adminFetch(`${BASE}/contas-bancarias/transferencias${bankAccountId ? `?bankAccountId=${bankAccountId}` : ""}`),
+  transferir: (data: { contaOrigemId: string; contaDestinoId: string; valor: number; data: string; descricao?: string; observacao?: string }) =>
+    adminFetch(`${BASE}/contas-bancarias/transferencia`, { method: "POST", body: JSON.stringify(data) }),
+  estornarTransferencia: (transferGroupId: string) =>
+    adminFetch(`${BASE}/contas-bancarias/transferencia/${transferGroupId}/estornar`, { method: "POST" }),
 };
 
 // ---------- Labels / estilos compartilhados ----------

@@ -2557,6 +2557,7 @@ model FinEntry {
   recurringRuleId String?
   recurringRule   FinRecurringRule? @relation(fields: [recurringRuleId], references: [id])
   observacao      String?
+  transferGroupId String? // liga as 2 pontas (PAGAR + RECEBER) de uma transferência entre contas
   createdBy       String? // platformAdminId
 
   payments  FinPayment[]
@@ -2572,6 +2573,7 @@ model FinEntry {
   @@index([parcelaGroupId])
   @@index([companyId])
   @@index([contractId])
+  @@index([transferGroupId])
   @@map("fin_entries")
 }
 

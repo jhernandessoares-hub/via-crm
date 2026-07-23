@@ -305,7 +305,7 @@ export class FinConciliacaoService {
   /** Linha órfã → cria título já PAGO + baixa vinculada (tarifas, despesas de cartão, etc.). */
   async criarLancamento(
     txId: string,
-    data: { categoriaId: string; descricao?: string; contactId?: string },
+    data: { categoriaId: string; descricao?: string; contactId?: string; contractId?: string },
     adminId?: string,
   ) {
     const tx = await this.prisma.finBankTransaction.findUnique({ where: { id: txId } });
@@ -326,6 +326,7 @@ export class FinConciliacaoService {
           descricao: data.descricao?.trim() || tx.descricao,
           categoriaId: data.categoriaId,
           contactId: data.contactId || null,
+          contractId: data.contractId || null,
           competencia,
           vencimento: tx.data,
           valor: abs,
