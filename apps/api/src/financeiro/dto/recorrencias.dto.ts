@@ -23,6 +23,10 @@ export class CreateRecorrenciaDto {
   @Min(1)
   @Max(31)
   diaVencimento?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  valorVariavel?: boolean;
 }
 
 export class UpdateRecorrenciaDto {
@@ -51,6 +55,19 @@ export class UpdateRecorrenciaDto {
   @IsOptional()
   @IsBoolean()
   ativo?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  valorVariavel?: boolean;
+}
+
+export class GerarValorVariavelDto {
+  @IsNumber()
+  valor!: number;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}$/, { message: 'competencia deve ser YYYY-MM' })
+  competencia?: string;
 }
 
 export class UpsertMensalidadeDto {

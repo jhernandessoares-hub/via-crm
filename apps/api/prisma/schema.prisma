@@ -2514,7 +2514,8 @@ model FinRecurringRule {
   contactId     String?
   contact       FinContact?  @relation(fields: [contactId], references: [id])
   tenantId      String?      @unique
-  valor         Decimal      @db.Decimal(18, 2)
+  valor         Decimal      @db.Decimal(18, 2) // fixa: valor usado todo mês. variável: só referência (último valor)
+  valorVariavel Boolean      @default(false) // true = não gera sozinho; espera o valor do mês (energia, água)
   diaVencimento Int          @default(5) // clamp para último dia do mês quando necessário
   ativo         Boolean      @default(true)
   updatedBy     String? // platformAdminId

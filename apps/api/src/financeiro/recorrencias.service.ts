@@ -45,6 +45,7 @@ export class FinRecorrenciasService {
       contactId?: string;
       valor: number;
       diaVencimento?: number;
+      valorVariavel?: boolean;
     },
     adminId?: string,
   ) {
@@ -62,6 +63,7 @@ export class FinRecorrenciasService {
         contactId: data.contactId || null,
         valor,
         diaVencimento: this.validDia(data.diaVencimento),
+        valorVariavel: data.valorVariavel ?? false,
         updatedBy: adminId || null,
       },
     });
@@ -86,6 +88,7 @@ export class FinRecorrenciasService {
       valor?: number;
       diaVencimento?: number;
       ativo?: boolean;
+      valorVariavel?: boolean;
     },
     adminId?: string,
   ) {
@@ -106,6 +109,7 @@ export class FinRecorrenciasService {
         ...(data.valor !== undefined ? { valor: assertPositiveMoney(data.valor, 'valor') } : {}),
         ...(data.diaVencimento !== undefined ? { diaVencimento: this.validDia(data.diaVencimento) } : {}),
         ...(data.ativo !== undefined ? { ativo: data.ativo } : {}),
+        ...(data.valorVariavel !== undefined ? { valorVariavel: data.valorVariavel } : {}),
         updatedBy: adminId || null,
       },
     });
@@ -231,8 +235,10 @@ export class FinRecorrenciasService {
 
   /**
    * Regras elegíveis: ativas; mensalidades só de tenants ativos.
+   * valorVariavel (água, energia) fica de fora por padrão — não tem como adivinhar o valor do
+   * mês, então nunca entra na geração automática/em massa; só via gerarValorVariavel().
    */
-  private async regrasElegiveis() {
+  private async regrasElegiveis(opts: { incluirVariaveis?: boolean } = {}) {
     const rules = await this.prisma.finRecurringRule.findMany({ where: { ativo: true } });
     const tenantIds = rules.map((r) => r.tenantId).filter(Boolean) as string[];
     const ativos = tenantIds.length
@@ -245,7 +251,83 @@ export class FinRecorrenciasService {
           ).map((t) => t.id),
         )
       : new Set<string>();
-    return rules.filter((r) => !r.tenantId || ativos.has(r.tenantId));
+    return rules.filter(
+      (r) => (!r.tenantId || ativos.has(r.tenantId)) && (opts.incluirVariaveis || !r.valorVariavel),
+    );
+  }
+
+  /** Regras de valor variável (água, energia) sem título gerado na competência — precisam do valor informado. */
+  async pendenciasVariaveis(competencia?: string) {
+    const comp = competencia ? parseCompetencia(competencia) : currentCompetencia();
+    const todas = await this.regrasElegiveis({ incluirVariaveis: true });
+    const variaveis = todas.filter((r) => r.valorVariavel);
+    if (variaveis.length === 0) return [];
+    const geradas = await this.prisma.finEntry.findMany({
+      where: { recurringRuleId: { in: variaveis.map((r) => r.id) }, competencia: comp },
+      select: { recurringRuleId: true },
+    });
+    const geradasIds = new Set(geradas.map((e) => e.recurringRuleId));
+    const pendentes = variaveis.filter((r) => !geradasIds.has(r.id));
+    const categorias = await this.prisma.finCategory.findMany({
+      where: { id: { in: pendentes.map((r) => r.categoriaId) } },
+      select: { id: true, nome: true },
+    });
+    const catNome = new Map(categorias.map((c) => [c.id, c.nome]));
+    return finSerialize(
+      pendentes.map((r) => ({
+        id: r.id,
+        tipo: r.tipo,
+        descricao: r.descricao,
+        categoriaNome: catNome.get(r.categoriaId) || null,
+        valorReferencia: r.valor,
+        diaVencimento: r.diaVencimento,
+        competencia: formatDateOnly(comp).slice(0, 7),
+      })),
+    );
+  }
+
+  /** Gera o título de uma regra de valor variável para a competência, com o valor informado agora. */
+  async gerarValorVariavel(id: string, data: { valor: number; competencia?: string }, adminId?: string) {
+    const rule = await this.prisma.finRecurringRule.findUnique({ where: { id } });
+    if (!rule) throw new NotFoundException('Recorrência não encontrada');
+    if (!rule.ativo) throw new BadRequestException('Recorrência está pausada');
+    if (!rule.valorVariavel) throw new BadRequestException('Essa recorrência não é de valor variável');
+
+    const comp = data.competencia ? parseCompetencia(data.competencia) : currentCompetencia();
+    const valor = assertPositiveMoney(data.valor, 'valor');
+
+    const jaExiste = await this.prisma.finEntry.findFirst({
+      where: { recurringRuleId: id, competencia: comp },
+    });
+    if (jaExiste) throw new BadRequestException('Já existe título dessa recorrência para essa competência');
+
+    const [entry] = await this.prisma.$transaction([
+      this.prisma.finEntry.create({
+        data: {
+          tipo: rule.tipo,
+          descricao: rule.descricao,
+          categoriaId: rule.categoriaId,
+          contactId: rule.contactId,
+          competencia: comp,
+          vencimento: dayInMonthClamped(comp, rule.diaVencimento),
+          valor,
+          recurringRuleId: rule.id,
+          createdBy: adminId || null,
+        },
+      }),
+      // guarda o valor informado como referência pro próximo mês
+      this.prisma.finRecurringRule.update({ where: { id }, data: { valor, updatedBy: adminId || null } }),
+    ]);
+
+    this.audit.log({
+      platformAdminId: adminId,
+      action: 'PLATFORM_FIN_GENERATE_RECURRING',
+      resourceType: 'FinEntry',
+      resourceId: entry.id,
+      metadata: { competencia: formatDateOnly(comp).slice(0, 7), valor, origem: 'variavel' },
+    });
+
+    return finSerialize(entry);
   }
 
   async status(competencia?: string) {

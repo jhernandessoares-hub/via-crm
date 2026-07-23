@@ -213,7 +213,18 @@ export interface FinRecorrencia {
   valor: number;
   diaVencimento: number;
   ativo: boolean;
+  valorVariavel: boolean;
   _count?: { entries: number };
+}
+
+export interface FinPendenciaVariavel {
+  id: string;
+  tipo: FinEntryType;
+  descricao: string;
+  categoriaNome: string | null;
+  valorReferencia: number;
+  diaVencimento: number;
+  competencia: string;
 }
 
 // ---------- API ----------
