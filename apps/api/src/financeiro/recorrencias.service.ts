@@ -31,6 +31,7 @@ export class FinRecorrenciasService {
       include: {
         categoria: { select: { id: true, nome: true, parent: { select: { nome: true } } } },
         contact: { select: { id: true, nome: true } },
+        company: { select: { id: true, nome: true } },
         _count: { select: { entries: true } },
       },
     });
@@ -43,6 +44,7 @@ export class FinRecorrenciasService {
       descricao: string;
       categoriaId: string;
       contactId?: string;
+      companyId?: string;
       valor: number;
       diaVencimento?: number;
       valorVariavel?: boolean;
@@ -61,6 +63,7 @@ export class FinRecorrenciasService {
         descricao,
         categoriaId: data.categoriaId,
         contactId: data.contactId || null,
+        companyId: data.companyId || null,
         valor,
         diaVencimento: this.validDia(data.diaVencimento),
         valorVariavel: data.valorVariavel ?? false,
@@ -85,6 +88,7 @@ export class FinRecorrenciasService {
       descricao?: string;
       categoriaId?: string;
       contactId?: string | null;
+      companyId?: string | null;
       valor?: number;
       diaVencimento?: number;
       ativo?: boolean;
@@ -106,6 +110,7 @@ export class FinRecorrenciasService {
         ...(data.descricao !== undefined ? { descricao: data.descricao.trim() } : {}),
         ...(data.categoriaId !== undefined ? { categoriaId: data.categoriaId } : {}),
         ...(data.contactId !== undefined ? { contactId: data.contactId || null } : {}),
+        ...(data.companyId !== undefined ? { companyId: data.companyId || null } : {}),
         ...(data.valor !== undefined ? { valor: assertPositiveMoney(data.valor, 'valor') } : {}),
         ...(data.diaVencimento !== undefined ? { diaVencimento: this.validDia(data.diaVencimento) } : {}),
         ...(data.ativo !== undefined ? { ativo: data.ativo } : {}),
@@ -273,12 +278,18 @@ export class FinRecorrenciasService {
       select: { id: true, nome: true },
     });
     const catNome = new Map(categorias.map((c) => [c.id, c.nome]));
+    const companyIds = pendentes.map((r) => r.companyId).filter(Boolean) as string[];
+    const companies = companyIds.length
+      ? await this.prisma.finCompany.findMany({ where: { id: { in: companyIds } }, select: { id: true, nome: true } })
+      : [];
+    const companyNome = new Map(companies.map((c) => [c.id, c.nome]));
     return finSerialize(
       pendentes.map((r) => ({
         id: r.id,
         tipo: r.tipo,
         descricao: r.descricao,
         categoriaNome: catNome.get(r.categoriaId) || null,
+        companyNome: r.companyId ? companyNome.get(r.companyId) || null : null,
         valorReferencia: r.valor,
         diaVencimento: r.diaVencimento,
         competencia: formatDateOnly(comp).slice(0, 7),
@@ -308,6 +319,7 @@ export class FinRecorrenciasService {
           descricao: rule.descricao,
           categoriaId: rule.categoriaId,
           contactId: rule.contactId,
+          companyId: rule.companyId,
           competencia: comp,
           vencimento: dayInMonthClamped(comp, rule.diaVencimento),
           valor,
@@ -358,6 +370,7 @@ export class FinRecorrenciasService {
       descricao: r.descricao,
       categoriaId: r.categoriaId,
       contactId: r.contactId,
+      companyId: r.companyId,
       tenantId: r.tenantId,
       competencia: comp,
       vencimento: dayInMonthClamped(comp, r.diaVencimento),

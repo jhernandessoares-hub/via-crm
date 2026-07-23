@@ -158,6 +158,7 @@ export interface FinEntry {
   parcelaTotal: number | null;
   observacao: string | null;
   recurringRuleId?: string | null;
+  recurringRule?: { id: string; descricao: string } | null;
   payments: FinPayment[];
   documents: FinDocumentoResumo[];
   valorPago: number;
@@ -219,6 +220,8 @@ export interface FinRecorrencia {
   categoriaId: string;
   categoria?: { id: string; nome: string; parent?: { nome: string } | null };
   contact?: { id: string; nome: string } | null;
+  companyId: string | null;
+  company?: { id: string; nome: string } | null;
   tenantId: string | null;
   valor: number;
   diaVencimento: number;
@@ -232,6 +235,7 @@ export interface FinPendenciaVariavel {
   tipo: FinEntryType;
   descricao: string;
   categoriaNome: string | null;
+  companyNome: string | null;
   valorReferencia: number;
   diaVencimento: number;
   competencia: string;

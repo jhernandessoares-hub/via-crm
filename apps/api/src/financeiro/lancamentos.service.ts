@@ -102,6 +102,7 @@ export class FinLancamentosService {
           },
           company: { select: { id: true, nome: true } },
           contract: { select: { id: true, descricao: true } },
+          recurringRule: { select: { id: true, descricao: true } },
           payments: {
             select: { id: true, valor: true, desconto: true, jurosMulta: true, dataPagamento: true, bankAccountId: true },
           },

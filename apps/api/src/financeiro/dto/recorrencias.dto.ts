@@ -15,6 +15,10 @@ export class CreateRecorrenciaDto {
   @IsString()
   contactId?: string;
 
+  @IsOptional()
+  @IsString()
+  companyId?: string;
+
   @IsNumber()
   valor!: number;
 
@@ -41,6 +45,10 @@ export class UpdateRecorrenciaDto {
   @IsOptional()
   @IsString()
   contactId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  companyId?: string | null;
 
   @IsOptional()
   @IsNumber()
