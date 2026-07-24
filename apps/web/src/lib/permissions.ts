@@ -178,6 +178,14 @@ export const PERMISSION_MODULES = [
     label: "Pós-Ocupação",
     actions: [{ key: "view", label: "Ver" }],
   },
+  {
+    key: "planejamento_tts",
+    label: "Planejamento TTS",
+    actions: [
+      { key: "view", label: "Ver" },
+      { key: "edit", label: "Editar" },
+    ],
+  },
 ] as const;
 
 // ── Visibilidade de campos (Externo Consultivo) — espelho do backend ─────────

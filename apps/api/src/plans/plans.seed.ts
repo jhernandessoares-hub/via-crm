@@ -28,6 +28,17 @@ const ADDON_CONFIGS = [
     requiresTier: null,
     active: true,
   },
+  {
+    key: 'PLANEJAMENTO_TTS',
+    name: 'Planejamento TTS (Pré-Ocupação)',
+    description: 'Controle contratual do TTS de Pré-Ocupação — cronograma de atividades, faturamento das parcelas e matriz de indicadores QID.',
+    limits: null,
+    // Módulo sob medida (feito para o SP9), não comercializado como addon padrão da plataforma:
+    // sem cobrança própria e sem exigência de tier por ora.
+    prices: { months3: 0, months6: 0, months12: 0 },
+    requiresTier: null,
+    active: true,
+  },
 ];
 
 export async function seedPlanConfigs(prisma: PrismaClient | any): Promise<void> {

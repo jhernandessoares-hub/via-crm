@@ -17,7 +17,7 @@ const ROLE_LABELS: Record<PermissionRole, string> = {
 const ROLES: PermissionRole[] = ["manager", "agent", "partner"];
 
 /** Módulos exclusivos do tenant SP9 — escondidos dos demais tenants. */
-const SP9_ONLY_MODULES = new Set(["pre_ocupacao", "pos_ocupacao"]);
+const SP9_ONLY_MODULES = new Set(["pre_ocupacao", "pos_ocupacao", "planejamento_tts"]);
 
 export default function PermissionsPage() {
   const [config, setConfig] = useState<PermissionsConfig | null>(null);
