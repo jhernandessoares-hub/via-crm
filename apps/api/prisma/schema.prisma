@@ -138,6 +138,9 @@ model Tenant {
   preOcupacaoFamiliaCounter     TenantPreOcupacaoFamiliaCounter?
   preOcupacaoDemandaCounter     TenantPreOcupacaoDemandaCounter?
   preOcupacaoConteudos          PreOcupacaoConteudo[]
+  planejamentoTtsAtividades     PlanejamentoTtsAtividade[]
+  planejamentoTtsParcelas       PlanejamentoTtsParcela[]
+  planejamentoTtsIndicadores    PlanejamentoTtsIndicador[]
 
   @@map("tenants")
 }
@@ -2052,6 +2055,7 @@ model PreOcupacaoAtividade {
   calendarEvent CalendarEvent?                     @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
   anexos        PreOcupacaoAtividadeAnexo[]
   participantes PreOcupacaoAtividadeParticipante[]
+  planejamentoTtsAtividades PlanejamentoTtsAtividade[]
 
   @@index([tenantId, categoria])
   @@index([tenantId, dataAgendada])
@@ -2305,6 +2309,107 @@ enum PreOcupacaoOcorrenciaTipo {
   SOLICITACAO
   ELOGIO
   OUTRO
+}
+
+// ============================================================
+// PLANEJAMENTO TTS — controle contratual do TTS de Pré-Ocupação
+// (cronograma, faturamento e indicadores QID — módulo sob medida SP9)
+
+model PlanejamentoTtsAtividade {
+  id                     String                         @id @default(uuid())
+  tenantId               String
+  ordem                  Int
+  titulo                 String
+  eixo                   String
+  indicadorQid           String?
+  prazoLimite            DateTime?
+  responsavel            String?
+  status                 PlanejamentoTtsAtividadeStatus @default(PENDENTE)
+  observacoes            String?
+  preOcupacaoAtividadeId String?
+  criadoEm               DateTime                       @default(now())
+  atualizadoEm           DateTime                       @updatedAt
+
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  preOcupacaoAtividade PreOcupacaoAtividade? @relation(fields: [preOcupacaoAtividadeId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, ordem])
+  @@index([tenantId, status])
+  @@index([tenantId, prazoLimite])
+  @@map("planejamento_tts_atividades")
+}
+
+model PlanejamentoTtsParcela {
+  id                String                           @id @default(uuid())
+  tenantId          String
+  numero            Int
+  competencia       String
+  entregaveisAte    DateTime?
+  aceiteAte         DateTime?
+  nfEm              DateTime?
+  receberAte        DateTime?
+  valor             Decimal                          @db.Decimal(18, 2)
+  entregaveisStatus PlanejamentoTtsEntregaveisStatus @default(PENDENTE)
+  nfStatus          PlanejamentoTtsNfStatus          @default(PENDENTE)
+  pagamentoStatus   PlanejamentoTtsPagamentoStatus   @default(PENDENTE)
+  observacoes       String?
+  criadoEm          DateTime                         @default(now())
+  atualizadoEm      DateTime                         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, numero])
+  @@index([tenantId, pagamentoStatus])
+  @@map("planejamento_tts_parcelas")
+}
+
+model PlanejamentoTtsIndicador {
+  id             String                           @id @default(uuid())
+  tenantId       String
+  numero         Int
+  atividade      String
+  meta           String
+  metaPercentual Decimal?                         @db.Decimal(5, 2)
+  pesoPercentual Decimal                          @db.Decimal(5, 2)
+  situacao       PlanejamentoTtsIndicadorSituacao @default(NAO_INICIADO)
+  evidencias     String?
+  criadoEm       DateTime                         @default(now())
+  atualizadoEm   DateTime                         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, numero])
+  @@map("planejamento_tts_indicadores")
+}
+
+enum PlanejamentoTtsAtividadeStatus {
+  PENDENTE
+  EM_ANDAMENTO
+  CONCLUIDO
+}
+
+enum PlanejamentoTtsEntregaveisStatus {
+  PENDENTE
+  ENTREGUE
+  ACEITO
+}
+
+enum PlanejamentoTtsNfStatus {
+  PENDENTE
+  EMITIDA
+}
+
+enum PlanejamentoTtsPagamentoStatus {
+  PENDENTE
+  RECEBIDO
+}
+
+enum PlanejamentoTtsIndicadorSituacao {
+  NAO_INICIADO
+  EM_ANDAMENTO
+  ATINGIDO
+  PARCIALMENTE_ATINGIDO
+  NAO_ATINGIDO
 }
 
 // ============================================================

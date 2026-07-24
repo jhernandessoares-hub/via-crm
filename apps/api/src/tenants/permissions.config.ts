@@ -176,6 +176,14 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
       { key: 'view', label: 'Ver' },
     ],
   },
+  {
+    key: 'planejamento_tts',
+    label: 'Planejamento TTS',
+    actions: [
+      { key: 'view', label: 'Ver' },
+      { key: 'edit', label: 'Editar' },
+    ],
+  },
 ];
 
 /** Permissões padrão quando o tenant não tem config salva. */
@@ -200,6 +208,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     base_fria:              { view: true,  campaign: true  },
     pre_ocupacao:           { view: true  },
     pos_ocupacao:           { view: true  },
+    planejamento_tts:       { view: true,  edit: true  },
   },
   agent: {
     dashboard:              { view: true  },
@@ -221,6 +230,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     base_fria:              { view: true,  campaign: false },
     pre_ocupacao:           { view: true  },
     pos_ocupacao:           { view: true  },
+    planejamento_tts:       { view: false, edit: false },
   },
   partner: {
     dashboard:              { view: false },
@@ -242,6 +252,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
     base_fria:              { view: false, campaign: false },
     pre_ocupacao:           { view: true  },
     pos_ocupacao:           { view: true  },
+    planejamento_tts:       { view: false, edit: false },
   },
 };
 

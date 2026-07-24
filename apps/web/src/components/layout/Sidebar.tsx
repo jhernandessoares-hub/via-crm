@@ -409,6 +409,9 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         {showSP9 && (role === "OWNER" || can("pos_ocupacao", "view")) && (
           <NavItem href="/pos-ocupacao" label="Pós-Ocupação" icon={ClipboardCheck} />
         )}
+        {showSP9 && (role === "OWNER" || role === "MANAGER") && addons.includes("PLANEJAMENTO_TTS") && (
+          <NavItem href="/planejamento-tts" label="Planejamento TTS" icon={CalendarDays} />
+        )}
         {role === "OWNER" && <NavItem href="/central-agentes" label="Central de Agentes" icon={Bot} mode="prefix" />}
         {role === "OWNER" && <NavItem href="/equipe" label="Equipe" icon={UserCog} />}
         {can("secretary", "use") && (

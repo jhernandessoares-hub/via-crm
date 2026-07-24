@@ -42,6 +42,7 @@ import { ReportsModule } from './reports/reports.module';
 import { SalesLeadsModule } from './sales-leads/sales-leads.module';
 import { PreOcupacaoModule } from './pre-ocupacao/pre-ocupacao.module';
 import { PreOcupacaoPortalModule } from './pre-ocupacao/portal/portal.module';
+import { PlanejamentoTtsModule } from './planejamento-tts/planejamento-tts.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { PreOcupacaoPortalModule } from './pre-ocupacao/portal/portal.module';
     SalesLeadsModule,
     PreOcupacaoModule,
     PreOcupacaoPortalModule,
+    PlanejamentoTtsModule,
   ],
   controllers: [AppController],
   providers: [
