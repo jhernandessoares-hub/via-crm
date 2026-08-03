@@ -141,6 +141,7 @@ SiteTemplate      → template de site (scope: PADRAO/EXCLUSIVO/INTERNO, siteTyp
 TenantSite        → site do tenant — fork independente do template (contentJson ≠ template após customização)
                     slug único, publishedJson separado do contentJson (rascunho vs publicado)
 WhatsappUnofficialSession → sessão Baileys por tenant; status DISCONNECTED|CONNECTING|CONNECTED|QR_PENDING; authStateJson (creds Baileys). FK em Lead/CampanhaDisparo (SetNull)
+WA Light — captura de mensagens enviadas pelo celular do corretor → sempre ativa, incondicional, para todos os tenants (sem toggle). Mensagens enviadas direto do celular do corretor (fora do CRM, mesma conta) viram LeadEvent (channel `whatsapp.unofficial.out`, `payloadRaw.source: 'corretor_celular'`) — só em leads já existentes, nunca cria lead novo. Diferenciado do eco do próprio envio do CRM via `messageId` pré-gerado (`generateMessageID()` do Baileys) registrado em memória antes do `sendMessage`. Detalhes em `squad-comunicacao.md`.
 CampanhaModelo    → template: mensagem com {{nome}}/{{telefone}}, mediaUrl, delayMin/Max (≥10s). Delete bloqueia se disparo ativo
 CampanhaDisparo   → status RODANDO|PAUSADA|CONCLUIDA|CANCELADA. ⚠️ Rota `GET /campanhas/disparos/active/:sessionId` deve ficar ANTES de `GET /campanhas/disparos/:id` no controller (NestJS resolve em ordem)
 CampanhaContato   → telefone, nome, leadId? (preenchido na resposta), status PENDENTE|ENVIADO|FALHA|RESPONDEU

@@ -316,4 +316,25 @@ export class AdminController {
       processMedia: processMedia === 'false' ? false : undefined,
     });
   }
+
+  // Backfill do histórico antigo de TODOS os leads de uma sessão WhatsApp Light (lote).
+  // Ex.: POST /admin/tools/backfill-light-history-session?sessionId=<id>&maxPages=10
+  @UseGuards(PlatformAdminGuard)
+  @Post('tools/backfill-light-history-session')
+  backfillLightHistorySession(
+    @Query('sessionId') sessionId: string,
+    @Query('maxPages') maxPages?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('delayMs') delayMs?: string,
+    @Query('processMedia') processMedia?: string,
+    @Query('delayBetweenLeadsMs') delayBetweenLeadsMs?: string,
+  ) {
+    return this.adminService.backfillWhatsappLightHistorySession(sessionId, {
+      maxPages: maxPages ? Number(maxPages) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      delayMs: delayMs ? Number(delayMs) : undefined,
+      processMedia: processMedia === 'false' ? false : undefined,
+      delayBetweenLeadsMs: delayBetweenLeadsMs ? Number(delayBetweenLeadsMs) : undefined,
+    });
+  }
 }

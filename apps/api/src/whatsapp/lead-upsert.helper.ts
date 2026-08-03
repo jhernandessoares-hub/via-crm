@@ -70,7 +70,7 @@ async function resolveAssignment(
   }
 }
 
-function telefoneKeyFrom(from: string) {
+export function telefoneKeyFrom(from: string) {
   let d = digitsOnly(from);
   if (d.startsWith('55') && d.length > 11) d = d.slice(2);
   if (d.length > 11) d = d.slice(-11);

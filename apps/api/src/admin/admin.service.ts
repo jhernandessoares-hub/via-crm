@@ -974,4 +974,101 @@ export class AdminService {
     if (!leadId) throw new BadRequestException('Parâmetro "leadId" é obrigatório.');
     return this.whatsappUnofficial.backfillLeadHistory(leadId, opts);
   }
+
+  // Backfill do histórico antigo de TODOS os leads vinculados a uma sessão WhatsApp Light.
+  // Wrapper em lote sobre `backfillLeadHistory` — roda sequencialmente (a própria sessão só
+  // permite uma importação por vez) e nunca interrompe o loop por causa de um lead individual
+  // (ex.: lead sem âncora é esperado e normal para boa parte da base).
+  async backfillWhatsappLightHistorySession(
+    sessionId: string,
+    opts?: {
+      maxPages?: number;
+      pageSize?: number;
+      delayMs?: number;
+      processMedia?: boolean;
+      delayBetweenLeadsMs?: number;
+    },
+  ) {
+    if (!sessionId) throw new BadRequestException('Parâmetro "sessionId" é obrigatório.');
+
+    const leads = await this.prisma.lead.findMany({
+      where: { conversaSessionId: sessionId, deletedAt: null },
+      select: { id: true, numero: true, nome: true },
+      orderBy: { criadoEm: 'asc' },
+    });
+
+    const delayBetweenLeadsMs = opts?.delayBetweenLeadsMs ?? 2000;
+    const skipReasonPatterns = [/sem âncora/i, /não está conectada/i, /sem sessão/i];
+
+    type LeadResult = {
+      leadId: string;
+      numero: number | null;
+      nome: string | null;
+      status: 'ok' | 'skipped' | 'error';
+      inserted?: number;
+      pages?: number;
+      reason?: string;
+    };
+    const results: LeadResult[] = [];
+
+    let ok = 0;
+    let skipped = 0;
+    let errored = 0;
+    let totalInserted = 0;
+
+    logger.log(`📜 Backfill em lote iniciado — sessão=${sessionId} leads=${leads.length}`);
+
+    for (let i = 0; i < leads.length; i++) {
+      const lead = leads[i];
+      try {
+        const r = await this.whatsappUnofficial.backfillLeadHistory(lead.id, {
+          maxPages: opts?.maxPages,
+          pageSize: opts?.pageSize,
+          delayMs: opts?.delayMs,
+          processMedia: opts?.processMedia,
+        });
+        ok++;
+        totalInserted += r.inserted ?? 0;
+        results.push({
+          leadId: lead.id,
+          numero: lead.numero,
+          nome: lead.nome,
+          status: 'ok',
+          inserted: r.inserted,
+          pages: r.pages,
+        });
+        logger.log(`📜 [sessão ${sessionId}] lead #${lead.numero} ok — inseridos=${r.inserted}, páginas=${r.pages}`);
+      } catch (err: any) {
+        const reason = err?.message ?? String(err);
+        const isSkip = skipReasonPatterns.some((p) => p.test(reason));
+        if (isSkip) {
+          skipped++;
+          results.push({ leadId: lead.id, numero: lead.numero, nome: lead.nome, status: 'skipped', reason });
+          logger.log(`⏭️ [sessão ${sessionId}] lead #${lead.numero} pulado — ${reason}`);
+        } else {
+          errored++;
+          results.push({ leadId: lead.id, numero: lead.numero, nome: lead.nome, status: 'error', reason });
+          logger.warn(`⚠️ [sessão ${sessionId}] lead #${lead.numero} erro — ${reason}`);
+        }
+      }
+
+      if (i < leads.length - 1 && delayBetweenLeadsMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayBetweenLeadsMs));
+      }
+    }
+
+    logger.log(
+      `📜 Backfill em lote concluído — sessão=${sessionId} total=${leads.length} ok=${ok} skipped=${skipped} erro=${errored} inseridos=${totalInserted}`,
+    );
+
+    return {
+      sessionId,
+      totalLeads: leads.length,
+      ok,
+      skipped,
+      errored,
+      totalInserted,
+      results,
+    };
+  }
 }

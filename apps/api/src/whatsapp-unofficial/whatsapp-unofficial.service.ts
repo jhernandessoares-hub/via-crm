@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, BadRequestException } from '@nestjs/common';
-import makeWASocket, { WASocket, DisconnectReason, downloadMediaMessage } from '@whiskeysockets/baileys';
+import makeWASocket, { WASocket, DisconnectReason, downloadMediaMessage, generateMessageID } from '@whiskeysockets/baileys';
 import { initAuthCreds, BufferJSON, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { Prisma } from '@prisma/client';
@@ -11,7 +11,7 @@ import { Readable } from 'stream';
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
-import { upsertLeadFromWhatsapp } from '../whatsapp/lead-upsert.helper';
+import { upsertLeadFromWhatsapp, telefoneKeyFrom } from '../whatsapp/lead-upsert.helper';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
@@ -217,6 +217,10 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   private lidToPhone = new Map<string, Map<string, string>>();
   // Importações de histórico ativas por sessão (backfill de mensagens antigas)
   private historyImports = new Map<string, HistoryImportCtx>();
+  // Mensagens enviadas pelo próprio CRM (Baileys `messageId` pré-gerado → expira em ms epoch, TTL ~5min).
+  // Usado pra diferenciar o eco do próprio envio de uma mensagem genuína mandada direto do celular
+  // do corretor (mesma conta, outro dispositivo) — ambas chegam com `key.fromMe: true`.
+  private recentlySentByCrm = new Map<string, number>();
 
   private updateLidMap(sessionId: string, contacts: Array<{ id: string; lid?: string | null }>) {
     let map = this.lidToPhone.get(sessionId);
@@ -269,6 +273,16 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     private readonly limitsService: LimitsService,
     private readonly whatsapp: WhatsappService,
   ) {}
+
+  // Registra um messageId gerado pelo próprio CRM antes do envio, com TTL de ~5min.
+  // Faz limpeza oportunista de entradas expiradas a cada chamada (sem setInterval dedicado).
+  private rememberSentByCrm(messageId: string) {
+    const now = Date.now();
+    for (const [id, expiresAt] of this.recentlySentByCrm) {
+      if (expiresAt < now) this.recentlySentByCrm.delete(id);
+    }
+    this.recentlySentByCrm.set(messageId, now + 5 * 60 * 1000);
+  }
 
   async onModuleDestroy() {
     for (const [, socket] of this.sockets) {
@@ -447,9 +461,23 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
         ? Math.max(disconnectedAt - 2_000, connectionTs - maxCatchupMs)
         : connectionTs - 60_000;
       for (const msg of messages) {
-        if (msg.key.fromMe) continue;
         const msgTs = (msg.messageTimestamp as number) * 1000;
         if (msgTs < cutoff) continue;
+
+        if (msg.key.fromMe) {
+          const msgId = msg.key.id;
+          if (msgId && this.recentlySentByCrm.has(msgId)) {
+            // Eco do próprio envio do CRM (sendText/sendImage/sendVideo/sendDocument) — ignora.
+            this.recentlySentByCrm.delete(msgId);
+            continue;
+          }
+          // Mensagem genuína enviada direto do celular do corretor (mesma conta, outro dispositivo).
+          await this.handleOutboundFromPhone(sessionId, msg).catch((e) =>
+            logger.error(`Erro ao processar outbound-from-phone sessão=${sessionId}: ${e?.message}`),
+          );
+          continue;
+        }
+
         await this.handleInbound(sessionId, msg).catch((e) =>
           logger.error(`Erro ao processar inbound sessão=${sessionId}: ${e?.message}`),
         );
@@ -490,45 +518,57 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   // ── Envio de mensagens ────────────────────────────────────────────────────
 
-  async sendText(sessionId: string, to: string, text: string): Promise<void> {
+  async sendText(sessionId: string, to: string, text: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveJid(socket, to);
-    await socket.sendMessage(jid, { text });
+    const messageId = generateMessageID();
+    this.rememberSentByCrm(messageId);
+    await socket.sendMessage(jid, { text }, { messageId });
+    return { id: messageId };
   }
 
-  async sendImage(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<void> {
+  async sendImage(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveJid(socket, to);
     const image: any = Buffer.isBuffer(content) ? content : { url: content };
+    const messageId = generateMessageID();
+    this.rememberSentByCrm(messageId);
     await socket.sendMessage(jid, {
       image,
       caption: caption ?? undefined,
-    });
+    }, { messageId });
+    return { id: messageId };
   }
 
-  async sendVideo(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<void> {
+  async sendVideo(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = this.toJid(to);
     const video: any = Buffer.isBuffer(content) ? content : { url: content };
+    const messageId = generateMessageID();
+    this.rememberSentByCrm(messageId);
     await socket.sendMessage(jid, {
       video,
       caption: caption ?? undefined,
-    });
+    }, { messageId });
+    return { id: messageId };
   }
 
-  async sendDocument(sessionId: string, to: string, content: string | Buffer, filename: string, mimetype?: string): Promise<void> {
+  async sendDocument(sessionId: string, to: string, content: string | Buffer, filename: string, mimetype?: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveJid(socket, to);
     const document: any = Buffer.isBuffer(content) ? content : { url: content };
+    const messageId = generateMessageID();
+    this.rememberSentByCrm(messageId);
     await socket.sendMessage(jid, {
       document,
       fileName: filename,
       mimetype: mimetype ?? 'application/octet-stream',
-    });
+    }, { messageId });
+    return { id: messageId };
   }
 
   // ── Processamento de áudio inbound (download + Cloudinary + Whisper) ───────
@@ -1113,6 +1153,84 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
         data: { leadId },
       });
     }
+  }
+
+  // ── Mensagem enviada direto do celular do corretor (fora do CRM) ───────────
+  //
+  // WhatsApp multi-device entrega `fromMe: true` tanto pro eco do próprio envio do CRM
+  // quanto pra mensagens mandadas pelo corretor direto no app do celular (mesma conta,
+  // outro dispositivo). O listener já filtrou o eco (via `recentlySentByCrm`) antes de
+  // chegar aqui — então isso é sempre uma mensagem genuína do celular do corretor.
+  //
+  // Regras: nunca cria lead novo (só anexa a leads já existentes); dedup por
+  // `sourceRef` (waMessageId).
+  private async handleOutboundFromPhone(sessionId: string, msg: any) {
+    const session = await this.prisma.whatsappUnofficialSession.findUnique({
+      where: { id: sessionId },
+      select: { tenantId: true },
+    });
+    if (!session) return;
+    const { tenantId } = session;
+
+    const to: string = msg.key.remoteJid ?? '';
+    if (!to) return;
+    // Mesmos filtros de sempre — nunca vira LeadEvent de grupo/broadcast/newsletter
+    if (to.endsWith('@g.us')) return;
+    if (to === 'status@broadcast' || to.endsWith('@newsletter')) return;
+
+    let phone: string | null;
+    if (to.endsWith('@lid')) {
+      const lid = lidFromJid(to);
+      phone = lid ? await this.resolveLidPhone(sessionId, lid, msg) : null;
+    } else {
+      phone = phoneFromJid(to) ?? to.split('@')[0].split(':')[0];
+    }
+    if (!phone) {
+      logger.warn(`Outbound-from-phone ignorado: destino sem telefone resolvível (sessão=${sessionId})`);
+      return;
+    }
+
+    const { type, text } = extractBaileysText(msg.message);
+    // Reações e mensagens de sistema não representam comunicação real do corretor
+    if (type === 'reaction' || type === 'system') return;
+
+    const telefoneKey = telefoneKeyFrom(phone);
+    if (!telefoneKey) return;
+
+    // NUNCA cria lead a partir dessa mensagem — só anexa a um lead já existente
+    const lead = await this.prisma.lead.findFirst({
+      where: { tenantId, telefoneKey, deletedAt: null },
+      select: { id: true },
+      orderBy: { criadoEm: 'desc' },
+    });
+    if (!lead) return;
+
+    const waMessageId: string | undefined = msg?.key?.id;
+    if (waMessageId) {
+      const already = await this.prisma.leadEvent.findFirst({
+        where: { leadId: lead.id, channel: 'whatsapp.unofficial.out', sourceRef: waMessageId },
+        select: { id: true },
+      });
+      if (already) return; // dedup por waMessageId
+    }
+
+    await this.prisma.leadEvent.create({
+      data: {
+        tenantId,
+        leadId: lead.id,
+        channel: 'whatsapp.unofficial.out',
+        sourceRef: waMessageId ?? null,
+        payloadRaw: {
+          text,
+          type,
+          to: phone,
+          source: 'corretor_celular',
+          sentAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    logger.log(`📱 Mensagem enviada direto do celular do corretor registrada — leadId=${lead.id} sessão=${sessionId}`);
   }
 
   // ── Validação de números no WhatsApp ─────────────────────────────────────
