@@ -9,7 +9,9 @@ import { apiFetch } from "@/lib/api";
 import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { ReportModal } from "@/components/ReportModal";
+import { NovoLeadModal } from "@/components/leads/NovoLeadModal";
 import { MaskedField } from "@/components/MaskedValue";
+import { usePermissions } from "@/lib/permissions";
 
 type PipelineStage = {
   id: string;
@@ -128,6 +130,7 @@ const INPUT_STYLE: React.CSSProperties = {
 };
 
 export default function MeusLeadsPage() {
+  const { can: canPerm } = usePermissions();
   const [view, setView] = useLeadsViewMode();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -141,6 +144,7 @@ export default function MeusLeadsPage() {
   const [visibleCount, setVisibleCount] = useState(10);
   const [loadMoreN, setLoadMoreN] = useState(10);
   const [reportOpen, setReportOpen] = useState(false);
+  const [novoLeadOpen, setNovoLeadOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -351,6 +355,12 @@ export default function MeusLeadsPage() {
               </button>
             ))}
           </div>
+
+          {canPerm("leads", "create") && (
+            <Button size="sm" onClick={() => setNovoLeadOpen(true)}>
+              Novo Lead
+            </Button>
+          )}
         </div>
       </div>
 
@@ -600,6 +610,7 @@ export default function MeusLeadsPage() {
         leads={filtered}
         stages={stages}
       />
+      <NovoLeadModal open={novoLeadOpen} onClose={() => setNovoLeadOpen(false)} onCreated={load} />
     </AppShell>
   );
 }
