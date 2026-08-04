@@ -54,7 +54,9 @@ import { QueueService } from '../queue/queue.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { LeadDocumentsService } from '../lead-documents/lead-documents.service';
+import { AiService } from '../ai/ai.service';
 import { getNextLeadNumber } from './lead-numbering.helper';
+import { startProactiveOutreach } from './proactive-outreach.helper';
 import { buildLeadInteresseLabel } from './lead-interesse.helper';
 import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess, DocumentAccessLevel } from '../tenants/permissions.config';
 import { isValidCPF } from './cpf.util';
@@ -73,6 +75,7 @@ export class LeadsService {
     private readonly unofficialService: WhatsappUnofficialService,
     private readonly messaging: MessagingService,
     private readonly leadDocuments: LeadDocumentsService,
+    private readonly ai: AiService,
   ) {}
 
   // =========================================
@@ -1113,6 +1116,34 @@ export class LeadsService {
       resourceId: lead.id,
       metadata: { nome: body.nome, origem: body.origem ?? null, role: actor?.role ?? null },
     });
+
+    if (body.iniciarContatoIA === true && telefoneDigits) {
+      startProactiveOutreach(
+        { prisma: this.prisma, ai: this.ai, unofficial: this.unofficialService },
+        {
+          tenantId,
+          leadId: lead.id,
+          nome: body.nome,
+          telefone: telefoneDigits,
+          interesse: body.observacao || undefined,
+          sessionId: body.sessionId,
+          actorUserId: actor?.id ?? actor?.sub ?? '',
+        },
+      )
+        .then(() => {
+          this.audit.log({
+            tenantId,
+            userId: actor?.id ?? actor?.sub,
+            action: 'PROACTIVE_OUTREACH_STARTED',
+            resourceType: 'lead',
+            resourceId: lead.id,
+            metadata: { nome: body.nome, sessionId: body.sessionId ?? null },
+          });
+        })
+        .catch((err: any) => {
+          this.logger.warn(`Falha ao iniciar contato proativo leadId=${lead.id}: ${err?.message}`);
+        });
+    }
 
     return lead;
   }

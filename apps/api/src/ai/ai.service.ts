@@ -263,6 +263,10 @@ export class AiService {
     urgency?: 'BAIXA' | 'MEDIA' | 'ALTA' | 'CRITICA';
     corretorNome?: string | null;
     onToolCall?: (toolName: string, args: Record<string, any>) => Promise<string>;
+    /** Quando true, gera a mensagem de ABERTURA de uma conversa nova — o lead nunca escreveu nada antes. */
+    isFirstContactKickoff?: boolean;
+    /** Interesse do lead a mencionar na abertura (ex: "apartamento na zona sul"). Só usado quando isFirstContactKickoff = true. */
+    interesse?: string;
   }) {
     let agentTitle = '';
     let agentDirectPrompt = ''; // campo prompt do próprio agente (prioridade máxima se preenchido)
@@ -477,6 +481,18 @@ export class AiService {
     // 5. Regras globais de segurança da plataforma (última posição = maior prioridade)
     systemParts.push(globalSafetyRules);
 
+    // 6. Primeiro contato (kickoff) — apenas quando isFirstContactKickoff = true.
+    // Posicionado por último para não ser ofuscado por outras instruções.
+    if (params.isFirstContactKickoff) {
+      systemParts.push(
+        'ATENÇÃO — PRIMEIRO CONTATO: você está iniciando a conversa com este lead agora, pela primeira vez. ' +
+        'Ele nunca escreveu nada para você e não existe nenhum histórico de conversa anterior — jamais trate esta ' +
+        'mensagem como resposta a algo que o lead teria dito, pois isso não aconteceu. Apresente-se (seu nome, se ' +
+        'aplicável, e/ou o nome da imobiliária, conforme sua persona) e comece a conversa de forma natural, humana ' +
+        'e espontânea, como a primeira mensagem real de WhatsApp que você manda para alguém novo.',
+      );
+    }
+
     const systemContent = systemParts.join('\n\n');
 
 
@@ -501,6 +517,16 @@ export class AiService {
     if (urgencyInstruction) userParts.push(`Contexto de follow-up: ${urgencyInstruction}`);
     if (isModifyMode && previousSuggestion) userParts.push(`Sugestão anterior da IA (para modificar):\n${previousSuggestion}`);
     if (modeInstruction) userParts.push(`Tarefa: ${modeInstruction}`);
+
+    // Primeiro contato (kickoff) — apenas quando isFirstContactKickoff = true.
+    if (params.isFirstContactKickoff) {
+      const interesseTrecho = String(params.interesse || '').trim();
+      userParts.push(
+        interesseTrecho
+          ? `Tarefa: Este é o primeiro contato com o lead — ele ainda não escreveu nada. Ele demonstrou interesse em: "${interesseTrecho}". Inicie a conversa mencionando esse interesse de forma natural e humana, sem soar como script ou robô.`
+          : 'Tarefa: Este é o primeiro contato com o lead — ele ainda não escreveu nada. Não há um interesse específico registrado ainda: apresente-se e pergunte com naturalidade o que a pessoa está buscando (tipo de imóvel, região, etc.), sem soar como um formulário ou robô.',
+      );
+    }
 
     const prompt = userParts.join('\n\n');
 

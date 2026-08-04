@@ -6,9 +6,10 @@ import { PipelineModule } from '../pipeline/pipeline.module';
 import { WhatsappUnofficialModule } from '../whatsapp-unofficial/whatsapp-unofficial.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { LeadDocumentsModule } from '../lead-documents/lead-documents.module';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
-  imports: [PrismaModule, PipelineModule, WhatsappUnofficialModule, MessagingModule, LeadDocumentsModule],
+  imports: [PrismaModule, PipelineModule, WhatsappUnofficialModule, MessagingModule, LeadDocumentsModule, AiModule],
   providers: [LeadsService],
   controllers: [LeadsController],
   exports: [LeadsService],

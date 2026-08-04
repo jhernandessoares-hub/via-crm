@@ -5,7 +5,7 @@
  * Adicionar novos módulos/ações aqui os torna configuráveis sem alterar mais código.
  */
 
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'use' | 'export' | 'send' | 'merge' | 'campaign';
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'use' | 'export' | 'send' | 'merge' | 'campaign' | 'contatoProativoIa';
 
 export type PermissionRole = 'manager' | 'agent' | 'partner';
 
@@ -31,6 +31,7 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
       { key: 'create', label: 'Criar' },
       { key: 'edit',   label: 'Editar' },
       { key: 'delete', label: 'Excluir' },
+      { key: 'contatoProativoIa', label: 'Iniciar contato proativo via IA' },
     ],
   },
   {
@@ -190,7 +191,7 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
 export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<string, boolean>>> = {
   manager: {
     dashboard:              { view: true  },
-    leads:                  { view: true,  create: true,  edit: true,  delete: true  },
+    leads:                  { view: true,  create: true,  edit: true,  delete: true,  contatoProativoIa: true  },
     products:               { view: true,  create: true,  edit: true,  delete: true  },
     calendar:               { view: true,  create: true,  edit: true,  delete: true  },
     secretary:              { use: true  },
@@ -212,7 +213,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
   },
   agent: {
     dashboard:              { view: true  },
-    leads:                  { view: true,  create: true,  edit: true,  delete: false },
+    leads:                  { view: true,  create: true,  edit: true,  delete: false, contatoProativoIa: true  },
     products:               { view: true,  create: true,  edit: true,  delete: false },
     calendar:               { view: true,  create: true,  edit: true,  delete: true  },
     secretary:              { use: true  },
@@ -234,7 +235,7 @@ export const DEFAULT_PERMISSIONS: Record<PermissionRole, Record<string, Record<s
   },
   partner: {
     dashboard:              { view: false },
-    leads:                  { view: true,  create: false, edit: false, delete: false },
+    leads:                  { view: true,  create: false, edit: false, delete: false, contatoProativoIa: false  },
     products:               { view: true,  create: false, edit: false, delete: false },
     calendar:               { view: false, create: false, edit: false, delete: false },
     secretary:              { use: false },

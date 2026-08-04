@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable } from '@nestjs/common';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,8 +7,13 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../prisma/prisma.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { AiService } from '../ai/ai.service';
+import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
+import { AuditService } from '../audit/audit.service';
 import { Logger } from '../logger';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
+import { startProactiveOutreach } from '../leads/proactive-outreach.helper';
+import { resolvePermissions } from '../tenants/permissions.config';
 
 const logger = new Logger('SecretaryService');
 
@@ -103,6 +108,24 @@ const SECRETARY_TOOLS: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'iniciar_contato_lead',
+      description:
+        'Cria (se necessário) e inicia contato proativo com um lead via WhatsApp — a IA manda a primeira mensagem',
+      parameters: {
+        type: 'object',
+        properties: {
+          leadId: { type: 'string', description: 'ID de um lead já existente; se vier, ignora nome/telefone' },
+          nome: { type: 'string', description: 'Nome do lead (obrigatório junto com telefone se leadId não vier)' },
+          telefone: { type: 'string', description: 'Telefone/WhatsApp, só números (obrigatório se leadId não vier)' },
+          interesse: { type: 'string', description: 'O que a pessoa está procurando, mencionado na mensagem de abertura (opcional)' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'salvar_nota',
       description: 'Salva uma nota, informação, contato ou documento na biblioteca pessoal do usuário',
       parameters: {
@@ -177,6 +200,10 @@ export class SecretaryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calendar: CalendarService,
+    private readonly ai: AiService,
+    @Inject(forwardRef(() => WhatsappUnofficialService))
+    private readonly whatsappUnofficial: WhatsappUnofficialService,
+    private readonly audit: AuditService,
   ) {}
 
   private getOpenAI(): OpenAI {
@@ -624,6 +651,80 @@ export class SecretaryService {
           });
         });
         return `Lead criado com sucesso. Nome: ${lead.nome} | ID: ${lead.id}`;
+      }
+
+      if (name === 'iniciar_contato_lead') {
+        const caller = await this.prisma.user.findFirst({ where: { id: userId }, select: { role: true } });
+        const role = caller?.role ?? 'AGENT';
+
+        if (role !== 'OWNER') {
+          const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { permissionsConfig: true } });
+          const perms = resolvePermissions(tenant?.permissionsConfig as any);
+          const roleKey = role.toLowerCase() as 'manager' | 'agent' | 'partner';
+          if (perms[roleKey]?.leads?.contatoProativoIa !== true) {
+            return 'Você não tem permissão para iniciar contato proativo via IA. Peça ao dono da conta para liberar em Configurações → Permissões.';
+          }
+        }
+
+        let lead: { id: string; nome: string; telefone: string | null };
+
+        if (args.leadId) {
+          const found = await this.prisma.lead.findFirst({
+            where: { id: args.leadId, tenantId, deletedAt: null },
+            select: { id: true, nome: true, telefone: true },
+          });
+          if (!found) return `Lead ${args.leadId} não encontrado.`;
+          if (!found.telefone) return `O lead ${found.nome} não tem telefone cadastrado — não é possível iniciar contato via WhatsApp.`;
+          lead = found;
+        } else {
+          if (!args.nome?.trim() || !args.telefone?.trim()) {
+            return 'Para iniciar contato com um lead novo, informe nome e telefone (ou o leadId de um lead já existente).';
+          }
+
+          const telefone = args.telefone.replace(/\D/g, '');
+          const telefoneKey = telefone.slice(-9);
+
+          const pipeline = await this.prisma.pipeline.findFirst({ where: { tenantId }, select: { id: true } });
+          const firstStage = pipeline
+            ? await this.prisma.pipelineStage.findFirst({ where: { tenantId, pipelineId: pipeline.id, key: 'NOVO_LEAD' }, select: { id: true } })
+            : null;
+
+          const created = await this.prisma.$transaction(async (tx) => {
+            const numero = await getNextLeadNumber(tx, tenantId);
+            return tx.lead.create({
+              data: {
+                tenantId, numero, nome: args.nome.trim(), telefone, telefoneKey,
+                origem: 'Formulário Interno', status: 'NOVO',
+                stageId: firstStage?.id ?? null,
+              },
+              select: { id: true, nome: true, telefone: true },
+            });
+          });
+          lead = created;
+        }
+
+        await startProactiveOutreach(
+          { prisma: this.prisma, ai: this.ai, unofficial: this.whatsappUnofficial },
+          {
+            tenantId,
+            leadId: lead.id,
+            nome: lead.nome,
+            telefone: lead.telefone as string,
+            interesse: args.interesse,
+            actorUserId: userId,
+          },
+        );
+
+        await this.audit.log({
+          tenantId,
+          userId,
+          action: 'PROACTIVE_OUTREACH_STARTED',
+          resourceType: 'lead',
+          resourceId: lead.id,
+          metadata: { nome: lead.nome, origem: 'secretaria' },
+        });
+
+        return `Contato iniciado com sucesso com ${lead.nome}. Te aviso quando ele responder.`;
       }
 
       if (name === 'mover_funil') {

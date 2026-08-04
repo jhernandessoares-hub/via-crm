@@ -11,7 +11,7 @@ import { startTransition, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "./api";
 
-export type PermissionAction = "view" | "create" | "edit" | "delete" | "use" | "export" | "send" | "merge" | "campaign";
+export type PermissionAction = "view" | "create" | "edit" | "delete" | "use" | "export" | "send" | "merge" | "campaign" | "contatoProativoIa";
 export type PermissionRole = "manager" | "agent" | "partner";
 
 export type DocumentAccessLevel = "none" | "view" | "download";
@@ -46,6 +46,7 @@ export const PERMISSION_MODULES = [
       { key: "create", label: "Criar" },
       { key: "edit",   label: "Editar" },
       { key: "delete", label: "Excluir" },
+      { key: "contatoProativoIa", label: "Iniciar contato proativo via IA" },
     ],
   },
   {

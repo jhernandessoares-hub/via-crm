@@ -66,6 +66,8 @@ export class LeadsController {
       email?: string;
       origem?: string;
       observacao?: string;
+      iniciarContatoIA?: boolean;
+      sessionId?: string;
     },
   ) {
     // "Meus Leads" (leads) e "Todos os Leads" (pipeline) têm CRUD próprios; criar é permitido
@@ -75,6 +77,9 @@ export class LeadsController {
       (await this.leadsService.hasPermission(req.user.tenantId, req.user.role, 'pipeline', 'create'));
     if (!canCreate) {
       throw new ForbiddenException('Sem permissão para criar leads');
+    }
+    if (body.iniciarContatoIA === true) {
+      await this.assertPerm(req, 'leads', 'contatoProativoIa', 'Sem permissão para iniciar contato proativo via IA');
     }
     return this.leadsService.create(req.user.tenantId, body, req.user);
   }
