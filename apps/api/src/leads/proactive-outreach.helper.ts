@@ -60,7 +60,7 @@ export async function startProactiveOutreach(
   // 3. Busca o lead atual (status para o prompt + assignedUserId para não sobrescrever)
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { assignedUserId: true, status: true },
+    select: { assignedUserId: true, status: true, nomeCorreto: true, nomeCorretoOrigem: true },
   });
   if (!lead) {
     throw new Error('Lead não encontrado.');
@@ -83,6 +83,10 @@ export async function startProactiveOutreach(
       isFirstContactKickoff: true,
       interesse,
       corretorNome: actor?.nome ?? null,
+      // O nome veio digitado deliberadamente por quem iniciou o contato (cadastro manual ou
+      // Secretária IA) — nunca é um apelido capturado do perfil do WhatsApp, então é confiável
+      // desde a primeira mensagem (evita a IA "esquecer" o nome e perguntar de novo depois).
+      nomeConfirmado: true,
     })
   )?.trim();
 
@@ -101,6 +105,8 @@ export async function startProactiveOutreach(
         sentBy: actorUserId,
         source: 'proactive_outreach',
         sentAt: new Date().toISOString(),
+        aiAssistanceLabel: '100% IA',
+        aiAssistancePercent: 100,
       },
     },
     select: { id: true },
@@ -114,13 +120,15 @@ export async function startProactiveOutreach(
     throw err;
   }
 
-  // 8. Fixa o canal da conversa e, se ainda não havia responsável, atribui a quem disparou
+  // 8. Fixa o canal da conversa, confirma o nome (foi digitado deliberadamente, não veio do
+  // WhatsApp) e, se ainda não havia responsável, atribui a quem disparou.
   await prisma.lead.update({
     where: { id: leadId },
     data: {
       conversaCanal: 'WHATSAPP_LIGHT',
       conversaSessionId: session.id,
       ...(lead.assignedUserId ? {} : { assignedUserId: actorUserId }),
+      ...(lead.nomeCorretoOrigem === 'MANUAL' ? {} : { nomeCorreto: nome, nomeCorretoOrigem: 'MANUAL' }),
     },
   });
 

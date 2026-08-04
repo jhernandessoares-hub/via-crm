@@ -799,6 +799,7 @@ async function handleInboundAiJob(
       lastLeadMessage,
       conversationContext,
       corretorNome,
+      nomeConfirmado: !!lead.nomeCorreto,
       agentModel: (selectedAgent as any).model ?? undefined,
       agentTemperature: (selectedAgent as any).temperature ?? undefined,
       onToolCall: async (toolName, args) => {

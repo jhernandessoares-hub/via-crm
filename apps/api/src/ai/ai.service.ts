@@ -267,6 +267,9 @@ export class AiService {
     isFirstContactKickoff?: boolean;
     /** Interesse do lead a mencionar na abertura (ex: "apartamento na zona sul"). Só usado quando isFirstContactKickoff = true. */
     interesse?: string;
+    /** true quando o nome em `nome` é confirmado (veio de cadastro manual/nomeCorreto), não um apelido capturado do WhatsApp.
+     *  Sobrepõe, para este lead, a regra padrão de identidade que manda desconfiar do nome até o lead confirmar. */
+    nomeConfirmado?: boolean;
   }) {
     let agentTitle = '';
     let agentDirectPrompt = ''; // campo prompt do próprio agente (prioridade máxima se preenchido)
@@ -481,6 +484,18 @@ export class AiService {
     // 5. Regras globais de segurança da plataforma (última posição = maior prioridade)
     systemParts.push(globalSafetyRules);
 
+    // 5b. Nome confirmado — sobrepõe a regra de identidade sobre nomes não confirmados
+    // (essa regra existe pra proteger contra apelidos capturados do perfil do WhatsApp,
+    // mas não se aplica quando o nome foi informado deliberadamente por um humano no cadastro).
+    if (params.nomeConfirmado) {
+      systemParts.push(
+        `O nome deste lead ("${params.nome}") já está CONFIRMADO — foi informado deliberadamente por quem cadastrou ` +
+        'o lead, não é um apelido capturado do perfil do WhatsApp. Ignore, para este lead específico, qualquer regra ' +
+        'que mande desconfiar do nome ou perguntar de novo antes de usá-lo: use-o normalmente, com confiança, desde ' +
+        'a primeira mensagem.',
+      );
+    }
+
     // 6. Primeiro contato (kickoff) — apenas quando isFirstContactKickoff = true.
     // Posicionado por último para não ser ofuscado por outras instruções.
     if (params.isFirstContactKickoff) {
@@ -529,8 +544,8 @@ export class AiService {
       const nomeLead = String(params.nome || '').trim();
       userParts.push(
         interesseTrecho
-          ? `Tarefa: Este é o primeiro contato com o lead${nomeLead ? ` ${nomeLead}` : ''} — ele ainda não escreveu nada. ${nomeLead ? `Cumprimente-o pelo nome (${nomeLead}). ` : ''}Ele demonstrou interesse em: "${interesseTrecho}". Inicie a conversa mencionando esse interesse de forma natural e humana, sem soar como script ou robô.`
-          : `Tarefa: Este é o primeiro contato com o lead${nomeLead ? ` ${nomeLead}` : ''} — ele ainda não escreveu nada. ${nomeLead ? `Cumprimente-o pelo nome (${nomeLead}). ` : ''}Não há um interesse específico registrado ainda: apresente-se e pergunte com naturalidade o que a pessoa está buscando (tipo de imóvel, região, etc.), sem soar como um formulário ou robô.`,
+          ? `Tarefa: Este é o primeiro contato com o lead${nomeLead ? ` ${nomeLead}` : ''} — você (a imobiliária) está iniciando a abordagem por conta própria, ele ainda não escreveu nada e NÃO foi ele quem disse ter esse interesse diretamente a você. ${nomeLead ? `Cumprimente-o pelo nome (${nomeLead}). ` : ''}Contexto interno (não é algo que o lead te contou): há um registro de que essa pessoa pode ter interesse em "${interesseTrecho}". Mencione isso com naturalidade, sem afirmar que "ele disse" ou "ele demonstrou" — algo como "fiquei sabendo que..." ou "vi aqui que você pode ter interesse em...", nunca como se fosse resposta a algo que ele comentou com você.`
+          : `Tarefa: Este é o primeiro contato com o lead${nomeLead ? ` ${nomeLead}` : ''} — você (a imobiliária) está iniciando a abordagem por conta própria, ele ainda não escreveu nada. ${nomeLead ? `Cumprimente-o pelo nome (${nomeLead}). ` : ''}Não há um interesse específico registrado ainda: apresente-se e pergunte com naturalidade o que a pessoa está buscando (tipo de imóvel, região, etc.), sem soar como um formulário ou robô.`,
       );
     }
 
