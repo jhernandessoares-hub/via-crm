@@ -85,14 +85,15 @@ async function processNext(
   }
 
   try {
+    let sent: { id: string | null } | undefined;
     if (disparo.modelo.mediaUrl) {
       if (disparo.modelo.mediaType === 'VIDEO') {
-        await unofficial.sendVideo(sessionId, contato.telefone, disparo.modelo.mediaUrl, texto);
+        sent = await unofficial.sendVideo(sessionId, contato.telefone, disparo.modelo.mediaUrl, texto);
       } else {
-        await unofficial.sendImage(sessionId, contato.telefone, disparo.modelo.mediaUrl, texto);
+        sent = await unofficial.sendImage(sessionId, contato.telefone, disparo.modelo.mediaUrl, texto);
       }
     } else {
-      await unofficial.sendText(sessionId, contato.telefone, texto);
+      sent = await unofficial.sendText(sessionId, contato.telefone, texto);
     }
 
     // Lead será criado apenas quando o contato responder (handleInbound)
@@ -114,6 +115,7 @@ async function processNext(
           tenantId,
           leadId: contato.leadId,
           channel: 'whatsapp.unofficial.out',
+          sourceRef: sent?.id ?? null,
           payloadRaw: {
             text: texto,
             source: 'campanha-base-fria',

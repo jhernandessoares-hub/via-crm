@@ -299,6 +299,7 @@ export class InboxService {
           mediaType: media.mediaType,
           mimeType: media.mimeType,
           filename: media.filename,
+          status: extractStatus(ev.payloadRaw),
         };
       }),
       hasMore: events.length === 50,
@@ -331,7 +332,10 @@ export class InboxService {
     });
 
     try {
-      await this.unofficial.sendText(lead.conversaSessionId, lead.telefone, text);
+      const sent = await this.unofficial.sendText(lead.conversaSessionId, lead.telefone, text);
+      if (sent?.id) {
+        await this.prisma.leadEvent.update({ where: { id: event.id }, data: { sourceRef: sent.id } });
+      }
       logger.log(`Mensagem enviada via inbox leadId=${leadId} sessionId=${lead.conversaSessionId}`);
       return { ok: true, messageId: event.id, criadoEm: event.criadoEm };
     } catch (err) {
@@ -388,6 +392,12 @@ function extractText(payloadRaw: any): string | null {
   if (p.type === 'video') return '🎥 Vídeo';
   if (p.type === 'audio') return '🎵 Áudio';
   return null;
+}
+
+function extractStatus(payloadRaw: any): 'SENT' | 'DELIVERED' | 'READ' | null {
+  if (!payloadRaw || typeof payloadRaw !== 'object') return null;
+  const status = (payloadRaw as any).waMessageStatus;
+  return status === 'SENT' || status === 'DELIVERED' || status === 'READ' ? status : null;
 }
 
 function extractMedia(payloadRaw: any): { mediaUrl: string | null; mediaType: string | null; mimeType: string | null; filename: string | null } {

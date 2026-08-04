@@ -114,7 +114,10 @@ export async function startProactiveOutreach(
 
   // 7. Envia — rollback do evento se falhar
   try {
-    await unofficial.sendText(session.id, telefone, text);
+    const sent = await unofficial.sendText(session.id, telefone, text);
+    if (sent?.id) {
+      await prisma.leadEvent.update({ where: { id: event.id }, data: { sourceRef: sent.id } });
+    }
   } catch (err) {
     await prisma.leadEvent.delete({ where: { id: event.id } }).catch(() => {});
     throw err;

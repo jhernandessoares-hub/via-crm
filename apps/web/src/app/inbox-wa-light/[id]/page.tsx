@@ -8,6 +8,8 @@ import { apiFetch } from "@/lib/api";
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
+  CheckCheck,
   CheckCircle2,
   CircleStop,
   Clock,
@@ -212,6 +214,18 @@ function MessageMedia({ message }: { message: WaLightMessage }) {
   );
 }
 
+// Confirmação de leitura (✓✓ azul), estilo WhatsApp: check simples (enviado),
+// check duplo cinza/translúcido (entregue) e check duplo azul (lido).
+function MessageStatusTicks({ status }: { status?: string | null }) {
+  if (status === "READ") {
+    return <CheckCheck className="h-3.5 w-3.5 shrink-0" style={{ color: "#53bdeb" }} />;
+  }
+  if (status === "DELIVERED") {
+    return <CheckCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />;
+  }
+  return <Check className="h-3.5 w-3.5 shrink-0 opacity-70" />;
+}
+
 function MessageBubble({ message, incomingBg, incomingText }: {
   message: WaLightMessage;
   incomingBg: string;
@@ -235,9 +249,9 @@ function MessageBubble({ message, incomingBg, incomingText }: {
           <p className="whitespace-pre-wrap break-words leading-relaxed">{message.texto}</p>
         )}
         {!message.texto && !message.mediaUrl && <p className="opacity-80">[mensagem]</p>}
-        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">
-          <span>{formatMessageTime(message.criadoEm)}</span>
-          {outgoing && <span>{message.status === "READ" ? "✓✓" : "✓"}</span>}
+        <div className="mt-1 flex items-center justify-end gap-1 text-[10px]">
+          <span className="opacity-70">{formatMessageTime(message.criadoEm)}</span>
+          {outgoing && <MessageStatusTicks status={message.status} />}
         </div>
       </div>
     </div>

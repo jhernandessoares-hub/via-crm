@@ -306,8 +306,9 @@ async function sendImagesForProduct(
   for (const img of images) {
     const caption = img.customLabel || img.title || productWithImages?.title || undefined;
     try {
+      let sent: { id: string | null } | undefined;
       if (isLight) {
-        await unofficialService!.sendImage(lead.conversaSessionId!, lead.telefone, img.url, caption);
+        sent = await unofficialService!.sendImage(lead.conversaSessionId!, lead.telefone, img.url, caption);
       } else {
         await sendImageViaWhatsapp(prisma, lead.tenantId, lead.telefone, img.url, caption);
       }
@@ -316,6 +317,7 @@ async function sendImagesForProduct(
           tenantId: lead.tenantId,
           leadId: lead.id,
           channel: isLight ? 'whatsapp.unofficial.out' : 'whatsapp.out',
+          sourceRef: isLight ? (sent?.id ?? null) : null,
           payloadRaw: {
             type: 'image',
             media: {
@@ -852,8 +854,9 @@ async function handleInboundAiJob(
       }
 
       let metaResponse: any = null;
+      let lightSent: { id: string | null } | undefined;
       if (isLight) {
-        await unofficialService!.sendText(lead.conversaSessionId!, lead.telefone!, finalText);
+        lightSent = await unofficialService!.sendText(lead.conversaSessionId!, lead.telefone!, finalText);
       } else {
         metaResponse = await whatsapp!.sendMessage(lead.telefone!, finalText);
       }
@@ -864,6 +867,7 @@ async function handleInboundAiJob(
           tenantId: lead.tenantId,
           leadId: lead.id,
           channel: isLight ? 'whatsapp.unofficial.out' : 'whatsapp.out',
+          sourceRef: isLight ? (lightSent?.id ?? null) : null,
           payloadRaw: {
             text: finalText,
             source: 'inbound-ai.worker',

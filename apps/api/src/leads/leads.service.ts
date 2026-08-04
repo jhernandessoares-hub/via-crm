@@ -814,14 +814,15 @@ export class LeadsService {
     if (lead.conversaCanal === 'WHATSAPP_LIGHT' && lead.conversaSessionId) {
       const sessionId = lead.conversaSessionId;
       const to = lead.telefone!;
+      let sent: { id: string | null } | undefined;
       try {
         // Passa o buffer diretamente — Baileys não precisa baixar do Cloudinary
         if (isImage) {
-          await this.unofficialService.sendImage(sessionId, to, buffer);
+          sent = await this.unofficialService.sendImage(sessionId, to, buffer);
         } else if (isVideo) {
-          await this.unofficialService.sendVideo(sessionId, to, buffer);
+          sent = await this.unofficialService.sendVideo(sessionId, to, buffer);
         } else {
-          await this.unofficialService.sendDocument(sessionId, to, buffer, originalname, mimetype || 'application/octet-stream');
+          sent = await this.unofficialService.sendDocument(sessionId, to, buffer, originalname, mimetype || 'application/octet-stream');
         }
       } catch (err: any) {
         await this.prisma.leadEvent.create({
@@ -840,6 +841,7 @@ export class LeadsService {
           tenantId: user.tenantId,
           leadId,
           channel: 'whatsapp.unofficial.out',
+          sourceRef: sent?.id ?? null,
           payloadRaw: {
             to,
             type: mediaKind,
@@ -3764,8 +3766,9 @@ const aiAssistanceLabel =
         throw new Error('Sessão WhatsApp Light não especificada');
       }
 
+      let sent: { id: string | null } | undefined;
       try {
-        await this.unofficialService.sendText(activeSessionId, lead.telefone, text);
+        sent = await this.unofficialService.sendText(activeSessionId, lead.telefone, text);
       } catch (sendErr: any) {
         await this.prisma.leadEvent.create({
           data: {
@@ -3791,6 +3794,7 @@ const aiAssistanceLabel =
           tenantId: user.tenantId,
           leadId,
           channel: 'whatsapp.unofficial.out',
+          sourceRef: sent?.id ?? null,
           payloadRaw: {
             to: lead.telefone,
             sessionId: activeSessionId,

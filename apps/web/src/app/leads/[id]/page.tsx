@@ -19,6 +19,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
+import { Check, CheckCheck } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -573,6 +574,14 @@ function getMessageId(ev: LeadEvent): string | null {
   const outId = p?.metaResponse?.messages?.[0]?.id;
   if (typeof outId === "string" && outId.trim()) return outId.trim();
   return null;
+}
+
+// Confirmação de leitura (✓✓ azul) — só para WhatsApp Light (whatsapp.unofficial.out).
+// WhatsApp Oficial (Meta) não tem esse mecanismo de status implementado aqui.
+function getWaLightMessageStatus(ev: LeadEvent): "SENT" | "DELIVERED" | "READ" | null {
+  if (ev.channel !== "whatsapp.unofficial.out") return null;
+  const status = ev.payloadRaw?.waMessageStatus;
+  return status === "SENT" || status === "DELIVERED" || status === "READ" ? status : null;
 }
 
 function extractReaction(ev: LeadEvent): { emoji: string; targetMessageId: string } | null {
@@ -1212,6 +1221,7 @@ function Bubble({
   const outgoing = isOutgoing(ev);
   const ch = String(ev.channel || "event");
   const p = ev.payloadRaw || {};
+  const waLightStatus = getWaLightMessageStatus(ev);
   const isAiSuggestion = ch === "ai.suggestion";
   const aiParticipationLabel = getAiParticipationLabel(ev);
   const isWaOut = String(ch || "").toLowerCase().startsWith("whatsapp.out") || ch === "whatsapp.unofficial.out";
@@ -1239,7 +1249,16 @@ function Bubble({
         >
           <div className="text-[11px] text-[var(--shell-subtext)] flex items-center justify-between gap-2">
             <span className="font-mono">{channelDisplay}</span>
-            <span>{formatTime(ev.criadoEm)}</span>
+            <span className="flex items-center gap-1">
+              {formatTime(ev.criadoEm)}
+              {waLightStatus === "READ" ? (
+                <CheckCheck className="h-3.5 w-3.5 shrink-0" style={{ color: "#53bdeb" }} />
+              ) : waLightStatus === "DELIVERED" ? (
+                <CheckCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              ) : waLightStatus === "SENT" ? (
+                <Check className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              ) : null}
+            </span>
           </div>
 
           {isAiSuggestion ? (

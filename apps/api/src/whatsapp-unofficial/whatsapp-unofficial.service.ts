@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy, BadRequestException } from '@nestjs/common';
-import makeWASocket, { WASocket, DisconnectReason, downloadMediaMessage, generateMessageID } from '@whiskeysockets/baileys';
+import makeWASocket, { WASocket, DisconnectReason, downloadMediaMessage, generateMessageID, WAMessageUpdate } from '@whiskeysockets/baileys';
 import { initAuthCreds, BufferJSON, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { Prisma } from '@prisma/client';
@@ -94,6 +94,23 @@ function extractBaileysText(msgContent: any): { type: string; text: string } {
   }
 
   return { type: 'unknown', text: '[Mensagem não reconhecida]' };
+}
+
+// Mapeia o enum de ACK do Baileys (proto.WebMessageInfo.Status) para os 3 estados
+// exibidos na UI (check simples / duplo cinza / duplo azul).
+// ERROR=0, PENDING=1, SERVER_ACK=2, DELIVERY_ACK=3, READ=4, PLAYED=5
+function mapBaileysAckToStatus(rawStatus: number): 'SENT' | 'DELIVERED' | 'READ' | null {
+  if (rawStatus === 1 || rawStatus === 2) return 'SENT';
+  if (rawStatus === 3) return 'DELIVERED';
+  if (rawStatus === 4 || rawStatus === 5) return 'READ';
+  return null; // ERROR (0) ou valor desconhecido
+}
+
+function statusRank(status: string | null | undefined): number {
+  if (status === 'READ') return 3;
+  if (status === 'DELIVERED') return 2;
+  if (status === 'SENT') return 1;
+  return 0;
 }
 
 function digitsOnly(value: string | null | undefined) {
@@ -480,6 +497,15 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
         await this.handleInbound(sessionId, msg).catch((e) =>
           logger.error(`Erro ao processar inbound sessão=${sessionId}: ${e?.message}`),
+        );
+      }
+    });
+
+    // Confirmação de leitura (✓✓ azul): status de entrega/leitura das mensagens enviadas.
+    socket.ev.on('messages.update', async (updates) => {
+      for (const u of updates) {
+        await this.handleMessageStatusUpdate(sessionId, u).catch((e) =>
+          logger.error(`Erro ao processar messages.update sessão=${sessionId}: ${e?.message}`),
         );
       }
     });
@@ -1231,6 +1257,49 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     });
 
     logger.log(`📱 Mensagem enviada direto do celular do corretor registrada — leadId=${lead.id} sessão=${sessionId}`);
+  }
+
+  // ── Confirmação de leitura (✓✓ azul) ────────────────────────────────────────
+  //
+  // Baileys emite `messages.update` com o novo status de entrega/leitura de mensagens
+  // outbound. Mapeia pra 3 estados simplificados e grava no `payloadRaw` do LeadEvent
+  // já existente (localizado pelo `sourceRef` = messageId pré-gerado no envio) — nunca
+  // cria evento novo (isGhostEvent filtraria mesmo).
+  private async handleMessageStatusUpdate(sessionId: string, update: WAMessageUpdate) {
+    const messageId = update.key?.id;
+    if (!messageId) return;
+
+    const rawStatus = (update.update as any)?.status;
+    if (rawStatus === undefined || rawStatus === null) return;
+
+    const newStatus = mapBaileysAckToStatus(rawStatus);
+    if (!newStatus) return; // ERROR ou valor desconhecido — ignora
+
+    const session = await this.prisma.whatsappUnofficialSession.findUnique({
+      where: { id: sessionId },
+      select: { tenantId: true },
+    });
+    if (!session) return;
+
+    const ev = await this.prisma.leadEvent.findFirst({
+      where: { tenantId: session.tenantId, channel: 'whatsapp.unofficial.out', sourceRef: messageId },
+      select: { id: true, payloadRaw: true },
+    });
+    if (!ev) return; // mensagem não rastreada (ex: enviada antes desta feature) — ignora
+
+    const currentStatus: string | undefined = (ev.payloadRaw as any)?.waMessageStatus;
+    if (statusRank(newStatus) <= statusRank(currentStatus)) return; // evita regressão por ordem de chegada
+
+    await this.prisma.leadEvent.update({
+      where: { id: ev.id },
+      data: {
+        payloadRaw: {
+          ...(ev.payloadRaw as any),
+          waMessageStatus: newStatus,
+          waMessageStatusAt: new Date().toISOString(),
+        },
+      },
+    });
   }
 
   // ── Validação de números no WhatsApp ─────────────────────────────────────

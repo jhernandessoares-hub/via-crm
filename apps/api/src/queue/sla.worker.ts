@@ -667,10 +667,11 @@ async function handleSlaAttempt(
         logger.warn(`⚠️ SLA Light sem sessão/serviço leadId=${lead.id}`);
         return;
       }
-      await unofficialService.sendText(lead.conversaSessionId, lead.telefone, text);
+      const sent = await unofficialService.sendText(lead.conversaSessionId, lead.telefone, text);
       await prisma.leadEvent.create({
         data: {
           tenantId: lead.tenantId, leadId: lead.id, channel: 'whatsapp.unofficial.out',
+          sourceRef: sent?.id ?? null,
           payloadRaw: { text, type: 'text', source: 'sla.worker.autopilot', attemptIndex, aiAssistanceLabel: '100% IA', aiAssistancePercent: 100, at: new Date().toISOString() },
         },
       });
