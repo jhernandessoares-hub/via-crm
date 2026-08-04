@@ -66,8 +66,11 @@ export async function startProactiveOutreach(
     throw new Error('Lead não encontrado.');
   }
 
-  // 4. Resolve o agente padrão do tenant (pode ser null)
-  const agent = await ai.findDefaultAgentForTenant(tenantId);
+  // 4. Resolve o agente padrão do tenant (pode ser null) e o nome de quem disparou a ação
+  const [agent, actor] = await Promise.all([
+    ai.findDefaultAgentForTenant(tenantId),
+    prisma.user.findUnique({ where: { id: actorUserId }, select: { nome: true } }),
+  ]);
 
   // 5. Gera a mensagem de abertura
   const text = (
@@ -79,6 +82,7 @@ export async function startProactiveOutreach(
       leadId,
       isFirstContactKickoff: true,
       interesse,
+      corretorNome: actor?.nome ?? null,
     })
   )?.trim();
 

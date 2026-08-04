@@ -487,9 +487,14 @@ export class AiService {
       systemParts.push(
         'ATENÇÃO — PRIMEIRO CONTATO: você está iniciando a conversa com este lead agora, pela primeira vez. ' +
         'Ele nunca escreveu nada para você e não existe nenhum histórico de conversa anterior — jamais trate esta ' +
-        'mensagem como resposta a algo que o lead teria dito, pois isso não aconteceu. Apresente-se (seu nome, se ' +
-        'aplicável, e/ou o nome da imobiliária, conforme sua persona) e comece a conversa de forma natural, humana ' +
-        'e espontânea, como a primeira mensagem real de WhatsApp que você manda para alguém novo.',
+        'mensagem como resposta a algo que o lead teria dito, pois isso não aconteceu. ' +
+        'Comece cumprimentando o lead PELO NOME (o nome dele está informado abaixo como "Lead: <nome>") — nunca ' +
+        'omita o nome do lead se ele estiver disponível. ' +
+        'Sobre se apresentar: só mencione um nome próprio seu se ele estiver claramente definido na sua persona/' +
+        'instruções acima. Se você não tiver um nome próprio definido, JAMAIS escreva um placeholder como ' +
+        '"[seu nome]", "[Seu Nome]", "(nome)" ou qualquer variação — nesse caso simplesmente não cite nome nenhum ' +
+        'de pessoa, fale em nome da imobiliária/equipe. Comece a conversa de forma natural, humana e espontânea, ' +
+        'como a primeira mensagem real de WhatsApp que você manda para alguém novo.',
       );
     }
 
@@ -521,10 +526,11 @@ export class AiService {
     // Primeiro contato (kickoff) — apenas quando isFirstContactKickoff = true.
     if (params.isFirstContactKickoff) {
       const interesseTrecho = String(params.interesse || '').trim();
+      const nomeLead = String(params.nome || '').trim();
       userParts.push(
         interesseTrecho
-          ? `Tarefa: Este é o primeiro contato com o lead — ele ainda não escreveu nada. Ele demonstrou interesse em: "${interesseTrecho}". Inicie a conversa mencionando esse interesse de forma natural e humana, sem soar como script ou robô.`
-          : 'Tarefa: Este é o primeiro contato com o lead — ele ainda não escreveu nada. Não há um interesse específico registrado ainda: apresente-se e pergunte com naturalidade o que a pessoa está buscando (tipo de imóvel, região, etc.), sem soar como um formulário ou robô.',
+          ? `Tarefa: Este é o primeiro contato com o lead${nomeLead ? ` ${nomeLead}` : ''} — ele ainda não escreveu nada. ${nomeLead ? `Cumprimente-o pelo nome (${nomeLead}). ` : ''}Ele demonstrou interesse em: "${interesseTrecho}". Inicie a conversa mencionando esse interesse de forma natural e humana, sem soar como script ou robô.`
+          : `Tarefa: Este é o primeiro contato com o lead${nomeLead ? ` ${nomeLead}` : ''} — ele ainda não escreveu nada. ${nomeLead ? `Cumprimente-o pelo nome (${nomeLead}). ` : ''}Não há um interesse específico registrado ainda: apresente-se e pergunte com naturalidade o que a pessoa está buscando (tipo de imóvel, região, etc.), sem soar como um formulário ou robô.`,
       );
     }
 
