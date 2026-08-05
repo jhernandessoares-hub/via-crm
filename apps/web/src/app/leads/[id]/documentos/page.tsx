@@ -6,6 +6,7 @@ import JSZip from "jszip";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import { maskCPF, maskCEP, maskPhone, isValidCPF } from "@/lib/format";
+import { formatLeadNumber } from "@/lib/format-lead-number";
 import { usePermissions, useDocumentAccess } from "@/lib/permissions";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ type DocItem = {
 
 type Lead = {
   id: string; nome: string; nomeCorreto?: string | null;
+  numero?: number | null; reentradaCount?: number | null;
   telefone?: string | null; email?: string | null;
   cpf?: string | null; rg?: string | null;
   dataNascimento?: string | null; estadoCivil?: string | null;
@@ -1144,7 +1146,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
           {status === "ready" && !error && (
             <div className="space-y-5">
               <div>
-                <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
+                <div className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
                 <div className="grid grid-cols-2 gap-3">
                   {Field({ label: "CPF", name: "cpf" })}
                   {Field({ label: "RG", name: "rg" })}
@@ -1156,7 +1158,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
+                <div className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
                 <div className="grid grid-cols-2 gap-3">
                   {Field({ label: "Telefone", name: "telefone" })}
                   {Field({ label: "Email", name: "email", type: "email" })}
@@ -1169,7 +1171,7 @@ function AICadastroModal({ leadId, participanteId, participanteNome, displayName
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
+                <div className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
                 <div className="grid grid-cols-2 gap-3">
                   {Field({ label: "Profissão", name: "profissao" })}
                   {Field({ label: "Empresa", name: "empresa" })}
@@ -1551,7 +1553,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
     return (
       <div className={span2 ? "col-span-2" : ""}>
         <div className="flex items-center gap-1 mb-0.5">
-          <label className="block text-[10px] text-[var(--shell-subtext)] uppercase tracking-wide leading-none">{label}</label>
+          <label className="block text-xs text-[var(--shell-subtext)] uppercase tracking-wide leading-none">{label}</label>
           {isIA && <IABadge small />}
           {hasDoc && onOpenFieldDoc && (
             <button
@@ -1569,13 +1571,13 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
         <div className="relative">
           {options ? (
-            <select className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
+            <select className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-base focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
               value={vals[name] ?? ""} onFocus={() => markReviewed(name)} onChange={e => setVals(v => ({ ...v, [name]: e.target.value }))}
               onBlur={e => saveField(name, e.target.value)}>
               {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : (
-            <input type={type} className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
+            <input type={type} className={`w-full rounded border ${fieldBorder} bg-[var(--shell-bg)] px-2 py-1.5 text-base focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-[var(--shell-card-bg)]`}
               value={vals[name] ?? ""}
               onFocus={() => markReviewed(name)}
               onChange={e => {
@@ -1626,12 +1628,12 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
   };
 
   return (
-    <div className="space-y-4 text-xs">
+    <div className="space-y-4 text-sm">
 
       {/* ── Campo de nome (editável) ── */}
       {onPersonNameSave && (
         <div>
-          <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Nome</div>
+          <div className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Nome</div>
           {editingName ? (
             <div className="flex gap-2">
               <input
@@ -1687,7 +1689,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
       )}
       <div>
-        <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
+        <div className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Identificação</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           {Field({ label: "CPF", name: "cpf" })}
           {Field({ label: "RG", name: "rg" })}
@@ -1697,7 +1699,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
       </div>
       <div>
-        <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
+        <div className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Contato</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           {Field({ label: "Telefone", name: "telefone" })}
           {Field({ label: "Email", name: "email", type: "email" })}
@@ -1708,7 +1710,7 @@ function CadastroForm({ leadId, isLead, participanteId, initialValues, initialOr
         </div>
       </div>
       <div>
-        <div className="text-[10px] font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
+        <div className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-widest mb-2">Profissional</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           {Field({ label: "Profissão", name: "profissao" })}
           {Field({ label: "Empresa", name: "empresa" })}
@@ -1766,9 +1768,8 @@ export default function DocumentosPage() {
   const [identifyDoc, setIdentifyDoc] = useState<DocItem | null>(null);
   const [busyIdentify, setBusyIdentify] = useState(false);
 
-  // Accordion cadastro e documentos + ordem unificada de pessoas
-  const [openCadastro, setOpenCadastro] = useState<Set<string>>(new Set(["__lead__"]));
-  const [openDocs, setOpenDocs] = useState<Set<string>>(new Set(["__lead__"]));
+  // Bloco único por pessoa (Documentos + Cadastro lado a lado) + ordem unificada de pessoas
+  const [personOpen, setPersonOpen] = useState<Set<string>>(new Set(["__lead__"]));
   const [personOrder, setPersonOrder] = useState<string[]>([]);
 
   // Modal campo + documento (nível de página para evitar clipping por overflow:hidden)
@@ -1816,7 +1817,6 @@ export default function DocumentosPage() {
       } catch {
         setPersonOrder(allIds);
       }
-      setOpenDocs(new Set(allIds)); // todas abertas por padrão
     } catch (e: any) { setError(e?.message ?? "Erro ao carregar"); }
     finally { setLoading(false); }
   }
@@ -1976,7 +1976,7 @@ export default function DocumentosPage() {
     try {
       const created = await apiFetch(`/leads/${leadId}/participantes`, { method: "POST", body: JSON.stringify({ nome, classificacao }) });
       setParticipantes(prev => [...prev, created]);
-      setOpenCadastro(prev => new Set(prev).add(created.id));
+      setPersonOpen(prev => new Set(prev).add(created.id));
       setAddPartOpen(false);
     } catch (e: any) {
       alert(e?.message ?? "Erro ao adicionar participante");
@@ -2089,7 +2089,13 @@ export default function DocumentosPage() {
             {na ? (
               <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded px-2 py-0.5">N/A</span>
             ) : typeDocs.length === 0 ? (
-              <button className="text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1 hover:bg-blue-50 transition-colors" onClick={() => openUpload(participanteNome, participanteClassificacao, tipo_, tLabel)}>
+              <button
+                className="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
+                style={{ color: "var(--brand-accent)", borderColor: "var(--brand-accent-light)", background: "var(--shell-card-bg)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--brand-accent-muted)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--shell-card-bg)")}
+                onClick={() => openUpload(participanteNome, participanteClassificacao, tipo_, tLabel)}
+              >
                 ↑ Fazer upload
               </button>
             ) : (
@@ -2142,86 +2148,58 @@ export default function DocumentosPage() {
     );
   }
 
-  function DocSection({ nome, displayName, classificacao, isLead, open, onToggle, onMoveUp, onMoveDown }: {
-    nome: string | null; displayName: string; classificacao: string | null; isLead: boolean;
-    open: boolean; onToggle: () => void;
-    onMoveUp?: () => void; onMoveDown?: () => void;
-  }) {
+  // Corpo da aba "Documentos" dentro do bloco unificado por pessoa — sem cabeçalho/collapse
+  // próprios (isso agora é responsabilidade do PersonCard).
+  function DocSectionBody({ nome, classificacao }: { nome: string | null; classificacao: string | null }) {
     const outros = outroDocs(docs, nome);
     return (
-      <div className="mb-3 last:mb-0 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
-        {/* Header clicável */}
-        <div className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[var(--shell-bg)] select-none"
-          role="button" tabIndex={0} onClick={onToggle}>
-          <div className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-            <span className="text-xs font-bold text-blue-700">{(displayName[0] || "?").toUpperCase()}</span>
-          </div>
-          <span className="text-sm font-semibold text-[var(--shell-text)] flex-1">{displayName}</span>
-          {isLead && <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">Lead</span>}
-          {classificacao && classificacao !== "OUTRO" && <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-full px-2 py-0.5">{classLabel(classificacao)}</span>}
-          {/* Setas de reordenação */}
-          <div className="flex items-center gap-0">
-            <button onClick={onMoveUp} disabled={!onMoveUp} title="Mover para cima"
-              className="p-1 rounded transition-colors"
-              style={{ color: onMoveUp ? "#4b5563" : "#d1d5db", cursor: onMoveUp ? "pointer" : "not-allowed" }}>
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
-            </button>
-            <button onClick={onMoveDown} disabled={!onMoveDown} title="Mover para baixo"
-              className="p-1 rounded transition-colors"
-              style={{ color: onMoveDown ? "#4b5563" : "#d1d5db", cursor: onMoveDown ? "pointer" : "not-allowed" }}>
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </button>
-          </div>
-          <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform shrink-0 ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-        </div>
-        {/* Conteúdo colapsável */}
-        {open && <div className="border-t border-[var(--shell-card-border)] px-4">
-          {TIPOS_PADRAO.filter(t => t.value !== "OUTRO").map(t => (
-            <TipoRow key={t.value} participanteNome={nome} participanteClassificacao={classificacao} tipo={t.value} tipoLabel={t.label} />
-          ))}
-          <div className="py-3 border-t border-[var(--shell-card-border)]">
-            {outros.length > 0 && (
-              <div className="mb-3 space-y-1">
-                {outros.map(d => (
-                  <div key={d.id} className="flex items-center gap-2 rounded-lg bg-[var(--shell-bg)] px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        {d.classificadoPorIA && <IABadge small />}
-                        <span className="text-xs text-[var(--shell-subtext)] truncate">{d.nome}</span>
-                      </div>
-                      {d.observacao && <div className="text-[11px] text-[var(--shell-subtext)] mt-0.5">{d.observacao}</div>}
+      <div className="px-4">
+        {TIPOS_PADRAO.filter(t => t.value !== "OUTRO").map(t => (
+          <TipoRow key={t.value} participanteNome={nome} participanteClassificacao={classificacao} tipo={t.value} tipoLabel={t.label} />
+        ))}
+        <div className="py-3 border-t border-[var(--shell-card-border)]">
+          {outros.length > 0 && (
+            <div className="mb-3 space-y-1">
+              {outros.map(d => (
+                <div key={d.id} className="flex items-center gap-2 rounded-lg bg-[var(--shell-bg)] px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {d.classificadoPorIA && <IABadge small />}
+                      <span className="text-xs text-[var(--shell-subtext)] truncate">{d.nome}</span>
                     </div>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      {d.url && <button title="Visualizar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]" onClick={() => setPreviewDoc({ docId: d.id, nome: d.nome })}>
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                      </button>}
-                      {d.url && canDownloadDocs && (
-                        <button title="Baixar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600 disabled:opacity-50" onClick={() => handleDownloadOne(d)} disabled={busyDownload.has(d.id)}>
-                          {busyDownload.has(d.id)
-                            ? <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                            : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
-                        </button>
-                      )}
-                      <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600" onClick={() => setReclassifyDoc(d)}>
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                      </button>
-                      <button title="Excluir" className="p-1.5 rounded hover:bg-red-50 text-[var(--shell-subtext)] hover:text-red-500" onClick={() => handleDeleteDoc(d.id)} disabled={busyDel.has(d.id)}>
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
-                    </div>
+                    {d.observacao && <div className="text-[11px] text-[var(--shell-subtext)] mt-0.5">{d.observacao}</div>}
                   </div>
-                ))}
-              </div>
-            )}
-            <button className="flex items-center gap-1 text-xs text-[var(--shell-subtext)] hover:text-blue-600 transition-colors"
-              onClick={() => setUploadTarget({ participanteNome: nome, participanteClassificacao: classificacao, tipo: "OUTRO", tipoLabel: "Outro", existingDocId: null, isOutro: true })}>
-              <span className="text-sm font-medium">+</span> Adicionar documento
-            </button>
-          </div>
-        </div>}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {d.url && <button title="Visualizar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-[var(--shell-subtext)]" onClick={() => setPreviewDoc({ docId: d.id, nome: d.nome })}>
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    </button>}
+                    {d.url && canDownloadDocs && (
+                      <button title="Baixar" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600 disabled:opacity-50" onClick={() => handleDownloadOne(d)} disabled={busyDownload.has(d.id)}>
+                        {busyDownload.has(d.id)
+                          ? <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                          : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+                      </button>
+                    )}
+                    <button title="Reclassificar tipo / trocar dono" className="p-1.5 rounded hover:bg-[var(--shell-card-bg)] text-[var(--shell-subtext)] hover:text-blue-600" onClick={() => setReclassifyDoc(d)}>
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    </button>
+                    <button title="Excluir" className="p-1.5 rounded hover:bg-red-50 text-[var(--shell-subtext)] hover:text-red-500" onClick={() => handleDeleteDoc(d.id)} disabled={busyDel.has(d.id)}>
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button className="flex items-center gap-1 text-xs text-[var(--shell-subtext)] hover:text-blue-600 transition-colors"
+            onClick={() => setUploadTarget({ participanteNome: nome, participanteClassificacao: classificacao, tipo: "OUTRO", tipoLabel: "Outro", existingDocId: null, isOutro: true })}>
+            <span className="text-sm font-medium">+</span> Adicionar documento
+          </button>
+        </div>
       </div>
     );
   }
+
 
   // ─── Seção "Revisar e alocar" ────────────────────────────────────────────────
 
@@ -2373,174 +2351,193 @@ export default function DocumentosPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_480px] gap-6 items-start">
-
-          {/* ── Coluna esquerda: Documentos ──────────────────────────────────── */}
-          <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--shell-card-border)]">
-              <div>
-                <h1 className="text-base font-semibold text-[var(--shell-text)]">Documentos</h1>
-                <p className="text-xs text-[var(--shell-subtext)] mt-0.5">{leadDisplayName}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {canDownloadDocs && docs.some(d => !d.naoAplicavel && (d.url || (d as any).publicId)) && (
-                  <button
-                    className="relative flex items-center gap-1.5 overflow-hidden text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors disabled:opacity-80"
-                    onClick={handleDownloadAll}
-                    disabled={downloadingAll}
-                    title="Baixar todos os documentos em um arquivo ZIP">
-                    {downloadingAll && downloadProgress && (
-                      <span
-                        className="absolute inset-y-0 left-0 bg-blue-500/15 transition-[width] duration-200"
-                        style={{ width: `${Math.round((downloadProgress.done / Math.max(1, downloadProgress.total)) * 100)}%` }}
-                      />
-                    )}
-                    <span className="relative flex items-center gap-1.5">
-                      {downloadingAll
-                        ? <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> {downloadProgress ? `Gerando ${downloadProgress.done}/${downloadProgress.total}…` : "Gerando…"}</>
-                        : <><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> Baixar todos</>}
-                    </span>
-                  </button>
+        <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--shell-card-border)]">
+            <div>
+              <h1 className="text-xl font-semibold text-[var(--shell-text)]">Documentos e Cadastro</h1>
+              <p className="text-base text-[var(--shell-subtext)] mt-0.5">
+                {formatLeadNumber(lead.numero, lead.reentradaCount ?? 1) && (
+                  <span className="font-mono font-semibold mr-2" style={{ color: "var(--brand-accent)" }}>
+                    {formatLeadNumber(lead.numero, lead.reentradaCount ?? 1)}
+                  </span>
                 )}
-                {!isPartner && (
-                  <>
-                    <button className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => setBulkOpen(true)}>
-                      ↑ Subir vários
-                    </button>
-                    <button className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-full px-3 py-1.5 hover:bg-blue-50 transition-colors" onClick={() => setAddPartOpen(true)}>
-                      + Participante
-                    </button>
-                  </>
-                )}
-              </div>
+                {leadDisplayName}
+              </p>
             </div>
-            <div className="px-6 py-5">
-              <ProcessingSection />
-              <ReviewSection />
-              <DocSection nome={null} displayName={leadDisplayName} classificacao={null} isLead={true}
-                open={openDocs.has("__lead__")} onToggle={() => setOpenDocs(prev => { const s = new Set(prev); s.has("__lead__") ? s.delete("__lead__") : s.add("__lead__"); return s; })} />
-              {sortedParticipantes.map((p, idx) => (
-                <DocSection key={p.id} nome={p.nome} displayName={p.nome} classificacao={p.classificacao} isLead={false}
-                  open={openDocs.has(p.id)} onToggle={() => setOpenDocs(prev => { const s = new Set(prev); s.has(p.id) ? s.delete(p.id) : s.add(p.id); return s; })}
-                  onMoveUp={idx > 0 ? () => movePerson(p.id, "up") : undefined}
-                  onMoveDown={idx < sortedParticipantes.length - 1 ? () => movePerson(p.id, "down") : undefined}
-                />
-              ))}
+            <div className="flex items-center gap-2">
+              {canDownloadDocs && docs.some(d => !d.naoAplicavel && (d.url || (d as any).publicId)) && (
+                <button
+                  className="relative flex items-center gap-1.5 overflow-hidden text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors disabled:opacity-80"
+                  onClick={handleDownloadAll}
+                  disabled={downloadingAll}
+                  title="Baixar todos os documentos em um arquivo ZIP">
+                  {downloadingAll && downloadProgress && (
+                    <span
+                      className="absolute inset-y-0 left-0 bg-blue-500/15 transition-[width] duration-200"
+                      style={{ width: `${Math.round((downloadProgress.done / Math.max(1, downloadProgress.total)) * 100)}%` }}
+                    />
+                  )}
+                  <span className="relative flex items-center gap-1.5">
+                    {downloadingAll
+                      ? <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> {downloadProgress ? `Gerando ${downloadProgress.done}/${downloadProgress.total}…` : "Gerando…"}</>
+                      : <><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> Baixar todos</>}
+                  </span>
+                </button>
+              )}
+              {!isPartner && (
+                <>
+                  <button className="flex items-center gap-1.5 text-xs text-[var(--shell-subtext)] border border-[var(--shell-card-border)] rounded-full px-3 py-1.5 hover:bg-[var(--shell-bg)] transition-colors" onClick={() => setBulkOpen(true)}>
+                    ↑ Subir vários
+                  </button>
+                  <button
+                    className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+                    style={{ color: "var(--brand-accent)", borderColor: "var(--brand-accent-light)" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--brand-accent-muted)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    onClick={() => setAddPartOpen(true)}
+                  >
+                    + Participante
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          {/* ── Coluna direita: Cadastro ──────────────────────────────────────── */}
-          <div className="space-y-3">
-            {/* Lead principal */}
-            <div className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
-              <div className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[var(--shell-bg)] cursor-pointer"
-                role="button" tabIndex={0}
-                onClick={() => setOpenCadastro(prev => { const s = new Set(prev); s.has("__lead__") ? s.delete("__lead__") : s.add("__lead__"); return s; })}>
-                <div className="flex items-center gap-2">
-                  <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-blue-700">{(leadDisplayName[0] || "?").toUpperCase()}</span>
+          <div className="px-6 py-5">
+            <ProcessingSection />
+            <ReviewSection />
+
+            <div className="space-y-3">
+              {/* Lead principal — bloco único: Documentos + Cadastro */}
+              <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[var(--shell-bg)] select-none"
+                  role="button" tabIndex={0}
+                  onClick={() => setPersonOpen(prev => { const s = new Set(prev); s.has("__lead__") ? s.delete("__lead__") : s.add("__lead__"); return s; })}>
+                  <div className="h-7 w-7 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--brand-accent-muted)" }}>
+                    <span className="text-xs font-bold" style={{ color: "var(--brand-accent)" }}>{(leadDisplayName[0] || "?").toUpperCase()}</span>
                   </div>
-                  <span className="text-sm font-semibold text-[var(--shell-text)]">{leadDisplayName}</span>
-                  <span className="text-xs text-blue-600 bg-blue-50 rounded-full px-2 py-0.5">Lead</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button className="text-xs text-blue-600 border border-blue-200 rounded-full px-2.5 py-1 hover:bg-blue-50 flex items-center gap-1 shrink-0"
-                    onClick={e => { e.stopPropagation(); setAICadastroTarget({ participanteNome: null, displayName: leadDisplayName, isLead: true }); }}>
+                  <span className="text-base font-semibold text-[var(--shell-text)] flex-1">{leadDisplayName}</span>
+                  <span className="rounded-full px-3 py-1 text-sm font-medium" style={{ color: "var(--brand-accent)", background: "var(--brand-accent-muted)" }}>Lead</span>
+                  <button
+                    className="flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium"
+                    style={{ color: "var(--brand-accent)", borderColor: "var(--brand-accent-light)" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--brand-accent-muted)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    onClick={e => { e.stopPropagation(); setAICadastroTarget({ participanteNome: null, displayName: leadDisplayName, isLead: true }); }}
+                  >
                     <IABadge small /> Cadastrar com IA
                   </button>
-                  <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform ${openCadastro.has("__lead__") ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform shrink-0 ${personOpen.has("__lead__") ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
+                {personOpen.has("__lead__") && (
+                  <div className="grid grid-cols-2 divide-x border-t border-[var(--shell-card-border)]" style={{ borderColor: "var(--shell-card-border)" }}>
+                    <div className="min-w-0">
+                      <div className="px-4 pt-3 pb-1 text-sm font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Documentos</div>
+                      <DocSectionBody nome={null} classificacao={null} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="px-4 pt-3 pb-1 text-sm font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Cadastro</div>
+                      <div className="px-4 pb-5">
+                        <CadastroForm leadId={leadId} isLead={true} showFinanceiro={true}
+                          docs={docs} participanteNome={null}
+                          onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
+                          personName={lead.nomeCorreto ?? lead.nome}
+                          onPersonNameSave={async (name) => {
+                            // Não enviar cadastroOrigem aqui — senão zera os selos IA/Manual dos outros campos
+                            await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name }) });
+                            setLead(l => l ? { ...l, nomeCorreto: name } : l);
+                          }}
+                          initialValues={{
+                            cpf: lead.cpf, rg: lead.rg, dataNascimento: fmtDate(lead.dataNascimento),
+                            estadoCivil: lead.estadoCivil ?? "", naturalidade: lead.naturalidade,
+                            profissao: lead.profissao, empresa: lead.empresa,
+                            telefone: lead.telefone, email: lead.email,
+                            endereco: lead.endereco, cep: lead.cep, cidade: lead.cidade, uf: lead.uf ?? "",
+                            rendaBrutaFamiliar: fmtNum(lead.rendaBrutaFamiliar),
+                            fgts: fmtNum(lead.fgts), valorEntrada: fmtNum(lead.valorEntrada),
+                          }}
+                          initialOrigem={(lead.cadastroOrigem as Record<string, string | null>) ?? {}}
+                          aiSuggestions={leadSuggestions}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              {openCadastro.has("__lead__") && (
-                <div className="px-5 pb-5 border-t border-[var(--shell-card-border)] pt-4">
-                  <CadastroForm leadId={leadId} isLead={true} showFinanceiro={true}
-                    docs={docs} participanteNome={null}
-                    onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
-                    personName={lead.nomeCorreto ?? lead.nome}
-                    onPersonNameSave={async (name) => {
-                      // Não enviar cadastroOrigem aqui — senão zera os selos IA/Manual dos outros campos
-                      await apiFetch(`/leads/${leadId}/qualification`, { method: "PATCH", body: JSON.stringify({ nomeCorreto: name }) });
-                      setLead(l => l ? { ...l, nomeCorreto: name } : l);
-                    }}
-                    initialValues={{
-                      cpf: lead.cpf, rg: lead.rg, dataNascimento: fmtDate(lead.dataNascimento),
-                      estadoCivil: lead.estadoCivil ?? "", naturalidade: lead.naturalidade,
-                      profissao: lead.profissao, empresa: lead.empresa,
-                      telefone: lead.telefone, email: lead.email,
-                      endereco: lead.endereco, cep: lead.cep, cidade: lead.cidade, uf: lead.uf ?? "",
-                      rendaBrutaFamiliar: fmtNum(lead.rendaBrutaFamiliar),
-                      fgts: fmtNum(lead.fgts), valorEntrada: fmtNum(lead.valorEntrada),
-                    }}
-                    initialOrigem={(lead.cadastroOrigem as Record<string, string | null>) ?? {}}
-                    aiSuggestions={leadSuggestions}
-                  />
-                </div>
-              )}
-            </div>
 
-            {/* Participantes adicionais */}
-            {sortedParticipantes.map((p, idx) => (
-              <div key={p.id} className="bg-[var(--shell-card-bg)] rounded-2xl border border-[var(--shell-card-border)] shadow-sm overflow-hidden">
-                <div className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[var(--shell-bg)] cursor-pointer"
-                  role="button" tabIndex={0}
-                  onClick={() => setOpenCadastro(prev => { const s = new Set(prev); s.has(p.id) ? s.delete(p.id) : s.add(p.id); return s; })}>
-                  <div className="flex items-center gap-2 flex-1" style={{ minWidth: 0 }}>
-                    <div className="h-6 w-6 rounded-full bg-[var(--shell-hover)] flex items-center justify-center shrink-0">
+              {/* Participantes adicionais — mesmo bloco único */}
+              {sortedParticipantes.map((p, idx) => (
+                <div key={p.id} className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[var(--shell-bg)] select-none"
+                    role="button" tabIndex={0}
+                    onClick={() => setPersonOpen(prev => { const s = new Set(prev); s.has(p.id) ? s.delete(p.id) : s.add(p.id); return s; })}>
+                    <div className="h-7 w-7 rounded-full bg-[var(--shell-hover)] flex items-center justify-center shrink-0">
                       <span className="text-xs font-bold text-[var(--shell-subtext)]">{(p.nome[0] || "?").toUpperCase()}</span>
                     </div>
-                    <span className="text-sm font-semibold text-[var(--shell-text)]" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nome}</span>
-                    {p.classificacao && p.classificacao !== "OUTRO" && <span className="text-xs text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-full px-2 py-0.5 shrink-0">{classLabel(p.classificacao)}</span>}
-                  </div>
-                  <div className="flex items-center gap-1 ml-2 shrink-0">
-                    <div className="flex items-center">
-                      <button disabled={idx === 0} onClick={() => movePerson(p.id, "up")} title="Mover para cima"
+                    <span className="text-base font-semibold text-[var(--shell-text)] flex-1 truncate">{p.nome}</span>
+                    {p.classificacao && p.classificacao !== "OUTRO" && <span className="text-sm text-[var(--shell-subtext)] bg-[var(--shell-hover)] rounded-full px-3 py-1 shrink-0">{classLabel(p.classificacao)}</span>}
+                    <div className="flex items-center gap-0 shrink-0">
+                      <button disabled={idx === 0} onClick={e => { e.stopPropagation(); movePerson(p.id, "up"); }} title="Mover para cima"
                         className="p-1 rounded transition-colors"
                         style={{ color: idx === 0 ? "#d1d5db" : "#4b5563", cursor: idx === 0 ? "not-allowed" : "pointer" }}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
                       </button>
-                      <button disabled={idx === sortedParticipantes.length - 1} onClick={() => movePerson(p.id, "down")} title="Mover para baixo"
+                      <button disabled={idx === sortedParticipantes.length - 1} onClick={e => { e.stopPropagation(); movePerson(p.id, "down"); }} title="Mover para baixo"
                         className="p-1 rounded transition-colors"
                         style={{ color: idx === sortedParticipantes.length - 1 ? "#d1d5db" : "#4b5563", cursor: idx === sortedParticipantes.length - 1 ? "not-allowed" : "pointer" }}>
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                       </button>
                     </div>
-                    <button className="text-xs text-blue-600 border border-blue-200 rounded-full px-2 py-1 hover:bg-blue-50 flex items-center gap-1 shrink-0"
-                      onClick={ev => { ev.stopPropagation(); setAICadastroTarget({ participanteNome: p.nome, participanteId: p.id, displayName: p.nome, isLead: false }); }}>
+                    <button
+                      className="flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium"
+                      style={{ color: "var(--brand-accent)", borderColor: "var(--brand-accent-light)" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--brand-accent-muted)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      onClick={ev => { ev.stopPropagation(); setAICadastroTarget({ participanteNome: p.nome, participanteId: p.id, displayName: p.nome, isLead: false }); }}
+                    >
                       <IABadge small /> IA
                     </button>
                     <button className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40 px-1 shrink-0"
                       onClick={e => { e.stopPropagation(); handleRemoveParticipante(p.id); }} disabled={busyRemove.has(p.id)}>
                       {busyRemove.has(p.id) ? "..." : "Remover"}
                     </button>
-                    <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform shrink-0 ${openCadastro.has(p.id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    <svg className={`h-4 w-4 text-[var(--shell-subtext)] transition-transform shrink-0 ${personOpen.has(p.id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                   </div>
+                  {personOpen.has(p.id) && (
+                    <div className="grid grid-cols-2 divide-x border-t border-[var(--shell-card-border)]" style={{ borderColor: "var(--shell-card-border)" }}>
+                      <div className="min-w-0">
+                        <div className="px-4 pt-3 pb-1 text-sm font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Documentos</div>
+                        <DocSectionBody nome={p.nome} classificacao={p.classificacao} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="px-4 pt-3 pb-1 text-sm font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Cadastro</div>
+                        <div className="px-4 pb-5">
+                          <CadastroForm leadId={leadId} isLead={false} participanteId={p.id} showFinanceiro={false}
+                            docs={docs} participanteNome={p.nome}
+                            onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
+                            personName={p.nome}
+                            onPersonNameSave={async (name) => {
+                              await apiFetch(`/leads/${leadId}/participantes/${p.id}`, { method: "PATCH", body: JSON.stringify({ nome: name }) });
+                              setParticipantes(prev => prev.map(x => x.id === p.id ? { ...x, nome: name } : x));
+                            }}
+                            initialValues={{
+                              cpf: p.cpf, rg: p.rg, dataNascimento: fmtDate(p.dataNascimento),
+                              estadoCivil: p.estadoCivil ?? "", naturalidade: p.naturalidade,
+                              profissao: p.profissao, empresa: p.empresa,
+                              telefone: p.telefone, email: p.email,
+                              endereco: p.endereco, cep: p.cep, cidade: p.cidade, uf: p.uf ?? "",
+                              renda: fmtNum(p.renda),
+                            }}
+                            initialOrigem={(p.cadastroOrigem as Record<string, string | null>) ?? {}}
+                            aiSuggestions={buildCadastroSuggestions(docs, p.nome, false)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {openCadastro.has(p.id) && (
-                  <div className="px-5 pb-5 border-t border-[var(--shell-card-border)] pt-4">
-                    <CadastroForm leadId={leadId} isLead={false} participanteId={p.id} showFinanceiro={false}
-                      docs={docs} participanteNome={p.nome}
-                      onOpenFieldDoc={(fn, fl, pn, cv, it, opts, rd, sv) => setFieldDocModal({ fieldLabel: fl, personName: pn, currentValue: cv, inputType: it, options: opts, relevantDocs: rd, onSave: sv })}
-                      personName={p.nome}
-                      onPersonNameSave={async (name) => {
-                        await apiFetch(`/leads/${leadId}/participantes/${p.id}`, { method: "PATCH", body: JSON.stringify({ nome: name }) });
-                        setParticipantes(prev => prev.map(x => x.id === p.id ? { ...x, nome: name } : x));
-                      }}
-                      initialValues={{
-                        cpf: p.cpf, rg: p.rg, dataNascimento: fmtDate(p.dataNascimento),
-                        estadoCivil: p.estadoCivil ?? "", naturalidade: p.naturalidade,
-                        profissao: p.profissao, empresa: p.empresa,
-                        telefone: p.telefone, email: p.email,
-                        endereco: p.endereco, cep: p.cep, cidade: p.cidade, uf: p.uf ?? "",
-                        renda: fmtNum(p.renda),
-                      }}
-                      initialOrigem={(p.cadastroOrigem as Record<string, string | null>) ?? {}}
-                      aiSuggestions={buildCadastroSuggestions(docs, p.nome, false)}
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-
+              ))}
+            </div>
           </div>
         </div>
       </div>

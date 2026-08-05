@@ -19,7 +19,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
-import { Check, CheckCheck } from "lucide-react";
+import { Check, CheckCheck, Send } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -160,6 +160,9 @@ type LeadDocumentItem = {
   mimeType?: string | null;
   tamanho?: number | null;
   criadoEm: string;
+  participanteNome?: string | null;
+  naoAplicavel?: boolean;
+  pendingReview?: boolean;
 };
 
 type LeadEvent = {
@@ -1212,11 +1215,13 @@ function Bubble({
   reactions,
   leadId,
   onOpenModal,
+  debugOn,
 }: {
   ev: LeadEvent;
   reactions: string[];
   leadId: string;
   onOpenModal: (kind: string, title: string, src: string, mimeType?: string) => void;
+  debugOn?: boolean;
 }) {
   const outgoing = isOutgoing(ev);
   const ch = String(ev.channel || "event");
@@ -1224,8 +1229,19 @@ function Bubble({
   const waLightStatus = getWaLightMessageStatus(ev);
   const isAiSuggestion = ch === "ai.suggestion";
   const aiParticipationLabel = getAiParticipationLabel(ev);
-  const isWaOut = String(ch || "").toLowerCase().startsWith("whatsapp.out") || ch === "whatsapp.unofficial.out";
-  const channelDisplay = isWaOut ? ch + " • " + aiParticipationLabel : ch;
+  // "Humano" exato, ou rótulos tipo "Editado por Fulano" (0% IA após edição humana) —
+  // qualquer rótulo que não menciona IA é tratado como envio humano.
+  const isHumanLabel = !aiParticipationLabel.includes("IA");
+  const sentFromPhone = (p as any)?.source === "corretor_celular";
+  // Nome de quem MANDOU a mensagem (usuário logado que clicou enviar) — não é o
+  // responsável pelo lead, é o autor real do envio. Só vem preenchido em mensagens
+  // não-100%-IA (ver leads.service.ts::sendWhatsappMessage).
+  const enviadoPorNome =
+    typeof (p as any)?.enviadoPorNome === "string" && (p as any).enviadoPorNome.trim()
+      ? (p as any).enviadoPorNome.trim()
+      : null;
+  const humanSenderLabel = sentFromPhone ? "📱 Pelo celular" : (enviadoPorNome ?? "Humano");
+  const channelDisplay = ch;
 
   const rawText = pickText(ev);
 
@@ -1240,25 +1256,47 @@ function Bubble({
         <div
           className={[
             "rounded-2xl px-3 py-2 text-sm border shadow-sm",
+            outgoing && !isAiSuggestion ? "rounded-tr-sm" : "rounded-tl-sm",
             isAiSuggestion
-              ? "bg-amber-50 border-amber-200 text-amber-900"
+              ? "bg-amber-100 border-amber-200 text-amber-900"
               : outgoing
-                ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                ? isHumanLabel
+                  ? "bg-blue-100 border-blue-200 text-blue-950"
+                  : "bg-emerald-100 border-emerald-200 text-emerald-900"
                 : "bg-[var(--shell-card-bg)] border-[var(--shell-card-border)] text-[var(--shell-text)]",
           ].join(" ")}
         >
-          <div className="text-[11px] text-[var(--shell-subtext)] flex items-center justify-between gap-2">
-            <span className="font-mono">{channelDisplay}</span>
-            <span className="flex items-center gap-1">
-              {formatTime(ev.criadoEm)}
-              {waLightStatus === "READ" ? (
-                <CheckCheck className="h-3.5 w-3.5 shrink-0" style={{ color: "#53bdeb" }} />
-              ) : waLightStatus === "DELIVERED" ? (
-                <CheckCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              ) : waLightStatus === "SENT" ? (
-                <Check className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              ) : null}
-            </span>
+          <div className="flex items-center justify-end gap-2">
+            {debugOn && (
+              <span className="mr-auto text-[10px] font-mono text-[var(--shell-subtext)]">{channelDisplay}</span>
+            )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {outgoing && !isAiSuggestion && (
+                <span
+                  className={[
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                    isHumanLabel ? "bg-blue-100 text-blue-700" : "bg-violet-100 text-violet-700",
+                  ].join(" ")}
+                >
+                  {!isHumanLabel && "✦ "}
+                  {isHumanLabel
+                    ? humanSenderLabel
+                    : enviadoPorNome
+                      ? `${aiParticipationLabel} · ${enviadoPorNome}`
+                      : aiParticipationLabel}
+                </span>
+              )}
+              <span className="text-[11px] text-[var(--shell-subtext)] flex items-center gap-1">
+                {formatTime(ev.criadoEm)}
+                {waLightStatus === "READ" ? (
+                  <CheckCheck className="h-3.5 w-3.5 shrink-0" style={{ color: "#53bdeb" }} />
+                ) : waLightStatus === "DELIVERED" ? (
+                  <CheckCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : waLightStatus === "SENT" ? (
+                  <Check className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                ) : null}
+              </span>
+            </div>
           </div>
 
           {isAiSuggestion ? (
@@ -2155,9 +2193,9 @@ export default function LeadDetailChatPage() {
   const [propostaSaving, setPropostaSaving] = useState(false);
 
   const [agendaEvents, setAgendaEvents] = useState<LeadCalendarEvent[]>([]);
-  const [agendaOpen, setAgendaOpen] = useState(false);
-  const [slaOpen, setSlaOpen] = useState(false);
-  const [creditOpen, setCreditOpen] = useState(false);
+  const [agendaOpen, setAgendaOpen] = useState(true);
+  const [slaOpen, setSlaOpen] = useState(true);
+  const [creditOpen, setCreditOpen] = useState(true);
   const [editingAgendaEvent, setEditingAgendaEvent] = useState<LeadCalendarEvent | null>(null);
   const [agendaEditForm, setAgendaEditForm] = useState({ title: "", startAt: "", endAt: "", status: "", visibility: "" });
   const [agendaEditSaving, setAgendaEditSaving] = useState(false);
@@ -2177,8 +2215,9 @@ export default function LeadDetailChatPage() {
   const [hasNewInbound, setHasNewInbound] = useState(false);
   const lastInboundIdRef = useRef<string | null>(null);
 
-  const [qualOpen, setQualOpen] = useState(false);
+  const [qualOpen, setQualOpen] = useState(true);
   const [leadInfoOpen, setLeadInfoOpen] = useState(false);
+  const [leftTab, setLeftTab] = useState<"qualificacao" | "documentos" | "agenda" | "historico">("qualificacao");
   const [origemEditField, setOrigemEditField] = useState<string | null>(null);
   const [origemEditValue, setOrigemEditValue] = useState('');
   const [savingOrigemField, setSavingOrigemField] = useState(false);
@@ -3253,6 +3292,14 @@ function discardAiSuggestion() {
     return first?.criadoEm || null;
   }, [orderedEvents]);
 
+  // Nome da etapa atual do funil (customizável por tenant) — é isso que representa
+  // o "status" de verdade do lead, não o campo legado Lead.status (NOVO/EM_CONTATO/...).
+  const currentStageName = useMemo(() => {
+    const sid = (lead as any)?.stageId;
+    if (!sid) return null;
+    return pipelineStages.find((s: any) => s.id === sid)?.name ?? null;
+  }, [lead, pipelineStages]);
+
   const lastInboundAt = useMemo(() => {
     const lastIn = [...orderedEvents]
       .reverse()
@@ -3754,10 +3801,10 @@ function discardAiSuggestion() {
 
   return (
     <AppShell title="Lead">
-      <div className="h-screen flex flex-col overflow-hidden">
+      <div className="h-full flex flex-col overflow-hidden">
 
             {/* STEPPER DO FUNIL (ETAPA 4) */}
-        <div className="mb-4">
+        <div className="mb-4 shrink-0">
           {pipelineStages.length ? (() => {
             const currentStageId = (lead as any)?.stageId || null;
             // Se não veio ?group= na URL, usa o grupo da etapa atual do lead
@@ -4131,35 +4178,78 @@ function discardAiSuggestion() {
           ) : null}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3 items-stretch h-[calc(100vh-220px)] overflow-hidden">
+        <div className="grid gap-4 lg:grid-cols-3 items-stretch flex-1 min-h-0 overflow-hidden">
           {/* ESQUERDA */}
           <div className="space-y-4 lg:col-span-1 overflow-y-auto pr-1">
-            {/* Lead */}
+            {/* Identidade do lead — resumo sempre visível; "⋮" abre o card de edição completa abaixo */}
+            {lead && (
+              <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden text-white text-base font-bold"
+                    style={{ background: "linear-gradient(135deg, #7c5cff, #2563eb)" }}
+                  >
+                    {lead.avatarUrl ? (
+                      <img src={lead.avatarUrl} alt="avatar" className="h-11 w-11 object-cover" />
+                    ) : (
+                      String(lead.nomeCorreto ?? lead.nome ?? "?")
+                        .split(" ")
+                        .slice(0, 2)
+                        .map((s) => s[0])
+                        .join("")
+                        .toUpperCase()
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {typeof lead.numero === "number" && lead.numero > 0 && (
+                        <span className="shrink-0 font-mono text-lg font-bold" style={{ color: "var(--brand-accent)" }}>
+                          {String(lead.numero).padStart(6, "0")}
+                        </span>
+                      )}
+                      {(lead.reentradaCount ?? 1) > 1 && (
+                        <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
+                          {lead.reentradaCount}x
+                        </span>
+                      )}
+                      <span className="text-[15px] font-bold text-[var(--shell-text)] truncate">{lead.nomeCorreto || lead.nome || "Lead"}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                        {currentStageName || (lead.status || "NOVO").replace(/_/g, " ")}
+                      </span>
+                      {origemContatoLabel && (
+                        <span className="flex items-center gap-1 text-[11px] text-[var(--shell-subtext)]" title="Canal por onde este lead entrou">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          Origem: {origemContatoLabel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setLeadInfoOpen((o) => !o)}
+                    title="Editar dados do lead"
+                    className="shrink-0 rounded-lg border h-8 w-8 flex items-center justify-center text-[var(--shell-subtext)] hover:bg-[var(--shell-bg)]"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    ⋮
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Lead — edição completa (só monta quando o "⋮" do card acima abre) */}
+            {leadInfoOpen && (
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
               <div className="text-sm font-semibold text-[var(--shell-text)] flex items-center justify-between gap-2">
-                <button
-                  className="flex items-center gap-2 text-left flex-1 min-w-0"
-                  onClick={() => setLeadInfoOpen((o) => !o)}
-                >
-                  <span className="shrink-0">Lead</span>
-                  {formatLeadNumber(lead?.numero, lead?.reentradaCount ?? 1) && (
-                    <span className="text-[var(--shell-subtext)] font-mono text-sm font-normal shrink-0">
-                      - {formatLeadNumber(lead?.numero, lead?.reentradaCount ?? 1)}
-                    </span>
-                  )}
-                  {!leadInfoOpen && lead && (
-                    <span className="text-[var(--shell-text)] font-normal truncate ml-1">
-                      {lead.nomeCorreto || lead.nome || ""}
-                    </span>
-                  )}
-                  <span className="ml-auto shrink-0 text-[var(--shell-subtext)]">{leadInfoOpen ? "▲" : "▼"}</span>
-                </button>
-                {leadInfoOpen && (
-                  <label className="text-xs text-[var(--shell-subtext)] flex items-center gap-2 select-none shrink-0">
-                    <input type="checkbox" checked={debugOn} onChange={(e) => setDebugOn(e.target.checked)} />
-                    Debug
-                  </label>
-                )}
+                <span className="shrink-0">Editar dados do lead</span>
+                <label className="text-xs text-[var(--shell-subtext)] flex items-center gap-2 select-none shrink-0">
+                  <input type="checkbox" checked={debugOn} onChange={(e) => setDebugOn(e.target.checked)} />
+                  Debug
+                </label>
               </div>
 
               {leadInfoOpen && loadingLead ? (
@@ -4497,7 +4587,33 @@ function discardAiSuggestion() {
                 </div>
               ) : null}
             </div>
+            )}
 
+            {/* Abas: Qualificação / Documentos / Agenda / Histórico */}
+            <div className="flex gap-1 rounded-xl border p-1" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
+              {([
+                { key: "qualificacao", label: "Qualificação" },
+                { key: "documentos", label: "Documentos" },
+                { key: "agenda", label: "Agenda & SLA" },
+                { key: "historico", label: "Histórico" },
+              ] as const).map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setLeftTab(t.key)}
+                  className="flex-1 rounded-lg px-2 py-2 text-xs font-semibold transition-colors"
+                  style={{
+                    background: leftTab === t.key ? "var(--brand-accent)" : "transparent",
+                    color: leftTab === t.key ? "#fff" : "var(--shell-subtext)",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {leftTab === "qualificacao" && (
+            <>
             {/* Qualificação IA */}
             {lead && (() => {
               // Externo Consultivo: campo oculto (valor já nulo no backend) deve aparecer borrado,
@@ -4555,7 +4671,7 @@ function discardAiSuggestion() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-[var(--shell-text)]">Qualificação IA</span>
                       {hasAnyQual && (
-                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ background: "var(--brand-accent)" }}>
                           {qualCount > 0 ? `${qualCount} ${qualCount === 1 ? "info" : "infos"}` : "Coletado"}
                         </span>
                       )}
@@ -4564,85 +4680,87 @@ function discardAiSuggestion() {
                   </button>
 
                   {qualOpen && (
-                    <div className="mt-3 space-y-2 text-sm">
+                    <div className="mt-3 space-y-3 text-sm">
                       {!hasAnyQual && (
                         <div className="text-xs text-[var(--shell-subtext)] italic">
                           Nenhum dado coletado ainda. A IA preenche automaticamente durante a conversa.
                         </div>
                       )}
 
-                      {(fmtCurrency(lead.rendaBrutaFamiliar) || isHidden('lead.financeiro')) && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Renda bruta familiar</div>
-                          <div className="text-[var(--shell-text)]">
-                            <MaskedField field="lead.financeiro">{fmtCurrency(lead.rendaBrutaFamiliar)}</MaskedField>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(fmtCurrency(lead.rendaBrutaFamiliar) || isHidden('lead.financeiro')) && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Renda bruta familiar</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">
+                              <MaskedField field="lead.financeiro">{fmtCurrency(lead.rendaBrutaFamiliar)}</MaskedField>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {(fmtCurrency(lead.fgts) || isHidden('lead.financeiro')) && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">FGTS</div>
-                          <div className="text-[var(--shell-text)]">
-                            <MaskedField field="lead.financeiro">{fmtCurrency(lead.fgts)}</MaskedField>
+                        {(fmtCurrency(lead.fgts) || isHidden('lead.financeiro')) && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">FGTS</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">
+                              <MaskedField field="lead.financeiro">{fmtCurrency(lead.fgts)}</MaskedField>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {(fmtCurrency(lead.valorEntrada) || isHidden('lead.financeiro')) && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Valor de entrada</div>
-                          <div className="text-[var(--shell-text)]">
-                            <MaskedField field="lead.financeiro">{fmtCurrency(lead.valorEntrada)}</MaskedField>
+                        {(fmtCurrency(lead.valorEntrada) || isHidden('lead.financeiro')) && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Valor de entrada</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">
+                              <MaskedField field="lead.financeiro">{fmtCurrency(lead.valorEntrada)}</MaskedField>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {(lead.estadoCivil || isHidden('lead.estadoCivil')) && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Estado civil</div>
-                          <div className="text-[var(--shell-text)]">
-                            <MaskedField field="lead.estadoCivil">{lead.estadoCivil ? (estadoCivilLabels[lead.estadoCivil] ?? lead.estadoCivil) : null}</MaskedField>
+                        {(lead.estadoCivil || isHidden('lead.estadoCivil')) && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Estado civil</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">
+                              <MaskedField field="lead.estadoCivil">{lead.estadoCivil ? (estadoCivilLabels[lead.estadoCivil] ?? lead.estadoCivil) : null}</MaskedField>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {(fmtDate(lead.dataNascimento) || isHidden('lead.estadoCivil')) && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Data de nascimento</div>
-                          <div className="text-[var(--shell-text)]">
-                            <MaskedField field="lead.estadoCivil">{fmtDate(lead.dataNascimento)}</MaskedField>
+                        {(fmtDate(lead.dataNascimento) || isHidden('lead.estadoCivil')) && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Data de nascimento</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">
+                              <MaskedField field="lead.estadoCivil">{fmtDate(lead.dataNascimento)}</MaskedField>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {lead.tempoProcurandoImovel && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Tempo buscando imóvel</div>
-                          <div className="text-[var(--shell-text)]">{lead.tempoProcurandoImovel}</div>
-                        </div>
-                      )}
+                        {lead.tempoProcurandoImovel && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Tempo buscando imóvel</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">{lead.tempoProcurandoImovel}</div>
+                          </div>
+                        )}
 
-                      {lead.conversouComCorretor != null && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Conversou com corretor antes?</div>
-                          <div className="text-[var(--shell-text)]">{lead.conversouComCorretor ? "Sim" : "Não"}</div>
-                        </div>
-                      )}
+                        {lead.conversouComCorretor != null && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Conversou com corretor antes?</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">{lead.conversouComCorretor ? "Sim" : "Não"}</div>
+                          </div>
+                        )}
 
-                      {lead.qualCorretorImobiliaria && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Corretor/Imobiliária anterior</div>
-                          <div className="text-[var(--shell-text)]">{lead.qualCorretorImobiliaria}</div>
-                        </div>
-                      )}
+                        {lead.qualCorretorImobiliaria && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Corretor/Imobiliária anterior</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">{lead.qualCorretorImobiliaria}</div>
+                          </div>
+                        )}
 
-                      {lead.perfilImovel && (
-                        <div>
-                          <div className="text-xs text-[var(--shell-subtext)]">Perfil do imóvel</div>
-                          <div className="text-[var(--shell-text)]">{perfilLabels[lead.perfilImovel] ?? lead.perfilImovel}</div>
-                        </div>
-                      )}
+                        {lead.perfilImovel && (
+                          <div className="rounded-lg p-2.5" style={{ background: "var(--shell-bg)" }}>
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--shell-subtext)]">Perfil do imóvel</div>
+                            <div className="mt-0.5 font-semibold text-[var(--shell-text)]">{perfilLabels[lead.perfilImovel] ?? lead.perfilImovel}</div>
+                          </div>
+                        )}
+                      </div>
 
                       <div>
                         <div className="flex items-center justify-between gap-2">
@@ -5259,24 +5377,76 @@ function discardAiSuggestion() {
               )}
               </>}
             </div>
+            </>
+            )}
 
-            {/* Documentos */}
+            {leftTab === "documentos" && (
+            <>
+            {/* Botão de destaque — leva pra tela completa de documentos (todas as pessoas) */}
             {lead && (
               <a
                 href={`/leads/${lead.id}/documentos`}
-                className="mt-4 flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                style={{ background: "var(--brand-accent)" }}
               >
-                <span className="flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                  Cadastro e Documentos
-                  {documents.length > 0 && (
-                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                      {documents.length} {documents.length === 1 ? "arquivo" : "arquivos"}
-                    </span>
-                  )}
-                </span>
-                <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Abrir todos os documentos e cadastro
+                {documents.length > 0 && (
+                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold">
+                    {documents.length} {documents.length === 1 ? "arquivo" : "arquivos"}
+                  </span>
+                )}
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
               </a>
+            )}
+
+            {/* Checklist rápido de documentos do LEAD PRINCIPAL — mesmos tipos/regras da tela
+                completa (apps/web/src/app/leads/[id]/documentos/page.tsx: TIPOS_PADRAO + docForTipo).
+                Só conta documento do lead principal (participanteNome null), não-N/A e já revisado. */}
+            {lead && (() => {
+              const hasDoc = (tipo: string) =>
+                documents.some((d) => d.tipo === tipo && !d.participanteNome && !d.naoAplicavel && !d.pendingReview);
+              const items: { label: string; done: boolean }[] = [
+                { label: "Dados pessoais", done: !!lead.cpf },
+                { label: "RG / CNH", done: hasDoc("RG_CNH") },
+                { label: "CPF", done: hasDoc("CPF") },
+                { label: "Comprovante de renda", done: hasDoc("COMP_RENDA") },
+                { label: "Comprovante de residência", done: hasDoc("COMP_RESIDENCIA") },
+              ];
+              return (
+                <div className="rounded-xl border bg-[var(--shell-card-bg)] p-5 space-y-2" style={{ borderColor: "var(--shell-card-border)" }}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-[var(--shell-text)]">Documentos do lead principal</span>
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: "var(--shell-bg)", color: "var(--shell-subtext)" }}>Lead principal</span>
+                  </div>
+                  {items.map((it) => (
+                    <div
+                      key={it.label}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs"
+                      style={{ background: it.done ? "var(--brand-accent-muted)" : "var(--shell-bg)" }}
+                    >
+                      <span style={{ color: it.done ? "var(--brand-accent)" : "var(--shell-subtext)" }}>{it.done ? "✓" : "○"}</span>
+                      <span className="flex-1 font-medium text-[var(--shell-text)]">{it.label}</span>
+                      <span className="font-semibold" style={{ color: it.done ? "var(--brand-accent)" : "var(--shell-subtext)" }}>
+                        {it.done ? "Enviado" : "Não iniciado"}
+                      </span>
+                    </div>
+                  ))}
+
+                  {participantes.length > 0 && (
+                    <div className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs" style={{ background: "var(--shell-bg)" }}>
+                      <span>👥</span>
+                      <span className="text-[var(--shell-subtext)]">
+                        {participantes.length === 1
+                          ? "Há 1 participante adicional (cônjuge/sócio/fiador) — documentos dele(a) no cadastro completo."
+                          : `Há ${participantes.length} participantes adicionais (cônjuge/sócio/fiador) — documentos deles no cadastro completo.`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            </>
             )}
 
             {/* Evidências de Status — só aparece quando há evidência/justificativa registrada */}
@@ -5327,6 +5497,8 @@ function discardAiSuggestion() {
               </div>
             )}
 
+            {leftTab === "documentos" && (
+            <>
             {/* Análise de Crédito */}
             {lead && (
               <div className="rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] overflow-hidden">
@@ -5335,8 +5507,10 @@ function discardAiSuggestion() {
                     className="flex items-center gap-2 text-left">
                     <span className="text-sm">💳</span>
                     <span className="text-sm font-semibold text-[var(--shell-text)]">Análise de Crédito</span>
-                    {creditRequests.length > 0 && (
+                    {creditRequests.length > 0 ? (
                       <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{creditRequests.length}</span>
+                    ) : (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">Não enviada</span>
                     )}
                     <span className="text-[var(--shell-subtext)] text-xs">{creditOpen ? "▲" : "▼"}</span>
                   </button>
@@ -5456,6 +5630,8 @@ function discardAiSuggestion() {
                 </>)}
               </div>
             )}
+            </>
+            )}
 
             {/* Pendências: aparece na etapa Docs Pendente (requiresNow) e permanece
                 como histórico enquanto o lead tiver pendências registradas. */}
@@ -5469,6 +5645,8 @@ function discardAiSuggestion() {
               />
             )}
 
+            {leftTab === "agenda" && (
+            <>
             {/* Agenda */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
               <button
@@ -5688,6 +5866,8 @@ function discardAiSuggestion() {
                 )}
               </div>
             )}
+            </>
+            )}
 
             {/* Campanhas do lead — entre o SLA e o Histórico */}
             {leadCampanhas.length > 0 && (
@@ -5772,21 +5952,51 @@ function discardAiSuggestion() {
               </div>
             )}
 
-            {/* Histórico de Movimentações — botão que abre popup de consulta (abaixo do SLA) */}
-            <button
-              type="button"
-              onClick={() => setHistoryOpen(true)}
-              className="flex w-full items-center justify-between rounded-xl border bg-[var(--shell-card-bg)] px-4 py-3 text-sm font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
-            >
-              <span className="flex items-center gap-2">
-                <span>🕑</span>
-                Histórico de Movimentações
-                {transitions.length > 0 && (
-                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">{transitions.length}</span>
+            {leftTab === "historico" && (
+            <>
+            {/* Histórico de Movimentações — timeline inline (+ link pro popup completo) */}
+            <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4" style={{ borderColor: "var(--shell-card-border)" }}>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-[var(--shell-text)]">Histórico de Movimentações</span>
+                {transitions.length > 5 && (
+                  <button type="button" onClick={() => setHistoryOpen(true)} className="text-xs font-medium hover:underline" style={{ color: "var(--brand-accent)" }}>
+                    Ver tudo ({transitions.length})
+                  </button>
                 )}
-              </span>
-              <svg className="h-4 w-4 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-            </button>
+              </div>
+
+              {transitions.length === 0 ? (
+                <p className="text-xs text-[var(--shell-subtext)]">Nenhuma movimentação registrada.</p>
+              ) : (
+                <div className="relative pl-5">
+                  <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: "var(--shell-card-border)" }} />
+                  <div className="space-y-4">
+                    {transitions.slice(0, 5).map((t, i) => (
+                      <div key={t.id} className="relative">
+                        <div
+                          className="absolute -left-5 top-0.5 h-2.5 w-2.5 rounded-full border-2"
+                          style={{
+                            background: i === 0 ? "var(--brand-accent)" : "var(--shell-card-bg)",
+                            borderColor: i === 0 ? "var(--brand-accent)" : "var(--shell-card-border)",
+                          }}
+                        />
+                        <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-[var(--shell-text)]">
+                          {t.fromStage ? `${t.fromStage} → ` : ""}{t.toStage}
+                          {t.cascade && (
+                            <span className="rounded bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--shell-subtext)]">automático</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-[var(--shell-subtext)]">
+                          {t.cascade ? "Sistema" : (t.changedByName || "—")} · <MaskedField field="lead.historicoDatas">{new Date(t.createdAt).toLocaleString("pt-BR")}</MaskedField>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            </>
+            )}
 
             {/* Modal de edição inline de evento da agenda */}
             {editingAgendaEvent && (
@@ -5897,13 +6107,13 @@ function discardAiSuggestion() {
                 <button
                   type="button"
                   onClick={() => lead?.avatarUrl && setShowAvatarModal(true)}
-                  className="h-9 w-9 rounded-full border bg-[var(--shell-card-bg)] flex items-center justify-center overflow-hidden shrink-0"
-                  style={{ cursor: lead?.avatarUrl ? "pointer" : "default" }}
+                  className="h-9 w-9 rounded-full flex items-center justify-center overflow-hidden shrink-0 text-white text-xs font-bold"
+                  style={{ cursor: lead?.avatarUrl ? "pointer" : "default", background: "linear-gradient(135deg, #7c5cff, #2563eb)" }}
                 >
                   {lead?.avatarUrl ? (
                     <img src={lead.avatarUrl} alt="avatar" className="h-9 w-9 object-cover" />
                   ) : (
-                    <span className="text-xs font-semibold text-[var(--shell-subtext)]">
+                    <span>
                       {String((lead?.nomeCorreto ?? lead?.nome) || "HC")
                         .split(" ")
                         .slice(0, 2)
@@ -5915,7 +6125,7 @@ function discardAiSuggestion() {
                 </button>
 
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-[var(--shell-text)] truncate flex items-center gap-2">
+                  <div className="text-lg font-semibold text-[var(--shell-text)] truncate flex items-center gap-2">
                     <span>{lead?.nomeCorreto ?? lead?.nome ?? "Chat"}</span>
                     {hasNewInbound ? (
                       <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
@@ -5924,76 +6134,88 @@ function discardAiSuggestion() {
                     ) : null}
                   </div>
 
-                  <div className="text-[11px] text-[var(--shell-subtext)] flex flex-wrap gap-x-3 gap-y-1">
-                    <span>{"Início: " + (startedAt ? formatDateOnly(startedAt) : "—")}</span>
+                  <div className="text-base flex flex-wrap gap-x-3 gap-y-1" style={{ color: "#6b7280" }}>
+                    <span>{"Início " + (startedAt ? formatDateOnly(startedAt) : "—")}</span>
                     <span>
                       {"Último inbound: " +
                         (lastInboundAt ? formatTime(lastInboundAt) : "—") +
                         " - há " +
                         lastInboundAgoLabel}
                     </span>
-                    {lead?.telefone ? <span>{"Tel: " + lead.telefone}</span> : null}
-                    {origemContatoLabel ? (
-                      <span title="Canal por onde este lead entrou">{"📥 Origem: " + origemContatoLabel}</span>
-                    ) : null}
-                    {atualContatoLabel ? (
-                      <span title="Canal por onde a conversa continua agora">{"➡️ Atual: " + atualContatoLabel}</span>
-                    ) : null}
-                    {/* Canal de saída — seletor unificado (= contato atual) */}
-                    {waLightSessions.length === 0 && !waOficialConfigured ? (
-                      <span className="text-amber-600">
-                        Nenhum número WA cadastrado.{" "}
-                        <a href="/inbox-wa-light" className="underline">Cadastrar</a>
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 flex-wrap">
-                        <select
-                          value={(() => {
-                            // Mudança pendente tem prioridade sempre
-                            if (pendingCanalChange) {
-                              return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
-                            }
-                            if (lead?.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
-                            if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
-                            // Sem canal gravado: usa auto-seleção
-                            return selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId
-                              : selectedCanalOut?.type === "oficial" ? "__oficial__" : "";
-                          })()}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
-                            if (newVal) { setPendingCanalChange(newVal); setShowCanalModal(true); }
-                          }}
-                          className="rounded border bg-[var(--shell-card-bg)] px-2 py-1 text-xs"
-                          style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
-                        >
-                          <option value="">(Selecione...)</option>
-                          {waLightSessions.map(s => (
-                            <option key={s.id} value={s.id}>
-                              {"📱 " + s.nome + (s.phoneNumber ? ` (${s.phoneNumber})` : "") + (s.status !== "CONNECTED" ? " • " + (s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status) : "")}
-                            </option>
-                          ))}
-                          {waOficialConfigured && (
-                            <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
-                          )}
-                        </select>
-                        {pendingCanalChange && (
-                          <span className="text-xs text-amber-600 font-medium">Troca pendente — confirme no popup</span>
-                        )}
-                      </span>
-                    )}
+                    {lead?.telefone ? <span>{"📞 " + maskPhone(lead.telefone)}</span> : null}
                   </div>
                 </div>
               </div>
 
-              {debugOn ? (
-                <div className="text-[11px] text-[var(--shell-subtext)] font-mono shrink-0">
-                  {"events:" + events.length + " | render:" + viewEvents.length}
-                </div>
-              ) : null}
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                {/* Canal de saída — seletor unificado (= contato atual). "Origem" já aparece
+                    no cartão de identidade acima; não repetir aqui pra não conflitar/duplicar. */}
+                {waLightSessions.length === 0 && !waOficialConfigured ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                    <div className="min-w-0 leading-tight">
+                      <div className="text-[9.5px] text-amber-700">Canal</div>
+                      <div className="text-xs font-semibold text-amber-800">
+                        Sem número WA. <a href="/inbox-wa-light" className="underline">Cadastrar</a>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
+                    style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                    <div className="min-w-0 leading-tight">
+                      <div className="text-[9.5px] text-[var(--shell-subtext)]">Canal</div>
+                    <select
+                      value={(() => {
+                        // Mudança pendente tem prioridade sempre
+                        if (pendingCanalChange) {
+                          return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
+                        }
+                        if (lead?.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
+                        if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
+                        // Sem canal gravado: usa auto-seleção
+                        return selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId
+                          : selectedCanalOut?.type === "oficial" ? "__oficial__" : "";
+                      })()}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
+                        if (newVal) { setPendingCanalChange(newVal); setShowCanalModal(true); }
+                      }}
+                      className="appearance-none bg-transparent pr-4 text-xs font-semibold outline-none"
+                      style={{ color: "var(--shell-text)" }}
+                    >
+                      <option value="">(Selecione...)</option>
+                      {waLightSessions.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {"📱 " + s.nome + (s.phoneNumber ? ` (${s.phoneNumber})` : "") + (s.status !== "CONNECTED" ? " • " + (s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status) : "")}
+                        </option>
+                      ))}
+                      {waOficialConfigured && (
+                        <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
+                      )}
+                    </select>
+                    </div>
+                    <svg className="h-3.5 w-3.5 shrink-0 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                )}
+                {pendingCanalChange && (
+                  <span className="text-[10px] font-medium text-amber-600">Troca pendente — confirme no popup</span>
+                )}
+                {debugOn ? (
+                  <div className="text-[11px] text-[var(--shell-subtext)] font-mono">
+                    {"events:" + events.length + " | render:" + viewEvents.length}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 space-y-5">
+            <div className="flex-1 overflow-auto p-4 space-y-5" style={{ background: "var(--chat-wallpaper)" }}>
               {(lead as any)?.conversaRestricted ? (
                 <div className="flex h-full items-center justify-center">
                   <div className="select-none rounded-lg border border-dashed border-[var(--shell-card-border)] px-6 py-4 text-center text-sm font-medium text-[var(--shell-subtext)]">
@@ -6006,7 +6228,7 @@ function discardAiSuggestion() {
                 <div className="text-sm text-[var(--shell-subtext)]">Sem mensagens ainda.</div>
               ) : (
                 viewEvents.map(({ ev, reactions }) => (
-                  <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} />
+                  <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} debugOn={debugOn} />
                 ))
               )}
               <div ref={bottomRef} />
@@ -6015,23 +6237,24 @@ function discardAiSuggestion() {
             {!(lead as any)?.conversaRestricted && user?.role !== "PARTNER" && (
             <div className="border-t bg-[var(--shell-card-bg)] p-3 space-y-3">
               {/* PAINEL DA IA */}
-              {tenantAiEnabled && <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-amber-900">Painel da IA</div>
-                    <div className="text-[11px] text-amber-800">
-                      Copilot para este lead. Quando o Autopilot estiver ON, a IA só deve agir no disparo configurado.
-                    </div>
+              {tenantAiEnabled && <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)" }}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5 text-xs">
+                    <span className="shrink-0" style={{ color: "#7c5cff" }}>✦</span>
+                    <span className="shrink-0 font-semibold text-[var(--shell-text)]">Painel da IA</span>
+                    <span className="truncate text-[var(--shell-subtext)]">
+                      · Copilot · age conforme o disparo configurado
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-amber-900">IA Autopilot</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-xs font-medium text-[var(--shell-text)]">IA Autopilot</span>
                     <button
                       type="button"
                       onClick={() => toggleAutopilot(!autopilotEnabled)}
-                      className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${autopilotEnabled ? "bg-emerald-500" : "bg-[var(--shell-card-border)]"}`}
+                      className={`relative w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none ${autopilotEnabled ? "bg-emerald-500" : "bg-[var(--shell-card-border)]"}`}
                     >
-                      <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow-md transition-transform duration-200 ${autopilotEnabled ? "translate-x-6" : "translate-x-0"}`} />
+                      <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-[var(--shell-card-bg)] shadow-md transition-transform duration-200 ${autopilotEnabled ? "translate-x-5" : "translate-x-0"}`} />
                     </button>
                     <span className={`text-xs font-semibold ${autopilotEnabled ? "text-emerald-700" : "text-[var(--shell-subtext)]"}`}>
                       {autopilotEnabled ? "ON" : "OFF"}
@@ -6236,7 +6459,7 @@ function discardAiSuggestion() {
                     </button>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-amber-300 bg-[var(--shell-card-bg)] p-3 text-xs text-[var(--shell-subtext)]">
+                  <div className="rounded-lg border border-dashed p-3 text-center text-xs text-[var(--shell-subtext)]" style={{ borderColor: "var(--shell-card-border)" }}>
                     Nenhuma sugestão de IA pendente para este lead no momento.
                   </div>
                 )}
@@ -6569,11 +6792,13 @@ function discardAiSuggestion() {
                 <QuickReplies onInsert={insertIntoChat} />
 
                 <button
-                  className="rounded-md bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-60"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  style={{ background: "var(--brand-accent)" }}
                   onClick={sendText}
                   disabled={sending || !text.trim()}
+                  title={sending ? "Enviando..." : "Enviar"}
                 >
-                  {sending ? "Enviando..." : "Enviar"}
+                  <Send className="h-4 w-4" />
                 </button>
               </div>
 

@@ -3804,6 +3804,7 @@ const aiAssistanceLabel =
             body: text,
             aiAssistancePercent,
             aiAssistanceLabel,
+            enviadoPorNome: aiAssistancePercent < 100 ? (user.nome ?? null) : null,
           },
         },
       });
@@ -3863,6 +3864,7 @@ const aiAssistanceLabel =
           metaResponse: result.metaResponse,
           aiAssistancePercent,
           aiAssistanceLabel,
+          enviadoPorNome: aiAssistancePercent < 100 ? (user.nome ?? null) : null,
         },
       },
     });

@@ -24,6 +24,25 @@ function ArrowRightIcon({ color = "#94a3b8" }: { color?: string }) {
   );
 }
 
+// Check exibido nos chips de etapas já concluídas (past / past-prev)
+function CheckIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M5 12l5 5 9-10" />
+    </svg>
+  );
+}
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export type StageKey =
@@ -108,31 +127,33 @@ const GROUP_LABELS: Record<string, string> = {
 
 type ChipVariant =
   | "past"           // etapa anterior — cinza, não clicável
-  | "past-prev"      // etapa imediatamente anterior permitida — cinza + texto azul, clicável
-  | "current"        // etapa atual — azul escuro
-  | "next-positive"  // transição positiva — verde
+  | "past-prev"      // etapa imediatamente anterior permitida — cinza + texto da marca, clicável
+  | "current"        // etapa atual — teal da marca
+  | "next-positive"  // transição positiva — teal contornado
   | "next-negative"  // transição negativa — âmbar
   | "prev-group"     // stage da etapa anterior — âmbar suave, clicável
   | "future";        // etapa futura bloqueada — cinza claro
 
 const chipBase =
-  "rounded-md border px-3 py-1.5 text-xs leading-none transition-colors whitespace-nowrap";
+  "inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs leading-none transition-colors whitespace-nowrap";
 
+// Paleta amarrada à marca VIA: atual = via-teal sólido; positivas = teal contornado.
+// Concluídas recebem check; negativas/retorno seguem em âmbar (semântica de alerta).
 const chipStyles: Record<ChipVariant, string> = {
   past:
-    "bg-slate-100 border-slate-200 text-slate-400 cursor-default",
+    "bg-slate-50 border-slate-200 text-slate-400 cursor-default dark:bg-neutral-800/60 dark:border-neutral-700 dark:text-neutral-500",
   "past-prev":
-    "bg-slate-100 border-slate-200 text-blue-600 font-medium cursor-pointer hover:bg-blue-50 hover:border-blue-200",
+    "bg-white border-slate-200 text-via-teal font-medium cursor-pointer hover:bg-via-teal-soft hover:border-via-teal-light dark:bg-neutral-800 dark:border-neutral-700 dark:text-via-teal-light dark:hover:border-via-teal",
   current:
-    "bg-blue-600 border-blue-600 text-white font-semibold cursor-default shadow-sm",
+    "bg-via-teal border-via-teal text-white font-semibold cursor-default shadow-sm",
   "next-positive":
-    "bg-white border-green-300 text-green-700 font-medium cursor-pointer hover:bg-green-50",
+    "bg-white border-via-teal-light text-via-teal font-medium cursor-pointer hover:bg-via-teal-soft dark:bg-neutral-900 dark:border-via-teal/50 dark:text-via-teal-light dark:hover:bg-via-teal/10",
   "next-negative":
-    "bg-white border-amber-300 text-amber-700 font-medium cursor-pointer hover:bg-amber-50",
+    "bg-white border-amber-300 text-amber-700 font-medium cursor-pointer hover:bg-amber-50 dark:bg-neutral-900 dark:border-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-500/10",
   "prev-group":
-    "bg-amber-50 border-amber-200 text-amber-700 font-medium cursor-pointer hover:bg-amber-100 hover:border-amber-300",
+    "bg-amber-50 border-amber-200 text-amber-700 font-medium cursor-pointer hover:bg-amber-100 hover:border-amber-300 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-400",
   future:
-    "bg-white border-slate-200 text-slate-300 cursor-default",
+    "bg-white border-slate-200 text-slate-300 cursor-default dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-600",
 };
 
 function StageChip({
@@ -153,6 +174,8 @@ function StageChip({
       variant === "next-negative" ||
       variant === "prev-group");
 
+  const done = variant === "past" || variant === "past-prev";
+
   return (
     <button
       type="button"
@@ -160,6 +183,7 @@ function StageChip({
       onClick={onClick}
       className={cn(chipBase, chipStyles[variant], "disabled:pointer-events-none")}
     >
+      {done && <CheckIcon />}
       {name}
     </button>
   );
@@ -182,8 +206,8 @@ function GroupTransitionBadge({
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
         isAdvance
-          ? "border-green-300 bg-green-50 text-green-700"
-          : "border-amber-300 bg-amber-50 text-amber-700"
+          ? "border-via-teal-light bg-via-teal-soft text-via-teal dark:border-via-teal/40 dark:bg-via-teal/10 dark:text-via-teal-light"
+          : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400"
       )}
     >
       {isAdvance ? (
@@ -314,7 +338,7 @@ export function PipelineStepper({
       {/* Header — breadcrumb: fase › etapa atual */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="min-w-0 truncate text-sm">
-          <span className="font-medium text-slate-500 dark:text-slate-400">{groupLabel}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{groupLabel}</span>
           {currentStage && (
             <>
               <span className="mx-1.5 text-slate-300 dark:text-neutral-600">›</span>
@@ -323,7 +347,7 @@ export function PipelineStepper({
           )}
         </p>
         {previousStageName && (
-          <span className="shrink-0 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-800 dark:border-purple-900/50 dark:bg-purple-950/40 dark:text-purple-300">
+          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-400">
             Etapa anterior: {previousStageName}
           </span>
         )}
@@ -339,8 +363,8 @@ export function PipelineStepper({
                 title={GROUP_LABELS[g] ?? g}
                 className={cn(
                   "h-1.5 flex-1 rounded-full transition-colors",
-                  i < currentGroupIndex && "bg-blue-400 dark:bg-blue-500/70",
-                  i === currentGroupIndex && "bg-blue-600 dark:bg-blue-500",
+                  i < currentGroupIndex && "bg-via-teal-light dark:bg-via-teal/60",
+                  i === currentGroupIndex && "bg-via-teal dark:bg-via-teal",
                   i > currentGroupIndex && "bg-slate-200 dark:bg-neutral-700",
                 )}
               />

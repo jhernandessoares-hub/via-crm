@@ -42,6 +42,9 @@
   --shell-divider: var(--via-border);
   --shell-hover: var(--via-teal-soft);
 
+  /* Papel de parede do chat — inspirado no fundo clássico do WhatsApp */
+  --chat-wallpaper: #E9E1D3;
+
   /* Compat */
   --background: var(--shell-bg);
   --foreground: var(--shell-text);
@@ -60,6 +63,8 @@ html.dark {
   --shell-input-text: #E6E8EB;
   --shell-divider: #1E3A5F;
   --shell-hover: rgba(29, 158, 117, 0.12);
+
+  --chat-wallpaper: #0C1B12;
 
   --background: var(--shell-bg);
   --foreground: var(--shell-text);
@@ -104,6 +109,21 @@ html.dark {
 
 * {
   box-sizing: border-box;
+}
+
+/* Tailwind v4 removeu o preflight que dava border-color: gray-200 por padrão
+   (agora é currentColor, o que deixa qualquer `border` sem cor explícita
+   preta/escura). Restaura o comportamento v3 usando nosso token de borda —
+   classes com cor explícita (border-emerald-200, border-[var(--x)], etc.)
+   continuam vencendo por especificidade/camada normalmente. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--shell-card-border);
+  }
 }
 
 body {

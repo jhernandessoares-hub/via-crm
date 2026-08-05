@@ -9,6 +9,7 @@ type Message = { role: "user" | "assistant"; content: string };
 const HIDDEN_ROUTES = ["/secretary", "/login"];
 const MIC_PREF_KEY = "secretaryWidget_micEnabled";
 const SESSION_KEY = "secretarySessionId";
+const POSITION_KEY = "secretaryWidget_position";
 
 export default function SecretaryWidget() {
   const pathname = usePathname();
@@ -56,6 +57,29 @@ export default function SecretaryWidget() {
     const saved = localStorage.getItem(MIC_PREF_KEY);
     if (saved !== null) setMicEnabled(saved === "true");
   }, []);
+
+  // Abertura disparada pelo botão "Precisa de ajuda?" da sidebar
+  useEffect(() => {
+    function handleOpen() { setOpen(true); }
+    window.addEventListener("via-open-secretary-widget", handleOpen);
+    return () => window.removeEventListener("via-open-secretary-widget", handleOpen);
+  }, []);
+
+  // Load saved position (usuário pode ter arrastado pra fora do caminho antes)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(POSITION_KEY);
+      if (!raw) return;
+      const pos = JSON.parse(raw);
+      if (typeof pos.bottom === "number") setBottom(pos.bottom);
+      if (typeof pos.right === "number") setRight(pos.right);
+    } catch {}
+  }, []);
+
+  // Persiste posição sempre que mudar (drag do botão fechado ou do painel aberto)
+  useEffect(() => {
+    localStorage.setItem(POSITION_KEY, JSON.stringify({ bottom, right }));
+  }, [bottom, right]);
 
   // Load history when widget opens (once per session)
   useEffect(() => {
@@ -233,20 +257,6 @@ export default function SecretaryWidget() {
 
   return (
     <>
-      {/* Floating button */}
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          className="fixed z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-3 text-white shadow-lg hover:bg-slate-800 transition-colors"
-          style={{ bottom, right }}
-        >
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-900">
-            V
-          </span>
-          <span className="text-sm font-medium">Precisa de ajuda?</span>
-        </button>
-      )}
-
       {/* Chat panel */}
       {open && (
         <div

@@ -231,7 +231,7 @@ function AppShellInner({
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="h-screen flex flex-col"
       style={{
         background: "var(--shell-bg)",
         color: "var(--shell-text)",
@@ -240,7 +240,7 @@ function AppShellInner({
       <EnvBanner />
       <div className="flex flex-1 min-h-0">
         <Sidebar role={role} tenantNome={tenantNome} tenantId={user?.tenantId ?? null} counts={counts} branding={branding} addons={tenantAddons} plan={tenantPlan} />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <Header
             title={title}
             displayName={displayName}

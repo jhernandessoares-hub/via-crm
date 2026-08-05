@@ -4,9 +4,20 @@ export interface ChangelogEntry {
   changes: string[];
 }
 
-export const APP_VERSION = '2.2.0';
+export const APP_VERSION = '2.3.0';
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '2.3.0',
+    date: '2026-08-04',
+    changes: [
+      'Tela do lead redesenhada: cartão de identidade com avatar, abas Qualificação/Documentos/Agenda & SLA/Histórico no lugar dos blocos empilhados',
+      'Chat do lead com visual de WhatsApp (papel de parede, bolhas com bico) e identificação de quem mandou cada mensagem (nome do corretor, "pelo celular" ou % de IA)',
+      'Tela de Documentos: um bloco por pessoa (lead e cada participante) com Documentos e Cadastro lado a lado, em vez de duas colunas desencontradas',
+      '"Precisa de ajuda?" saiu do canto flutuante (atrapalhava o envio de mensagem) e virou um item fixo na sidebar',
+      'Correções de layout: sidebar e chat não ficam mais cortados fora da tela; bordas de cartões com cor consistente',
+    ],
+  },
   {
     version: '2.2.0',
     date: '2026-07-22',

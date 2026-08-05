@@ -33,6 +33,7 @@ import {
   CalendarDays,
   Archive,
   Image as ImageIcon,
+  HelpCircle,
   type LucideIcon,
 } from "lucide-react";
 import { usePermissions } from "@/lib/permissions";
@@ -454,8 +455,20 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
         {role === "OWNER" && <NavItem href="/my-site" label="Meu Site" icon={Globe} mode="prefix" />}
       </nav>
 
-      {/* Versão do sistema */}
-      <div className="p-2 border-t" style={{ borderColor: "var(--sidebar-border)" }}>
+      {/* Ajuda + Versão do sistema */}
+      <div className="p-2 border-t space-y-1" style={{ borderColor: "var(--sidebar-border)" }}>
+        <button
+          type="button"
+          title="Precisa de ajuda?"
+          onClick={() => window.dispatchEvent(new Event("via-open-secretary-widget"))}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+          style={{ color: "var(--sidebar-text)", justifyContent: collapsed ? "center" : undefined }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sidebar-hover)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+          <HelpCircle className="h-[18px] w-[18px] shrink-0" style={{ color: "var(--sidebar-text-muted)" }} />
+          {!collapsed && <span className="flex-1 truncate text-left">Precisa de ajuda?</span>}
+        </button>
         <VersionBadge collapsed={collapsed} />
       </div>
     </aside>
