@@ -1240,6 +1240,22 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       if (already) return; // dedup por waMessageId
     }
 
+    // Mídia (foto/vídeo/documento/áudio) enviada direto do celular: baixa via Baileys
+    // e sobe ao Cloudinary — sem isso o download no CRM sempre falha (payloadRaw sem media.url).
+    let media: { url: string; mimeType: string; filename: string | null; kind: string } | null = null;
+    let audioMediaUrl: string | null = null;
+    let audioMimeType: string | null = null;
+    if (type === 'image' || type === 'video' || type === 'document') {
+      const r = await this.processMediaInbound(msg, type);
+      if (r.mediaUrl) {
+        media = { url: r.mediaUrl, mimeType: r.mimeType ?? 'application/octet-stream', filename: r.filename, kind: type };
+      }
+    } else if (type === 'audio') {
+      const a = await this.processHistoryAudio(msg);
+      audioMediaUrl = a.mediaUrl;
+      audioMimeType = a.mimeType;
+    }
+
     await this.prisma.leadEvent.create({
       data: {
         tenantId,
@@ -1252,6 +1268,9 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
           to: phone,
           source: 'corretor_celular',
           sentAt: new Date().toISOString(),
+          ...(audioMediaUrl ? { mediaUrl: audioMediaUrl } : {}),
+          ...(audioMimeType ? { mimeType: audioMimeType } : {}),
+          ...(media ? { media } : {}),
         },
       },
     });
