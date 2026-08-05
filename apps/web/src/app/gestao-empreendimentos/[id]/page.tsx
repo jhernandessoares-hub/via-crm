@@ -94,10 +94,12 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER", preLinkedL
   const [status, setStatus] = useState<UnitStatus>(unit.status);
 
   const isAgent = role === "AGENT";
+  const isPartner = role === "PARTNER";
   const canBlock = role === "OWNER" || (role === "MANAGER" && can("gestao_empreendimentos", "delete"));
   const hasLinkedLead = !!unit.leadId || !!preLinkedLead;
 
   async function changeStatus(newStatus: UnitStatus) {
+    if (isPartner) return;
     if (newStatus === "BLOQUEADO" && !bloqueioMotivo.trim()) {
       alert("Informe o motivo do bloqueio antes de continuar."); return;
     }
@@ -146,7 +148,8 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER", preLinkedL
 
   // Remove a ação correspondente ao status atual
   // AGENT só pode: DISPONIVEL→PROPOSTA ou PROPOSTA→DISPONIVEL
-  const actions = allActions.filter((a) => {
+  // PARTNER (Externo Consultivo) é só consulta — nenhuma ação disponível
+  const actions = isPartner ? [] : allActions.filter((a) => {
     if (a.status === status) return false;
     if (isAgent) {
       const agentAllowed =
@@ -240,11 +243,11 @@ function UnitModal({ unit, devId, onClose, onUpdated, role = "OWNER", preLinkedL
           <div className="space-y-3 pt-2 border-t border-[var(--shell-card-border)]">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Comprador / Interessado</label>
-              <input value={comprador} onChange={(e) => setComprador(e.target.value)} placeholder="Nome completo" className={inp} />
+              <input value={comprador} onChange={(e) => setComprador(e.target.value)} placeholder="Nome completo" className={inp} disabled={isPartner} />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[var(--shell-subtext)] uppercase tracking-wide">Valor negociado (R$)</label>
-              <input type="number" value={finalPrice} onChange={(e) => setFinalPrice(e.target.value)} placeholder={String(unit.valorVenda ?? "")} className={inp} />
+              <input type="number" value={finalPrice} onChange={(e) => setFinalPrice(e.target.value)} placeholder={String(unit.valorVenda ?? "")} className={inp} disabled={isPartner} />
             </div>
           </div>
         )}
@@ -341,6 +344,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   const [searching, setSearching] = useState(false);
   const [savingPne, setSavingPne] = useState(false);
   const [trocando, setTrocando] = useState(false);
+  const isPartner = role === "PARTNER";
 
   useEffect(() => {
     if (!showSearch || !query.trim()) { setResults([]); return; }
@@ -356,6 +360,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   }, [query, showSearch]);
 
   async function togglePne() {
+    if (isPartner) return;
     setSavingPne(true);
     try {
       const updated = await updateUnit(devId, current.id, { pne: !current.pne } as any);
@@ -367,6 +372,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   }
 
   async function linkLead(lead: any) {
+    if (isPartner) return;
     try {
       await updateUnit(devId, current.id, { leadId: lead.id } as any);
       const updated = { ...current, leadId: lead.id, lead: { id: lead.id, nome: lead.nome, nomeCorreto: lead.nomeCorreto ?? null } };
@@ -379,7 +385,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
   }
 
   async function handleTrocar() {
-    if (!trocandoUnitId || !preLinkedLead) return;
+    if (isPartner || !trocandoUnitId || !preLinkedLead) return;
     if (!confirm(`Trocar para a unidade ${current.nome}?\n\nDE: unidade anterior\nPARA: ${current.nome}`)) return;
     setTrocando(true);
     try {
@@ -444,7 +450,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
               PNE
             </span>
           )}
-          {role !== "AGENT" && (
+          {role !== "AGENT" && !isPartner && (
             <button type="button" disabled={savingPne} onClick={togglePne}
               className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-50 ${current.pne ? "bg-purple-100 text-purple-700 hover:bg-purple-200" : "bg-[var(--shell-card-border)] text-[var(--shell-subtext)] hover:bg-purple-100 hover:text-purple-700"}`}>
               {savingPne ? "..." : current.pne ? "Remover PNE" : "Marcar PNE"}
@@ -518,11 +524,13 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
                 <span className="text-xs text-[var(--shell-text)] flex-1 truncate font-medium">
                   {current.lead?.nomeCorreto ?? current.lead?.nome ?? "Lead vinculado"}
                 </span>
-                <button type="button" onClick={() => setShowSearch(true)}
-                  className="text-xs text-[var(--brand-accent)] hover:underline shrink-0">Alterar</button>
+                {!isPartner && (
+                  <button type="button" onClick={() => setShowSearch(true)}
+                    className="text-xs text-[var(--brand-accent)] hover:underline shrink-0">Alterar</button>
+                )}
               </div>
             ) : (
-              !showSearch && (
+              !showSearch && !isPartner && (
                 <button type="button" onClick={() => setShowSearch(true)}
                   className="text-xs font-medium text-[var(--brand-accent)] hover:underline">
                   + Vincular Lead
@@ -530,7 +538,7 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
               )
             )}
 
-            {showSearch && (
+            {showSearch && !isPartner && (
               <div className="space-y-2">
                 <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
                   placeholder="Buscar por nome ou telefone..."
@@ -588,10 +596,12 @@ function UnitDetailsPopup({ unit, devId, onClose, onUnitUpdated, onEditUnit, rol
         {/* Ações normais (apenas fora do modo troca) */}
         {!trocandoUnitId && (
           <div className="flex gap-2 pt-3 border-t border-[var(--shell-card-border)]">
-            <button type="button" onClick={onEditUnit}
-              className="flex-1 rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
-              Detalhes da Unidade
-            </button>
+            {!isPartner && (
+              <button type="button" onClick={onEditUnit}
+                className="flex-1 rounded-lg border border-[var(--shell-card-border)] px-3 py-2 text-xs font-semibold text-[var(--shell-text)] hover:bg-[var(--shell-hover)] transition-colors">
+                Detalhes da Unidade
+              </button>
+            )}
             {current.leadId && (
               <button type="button" onClick={() => setView("lead")}
                 className="flex-1 rounded-lg bg-[var(--brand-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
