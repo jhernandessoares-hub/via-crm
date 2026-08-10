@@ -1,4 +1,4 @@
-import { FinCategoryType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
+import { FinCategoryType, FinCompanyType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
 import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -128,6 +128,10 @@ export class CreateEmpresaDto {
   @IsOptional()
   @IsString()
   cnpj?: string;
+
+  @IsOptional()
+  @IsEnum(FinCompanyType)
+  tipo?: FinCompanyType;
 }
 
 export class UpdateEmpresaDto {
@@ -142,6 +146,10 @@ export class UpdateEmpresaDto {
   @IsOptional()
   @IsString()
   cnpj?: string;
+
+  @IsOptional()
+  @IsEnum(FinCompanyType)
+  tipo?: FinCompanyType;
 
   @IsOptional()
   @IsBoolean()

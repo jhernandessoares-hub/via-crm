@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { FinCategoryType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
+import { FinCategoryType, FinCompanyType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -16,6 +16,7 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     'Receitas Financeiras': ['Rendimentos', 'Outras receitas'],
     'Movimentação entre contas': ['Transferência recebida'],
     'Movimentação entre empresas do grupo': ['Repasse recebido de outra empresa do grupo'],
+    Sócios: ['Aporte de sócio'],
   },
   DESPESA: {
     Infraestrutura: ['Servidores / Cloud', 'APIs de IA', 'WhatsApp / Meta', 'Domínios / SaaS'],
@@ -26,21 +27,28 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     Financeiras: ['Tarifas bancárias', 'Juros / Multas'],
     'Movimentação entre contas': ['Transferência enviada'],
     'Movimentação entre empresas do grupo': ['Repasse enviado para outra empresa do grupo'],
+    Sócios: ['Retirada de sócio'],
   },
 };
 
 // Nomes fixos usados pela transferência entre contas (ver transferirEntreContas) —
 // identificam as categorias de sistema criadas pelo seed acima, sem hardcodar IDs.
 // "entre contas" = mesma empresa (neutro, não é receita/despesa real).
-// "entre empresas" = CNPJs diferentes do mesmo grupo — mesmo mecanismo, mas fica
+// "entre empresas" = CNPJs (PJ) diferentes do mesmo grupo — mesmo mecanismo, mas fica
 // separado no plano de contas porque é um repasse entre pessoas jurídicas distintas
 // (pode exigir formalização como mútuo entre empresas — revisar com o contador).
+// "sócios" = uma das pontas é a pessoa física (tipo PF) de um sócio — registra
+// retirada/aporte separado do repasse entre CNPJs, pra ficar claro no DRE que aquele
+// dinheiro saiu do caixa da empresa para o bolso do sócio (ou voltou de lá).
 const TRANSFER_GRUPO_NOME = 'Movimentação entre contas';
 const TRANSFER_CATEGORIA_SAIDA_NOME = 'Transferência enviada';
 const TRANSFER_CATEGORIA_ENTRADA_NOME = 'Transferência recebida';
 const REPASSE_GRUPO_NOME = 'Movimentação entre empresas do grupo';
 const REPASSE_CATEGORIA_SAIDA_NOME = 'Repasse enviado para outra empresa do grupo';
 const REPASSE_CATEGORIA_ENTRADA_NOME = 'Repasse recebido de outra empresa do grupo';
+const SOCIO_GRUPO_NOME = 'Sócios';
+const SOCIO_CATEGORIA_SAIDA_NOME = 'Retirada de sócio';
+const SOCIO_CATEGORIA_ENTRADA_NOME = 'Aporte de sócio';
 
 @Injectable()
 export class FinCadastrosService implements OnModuleInit {
@@ -300,9 +308,12 @@ export class FinCadastrosService implements OnModuleInit {
    * Move dinheiro entre 2 contas: cria um título PAGAR (já pago) na origem e um título RECEBER
    * (já recebido) no destino, ambos com o mesmo transferGroupId — usa o mesmo mecanismo de
    * FinEntry+FinPayment para os saldos baterem (ver saldoAtual em listContasBancarias).
-   * Mesma empresa (CNPJ) → categoria "Movimentação entre contas" (neutro, não é receita/despesa real).
-   * Empresas diferentes do grupo → categoria "Movimentação entre empresas do grupo" (repasse — pode
-   * exigir formalização como mútuo entre empresas; fica separado no plano de contas de propósito).
+   * Categoria escolhida em 3 vias:
+   * - Mesma empresa → "Movimentação entre contas" (neutro, não é receita/despesa real).
+   * - Uma das pontas é a PF (tipo PF) de um sócio → "Sócios" (retirada/aporte — deixa claro no
+   *   DRE que o dinheiro saiu do caixa da empresa para o sócio, ou voltou de lá).
+   * - Empresas PJ diferentes do grupo → "Movimentação entre empresas do grupo" (repasse — pode
+   *   exigir formalização como mútuo entre empresas; fica separado no plano de contas de propósito).
    */
   async transferirEntreContas(
     data: { contaOrigemId: string; contaDestinoId: string; valor: number; data: string; descricao?: string; observacao?: string },
@@ -312,19 +323,22 @@ export class FinCadastrosService implements OnModuleInit {
       throw new BadRequestException('Conta de origem e destino não podem ser a mesma');
     }
     const [origem, destino] = await Promise.all([
-      this.prisma.finBankAccount.findUnique({ where: { id: data.contaOrigemId } }),
-      this.prisma.finBankAccount.findUnique({ where: { id: data.contaDestinoId } }),
+      this.prisma.finBankAccount.findUnique({ where: { id: data.contaOrigemId }, include: { company: true } }),
+      this.prisma.finBankAccount.findUnique({ where: { id: data.contaDestinoId }, include: { company: true } }),
     ]);
     if (!origem || !origem.ativo) throw new BadRequestException('Conta de origem inválida ou inativa');
     if (!destino || !destino.ativo) throw new BadRequestException('Conta de destino inválida ou inativa');
     const mesmaEmpresa = !origem.companyId || !destino.companyId || origem.companyId === destino.companyId;
+    const envolveSocio = origem.company?.tipo === 'PF' || destino.company?.tipo === 'PF';
 
     const valor = assertPositiveMoney(data.valor, 'valor');
     const dataMov = parseDateOnly(data.data, 'data');
     const competencia = new Date(Date.UTC(dataMov.getUTCFullYear(), dataMov.getUTCMonth(), 1));
     const { saida, entrada } = mesmaEmpresa
       ? await this.transferCategorias(TRANSFER_GRUPO_NOME, TRANSFER_CATEGORIA_SAIDA_NOME, TRANSFER_CATEGORIA_ENTRADA_NOME)
-      : await this.transferCategorias(REPASSE_GRUPO_NOME, REPASSE_CATEGORIA_SAIDA_NOME, REPASSE_CATEGORIA_ENTRADA_NOME);
+      : envolveSocio
+        ? await this.transferCategorias(SOCIO_GRUPO_NOME, SOCIO_CATEGORIA_SAIDA_NOME, SOCIO_CATEGORIA_ENTRADA_NOME)
+        : await this.transferCategorias(REPASSE_GRUPO_NOME, REPASSE_CATEGORIA_SAIDA_NOME, REPASSE_CATEGORIA_ENTRADA_NOME);
     const groupId = randomUUID();
     const descricaoBase = data.descricao?.trim();
 
@@ -375,10 +389,10 @@ export class FinCadastrosService implements OnModuleInit {
       action: 'PLATFORM_FIN_TRANSFER',
       resourceType: 'FinEntry',
       resourceId: groupId,
-      metadata: { contaOrigemId: origem.id, contaDestinoId: destino.id, valor, data: data.data, mesmaEmpresa },
+      metadata: { contaOrigemId: origem.id, contaDestinoId: destino.id, valor, data: data.data, mesmaEmpresa, envolveSocio },
     });
 
-    return { transferGroupId: groupId, mesmaEmpresa, saida: finSerialize(entrySaida), entrada: finSerialize(entryEntrada) };
+    return { transferGroupId: groupId, mesmaEmpresa, envolveSocio, saida: finSerialize(entrySaida), entrada: finSerialize(entryEntrada) };
   }
 
   /** Desfaz a transferência: cancela as 2 pontas (só permitido enquanto nenhuma baixa foi conciliada/alterada). */
@@ -560,7 +574,7 @@ export class FinCadastrosService implements OnModuleInit {
     return finSerialize(empresas);
   }
 
-  async createEmpresa(data: { nome: string; nomeFantasia?: string; cnpj?: string }) {
+  async createEmpresa(data: { nome: string; nomeFantasia?: string; cnpj?: string; tipo?: FinCompanyType }) {
     const nome = (data.nome || '').trim();
     if (!nome) throw new BadRequestException('Nome da empresa é obrigatório');
     const created = await this.prisma.finCompany.create({
@@ -568,12 +582,16 @@ export class FinCadastrosService implements OnModuleInit {
         nome,
         nomeFantasia: data.nomeFantasia?.trim() || null,
         cnpj: data.cnpj?.replace(/\D/g, '') || null,
+        tipo: data.tipo ?? 'PJ',
       },
     });
     return finSerialize(created);
   }
 
-  async updateEmpresa(id: string, data: { nome?: string; nomeFantasia?: string; cnpj?: string; ativo?: boolean }) {
+  async updateEmpresa(
+    id: string,
+    data: { nome?: string; nomeFantasia?: string; cnpj?: string; tipo?: FinCompanyType; ativo?: boolean },
+  ) {
     const empresa = await this.prisma.finCompany.findUnique({ where: { id } });
     if (!empresa) throw new NotFoundException('Empresa não encontrada');
     const updated = await this.prisma.finCompany.update({
@@ -582,6 +600,7 @@ export class FinCadastrosService implements OnModuleInit {
         ...(data.nome !== undefined ? { nome: data.nome.trim() } : {}),
         ...(data.nomeFantasia !== undefined ? { nomeFantasia: data.nomeFantasia.trim() || null } : {}),
         ...(data.cnpj !== undefined ? { cnpj: data.cnpj.replace(/\D/g, '') || null } : {}),
+        ...(data.tipo !== undefined ? { tipo: data.tipo } : {}),
         ...(data.ativo !== undefined ? { ativo: data.ativo } : {}),
       },
     });

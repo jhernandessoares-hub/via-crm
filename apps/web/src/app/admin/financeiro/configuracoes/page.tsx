@@ -5,7 +5,9 @@ import { adminFetch } from "@/lib/admin-api";
 import { formatBRL } from "@/lib/format";
 import {
   CONTATO_TIPO_LABEL,
+  EMPRESA_TIPO_LABEL,
   FinCategoria,
+  FinCompanyType,
   FinConta,
   FinContato,
   FinEmpresa,
@@ -621,10 +623,12 @@ function EmpresasTab({ onError, showToast }: TabProps) {
     if (!modal?.nome?.trim()) return;
     setSaving(true);
     try {
+      const tipo: FinCompanyType = modal.tipo || "PJ";
       const body = {
         nome: modal.nome.trim(),
-        nomeFantasia: modal.nomeFantasia || undefined,
+        nomeFantasia: tipo === "PJ" ? modal.nomeFantasia || undefined : undefined,
         cnpj: modal.cnpj || undefined,
+        tipo,
       };
       if (modal.id) {
         await adminFetch(`/admin/financeiro/empresas/${modal.id}`, { method: "PATCH", body: JSON.stringify({ ...body, ativo: modal.ativo !== false }) });
@@ -654,15 +658,16 @@ function EmpresasTab({ onError, showToast }: TabProps) {
   return (
     <div className={`${cardCls} overflow-hidden`}>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-        <h2 className="text-sm font-semibold text-slate-700">Empresas (CNPJs da holding)</h2>
-        <button className={btnPrimary} onClick={() => setModal({})}>+ Nova empresa</button>
+        <h2 className="text-sm font-semibold text-slate-700">Empresas e Pessoas Físicas da Holding</h2>
+        <button className={btnPrimary} onClick={() => setModal({ tipo: "PJ" })}>+ Nova empresa</button>
       </div>
       <table className="w-full text-sm">
         <thead className="border-b border-slate-200 bg-slate-50">
           <tr>
-            <th className={thCls}>Razão social</th>
+            <th className={thCls}>Tipo</th>
+            <th className={thCls}>Razão social / Nome</th>
             <th className={thCls}>Nome fantasia</th>
-            <th className={thCls}>CNPJ</th>
+            <th className={thCls}>CNPJ / CPF</th>
             <th className={thCls}>Uso</th>
             <th className={thCls}>Status</th>
             <th className={thCls}></th>
@@ -670,12 +675,15 @@ function EmpresasTab({ onError, showToast }: TabProps) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {loading ? (
-            <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Carregando...</td></tr>
+            <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Carregando...</td></tr>
           ) : empresas.length === 0 ? (
-            <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Nenhuma empresa cadastrada — crie a primeira para marcar contas bancárias, títulos e contratos.</td></tr>
+            <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Nenhuma empresa cadastrada — crie a primeira para marcar contas bancárias, títulos e contratos.</td></tr>
           ) : (
             empresas.map((e) => (
               <tr key={e.id} className="hover:bg-slate-50">
+                <td className="px-4 py-2.5">
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${e.tipo === "PF" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"}`}>{e.tipo || "PJ"}</span>
+                </td>
                 <td className="px-4 py-2.5 font-medium text-slate-700">{e.nome}</td>
                 <td className="px-4 py-2.5 text-slate-500">{e.nomeFantasia || "—"}</td>
                 <td className="px-4 py-2.5 text-slate-500">{e.cnpj || "—"}</td>
@@ -707,16 +715,35 @@ function EmpresasTab({ onError, showToast }: TabProps) {
         >
           <div className="grid gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Razão social *</label>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Tipo</label>
+              <div className="flex gap-2">
+                {(["PJ", "PF"] as FinCompanyType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
+                      (modal.tipo || "PJ") === t ? "border-slate-700 bg-slate-700 text-white" : "border-slate-200 text-slate-500 hover:border-slate-300"
+                    }`}
+                    onClick={() => setModal({ ...modal, tipo: t, ...(t === "PF" ? { nomeFantasia: "" } : {}) })}
+                  >
+                    {EMPRESA_TIPO_LABEL[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">{modal.tipo === "PF" ? "Nome completo *" : "Razão social *"}</label>
               <input className={inputCls} value={modal.nome || ""} onChange={(e) => setModal({ ...modal, nome: e.target.value })} autoFocus />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={modal.tipo === "PF" ? "" : "grid grid-cols-2 gap-3"}>
+              {modal.tipo !== "PF" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Nome fantasia</label>
+                  <input className={inputCls} value={modal.nomeFantasia || ""} onChange={(e) => setModal({ ...modal, nomeFantasia: e.target.value })} />
+                </div>
+              )}
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">Nome fantasia</label>
-                <input className={inputCls} value={modal.nomeFantasia || ""} onChange={(e) => setModal({ ...modal, nomeFantasia: e.target.value })} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-500">CNPJ</label>
+                <label className="mb-1 block text-xs font-medium text-slate-500">{modal.tipo === "PF" ? "CPF" : "CNPJ"}</label>
                 <input className={inputCls} value={modal.cnpj || ""} onChange={(e) => setModal({ ...modal, cnpj: e.target.value })} />
               </div>
             </div>

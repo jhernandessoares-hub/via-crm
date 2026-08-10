@@ -478,10 +478,12 @@ function TransferModal({
   const [saving, setSaving] = useState(false);
 
   const nomeEmpresa = (id: string | null) => empresas.find((e) => e.id === id)?.nome || null;
+  const empresaPorId = (id: string | null) => empresas.find((e) => e.id === id) || null;
   const origem = contas.find((c) => c.id === contaOrigemId);
   const destino = contas.find((c) => c.id === contaDestinoId);
   const destinosPossiveis = contas.filter((c) => c.id !== contaOrigemId);
   const empresasDiferentes = Boolean(origem?.companyId && destino?.companyId && origem.companyId !== destino.companyId);
+  const envolveSocio = empresaPorId(origem?.companyId ?? null)?.tipo === "PF" || empresaPorId(destino?.companyId ?? null)?.tipo === "PF";
 
   const salvar = async () => {
     if (!contaOrigemId || !contaDestinoId || !valor || !data) return;
@@ -510,7 +512,12 @@ function TransferModal({
       <div className="mb-3 rounded-lg bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
         Cria uma saída já paga na origem e uma entrada já recebida no destino — os dois saldos se ajustam na hora.
       </div>
-      {empresasDiferentes && (
+      {empresasDiferentes && envolveSocio && (
+        <div className="mb-3 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-xs text-purple-800">
+          {nomeEmpresa(origem!.companyId) || "A empresa da origem"} e {nomeEmpresa(destino!.companyId) || "a do destino"} envolvem a pessoa física de um sócio — isso será lançado como <b>retirada/aporte de sócio</b> (categoria própria "Sócios"), deixando claro no DRE que o dinheiro saiu do caixa da empresa para o sócio (ou voltou de lá).
+        </div>
+      )}
+      {empresasDiferentes && !envolveSocio && (
         <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
           {nomeEmpresa(origem!.companyId) || "A empresa da origem"} e {nomeEmpresa(destino!.companyId) || "a do destino"} são CNPJs diferentes — isso será lançado como <b>repasse entre empresas do grupo</b> (categoria própria, separada da transferência entre contas da mesma empresa), não como despesa/receita real. Se for recorrente, considere formalizar como mútuo entre empresas com o contador.
         </div>
