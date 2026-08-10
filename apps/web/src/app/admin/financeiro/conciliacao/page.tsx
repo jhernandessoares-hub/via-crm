@@ -23,9 +23,12 @@ import {
 } from "../_lib/fin";
 import { AdminModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
 
-/** "Itaú — Conta Principal" quando há banco, senão só o nome. */
-function contaLabel(c: FinConta): string {
-  return c.banco ? `${c.banco} — ${c.nome}` : c.nome;
+/** "Itaú — Conta Principal — VEXCIA LTDA" (PJ) ou "... — Fulano (PF)" quando há empresa vinculada. */
+function contaLabel(c: FinConta, empresas: FinEmpresa[] = []): string {
+  const base = c.banco ? `${c.banco} — ${c.nome}` : c.nome;
+  const empresa = empresas.find((e) => e.id === c.companyId);
+  if (!empresa) return base;
+  return `${base} — ${empresa.nome}${empresa.tipo === "PF" ? " (PF)" : ""}`;
 }
 
 const ABAS: { id: FinTxStatus; label: string }[] = [
@@ -141,10 +144,10 @@ export default function ConciliacaoPage() {
       <div className={`${cardCls} mb-4 flex flex-wrap items-center justify-between gap-3 p-4`}>
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-slate-500">Conta bancária</label>
-          <select className={selectCls} style={{ width: 300 }} value={contaId} onChange={(e) => setContaId(e.target.value)}>
+          <select className={selectCls} style={{ width: 520 }} value={contaId} onChange={(e) => setContaId(e.target.value)}>
             {contas.length === 0 && <option value="">Nenhuma conta cadastrada</option>}
             {contas.map((c) => (
-              <option key={c.id} value={c.id}>{contaLabel(c)} · saldo {formatBRL(c.saldoAtual)}</option>
+              <option key={c.id} value={c.id}>{contaLabel(c, empresas)} · saldo {formatBRL(c.saldoAtual)}</option>
             ))}
           </select>
         </div>
@@ -276,7 +279,7 @@ export default function ConciliacaoPage() {
           onError={setError}
         />
       )}
-      {historico && <HistoricoImportacoesModal contas={contas} onClose={() => setHistorico(false)} />}
+      {historico && <HistoricoImportacoesModal contas={contas} empresas={empresas} onClose={() => setHistorico(false)} />}
       {toastNode}
     </div>
   );
@@ -500,6 +503,7 @@ function TransferModal({
   return (
     <AdminModal
       title="Transferir entre contas"
+      width="max-w-2xl"
       footer={
         <>
           <button className={btnSecondary} onClick={onClose}>Cancelar</button>
@@ -529,7 +533,7 @@ function TransferModal({
             <select className={selectCls} value={contaOrigemId} onChange={(e) => { setContaOrigemId(e.target.value); if (e.target.value === contaDestinoId) setContaDestinoId(""); }}>
               <option value="">Selecione...</option>
               {contas.map((c) => (
-                <option key={c.id} value={c.id}>{contaLabel(c)} · saldo {formatBRL(c.saldoAtual)}</option>
+                <option key={c.id} value={c.id}>{contaLabel(c, empresas)} · saldo {formatBRL(c.saldoAtual)}</option>
               ))}
             </select>
           </div>
@@ -538,7 +542,7 @@ function TransferModal({
             <select className={selectCls} value={contaDestinoId} onChange={(e) => setContaDestinoId(e.target.value)} disabled={!contaOrigemId}>
               <option value="">Selecione...</option>
               {destinosPossiveis.map((c) => (
-                <option key={c.id} value={c.id}>{contaLabel(c)} · saldo {formatBRL(c.saldoAtual)}</option>
+                <option key={c.id} value={c.id}>{contaLabel(c, empresas)} · saldo {formatBRL(c.saldoAtual)}</option>
               ))}
             </select>
           </div>
@@ -564,7 +568,7 @@ function TransferModal({
 
 // ============================ Histórico de importações ============================
 
-function HistoricoImportacoesModal({ contas, onClose }: { contas: FinConta[]; onClose: () => void }) {
+function HistoricoImportacoesModal({ contas, empresas, onClose }: { contas: FinConta[]; empresas: FinEmpresa[]; onClose: () => void }) {
   const [importacoes, setImportacoes] = useState<FinImportacao[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -596,7 +600,7 @@ function HistoricoImportacoesModal({ contas, onClose }: { contas: FinConta[]; on
                   <span className="text-xs text-slate-400">{new Date(imp.createdAt).toLocaleString("pt-BR")}</span>
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
-                  {conta ? contaLabel(conta) : imp.bankAccount?.nome || "conta removida"} · {imp.formato} · {imp.importadas} importada(s){imp.duplicadas > 0 ? `, ${imp.duplicadas} duplicada(s)` : ""} de {imp.totalLinhas} linha(s)
+                  {conta ? contaLabel(conta, empresas) : imp.bankAccount?.nome || "conta removida"} · {imp.formato} · {imp.importadas} importada(s){imp.duplicadas > 0 ? `, ${imp.duplicadas} duplicada(s)` : ""} de {imp.totalLinhas} linha(s)
                 </div>
               </div>
             );
