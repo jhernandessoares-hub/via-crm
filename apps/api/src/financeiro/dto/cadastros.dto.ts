@@ -115,6 +115,12 @@ export class TransferenciaContasDto {
   @IsOptional()
   @IsString()
   observacao?: string;
+
+  // Quando vem de uma linha pendente da conciliação: vincula a ponta correspondente
+  // da transferência a essa transação bancária na mesma operação (ver transferirEntreContas).
+  @IsOptional()
+  @IsString()
+  bankTransactionId?: string;
 }
 
 export class CreateEmpresaDto {

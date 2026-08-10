@@ -310,8 +310,15 @@ export const finApi = {
     adminFetch(`${BASE}/conciliacao/importacoes${bankAccountId ? `?bankAccountId=${bankAccountId}` : ""}`),
   transferencias: (bankAccountId?: string): Promise<FinTransferencia[]> =>
     adminFetch(`${BASE}/contas-bancarias/transferencias${bankAccountId ? `?bankAccountId=${bankAccountId}` : ""}`),
-  transferir: (data: { contaOrigemId: string; contaDestinoId: string; valor: number; data: string; descricao?: string; observacao?: string }) =>
-    adminFetch(`${BASE}/contas-bancarias/transferencia`, { method: "POST", body: JSON.stringify(data) }),
+  transferir: (data: {
+    contaOrigemId: string;
+    contaDestinoId: string;
+    valor: number;
+    data: string;
+    descricao?: string;
+    observacao?: string;
+    bankTransactionId?: string;
+  }) => adminFetch(`${BASE}/contas-bancarias/transferencia`, { method: "POST", body: JSON.stringify(data) }),
   estornarTransferencia: (transferGroupId: string) =>
     adminFetch(`${BASE}/contas-bancarias/transferencia/${transferGroupId}/estornar`, { method: "POST" }),
 };
