@@ -2,9 +2,10 @@ import { BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { ParsedTransaction } from './parser.types';
 
-// CSV/Excel de extrato: exige colunas Data, Descrição e Valor (a tela de upload
-// documenta o layout e oferece modelo). Cabeçalho localizado por nome normalizado,
-// em qualquer ordem; linhas acima do cabeçalho (título do banco etc.) são ignoradas.
+// CSV/Excel de extrato: exige colunas Data, Valor e ao menos uma coluna de texto
+// (Histórico e/ou Descrição — a tela de upload documenta o layout e oferece modelo).
+// Cabeçalho localizado por nome normalizado, em qualquer ordem; linhas acima do
+// cabeçalho (título do banco etc.) são ignoradas.
 
 // Assinaturas binárias: ZIP (xlsx) e OLE/CFB (xls legado). Qualquer outra coisa é
 // tratada como texto (CSV) — precisa de decodificação explícita, ver isBinarySpreadsheet.
@@ -30,6 +31,16 @@ function normalizeHeader(v: unknown): string {
     .replace(/[̀-ͯ]/g, '')
     .trim()
     .toLowerCase();
+}
+
+// "Histórico" costuma ser o tipo genérico do movimento ("Pix enviado", "Transferência
+// recebida") e "Descrição" costuma trazer quem pagou/recebeu — quando o extrato tem as
+// duas, combinar as duas é bem mais útil pra identificar o lançamento do que usar só uma.
+function buildDescricao(historico: unknown, descricao: unknown): string {
+  const h = String(historico ?? '').trim();
+  const d = String(descricao ?? '').trim();
+  if (h && d && h.toLowerCase() !== d.toLowerCase()) return `${h} — ${d}`;
+  return d || h || 'Sem descrição';
 }
 
 /** "1.234,56", "-R$ 123,45", "1234.56", número → number com sinal */
@@ -83,27 +94,32 @@ export function parsePlanilha(buffer: Buffer): ParsedTransaction[] {
 
   const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
-  // Localiza a linha de cabeçalho (Data / Descrição / Valor)
+  // Localiza a linha de cabeçalho (Data / Histórico / Descrição / Valor) — Histórico e
+  // Descrição são detectados em colunas separadas (ver buildDescricao) porque muitos
+  // extratos têm as duas, e cada uma carrega uma informação diferente.
   let headerRow = -1;
   let colData = -1;
-  let colDesc = -1;
+  let colHistorico = -1;
+  let colDescricao = -1;
   let colValor = -1;
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const cells = rows[i].map(normalizeHeader);
     const iData = cells.findIndex((c) => c === 'data' || c.startsWith('data '));
-    const iDesc = cells.findIndex((c) => c.startsWith('descri') || c === 'historico' || c === 'histórico' || c === 'lancamento');
+    const iHistorico = cells.findIndex((c) => c === 'historico' || c === 'lancamento');
+    const iDescricao = cells.findIndex((c) => c.startsWith('descri'));
     const iValor = cells.findIndex((c) => c === 'valor' || c.startsWith('valor '));
-    if (iData >= 0 && iDesc >= 0 && iValor >= 0) {
+    if (iData >= 0 && (iHistorico >= 0 || iDescricao >= 0) && iValor >= 0) {
       headerRow = i;
       colData = iData;
-      colDesc = iDesc;
+      colHistorico = iHistorico;
+      colDescricao = iDescricao;
       colValor = iValor;
       break;
     }
   }
   if (headerRow < 0) {
     throw new BadRequestException(
-      'Cabeçalho não encontrado — a planilha precisa das colunas "Data", "Descrição" e "Valor"',
+      'Cabeçalho não encontrado — a planilha precisa das colunas "Data", "Descrição" (ou "Histórico") e "Valor"',
     );
   }
 
@@ -113,7 +129,7 @@ export function parsePlanilha(buffer: Buffer): ParsedTransaction[] {
     const data = parseDateCell(row[colData]);
     const valor = parseMoneyCell(row[colValor]);
     if (!data || valor === null) continue; // linha de saldo/rodapé/vazia
-    const descricao = String(row[colDesc] ?? '').trim() || 'Sem descrição';
+    const descricao = buildDescricao(colHistorico >= 0 ? row[colHistorico] : '', colDescricao >= 0 ? row[colDescricao] : '');
     out.push({ data, valor, descricao });
   }
 

@@ -21,6 +21,14 @@ function extractTag(block: string, tag: string): string | undefined {
   return v ? v : undefined;
 }
 
+// MEMO costuma ser o tipo genérico do movimento ("Pix enviado") e NAME o nome de quem
+// pagou/recebeu — quando o banco preenche os dois, combinar ajuda a identificar o
+// lançamento sem precisar abrir o extrato original.
+function buildDescricao(memo: string | undefined, name: string | undefined): string {
+  if (memo && name && memo.toLowerCase() !== name.toLowerCase()) return `${memo} — ${name}`;
+  return memo || name || 'Sem descrição';
+}
+
 /** DTPOSTED: "20260115120000[-3:BRT]" ou "20260115" → "2026-01-15" */
 function parseOfxDate(raw: string): string | null {
   const m = raw.match(/^(\d{4})(\d{2})(\d{2})/);
@@ -68,7 +76,7 @@ export function parseOfx(buffer: Buffer): ParsedTransaction[] {
     out.push({
       data,
       valor,
-      descricao: memo || name || 'Sem descrição',
+      descricao: buildDescricao(memo, name),
       fitId: extractTag(block, 'FITID'),
     });
   }

@@ -22,16 +22,31 @@ describe('parsePlanilha', () => {
   it('parseia corretamente valores BR (milhar "." + decimal ",") de um extrato CSV real', () => {
     const out = parsePlanilha(Buffer.from(EXTRATO_REAL_CSV, 'utf8'));
 
-    // Coluna "Histórico" vem antes de "Descrição" no arquivo e também é um alias válido
-    // de cabeçalho (linha 74 do parser) — com a decodificação UTF-8 correta, ela passa a
-    // ser reconhecida (antes, mojibake fazia "Histórico" não bater com "historico" e o
-    // match caía por acidente na coluna "Descrição").
     expect(out).toEqual([
-      { data: '2026-07-23', valor: 1520.89, descricao: 'Transferência recebida' },
-      { data: '2026-07-23', valor: -1520.89, descricao: 'Pix enviado' },
-      { data: '2026-07-01', valor: 3886.72, descricao: 'Transferência recebida' },
-      { data: '2026-07-01', valor: -3886.72, descricao: 'Pix enviado' },
+      { data: '2026-07-23', valor: 1520.89, descricao: 'Transferência recebida — Sp9 Incorporacao E Construcao  Spe' },
+      { data: '2026-07-23', valor: -1520.89, descricao: 'Pix enviado — Dlg Servicos De Apoio Administrativos Ltda' },
+      { data: '2026-07-01', valor: 3886.72, descricao: 'Transferência recebida — Sp9 Incorporacao E Construcao  Spe' },
+      { data: '2026-07-01', valor: -3886.72, descricao: 'Pix enviado — Dlg Servicos De Apoio Administrativos Ltda' },
     ]);
+  });
+
+  it('combina Histórico + Descrição quando o extrato tem as duas colunas (identifica a contraparte, não só o tipo do movimento)', () => {
+    const csv = [
+      'Data;Histórico;Descrição;Valor',
+      '10/01/2026;Pix enviado;Fulano de Tal;100,00',
+    ].join('\n');
+
+    const out = parsePlanilha(Buffer.from(csv, 'utf8'));
+
+    expect(out).toEqual([{ data: '2026-01-10', valor: 100, descricao: 'Pix enviado — Fulano de Tal' }]);
+  });
+
+  it('usa só Histórico quando o extrato não tem coluna Descrição', () => {
+    const csv = ['Data;Histórico;Valor', '10/01/2026;Pix enviado;100,00'].join('\n');
+
+    const out = parsePlanilha(Buffer.from(csv, 'utf8'));
+
+    expect(out).toEqual([{ data: '2026-01-10', valor: 100, descricao: 'Pix enviado' }]);
   });
 
   it('parseia "1.900,00" (exemplo original do bug) sem perder os zeros de milhar', () => {
