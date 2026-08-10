@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { FinCategoryType, FinCompanyType, FinContactBankAccountType, FinContactType, FinPixKeyType } from '@prisma/client';
+import { FinCategoryType, FinCompanyType, FinContactBankAccountType, FinContactType, FinPixKeyType, FinTxStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -316,7 +316,15 @@ export class FinCadastrosService implements OnModuleInit {
    *   exigir formalização como mútuo entre empresas; fica separado no plano de contas de propósito).
    */
   async transferirEntreContas(
-    data: { contaOrigemId: string; contaDestinoId: string; valor: number; data: string; descricao?: string; observacao?: string },
+    data: {
+      contaOrigemId: string;
+      contaDestinoId: string;
+      valor: number;
+      data: string;
+      descricao?: string;
+      observacao?: string;
+      bankTransactionId?: string;
+    },
     adminId?: string,
   ) {
     if (data.contaOrigemId === data.contaDestinoId) {
@@ -342,6 +350,21 @@ export class FinCadastrosService implements OnModuleInit {
     const groupId = randomUUID();
     const descricaoBase = data.descricao?.trim();
 
+    // Vincula uma ponta da transferência a uma linha pendente do extrato (atalho "Transferir e
+    // vincular" da tela de Conciliação) — a linha precisa pertencer a uma das 2 contas.
+    let bankTx: { id: string; bankAccountId: string; valor: Prisma.Decimal; status: FinTxStatus } | null = null;
+    if (data.bankTransactionId) {
+      bankTx = await this.prisma.finBankTransaction.findUnique({ where: { id: data.bankTransactionId } });
+      if (!bankTx) throw new NotFoundException('Transação bancária não encontrada');
+      if (bankTx.status !== 'PENDENTE') throw new BadRequestException('Transação bancária não está pendente');
+      if (bankTx.bankAccountId !== origem.id && bankTx.bankAccountId !== destino.id) {
+        throw new BadRequestException('Transação bancária não pertence a nenhuma das contas da transferência');
+      }
+      if (roundMoney(Math.abs(bankTx.valor.toNumber())) !== valor) {
+        throw new BadRequestException('Valor da transferência não bate com o valor da linha do extrato');
+      }
+    }
+
     const [entrySaida, entryEntrada] = await this.prisma.$transaction(async (tx) => {
       const eSaida = await tx.finEntry.create({
         data: {
@@ -358,7 +381,7 @@ export class FinCadastrosService implements OnModuleInit {
           createdBy: adminId || null,
         },
       });
-      await tx.finPayment.create({
+      const paymentSaida = await tx.finPayment.create({
         data: { entryId: eSaida.id, bankAccountId: origem.id, dataPagamento: dataMov, valor, createdBy: adminId || null },
       });
 
@@ -377,9 +400,15 @@ export class FinCadastrosService implements OnModuleInit {
           createdBy: adminId || null,
         },
       });
-      await tx.finPayment.create({
+      const paymentEntrada = await tx.finPayment.create({
         data: { entryId: eEntrada.id, bankAccountId: destino.id, dataPagamento: dataMov, valor, createdBy: adminId || null },
       });
+
+      if (bankTx) {
+        const paymentId = bankTx.bankAccountId === origem.id ? paymentSaida.id : paymentEntrada.id;
+        await tx.finPayment.update({ where: { id: paymentId }, data: { bankTransactionId: bankTx.id } });
+        await tx.finBankTransaction.update({ where: { id: bankTx.id }, data: { status: 'CONCILIADO' } });
+      }
 
       return [eSaida, eEntrada];
     });
@@ -389,10 +418,17 @@ export class FinCadastrosService implements OnModuleInit {
       action: 'PLATFORM_FIN_TRANSFER',
       resourceType: 'FinEntry',
       resourceId: groupId,
-      metadata: { contaOrigemId: origem.id, contaDestinoId: destino.id, valor, data: data.data, mesmaEmpresa, envolveSocio },
+      metadata: { contaOrigemId: origem.id, contaDestinoId: destino.id, valor, data: data.data, mesmaEmpresa, envolveSocio, reconciliado: !!bankTx },
     });
 
-    return { transferGroupId: groupId, mesmaEmpresa, envolveSocio, saida: finSerialize(entrySaida), entrada: finSerialize(entryEntrada) };
+    return {
+      transferGroupId: groupId,
+      mesmaEmpresa,
+      envolveSocio,
+      reconciliado: !!bankTx,
+      saida: finSerialize(entrySaida),
+      entrada: finSerialize(entryEntrada),
+    };
   }
 
   /** Desfaz a transferência: cancela as 2 pontas (só permitido enquanto nenhuma baixa foi conciliada/alterada). */

@@ -31,6 +31,26 @@ function contaLabel(c: FinConta, empresas: FinEmpresa[] = []): string {
   return `${base} — ${empresa.nome}${empresa.tipo === "PF" ? " (PF)" : ""}`;
 }
 
+function normalizarTexto(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Bate o nome da contraparte (na descrição do extrato, ex: "Pix enviado — Fulano de Tal")
+ * contra as empresas/pessoas físicas cadastradas — só retorna se achar exatamente 1 candidato,
+ * pra nunca sugerir errado quando o nome é ambíguo ou não aparece em nenhuma empresa. */
+function sugerirEmpresaId(descricao: string, empresas: FinEmpresa[]): string | null {
+  const desc = normalizarTexto(descricao);
+  const candidatos = empresas.filter((e) => {
+    const nome = normalizarTexto(e.nome);
+    return nome.length >= 3 && (desc.includes(nome) || nome.includes(desc));
+  });
+  return candidatos.length === 1 ? candidatos[0].id : null;
+}
+
 const ABAS: { id: FinTxStatus; label: string }[] = [
   { id: "PENDENTE", label: "Pendentes" },
   { id: "CONCILIADO", label: "Conciliadas" },
@@ -52,6 +72,7 @@ export default function ConciliacaoPage() {
   const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
   const [vincularTx, setVincularTx] = useState<FinBankTx | null>(null);
   const [criarTx, setCriarTx] = useState<FinBankTx | null>(null);
+  const [transferirLinhaTx, setTransferirLinhaTx] = useState<FinBankTx | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [transferindo, setTransferindo] = useState(false);
   const [historico, setHistorico] = useState(false);
@@ -225,6 +246,7 @@ export default function ConciliacaoPage() {
                         )}
                         <button className="mr-3 text-slate-500 hover:text-slate-800" onClick={() => setVincularTx(tx)}>Vincular...</button>
                         <button className="mr-3 text-slate-500 hover:text-slate-800" onClick={() => setCriarTx(tx)}>Criar lançamento</button>
+                        <button className="mr-3 text-slate-500 hover:text-slate-800" onClick={() => setTransferirLinhaTx(tx)}>Transferir e vincular</button>
                         <button
                           className="text-slate-400 hover:text-slate-600"
                           disabled={busyId === tx.id}
@@ -276,6 +298,17 @@ export default function ConciliacaoPage() {
           contaSelecionada={contaId}
           onClose={() => setTransferindo(false)}
           onSaved={() => { setTransferindo(false); showToast("Transferência registrada"); load(); }}
+          onError={setError}
+        />
+      )}
+      {transferirLinhaTx && (
+        <TransferirLinhaModal
+          tx={transferirLinhaTx}
+          contaAtualId={contaId}
+          contas={contas}
+          empresas={empresas}
+          onClose={() => setTransferirLinhaTx(null)}
+          onSaved={() => { setTransferirLinhaTx(null); showToast("Transferência criada e conciliada"); load(); }}
           onError={setError}
         />
       )}
@@ -562,6 +595,91 @@ function TransferModal({
           <input className={inputCls} placeholder="Opcional — padrão: “Transferência para/de …”" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
         </div>
       </div>
+    </AdminModal>
+  );
+}
+
+// ============================ Transferir e vincular (da linha pendente) ============================
+
+function TransferirLinhaModal({
+  tx,
+  contaAtualId,
+  contas,
+  empresas,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  tx: FinBankTx;
+  contaAtualId: string;
+  contas: FinConta[];
+  empresas: FinEmpresa[];
+  onClose: () => void;
+  onSaved: () => void;
+  onError: (m: string) => void;
+}) {
+  const saida = tx.valor < 0; // conta atual é a origem quando a linha é uma saída (Pix enviado etc.)
+  const contaAtual = contas.find((c) => c.id === contaAtualId);
+  const outrasContas = contas.filter((c) => c.id !== contaAtualId);
+
+  const empresaSugeridaId = sugerirEmpresaId(tx.descricao, empresas);
+  const contasDaEmpresaSugerida = empresaSugeridaId ? outrasContas.filter((c) => c.companyId === empresaSugeridaId) : [];
+  const [outraContaId, setOutraContaId] = useState(contasDaEmpresaSugerida.length === 1 ? contasDaEmpresaSugerida[0].id : "");
+  const [saving, setSaving] = useState(false);
+
+  const nomeEmpresaSugerida = empresaSugeridaId ? empresas.find((e) => e.id === empresaSugeridaId)?.nome : null;
+  const contaOrigemId = saida ? contaAtualId : outraContaId;
+  const contaDestinoId = saida ? outraContaId : contaAtualId;
+
+  const salvar = async () => {
+    if (!outraContaId) return;
+    setSaving(true);
+    try {
+      await finApi.transferir({
+        contaOrigemId,
+        contaDestinoId,
+        valor: Math.abs(tx.valor),
+        data: tx.data,
+        descricao: tx.descricao,
+        bankTransactionId: tx.id,
+      });
+      onSaved();
+    } catch (e: any) {
+      onError(e.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminModal
+      title="Transferir e vincular"
+      footer={
+        <>
+          <button className={btnSecondary} onClick={onClose}>Cancelar</button>
+          <button className={btnPrimary} disabled={saving || !outraContaId} onClick={salvar}>
+            {saving ? "Transferindo..." : "Transferir e vincular"}
+          </button>
+        </>
+      }
+    >
+      <div className="mb-3 rounded-lg bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
+        {fmtDate(tx.data)} · {tx.descricao} · <b className={tx.valor < 0 ? "text-red-600" : "text-emerald-600"}>{formatBRL(Math.abs(tx.valor))}</b>
+        <div className="mt-1 text-xs text-slate-400">
+          {saida ? "Saiu de" : "Entrou em"} <b>{contaAtual ? contaLabel(contaAtual, empresas) : "—"}</b> — escolha {saida ? "pra onde foi" : "de onde veio"}.
+        </div>
+      </div>
+      {nomeEmpresaSugerida && (
+        <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          Detectamos <b>{nomeEmpresaSugerida}</b> na descrição — confira a conta abaixo antes de confirmar.
+        </div>
+      )}
+      <label className="mb-1 block text-xs font-medium text-slate-500">{saida ? "Para (destino) *" : "De (origem) *"}</label>
+      <select className={selectCls} value={outraContaId} onChange={(e) => setOutraContaId(e.target.value)}>
+        <option value="">Selecione...</option>
+        {outrasContas.map((c) => (
+          <option key={c.id} value={c.id}>{contaLabel(c, empresas)} · saldo {formatBRL(c.saldoAtual)}</option>
+        ))}
+      </select>
     </AdminModal>
   );
 }
