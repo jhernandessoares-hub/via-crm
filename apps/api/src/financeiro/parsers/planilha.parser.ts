@@ -6,6 +6,24 @@ import { ParsedTransaction } from './parser.types';
 // documenta o layout e oferece modelo). Cabeçalho localizado por nome normalizado,
 // em qualquer ordem; linhas acima do cabeçalho (título do banco etc.) são ignoradas.
 
+// Assinaturas binárias: ZIP (xlsx) e OLE/CFB (xls legado). Qualquer outra coisa é
+// tratada como texto (CSV) — precisa de decodificação explícita, ver isBinarySpreadsheet.
+function isBinarySpreadsheet(buffer: Buffer): boolean {
+  if (buffer.length < 4) return false;
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b) return true; // "PK" — zip/xlsx
+  if (buffer[0] === 0xd0 && buffer[1] === 0xcf) return true; // OLE/CFB — xls
+  return false;
+}
+
+// CSV de extrato BR normalmente é UTF-8, mas alguns bancos exportam em Latin-1/CP1252.
+// Passar o Buffer bruto pra XLSX.read (type:'buffer') faz a lib decodificar como binário/
+// latin1 por padrão (sem BOM não há como adivinhar) — corrompe acentos ("Período" vira
+// "PerÃ­odo"). Decodificar explicitamente aqui e usar type:'string' evita isso.
+function decodeCsvBuffer(buffer: Buffer): string {
+  const utf8 = buffer.toString('utf8');
+  return utf8.includes('�') ? buffer.toString('latin1') : utf8;
+}
+
 function normalizeHeader(v: unknown): string {
   return String(v ?? '')
     .normalize('NFD')
@@ -48,7 +66,14 @@ function parseDateCell(v: unknown): string | null {
 export function parsePlanilha(buffer: Buffer): ParsedTransaction[] {
   let wb: XLSX.WorkBook;
   try {
-    wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    // raw:true evita que o parser de CSV da lib auto-converta células numéricas via
+    // fuzzynum() (que assume vírgula = milhar, formato EN-US) — sem isso, "1.900,00"
+    // vira 1.9 antes mesmo de chegar em parseMoneyCell(). Mantendo string crua, nossa
+    // lógica BR-aware abaixo processa o valor corretamente. Não afeta .xls/.xlsx
+    // binários genuínos, cujas células numéricas já vêm tipadas pelo próprio formato.
+    wb = isBinarySpreadsheet(buffer)
+      ? XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: true })
+      : XLSX.read(decodeCsvBuffer(buffer), { type: 'string', cellDates: true, raw: true });
   } catch {
     throw new BadRequestException('Não foi possível ler a planilha — envie CSV, XLS ou XLSX válido');
   }
