@@ -67,11 +67,19 @@ export const PIX_TIPO_LABEL: Record<FinPixKeyType, string> = {
   ALEATORIA: "Aleatória",
 };
 
+export type FinCompanyType = "PJ" | "PF";
+
+export const EMPRESA_TIPO_LABEL: Record<FinCompanyType, string> = {
+  PJ: "Pessoa Jurídica",
+  PF: "Pessoa Física",
+};
+
 export interface FinEmpresa {
   id: string;
   nome: string;
   nomeFantasia: string | null;
   cnpj: string | null;
+  tipo: FinCompanyType;
   ativo: boolean;
   _count?: { bankAccounts: number; entries: number; documents: number; contracts: number };
 }

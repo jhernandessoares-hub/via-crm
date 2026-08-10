@@ -2478,6 +2478,11 @@ enum FinDocumentType {
   OUTRO
 }
 
+enum FinCompanyType {
+  PJ
+  PF
+}
+
 // Plano de contas 2 níveis: parentId null = grupo; preenchido = analítica.
 // Lançamentos apontam somente para categorias analíticas.
 model FinCategory {
@@ -2506,11 +2511,12 @@ model FinCategory {
 // Empresa/CNPJ da holding — cada conta bancária, lançamento, documento e contrato pode ser marcado
 // como sendo de uma empresa específica. Nullable em todo lugar: registros antigos ficam "sem empresa".
 model FinCompany {
-  id           String  @id @default(uuid())
-  nome         String // razão social
+  id           String         @id @default(uuid())
+  nome         String // razão social (PJ) ou nome completo (PF)
   nomeFantasia String?
-  cnpj         String? // sem máscara
-  ativo        Boolean @default(true)
+  cnpj         String? // sem máscara — CNPJ (PJ) ou CPF (PF)
+  tipo         FinCompanyType @default(PJ)
+  ativo        Boolean        @default(true)
 
   bankAccounts   FinBankAccount[]
   entries        FinEntry[]
