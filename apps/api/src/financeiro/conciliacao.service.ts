@@ -6,12 +6,17 @@ import { AuditService } from '../audit/audit.service';
 import { FinLancamentosService } from './lancamentos.service';
 import { FinCadastrosService } from './cadastros.service';
 import { finSerialize, parseDateOnly, roundMoney, sumAmortizado } from './fin-shared.util';
-import { parseOfx } from './parsers/ofx.parser';
-import { parsePlanilha } from './parsers/planilha.parser';
+import { detectarContaOfx, parseOfx } from './parsers/ofx.parser';
+import { detectarContaPlanilha, parsePlanilha } from './parsers/planilha.parser';
 import { ParsedTransaction } from './parsers/parser.types';
 
 const MATCH_PAYMENT_DIAS = 3;
 const MATCH_ENTRY_DIAS = 5;
+
+/** Só dígitos, sem zeros à esquerda — pra comparar "0012345" do cadastro com "12345" do arquivo. */
+function normalizarNumeroConta(s: string): string {
+  return s.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+}
 
 @Injectable()
 export class FinConciliacaoService {
@@ -28,6 +33,7 @@ export class FinConciliacaoService {
     bankAccountId: string,
     file: { buffer: Buffer; originalname: string; size: number },
     adminId?: string,
+    force = false,
   ) {
     if (!file?.buffer) throw new BadRequestException('Envie um arquivo no campo "file"');
     const conta = await this.prisma.finBankAccount.findUnique({ where: { id: bankAccountId } });
@@ -36,17 +42,38 @@ export class FinConciliacaoService {
     const ext = (file.originalname.split('.').pop() || '').toLowerCase();
     let formato: FinImportFormat;
     let parsed: ParsedTransaction[];
+    let contaDetectada: string | null;
     if (ext === 'ofx') {
       formato = 'OFX';
       parsed = parseOfx(file.buffer);
+      contaDetectada = detectarContaOfx(file.buffer);
     } else if (ext === 'csv') {
       formato = 'CSV';
       parsed = parsePlanilha(file.buffer);
+      contaDetectada = detectarContaPlanilha(file.buffer);
     } else if (ext === 'xlsx' || ext === 'xls') {
       formato = 'XLSX';
       parsed = parsePlanilha(file.buffer);
+      contaDetectada = detectarContaPlanilha(file.buffer);
     } else {
       throw new BadRequestException('Extensão não suportada — envie .ofx, .csv, .xls ou .xlsx');
+    }
+
+    // Alerta (não bloqueia) quando o arquivo declara um número de conta diferente do
+    // cadastrado — evita importar o extrato inteiro na conta errada (ex.: dropdown ficou
+    // na conta anterior). Só compara quando as duas informações existem; nunca impede o
+    // import de bancos que não declaram a conta no arquivo.
+    if (!force && contaDetectada && conta.conta) {
+      const doArquivo = normalizarNumeroConta(contaDetectada);
+      const doCadastro = normalizarNumeroConta(conta.conta);
+      if (doArquivo && doCadastro && doArquivo !== doCadastro) {
+        return {
+          mismatch: true as const,
+          contaDetectada,
+          contaCadastrada: conta.conta,
+          contaNome: conta.nome,
+        };
+      }
     }
 
     const result = await this.prisma.$transaction(async (tx) => {

@@ -1,4 +1,4 @@
-import { parsePlanilha } from './planilha.parser';
+import { detectarContaPlanilha, parsePlanilha } from './planilha.parser';
 
 // CSV real de extrato bancário BR fornecido pelo usuário que reproduziu o bug:
 // valores como "1.520,89" chegavam salvos como 1.52 (perda de ordem de grandeza)
@@ -63,5 +63,16 @@ describe('parsePlanilha', () => {
     const out = parsePlanilha(Buffer.from(csv, 'utf8'));
 
     expect(out).toEqual([{ data: '2026-01-10', valor: 100, descricao: 'Transferência recebida' }]);
+  });
+});
+
+describe('detectarContaPlanilha', () => {
+  it('acha o número da conta na linha "Conta ;NUMERO" antes do cabeçalho (extrato real do Inter)', () => {
+    expect(detectarContaPlanilha(Buffer.from(EXTRATO_REAL_CSV, 'utf8'))).toBe('185460160');
+  });
+
+  it('retorna null quando o extrato não declara a conta em nenhuma linha', () => {
+    const csv = ['Data;Descrição;Valor', '10/01/2026;Depósito;1.900,00'].join('\n');
+    expect(detectarContaPlanilha(Buffer.from(csv, 'utf8'))).toBeNull();
   });
 });

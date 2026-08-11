@@ -86,3 +86,15 @@ export function parseOfx(buffer: Buffer): ParsedTransaction[] {
   }
   return out;
 }
+
+/**
+ * Número da conta declarado no próprio arquivo (<BANKACCTFROM><ACCTID>) — usado só para
+ * alertar se não bater com a conta selecionada na tela, nunca bloqueia nem decide nada
+ * sozinho. `null` quando o arquivo não tem esse bloco (nem todo OFX declara).
+ */
+export function detectarContaOfx(buffer: Buffer): string | null {
+  const text = decodeBuffer(buffer);
+  const block = text.match(/<BANKACCTFROM>[\s\S]*?<\/BANKACCTFROM>/i)?.[0];
+  if (!block) return null;
+  return extractTag(block, 'ACCTID') || null;
+}

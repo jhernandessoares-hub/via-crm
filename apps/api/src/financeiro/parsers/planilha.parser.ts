@@ -74,25 +74,56 @@ function parseDateCell(v: unknown): string | null {
   return null;
 }
 
-export function parsePlanilha(buffer: Buffer): ParsedTransaction[] {
-  let wb: XLSX.WorkBook;
+// raw:true evita que o parser de CSV da lib auto-converta células numéricas via
+// fuzzynum() (que assume vírgula = milhar, formato EN-US) — sem isso, "1.900,00"
+// vira 1.9 antes mesmo de chegar em parseMoneyCell(). Mantendo string crua, nossa
+// lógica BR-aware abaixo processa o valor corretamente. Não afeta .xls/.xlsx
+// binários genuínos, cujas células numéricas já vêm tipadas pelo próprio formato.
+function readWorkbook(buffer: Buffer): XLSX.WorkBook {
   try {
-    // raw:true evita que o parser de CSV da lib auto-converta células numéricas via
-    // fuzzynum() (que assume vírgula = milhar, formato EN-US) — sem isso, "1.900,00"
-    // vira 1.9 antes mesmo de chegar em parseMoneyCell(). Mantendo string crua, nossa
-    // lógica BR-aware abaixo processa o valor corretamente. Não afeta .xls/.xlsx
-    // binários genuínos, cujas células numéricas já vêm tipadas pelo próprio formato.
-    wb = isBinarySpreadsheet(buffer)
+    return isBinarySpreadsheet(buffer)
       ? XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: true })
       : XLSX.read(decodeCsvBuffer(buffer), { type: 'string', cellDates: true, raw: true });
   } catch {
     throw new BadRequestException('Não foi possível ler a planilha — envie CSV, XLS ou XLSX válido');
   }
+}
 
+function readRows(buffer: Buffer): unknown[][] {
+  const wb = readWorkbook(buffer);
   const sheet = wb.Sheets[wb.SheetNames[0]];
   if (!sheet) throw new BadRequestException('Planilha vazia');
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+}
 
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+/**
+ * Número da conta declarado nas linhas antes do cabeçalho (ex: "Conta ;185460160" do
+ * Inter) — usado só pra alertar se não bater com a conta selecionada na tela, nunca
+ * bloqueia nem decide nada sozinho. `null` quando não acha esse rótulo (nem todo banco
+ * declara a conta no extrato, ou usa um rótulo diferente).
+ */
+export function detectarContaPlanilha(buffer: Buffer): string | null {
+  let rows: unknown[][];
+  try {
+    rows = readRows(buffer);
+  } catch {
+    return null;
+  }
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i];
+    for (let c = 0; c < row.length - 1; c++) {
+      const label = normalizeHeader(row[c]);
+      if (label === 'conta' || label === 'conta corrente' || label === 'numero da conta') {
+        const value = String(row[c + 1] ?? '').trim();
+        if (value) return value;
+      }
+    }
+  }
+  return null;
+}
+
+export function parsePlanilha(buffer: Buffer): ParsedTransaction[] {
+  const rows = readRows(buffer);
 
   // Localiza a linha de cabeçalho (Data / Histórico / Descrição / Valor) — Histórico e
   // Descrição são detectados em colunas separadas (ver buildDescricao) porque muitos
