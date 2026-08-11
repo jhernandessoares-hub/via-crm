@@ -64,6 +64,11 @@ export class FinLancamentosController {
     return this.service.cancelar(id, req.platformAdmin?.sub);
   }
 
+  @Post('lancamentos/:id/reverter')
+  reverter(@Param('id') id: string, @Req() req: any) {
+    return this.service.reverter(id, req.platformAdmin?.sub);
+  }
+
   @Post('lancamentos/:id/baixar')
   baixar(@Param('id') id: string, @Body() dto: BaixarLancamentoDto, @Req() req: any) {
     return this.service.baixar(id, dto, req.platformAdmin?.sub);
