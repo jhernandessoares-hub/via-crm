@@ -158,6 +158,7 @@ export interface FinEntry {
   company?: { id: string; nome: string } | null;
   contractId: string | null;
   contract?: { id: string; descricao: string } | null;
+  transferGroupId?: string | null;
   competencia: string;
   vencimento: string;
   valor: number;
