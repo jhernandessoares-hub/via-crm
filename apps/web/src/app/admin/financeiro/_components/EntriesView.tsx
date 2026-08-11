@@ -29,6 +29,7 @@ import {
 } from "../_lib/fin";
 import {
   AdminModal,
+  ConfirmModal,
   DocPreviewInfo,
   DownloadModal,
   ErrorBanner,
@@ -75,6 +76,8 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
   const [baixaModal, setBaixaModal] = useState<FinEntry | null>(null);
   const [anexosModal, setAnexosModal] = useState<FinEntry | null>(null);
   const [detalheModal, setDetalheModal] = useState<FinEntry | null>(null);
+  const [reverterAlvo, setReverterAlvo] = useState<FinEntry | null>(null);
+  const [revertendo, setRevertendo] = useState(false);
 
   // mensalidades pendentes (só no Receber)
   const [pendencias, setPendencias] = useState<{ competencia: string; pendentes: number } | null>(null);
@@ -133,13 +136,18 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
     }
   };
 
-  const cancelar = async (e: FinEntry) => {
+  const reverter = async (e: FinEntry) => {
+    setRevertendo(true);
     try {
-      await adminFetch(`/admin/financeiro/lancamentos/${e.id}/cancelar`, { method: "POST" });
-      showToast("Lançamento cancelado");
+      await adminFetch(`/admin/financeiro/lancamentos/${e.id}/reverter`, { method: "POST" });
+      showToast(e.payments.length > 0 ? "Baixa(s) estornada(s) — voltou para Em aberto" : "Lançamento cancelado");
+      setReverterAlvo(null);
       load();
     } catch (err: any) {
       setError(err.message);
+      setReverterAlvo(null);
+    } finally {
+      setRevertendo(false);
     }
   };
 
@@ -302,8 +310,8 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
                       )}
                       <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => setFormModal(e)}>Editar</button>
                       <button className="mr-3 text-slate-400 hover:text-slate-700" onClick={() => setAnexosModal(e)}>Anexos</button>
-                      {e.status !== "CANCELADO" && e.payments.length === 0 && (
-                        <button className="text-red-300 hover:text-red-600" onClick={() => cancelar(e)}>Cancelar</button>
+                      {e.status !== "CANCELADO" && (
+                        <button className="text-red-300 hover:text-red-600" onClick={() => setReverterAlvo(e)}>Reverter</button>
                       )}
                     </td>
                   </tr>
@@ -364,6 +372,32 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
           onChanged={() => { setDetalheModal(null); load(); }}
           onError={setError}
           showToast={showToast}
+        />
+      )}
+      {reverterAlvo && (
+        <ConfirmModal
+          title={reverterAlvo.payments.length > 0 ? "Estornar baixa e reabrir lançamento?" : "Cancelar lançamento?"}
+          confirmLabel={reverterAlvo.payments.length > 0 ? "Estornar e reabrir" : "Cancelar lançamento"}
+          busy={revertendo}
+          onCancel={() => setReverterAlvo(null)}
+          onConfirm={() => reverter(reverterAlvo)}
+          message={
+            reverterAlvo.payments.length > 0 ? (
+              <>
+                Isso vai estornar {reverterAlvo.payments.length > 1 ? "as baixas" : "a baixa"} de{" "}
+                <b>{formatBRL(reverterAlvo.valorPago)}</b> do lançamento <b>&ldquo;{reverterAlvo.descricao}&rdquo;</b> e voltar o
+                status para <b>Em aberto</b>.
+                {reverterAlvo.payments.some((p) => p.bankTransactionId) && (
+                  <> A linha do extrato bancário conciliada com essa baixa também volta para pendente.</>
+                )}
+              </>
+            ) : (
+              <>
+                Isso vai cancelar o lançamento <b>&ldquo;{reverterAlvo.descricao}&rdquo;</b> ({formatBRL(reverterAlvo.valor)}). Ele
+                fica marcado como cancelado, não aparece mais nas listas ativas, e não pode ser reaberto por aqui.
+              </>
+            )
+          }
         />
       )}
       {toastNode}
@@ -819,6 +853,7 @@ function DetalheModal({
   showToast: (m: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [estornarAlvo, setEstornarAlvo] = useState<(typeof entry.payments)[number] | null>(null);
   const contaNome = (id: string) => contas.find((c) => c.id === id)?.nome || "—";
 
   const estornar = async (paymentId: string) => {
@@ -826,9 +861,11 @@ function DetalheModal({
     try {
       await adminFetch(`/admin/financeiro/pagamentos/${paymentId}`, { method: "DELETE" });
       showToast("Baixa estornada");
+      setEstornarAlvo(null);
       onChanged();
     } catch (e: any) {
       onError(e.message);
+      setEstornarAlvo(null);
       setBusy(false);
     }
   };
@@ -871,12 +908,28 @@ function DetalheModal({
                 {p.jurosMulta > 0 && <span className="ml-1 text-xs text-amber-600">(juros/multa {formatBRL(p.jurosMulta)})</span>}
                 <span className="ml-2 text-xs text-slate-400">{contaNome(p.bankAccountId)}{p.bankTransactionId ? " · conciliado" : ""}</span>
               </span>
-              <button className="text-xs text-red-300 hover:text-red-600 disabled:opacity-50" disabled={busy} onClick={() => estornar(p.id)}>
+              <button className="text-xs text-red-300 hover:text-red-600 disabled:opacity-50" disabled={busy} onClick={() => setEstornarAlvo(p)}>
                 Estornar
               </button>
             </div>
           ))}
         </div>
+      )}
+      {estornarAlvo && (
+        <ConfirmModal
+          title="Estornar esta baixa?"
+          confirmLabel="Estornar baixa"
+          busy={busy}
+          onCancel={() => setEstornarAlvo(null)}
+          onConfirm={() => estornar(estornarAlvo.id)}
+          message={
+            <>
+              Isso vai apagar a baixa de <b>{formatBRL(estornarAlvo.valor)}</b> em {fmtDate(estornarAlvo.dataPagamento)}
+              {estornarAlvo.bankTransactionId && <> e voltar a linha do extrato bancário conciliada com ela para pendente</>}. O
+              lançamento volta a ficar em aberto (ou parcial, se tiver outras baixas).
+            </>
+          }
+        />
       )}
     </AdminModal>
   );

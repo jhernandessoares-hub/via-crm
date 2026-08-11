@@ -329,6 +329,53 @@ export class FinLancamentosService {
     return finSerialize(updated);
   }
 
+  /**
+   * Reverte um lançamento independente do estado: sem baixa → cancela (mesma regra de
+   * `cancelar`); com baixa(s) → estorna todas de uma vez e volta pra Em aberto (mesma
+   * mecânica de `estornarPagamento`, aplicada a todas as baixas do título). Ponta de
+   * transferência entre contas não pode ser revertida isoladamente — desfaria só um lado.
+   */
+  async reverter(id: string, adminId?: string) {
+    const entry = await this.prisma.finEntry.findUnique({
+      where: { id },
+      include: { payments: { select: { id: true, valor: true, bankTransactionId: true } } },
+    });
+    if (!entry) throw new NotFoundException('Lançamento não encontrado');
+    if (entry.status === 'CANCELADO') throw new BadRequestException('Lançamento já está cancelado');
+    if (entry.transferGroupId) {
+      throw new BadRequestException(
+        'Lançamento faz parte de uma transferência entre contas — estorne pela tela de Conciliação (Transferir entre contas) para desfazer as duas pontas juntas',
+      );
+    }
+
+    if (entry.payments.length === 0) {
+      return this.cancelar(id, adminId);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const p of entry.payments) {
+        if (p.bankTransactionId) {
+          await tx.finBankTransaction.update({ where: { id: p.bankTransactionId }, data: { status: 'PENDENTE' } });
+        }
+      }
+      await tx.finPayment.deleteMany({ where: { entryId: id } });
+      await this.recomputeStatus(tx, id);
+    });
+
+    for (const p of entry.payments) {
+      this.audit.log({
+        platformAdminId: adminId,
+        action: 'PLATFORM_FIN_PAYMENT_REVERSAL',
+        resourceType: 'FinPayment',
+        resourceId: p.id,
+        metadata: { entryId: id, valor: p.valor.toNumber(), desconciliou: Boolean(p.bankTransactionId), via: 'reverter-lancamento' },
+      });
+    }
+
+    const updated = await this.prisma.finEntry.findUnique({ where: { id }, include: { payments: true } });
+    return finSerialize(updated);
+  }
+
   async baixar(
     id: string,
     data: {

@@ -94,6 +94,47 @@ export function AdminModal({
   );
 }
 
+/** Confirmação de ação destrutiva/irreversível — mesma regra do AdminModal (fecha só via botão). */
+export function ConfirmModal({
+  title,
+  message,
+  confirmLabel = "Confirmar",
+  danger = true,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  message: React.ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <AdminModal
+      title={title}
+      footer={
+        <>
+          <button className={btnSecondary} disabled={busy} onClick={onCancel}>Cancelar</button>
+          <button
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${
+              danger ? "bg-red-600 hover:bg-red-700" : "bg-slate-800 hover:bg-slate-700"
+            }`}
+            disabled={busy}
+            onClick={onConfirm}
+          >
+            {busy ? "Aguarde..." : confirmLabel}
+          </button>
+        </>
+      }
+    >
+      <div className="text-sm text-slate-600">{message}</div>
+    </AdminModal>
+  );
+}
+
 export interface DocPreviewInfo {
   id: string;
   filename: string;
