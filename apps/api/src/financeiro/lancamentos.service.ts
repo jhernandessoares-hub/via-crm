@@ -333,7 +333,9 @@ export class FinLancamentosService {
    * Reverte um lançamento independente do estado: sem baixa → cancela (mesma regra de
    * `cancelar`); com baixa(s) → estorna todas de uma vez e volta pra Em aberto (mesma
    * mecânica de `estornarPagamento`, aplicada a todas as baixas do título). Ponta de
-   * transferência entre contas não pode ser revertida isoladamente — desfaria só um lado.
+   * transferência entre contas não pode ser revertida isoladamente aqui — desfaria só um
+   * lado; o frontend detecta `transferGroupId` e chama `FinCadastrosService.estornarTransferencia`
+   * em vez deste método. Este bloqueio fica como rede de segurança para chamadas diretas à API.
    */
   async reverter(id: string, adminId?: string) {
     const entry = await this.prisma.finEntry.findUnique({
@@ -344,7 +346,7 @@ export class FinLancamentosService {
     if (entry.status === 'CANCELADO') throw new BadRequestException('Lançamento já está cancelado');
     if (entry.transferGroupId) {
       throw new BadRequestException(
-        'Lançamento faz parte de uma transferência entre contas — estorne pela tela de Conciliação (Transferir entre contas) para desfazer as duas pontas juntas',
+        'Lançamento faz parte de uma transferência entre contas — estorne a transferência (as duas pontas) em vez de reverter só este lançamento',
       );
     }
 

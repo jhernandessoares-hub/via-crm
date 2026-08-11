@@ -139,8 +139,13 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
   const reverter = async (e: FinEntry) => {
     setRevertendo(true);
     try {
-      await adminFetch(`/admin/financeiro/lancamentos/${e.id}/reverter`, { method: "POST" });
-      showToast(e.payments.length > 0 ? "Baixa(s) estornada(s) — voltou para Em aberto" : "Lançamento cancelado");
+      if (e.transferGroupId) {
+        await adminFetch(`/admin/financeiro/contas-bancarias/transferencia/${e.transferGroupId}/estornar`, { method: "POST" });
+        showToast("Transferência estornada — as duas pontas voltaram");
+      } else {
+        await adminFetch(`/admin/financeiro/lancamentos/${e.id}/reverter`, { method: "POST" });
+        showToast(e.payments.length > 0 ? "Baixa(s) estornada(s) — voltou para Em aberto" : "Lançamento cancelado");
+      }
       setReverterAlvo(null);
       load();
     } catch (err: any) {
@@ -376,13 +381,30 @@ export default function EntriesView({ tipo }: { tipo: FinEntryType }) {
       )}
       {reverterAlvo && (
         <ConfirmModal
-          title={reverterAlvo.payments.length > 0 ? "Estornar baixa e reabrir lançamento?" : "Cancelar lançamento?"}
-          confirmLabel={reverterAlvo.payments.length > 0 ? "Estornar e reabrir" : "Cancelar lançamento"}
+          title={
+            reverterAlvo.transferGroupId
+              ? "Estornar transferência entre contas?"
+              : reverterAlvo.payments.length > 0
+                ? "Estornar baixa e reabrir lançamento?"
+                : "Cancelar lançamento?"
+          }
+          confirmLabel={
+            reverterAlvo.transferGroupId ? "Estornar transferência" : reverterAlvo.payments.length > 0 ? "Estornar e reabrir" : "Cancelar lançamento"
+          }
           busy={revertendo}
           onCancel={() => setReverterAlvo(null)}
           onConfirm={() => reverter(reverterAlvo)}
           message={
-            reverterAlvo.payments.length > 0 ? (
+            reverterAlvo.transferGroupId ? (
+              <>
+                Este lançamento é uma ponta de uma <b>transferência entre contas</b> (ex.: retirada/aporte de sócio, repasse entre
+                empresas). Isso vai cancelar <b>as duas pontas</b> da transferência de <b>{formatBRL(reverterAlvo.valorPago || reverterAlvo.valor)}</b>{" "}
+                e desfazer os saldos nas duas contas.
+                {reverterAlvo.payments.some((p) => p.bankTransactionId) && (
+                  <> Se alguma ponta estava conciliada com o extrato bancário, a linha volta pra pendente também.</>
+                )}
+              </>
+            ) : reverterAlvo.payments.length > 0 ? (
               <>
                 Isso vai estornar {reverterAlvo.payments.length > 1 ? "as baixas" : "a baixa"} de{" "}
                 <b>{formatBRL(reverterAlvo.valorPago)}</b> do lançamento <b>&ldquo;{reverterAlvo.descricao}&rdquo;</b> e voltar o

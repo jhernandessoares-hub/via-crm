@@ -431,7 +431,11 @@ export class FinCadastrosService implements OnModuleInit {
     };
   }
 
-  /** Desfaz a transferência: cancela as 2 pontas (só permitido enquanto nenhuma baixa foi conciliada/alterada). */
+  /**
+   * Desfaz a transferência: cancela as 2 pontas. Se alguma baixa estava conciliada com o
+   * extrato (ex.: criada via "Transferir e vincular"), a linha do extrato volta pra pendente
+   * automaticamente — mesmo padrão de `FinLancamentosService.reverter`/`estornarPagamento`.
+   */
   async estornarTransferencia(transferGroupId: string, adminId?: string) {
     const entries = await this.prisma.finEntry.findMany({
       where: { transferGroupId },
@@ -441,14 +445,14 @@ export class FinCadastrosService implements OnModuleInit {
     if (entries.some((e) => e.status === 'CANCELADO')) {
       throw new BadRequestException('Transferência já foi estornada');
     }
-    if (entries.some((e) => e.payments.some((p) => p.bankTransactionId))) {
-      throw new BadRequestException(
-        'Uma das pontas já foi conciliada com o extrato — desfaça a conciliação antes de estornar a transferência',
-      );
-    }
 
     await this.prisma.$transaction(async (tx) => {
       for (const e of entries) {
+        for (const p of e.payments) {
+          if (p.bankTransactionId) {
+            await tx.finBankTransaction.update({ where: { id: p.bankTransactionId }, data: { status: 'PENDENTE' } });
+          }
+        }
         await tx.finPayment.deleteMany({ where: { entryId: e.id } });
         await tx.finEntry.update({ where: { id: e.id }, data: { status: 'CANCELADO' } });
       }
