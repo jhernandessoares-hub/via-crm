@@ -16,7 +16,7 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     'Receitas Financeiras': ['Rendimentos', 'Outras receitas'],
     'Movimentação entre contas': ['Transferência recebida'],
     'Movimentação entre empresas do grupo': ['Repasse recebido de outra empresa do grupo'],
-    Sócios: ['Aporte de sócio'],
+    Sócios: ['Aporte de sócio', 'Retirada recebida da empresa'],
   },
   DESPESA: {
     Infraestrutura: ['Servidores / Cloud', 'APIs de IA', 'WhatsApp / Meta', 'Domínios / SaaS'],
@@ -27,7 +27,7 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
     Financeiras: ['Tarifas bancárias', 'Juros / Multas'],
     'Movimentação entre contas': ['Transferência enviada'],
     'Movimentação entre empresas do grupo': ['Repasse enviado para outra empresa do grupo'],
-    Sócios: ['Retirada de sócio'],
+    Sócios: ['Retirada de sócio', 'Aporte enviado à empresa'],
   },
 };
 
@@ -39,7 +39,10 @@ const SEED_CATEGORIES: Record<FinCategoryType, Record<string, string[]>> = {
 // (pode exigir formalização como mútuo entre empresas — revisar com o contador).
 // "sócios" = uma das pontas é a pessoa física (tipo PF) de um sócio — registra
 // retirada/aporte separado do repasse entre CNPJs, pra ficar claro no DRE que aquele
-// dinheiro saiu do caixa da empresa para o bolso do sócio (ou voltou de lá).
+// dinheiro saiu do caixa da empresa para o bolso do sócio (ou voltou de lá). A categoria
+// de cada perna depende de qual lado é o PF, não só se é a perna que sai ou entra daquela
+// chamada — senão a perna espelho (do lado do sócio) sempre virava "Aporte de sócio" mesmo
+// numa retirada, o que não faz sentido nos livros pessoais dele.
 const TRANSFER_GRUPO_NOME = 'Movimentação entre contas';
 const TRANSFER_CATEGORIA_SAIDA_NOME = 'Transferência enviada';
 const TRANSFER_CATEGORIA_ENTRADA_NOME = 'Transferência recebida';
@@ -47,8 +50,12 @@ const REPASSE_GRUPO_NOME = 'Movimentação entre empresas do grupo';
 const REPASSE_CATEGORIA_SAIDA_NOME = 'Repasse enviado para outra empresa do grupo';
 const REPASSE_CATEGORIA_ENTRADA_NOME = 'Repasse recebido de outra empresa do grupo';
 const SOCIO_GRUPO_NOME = 'Sócios';
-const SOCIO_CATEGORIA_SAIDA_NOME = 'Retirada de sócio';
-const SOCIO_CATEGORIA_ENTRADA_NOME = 'Aporte de sócio';
+// PJ → PF (retirada): PJ paga (DESPESA) / PF recebe (RECEITA, mas não é aporte dele).
+const SOCIO_RETIRADA_CATEGORIA_SAIDA_NOME = 'Retirada de sócio';
+const SOCIO_RETIRADA_CATEGORIA_ENTRADA_NOME = 'Retirada recebida da empresa';
+// PF → PJ (aporte): PF paga (DESPESA, do lado dele) / PJ recebe (RECEITA).
+const SOCIO_APORTE_CATEGORIA_SAIDA_NOME = 'Aporte enviado à empresa';
+const SOCIO_APORTE_CATEGORIA_ENTRADA_NOME = 'Aporte de sócio';
 
 @Injectable()
 export class FinCadastrosService implements OnModuleInit {
@@ -308,10 +315,12 @@ export class FinCadastrosService implements OnModuleInit {
    * Move dinheiro entre 2 contas: cria um título PAGAR (já pago) na origem e um título RECEBER
    * (já recebido) no destino, ambos com o mesmo transferGroupId — usa o mesmo mecanismo de
    * FinEntry+FinPayment para os saldos baterem (ver saldoAtual em listContasBancarias).
-   * Categoria escolhida em 3 vias:
+   * Categoria escolhida em 4 vias:
    * - Mesma empresa → "Movimentação entre contas" (neutro, não é receita/despesa real).
-   * - Uma das pontas é a PF (tipo PF) de um sócio → "Sócios" (retirada/aporte — deixa claro no
-   *   DRE que o dinheiro saiu do caixa da empresa para o sócio, ou voltou de lá).
+   * - Destino é a PF de um sócio (PJ → PF, retirada) → PJ "Retirada de sócio" (DESPESA) /
+   *   PF "Retirada recebida da empresa" (RECEITA, mas não é aporte do sócio).
+   * - Origem é a PF de um sócio (PF → PJ, aporte) → PF "Aporte enviado à empresa" (DESPESA,
+   *   do lado dele) / PJ "Aporte de sócio" (RECEITA).
    * - Empresas PJ diferentes do grupo → "Movimentação entre empresas do grupo" (repasse — pode
    *   exigir formalização como mútuo entre empresas; fica separado no plano de contas de propósito).
    */
@@ -337,7 +346,9 @@ export class FinCadastrosService implements OnModuleInit {
     if (!origem || !origem.ativo) throw new BadRequestException('Conta de origem inválida ou inativa');
     if (!destino || !destino.ativo) throw new BadRequestException('Conta de destino inválida ou inativa');
     const mesmaEmpresa = !origem.companyId || !destino.companyId || origem.companyId === destino.companyId;
-    const envolveSocio = origem.company?.tipo === 'PF' || destino.company?.tipo === 'PF';
+    const pfEhOrigem = origem.company?.tipo === 'PF';
+    const pfEhDestino = destino.company?.tipo === 'PF';
+    const envolveSocio = pfEhOrigem || pfEhDestino;
 
     const valor = assertPositiveMoney(data.valor, 'valor');
     const dataMov = parseDateOnly(data.data, 'data');
@@ -345,7 +356,9 @@ export class FinCadastrosService implements OnModuleInit {
     const { saida, entrada } = mesmaEmpresa
       ? await this.transferCategorias(TRANSFER_GRUPO_NOME, TRANSFER_CATEGORIA_SAIDA_NOME, TRANSFER_CATEGORIA_ENTRADA_NOME)
       : envolveSocio
-        ? await this.transferCategorias(SOCIO_GRUPO_NOME, SOCIO_CATEGORIA_SAIDA_NOME, SOCIO_CATEGORIA_ENTRADA_NOME)
+        ? pfEhDestino
+          ? await this.transferCategorias(SOCIO_GRUPO_NOME, SOCIO_RETIRADA_CATEGORIA_SAIDA_NOME, SOCIO_RETIRADA_CATEGORIA_ENTRADA_NOME)
+          : await this.transferCategorias(SOCIO_GRUPO_NOME, SOCIO_APORTE_CATEGORIA_SAIDA_NOME, SOCIO_APORTE_CATEGORIA_ENTRADA_NOME)
         : await this.transferCategorias(REPASSE_GRUPO_NOME, REPASSE_CATEGORIA_SAIDA_NOME, REPASSE_CATEGORIA_ENTRADA_NOME);
     const groupId = randomUUID();
     const descricaoBase = data.descricao?.trim();
