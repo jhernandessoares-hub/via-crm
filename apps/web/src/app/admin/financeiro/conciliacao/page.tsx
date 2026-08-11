@@ -481,8 +481,10 @@ function CriarLancamentoModal({
   const [categoriaId, setCategoriaId] = useState("");
   const [descricao, setDescricao] = useState(tx.descricao);
   const [contractId, setContractId] = useState("");
-  const [contactId, setContactId] = useState(() => sugerirContatoId(tx.descricao, contatos));
+  const contatoSugeridoId = sugerirContatoId(tx.descricao, contatos);
+  const [contactId, setContactId] = useState(contatoSugeridoId);
   const [saving, setSaving] = useState(false);
+  const nomeContatoSugerido = contactId && contactId === contatoSugeridoId ? contatos.find((c) => c.id === contatoSugeridoId)?.nome : null;
 
   const salvar = async () => {
     if (!categoriaId) return;
@@ -544,6 +546,11 @@ function CriarLancamentoModal({
               <option key={c.id} value={c.id}>{c.nome}</option>
             ))}
           </select>
+          {nomeContatoSugerido && (
+            <p className="mt-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-800">
+              Detectamos <b>{nomeContatoSugerido}</b> na descrição — confira antes de salvar.
+            </p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
