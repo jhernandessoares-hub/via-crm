@@ -17,11 +17,12 @@ import {
   cardCls,
   finApi,
   fmtDate,
+  hojeStr,
   inputCls,
   selectCls,
   thCls,
 } from "../_lib/fin";
-import { AdminModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
+import { AdminModal, ConfirmModal, ErrorBanner, FileButton, MoneyInput, PageHeader, useToast } from "../_components/shared";
 
 /** "Itaú — Conta Principal — VEXCIA LTDA" (PJ) ou "... — Fulano (PF)" quando há empresa vinculada. */
 function contaLabel(c: FinConta, empresas: FinEmpresa[] = []): string {
@@ -76,6 +77,8 @@ export default function ConciliacaoPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [transferindo, setTransferindo] = useState(false);
   const [historico, setHistorico] = useState(false);
+  const [novaContaModal, setNovaContaModal] = useState(false);
+  const [mismatch, setMismatch] = useState<{ file: File; contaDetectada: string; contaCadastrada: string; contaNome: string } | null>(null);
 
   useEffect(() => {
     Promise.all([finApi.contas(), finApi.categorias(), finApi.contratos(), finApi.empresas()])
@@ -101,7 +104,7 @@ export default function ConciliacaoPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const importar = async (file: File) => {
+  const importar = async (file: File, force = false) => {
     if (!contaId) {
       setError("Selecione a conta bancária antes de importar");
       return;
@@ -111,7 +114,13 @@ export default function ConciliacaoPage() {
       const form = new FormData();
       form.append("file", file);
       form.append("bankAccountId", contaId);
+      if (force) form.append("force", "true");
       const r = await adminFetch("/admin/financeiro/conciliacao/importar", { method: "POST", body: form });
+      if (r.mismatch) {
+        setMismatch({ file, contaDetectada: r.contaDetectada, contaCadastrada: r.contaCadastrada, contaNome: r.contaNome });
+        return;
+      }
+      setMismatch(null);
       showToast(`${r.importadas} transação(ões) importada(s)${r.duplicadas > 0 ? `, ${r.duplicadas} duplicada(s) ignorada(s)` : ""}`);
       setAba("PENDENTE");
       load();
@@ -171,6 +180,7 @@ export default function ConciliacaoPage() {
               <option key={c.id} value={c.id}>{contaLabel(c, empresas)} · saldo {formatBRL(c.saldoAtual)}</option>
             ))}
           </select>
+          <button className="text-xs text-blue-600 hover:underline" onClick={() => setNovaContaModal(true)}>+ Nova conta</button>
         </div>
         <div className="flex gap-2">
           {ABAS.map((a) => (
@@ -313,6 +323,38 @@ export default function ConciliacaoPage() {
         />
       )}
       {historico && <HistoricoImportacoesModal contas={contas} empresas={empresas} onClose={() => setHistorico(false)} />}
+      {mismatch && (
+        <ConfirmModal
+          title="Esse extrato parece ser de outra conta"
+          confirmLabel="Importar mesmo assim"
+          busy={importando}
+          onCancel={() => setMismatch(null)}
+          onConfirm={() => importar(mismatch.file, true)}
+          message={
+            <>
+              O arquivo declara a conta <b>{mismatch.contaDetectada}</b>, mas a conta selecionada (<b>{mismatch.contaNome}</b>) está
+              cadastrada com o número <b>{mismatch.contaCadastrada}</b>. Se continuar, todas as transações do arquivo entram
+              vinculadas a <b>{mismatch.contaNome}</b> mesmo assim.
+            </>
+          }
+        />
+      )}
+      {novaContaModal && (
+        <NovaContaModal
+          empresas={empresas}
+          onClose={() => setNovaContaModal(false)}
+          onSaved={(novaContaId) => {
+            setNovaContaModal(false);
+            showToast("Conta criada");
+            finApi.contas().then((c) => {
+              const ativas = c.filter((x) => x.ativo);
+              setContas(ativas);
+              setContaId(novaContaId);
+            });
+          }}
+          onError={setError}
+        />
+      )}
       {toastNode}
     </div>
   );
@@ -680,6 +722,114 @@ function TransferirLinhaModal({
           <option key={c.id} value={c.id}>{contaLabel(c, empresas)} · saldo {formatBRL(c.saldoAtual)}</option>
         ))}
       </select>
+    </AdminModal>
+  );
+}
+
+// ============================ Nova conta (atalho da tela de Conciliação) ============================
+
+function NovaContaModal({
+  empresas,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  empresas: FinEmpresa[];
+  onClose: () => void;
+  onSaved: (novaContaId: string) => void;
+  onError: (m: string) => void;
+}) {
+  const [nome, setNome] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [banco, setBanco] = useState("");
+  const [agencia, setAgencia] = useState("");
+  const [conta, setConta] = useState("");
+  const [saldoInicial, setSaldoInicial] = useState<number | undefined>(0);
+  const [saldoInicialData, setSaldoInicialData] = useState(hojeStr());
+  const [saving, setSaving] = useState(false);
+
+  const salvar = async () => {
+    if (!nome.trim() || !companyId || !saldoInicialData) return;
+    setSaving(true);
+    try {
+      const created = await adminFetch("/admin/financeiro/contas-bancarias", {
+        method: "POST",
+        body: JSON.stringify({
+          nome: nome.trim(),
+          companyId,
+          banco: banco.trim() || undefined,
+          agencia: agencia.trim() || undefined,
+          conta: conta.trim() || undefined,
+          saldoInicial: saldoInicial || 0,
+          saldoInicialData,
+        }),
+      });
+      onSaved(created.id);
+    } catch (e: any) {
+      onError(e.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminModal
+      title="Nova conta bancária"
+      footer={
+        <>
+          <button className={btnSecondary} onClick={onClose}>Cancelar</button>
+          <button className={btnPrimary} disabled={saving || !nome.trim() || !companyId || !saldoInicialData} onClick={salvar}>
+            {saving ? "Salvando..." : "Salvar"}
+          </button>
+        </>
+      }
+    >
+      {empresas.length === 0 && (
+        <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Cadastre uma empresa (ou pessoa física) em Configurações → Empresas antes de criar a conta.
+        </p>
+      )}
+      <div className="grid gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Nome *</label>
+          <input className={inputCls} placeholder="Ex.: Inter PF Fulano" value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Empresa / Pessoa Física *</label>
+          <select className={selectCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+            <option value="">Selecione...</option>
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>{e.nome}{e.tipo === "PF" ? " (PF)" : ""}</option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Banco</label>
+            <input className={inputCls} placeholder="Ex.: 077" value={banco} onChange={(e) => setBanco(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Agência</label>
+            <input className={inputCls} value={agencia} onChange={(e) => setAgencia(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Conta</label>
+            <input className={inputCls} placeholder="Número do extrato" value={conta} onChange={(e) => setConta(e.target.value)} />
+          </div>
+        </div>
+        <p className="text-xs text-slate-400">
+          Preencher &ldquo;Conta&rdquo; com o número exato do extrato ajuda o sistema a avisar se um arquivo for importado na conta errada.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Saldo inicial</label>
+            <MoneyInput value={saldoInicial} onValue={setSaldoInicial} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Data do saldo *</label>
+            <input type="date" className={inputCls} value={saldoInicialData} onChange={(e) => setSaldoInicialData(e.target.value)} />
+          </div>
+        </div>
+      </div>
     </AdminModal>
   );
 }

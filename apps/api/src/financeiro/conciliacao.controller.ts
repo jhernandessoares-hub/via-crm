@@ -40,7 +40,7 @@ export class FinConciliacaoController {
     }),
   )
   importar(@UploadedFile() file: any, @Body() dto: ImportarExtratoDto, @Req() req: any) {
-    return this.service.importar(dto.bankAccountId, file, req.platformAdmin?.sub);
+    return this.service.importar(dto.bankAccountId, file, req.platformAdmin?.sub, dto.force === 'true');
   }
 
   @Get('conciliacao/importacoes')
