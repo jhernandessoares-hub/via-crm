@@ -7,6 +7,7 @@ import {
   FinBankTx,
   FinCategoria,
   FinConta,
+  FinContato,
   FinContrato,
   FinEmpresa,
   FinEntry,
@@ -52,6 +53,16 @@ function sugerirEmpresaId(descricao: string, empresas: FinEmpresa[]): string | n
   return candidatos.length === 1 ? candidatos[0].id : null;
 }
 
+/** Mesma ideia de sugerirEmpresaId, mas pra contatos (fornecedor/cliente) cadastrados. */
+function sugerirContatoId(descricao: string, contatos: FinContato[]): string {
+  const desc = normalizarTexto(descricao);
+  const candidatos = contatos.filter((c) => {
+    const nome = normalizarTexto(c.nome);
+    return nome.length >= 3 && (desc.includes(nome) || nome.includes(desc));
+  });
+  return candidatos.length === 1 ? candidatos[0].id : "";
+}
+
 const ABAS: { id: FinTxStatus; label: string }[] = [
   { id: "PENDENTE", label: "Pendentes" },
   { id: "CONCILIADO", label: "Conciliadas" },
@@ -70,6 +81,7 @@ export default function ConciliacaoPage() {
 
   const [categorias, setCategorias] = useState<FinCategoria[]>([]);
   const [contratos, setContratos] = useState<FinContrato[]>([]);
+  const [contatos, setContatos] = useState<FinContato[]>([]);
   const [empresas, setEmpresas] = useState<FinEmpresa[]>([]);
   const [vincularTx, setVincularTx] = useState<FinBankTx | null>(null);
   const [criarTx, setCriarTx] = useState<FinBankTx | null>(null);
@@ -81,12 +93,13 @@ export default function ConciliacaoPage() {
   const [mismatch, setMismatch] = useState<{ file: File; contaDetectada: string; contaCadastrada: string; contaNome: string } | null>(null);
 
   useEffect(() => {
-    Promise.all([finApi.contas(), finApi.categorias(), finApi.contratos(), finApi.empresas()])
-      .then(([c, cats, contrs, emps]) => {
+    Promise.all([finApi.contas(), finApi.categorias(), finApi.contratos(), finApi.contatos(), finApi.empresas()])
+      .then(([c, cats, contrs, ctts, emps]) => {
         const ativas = c.filter((x) => x.ativo);
         setContas(ativas);
         setCategorias(cats);
         setContratos(contrs.filter((c) => c.ativo));
+        setContatos(ctts);
         setEmpresas(emps);
         if (ativas.length > 0) setContaId((prev) => prev || ativas[0].id);
       })
@@ -296,6 +309,7 @@ export default function ConciliacaoPage() {
           tx={criarTx}
           categorias={categorias}
           contratos={contratos}
+          contatos={contatos}
           onClose={() => setCriarTx(null)}
           onSaved={() => { setCriarTx(null); showToast("Lançamento criado e conciliado"); load(); }}
           onError={setError}
@@ -448,6 +462,7 @@ function CriarLancamentoModal({
   tx,
   categorias,
   contratos,
+  contatos,
   onClose,
   onSaved,
   onError,
@@ -455,6 +470,7 @@ function CriarLancamentoModal({
   tx: FinBankTx;
   categorias: FinCategoria[];
   contratos: FinContrato[];
+  contatos: FinContato[];
   onClose: () => void;
   onSaved: () => void;
   onError: (m: string) => void;
@@ -465,6 +481,7 @@ function CriarLancamentoModal({
   const [categoriaId, setCategoriaId] = useState("");
   const [descricao, setDescricao] = useState(tx.descricao);
   const [contractId, setContractId] = useState("");
+  const [contactId, setContactId] = useState(() => sugerirContatoId(tx.descricao, contatos));
   const [saving, setSaving] = useState(false);
 
   const salvar = async () => {
@@ -473,7 +490,12 @@ function CriarLancamentoModal({
     try {
       await adminFetch(`/admin/financeiro/conciliacao/transacoes/${tx.id}/criar-lancamento`, {
         method: "POST",
-        body: JSON.stringify({ categoriaId, descricao: descricao.trim() || undefined, contractId: contractId || undefined }),
+        body: JSON.stringify({
+          categoriaId,
+          descricao: descricao.trim() || undefined,
+          contractId: contractId || undefined,
+          contactId: contactId || undefined,
+        }),
       });
       onSaved();
     } catch (e: any) {
@@ -513,6 +535,15 @@ function CriarLancamentoModal({
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Descrição</label>
           <input className={inputCls} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">{tipo === "PAGAR" ? "Fornecedor / Prestador" : "Cliente"}</label>
+          <select className={selectCls} value={contactId} onChange={(e) => setContactId(e.target.value)}>
+            <option value="">—</option>
+            {contatos.map((c) => (
+              <option key={c.id} value={c.id}>{c.nome}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Contrato</label>
