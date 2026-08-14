@@ -969,7 +969,14 @@ export class AdminService {
   // Backfill do histórico antigo de UM lead (WhatsApp Light). Requer sessão conectada.
   async backfillWhatsappLightHistory(
     leadId: string,
-    opts?: { maxPages?: number; pageSize?: number; delayMs?: number; processMedia?: boolean },
+    opts?: {
+      maxPages?: number;
+      pageSize?: number;
+      delayMs?: number;
+      processMedia?: boolean;
+      since?: Date;
+      anchorStrategy?: 'oldest' | 'newest';
+    },
   ) {
     if (!leadId) throw new BadRequestException('Parâmetro "leadId" é obrigatório.');
     return this.whatsappUnofficial.backfillLeadHistory(leadId, opts);
@@ -987,6 +994,8 @@ export class AdminService {
       delayMs?: number;
       processMedia?: boolean;
       delayBetweenLeadsMs?: number;
+      since?: Date;
+      anchorStrategy?: 'oldest' | 'newest';
     },
   ) {
     if (!sessionId) throw new BadRequestException('Parâmetro "sessionId" é obrigatório.');
@@ -1026,6 +1035,8 @@ export class AdminService {
           pageSize: opts?.pageSize,
           delayMs: opts?.delayMs,
           processMedia: opts?.processMedia,
+          since: opts?.since,
+          anchorStrategy: opts?.anchorStrategy,
         });
         ok++;
         totalInserted += r.inserted ?? 0;

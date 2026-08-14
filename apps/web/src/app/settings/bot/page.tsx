@@ -23,6 +23,17 @@ type BusinessHours = {
   thursday: DaySchedule; friday: DaySchedule; saturday: DaySchedule; sunday: DaySchedule;
 };
 
+type PipelineStageOption = { id: string; name: string; key: string };
+
+const STATUS_OPTIONS = [
+  { key: "NOVO", label: "Novo" },
+  { key: "EM_CONTATO", label: "Em contato" },
+  { key: "QUALIFICADO", label: "Qualificado" },
+  { key: "PROPOSTA", label: "Proposta" },
+  { key: "FECHADO", label: "Fechado" },
+  { key: "PERDIDO", label: "Perdido" },
+];
+
 const DEFAULT_HOURS: BusinessHours = {
   timezone: "America/Sao_Paulo",
   monday:    { open: "08:00", close: "22:00" },
@@ -33,6 +44,33 @@ const DEFAULT_HOURS: BusinessHours = {
   saturday:  { open: "09:00", close: "18:00" },
   sunday:    null,
 };
+
+function isChecked(current: string[] | null, id: string) {
+  return current === null || current.includes(id);
+}
+
+function toggleItem(current: string[] | null, allIds: string[], id: string): string[] | null {
+  const base = current === null ? [...allIds] : [...current];
+  const idx = base.indexOf(id);
+  if (idx >= 0) base.splice(idx, 1);
+  else base.push(id);
+  if (base.length === allIds.length) return null;
+  return base;
+}
+
+function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 rounded border-[var(--shell-card-border)] accent-emerald-500"
+      />
+      <span className="text-sm text-[var(--shell-text)]">{label}</span>
+    </label>
+  );
+}
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -60,6 +98,9 @@ export default function BotSettingsPage() {
   const [aiDelayMax, setAiDelayMax] = useState(15);
   const [aiHistoryLimit, setAiHistoryLimit] = useState(8);
   const [aiReassumirBaseFria, setAiReassumirBaseFria] = useState(false);
+  const [aiAllowedStageIds, setAiAllowedStageIds] = useState<string[] | null>(null);
+  const [aiAllowedStatuses, setAiAllowedStatuses] = useState<string[] | null>(null);
+  const [stages, setStages] = useState<PipelineStageOption[]>([]);
 
   useEffect(() => {
     apiFetch("/tenants/bot-config")
@@ -72,8 +113,14 @@ export default function BotSettingsPage() {
         setAiDelayMax(data.aiDelayMax ?? 15);
         setAiHistoryLimit(data.aiHistoryLimit ?? 8);
         setAiReassumirBaseFria(data.aiReassumirBaseFria ?? false);
+        setAiAllowedStageIds(Array.isArray(data.aiAllowedStageIds) ? data.aiAllowedStageIds : null);
+        setAiAllowedStatuses(Array.isArray(data.aiAllowedStatuses) ? data.aiAllowedStatuses : null);
       })
       .finally(() => setLoading(false));
+
+    apiFetch("/pipeline/active/stages")
+      .then((data: any) => setStages(Array.isArray(data) ? data : []))
+      .catch(() => setStages([]));
   }, []);
 
   function setDayEnabled(key: string, enabled: boolean) {
@@ -96,7 +143,10 @@ export default function BotSettingsPage() {
     try {
       await apiFetch("/tenants/bot-config", {
         method: "PATCH",
-        body: JSON.stringify({ autopilotEnabled, businessHours, outsideHoursMessage, aiDelayMin, aiDelayMax, aiHistoryLimit, aiReassumirBaseFria }),
+        body: JSON.stringify({
+          autopilotEnabled, businessHours, outsideHoursMessage, aiDelayMin, aiDelayMax, aiHistoryLimit,
+          aiReassumirBaseFria, aiAllowedStageIds, aiAllowedStatuses,
+        }),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -208,6 +258,76 @@ export default function BotSettingsPage() {
                 </p>
               </div>
               <Toggle value={aiReassumirBaseFria} onChange={setAiReassumirBaseFria} />
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Etapas e status em que a IA responde */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Etapas e status em que a IA responde</CardTitle>
+            <CardDescription>
+              Desmarque uma etapa ou status para impedir que a IA responda automaticamente
+              leads que estejam nessa condição. O corretor continua podendo atender manualmente.
+            </CardDescription>
+          </CardHeader>
+          <CardBody className="space-y-5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-[var(--shell-text)]">Etapas do funil</p>
+                <button
+                  type="button"
+                  className="text-xs text-emerald-600 hover:underline"
+                  onClick={() => setAiAllowedStageIds(aiAllowedStageIds === null ? [] : null)}
+                >
+                  {aiAllowedStageIds === null ? "Desmarcar todas" : "Selecionar todas"}
+                </button>
+              </div>
+              {stages.length === 0 ? (
+                <p className="text-sm text-[var(--shell-subtext)]">Nenhuma etapa ativa encontrada.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {stages.map((stage) => (
+                    <Checkbox
+                      key={stage.id}
+                      label={stage.name}
+                      checked={isChecked(aiAllowedStageIds, stage.id)}
+                      onChange={() =>
+                        setAiAllowedStageIds(
+                          toggleItem(aiAllowedStageIds, stages.map((s) => s.id), stage.id)
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-[var(--shell-text)]">Status do lead</p>
+                <button
+                  type="button"
+                  className="text-xs text-emerald-600 hover:underline"
+                  onClick={() => setAiAllowedStatuses(aiAllowedStatuses === null ? [] : null)}
+                >
+                  {aiAllowedStatuses === null ? "Desmarcar todos" : "Selecionar todos"}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {STATUS_OPTIONS.map((status) => (
+                  <Checkbox
+                    key={status.key}
+                    label={status.label}
+                    checked={isChecked(aiAllowedStatuses, status.key)}
+                    onChange={() =>
+                      setAiAllowedStatuses(
+                        toggleItem(aiAllowedStatuses, STATUS_OPTIONS.map((s) => s.key), status.key)
+                      )
+                    }
+                  />
+                ))}
+              </div>
             </div>
           </CardBody>
         </Card>

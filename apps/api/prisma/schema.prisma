@@ -69,6 +69,8 @@ model Tenant {
   aiTypingEnabled               Boolean                          @default(true)
   aiHistoryLimit                Int                              @default(8)
   aiReassumirBaseFria           Boolean                          @default(false) // IA volta a responder leads reativados pela Base Fria (padrão: corretor assume)
+  aiAllowedStageIds             Json? // array de PipelineStage.id em que a IA pode responder; null = todas as etapas
+  aiAllowedStatuses             Json? // array de LeadStatus em que a IA pode responder; null = todos os status
   logradouro                    String?
   numero                        String?
   bairro                        String?
@@ -1863,16 +1865,17 @@ model CreditRequest {
 }
 
 model WhatsappUnofficialSession {
-  id            String   @id @default(uuid())
-  tenantId      String
-  nome          String
-  status        String   @default("DISCONNECTED")
-  qrCode        String?
-  phoneNumber   String?
-  pushName      String?
-  authStateJson Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(uuid())
+  tenantId        String
+  nome            String
+  status          String   @default("DISCONNECTED")
+  qrCode          String?
+  phoneNumber     String?
+  pushName        String?
+  authStateJson   Json?
+  lidPhoneMapJson Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   leads    Lead[]
@@ -2051,10 +2054,10 @@ model PreOcupacaoAtividade {
   criadoEm               DateTime                      @default(now())
   atualizadoEm           DateTime                      @updatedAt
 
-  tenant        Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  calendarEvent CalendarEvent?                     @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
-  anexos        PreOcupacaoAtividadeAnexo[]
-  participantes PreOcupacaoAtividadeParticipante[]
+  tenant                    Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  calendarEvent             CalendarEvent?                     @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  anexos                    PreOcupacaoAtividadeAnexo[]
+  participantes             PreOcupacaoAtividadeParticipante[]
   planejamentoTtsAtividades PlanejamentoTtsAtividade[]
 
   @@index([tenantId, categoria])

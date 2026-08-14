@@ -298,8 +298,9 @@ export class AdminController {
     return this.adminService.backfillWhatsappLightMedia(since || '2026-05-26T00:00:00.000Z');
   }
 
-  // Backfill do histórico antigo de UM lead WhatsApp Light (Fase 0 / teste).
-  // Ex.: POST /admin/tools/backfill-light-history?leadId=<id>&maxPages=10
+  // Backfill do histórico antigo de UM lead WhatsApp Light.
+  // Ex. (histórico pré-CRM): POST /admin/tools/backfill-light-history?leadId=<id>&maxPages=10
+  // Ex. (gap recente 17/07): POST /admin/tools/backfill-light-history?leadId=<id>&maxPages=25&since=2026-07-17T00:00:00.000Z&anchorStrategy=newest&processMedia=false
   @UseGuards(PlatformAdminGuard)
   @Post('tools/backfill-light-history')
   backfillLightHistory(
@@ -308,17 +309,22 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('delayMs') delayMs?: string,
     @Query('processMedia') processMedia?: string,
+    @Query('since') since?: string,
+    @Query('anchorStrategy') anchorStrategy?: string,
   ) {
     return this.adminService.backfillWhatsappLightHistory(leadId, {
       maxPages: maxPages ? Number(maxPages) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
       delayMs: delayMs ? Number(delayMs) : undefined,
       processMedia: processMedia === 'false' ? false : undefined,
+      since: since ? new Date(since) : undefined,
+      anchorStrategy: anchorStrategy === 'newest' ? 'newest' : anchorStrategy === 'oldest' ? 'oldest' : undefined,
     });
   }
 
   // Backfill do histórico antigo de TODOS os leads de uma sessão WhatsApp Light (lote).
-  // Ex.: POST /admin/tools/backfill-light-history-session?sessionId=<id>&maxPages=10
+  // Ex. (histórico pré-CRM): POST /admin/tools/backfill-light-history-session?sessionId=<id>&maxPages=10
+  // Ex. (gap recente 17/07): POST /admin/tools/backfill-light-history-session?sessionId=<id>&maxPages=25&since=2026-07-17T00:00:00.000Z&anchorStrategy=newest&processMedia=false
   @UseGuards(PlatformAdminGuard)
   @Post('tools/backfill-light-history-session')
   backfillLightHistorySession(
@@ -328,6 +334,8 @@ export class AdminController {
     @Query('delayMs') delayMs?: string,
     @Query('processMedia') processMedia?: string,
     @Query('delayBetweenLeadsMs') delayBetweenLeadsMs?: string,
+    @Query('since') since?: string,
+    @Query('anchorStrategy') anchorStrategy?: string,
   ) {
     return this.adminService.backfillWhatsappLightHistorySession(sessionId, {
       maxPages: maxPages ? Number(maxPages) : undefined,
@@ -335,6 +343,8 @@ export class AdminController {
       delayMs: delayMs ? Number(delayMs) : undefined,
       processMedia: processMedia === 'false' ? false : undefined,
       delayBetweenLeadsMs: delayBetweenLeadsMs ? Number(delayBetweenLeadsMs) : undefined,
+      since: since ? new Date(since) : undefined,
+      anchorStrategy: anchorStrategy === 'newest' ? 'newest' : anchorStrategy === 'oldest' ? 'oldest' : undefined,
     });
   }
 }

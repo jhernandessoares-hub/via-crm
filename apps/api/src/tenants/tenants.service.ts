@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolvePermissions, resolveFieldVisibility, resolveDocumentAccess } from './permissions.config';
 import { resolveSlaConfig } from './sla.config';
@@ -41,6 +42,8 @@ export class TenantsService {
         aiTypingEnabled: true,
         aiHistoryLimit: true,
         aiReassumirBaseFria: true,
+        aiAllowedStageIds: true,
+        aiAllowedStatuses: true,
       },
     });
   }
@@ -95,6 +98,8 @@ export class TenantsService {
     aiTypingEnabled?: boolean;
     aiHistoryLimit?: number;
     aiReassumirBaseFria?: boolean;
+    aiAllowedStageIds?: string[] | null;
+    aiAllowedStatuses?: string[] | null;
   }) {
     return this.prisma.tenant.update({
       where: { id: tenantId },
@@ -107,6 +112,8 @@ export class TenantsService {
         ...(data.aiTypingEnabled !== undefined && { aiTypingEnabled: data.aiTypingEnabled }),
         ...(data.aiHistoryLimit !== undefined && { aiHistoryLimit: data.aiHistoryLimit }),
         ...(data.aiReassumirBaseFria !== undefined && { aiReassumirBaseFria: data.aiReassumirBaseFria }),
+        ...(data.aiAllowedStageIds !== undefined && { aiAllowedStageIds: data.aiAllowedStageIds ?? Prisma.JsonNull }),
+        ...(data.aiAllowedStatuses !== undefined && { aiAllowedStatuses: data.aiAllowedStatuses ?? Prisma.JsonNull }),
       },
       select: {
         id: true,
@@ -118,6 +125,8 @@ export class TenantsService {
         aiTypingEnabled: true,
         aiHistoryLimit: true,
         aiReassumirBaseFria: true,
+        aiAllowedStageIds: true,
+        aiAllowedStatuses: true,
       },
     });
   }
