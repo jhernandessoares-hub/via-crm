@@ -35,6 +35,9 @@ interface HistoryImportCtx {
   jidToLead: Map<string, { leadId: string; knownKeyIds: Set<string> }>;
   inserted: number;
   processMedia: boolean;
+  since?: Date;          // se definido, ignora msgs com timestamp anterior a esta data
+  minTsThisPage: number; // menor timestamp visto na página atual (para avanço de âncora)
+  minKeyThisPage: any;   // key da msg mais antiga da página atual
 }
 
 // ── Extrator de texto/tipo de mensagens Baileys ───────────────────────────────
@@ -242,13 +245,18 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   private updateLidMap(sessionId: string, contacts: Array<{ id: string; lid?: string | null }>) {
     let map = this.lidToPhone.get(sessionId);
     if (!map) { map = new Map(); this.lidToPhone.set(sessionId, map); }
+    const newly: Array<[string, string]> = [];
     for (const c of contacts) {
       if (c.lid && c.id.includes('@s.whatsapp.net')) {
         const lid = c.lid.split('@')[0].split(':')[0];
         const phone = c.id.split('@')[0].split(':')[0];
-        if (lid && phone) map.set(lid, phone);
+        if (lid && phone && map.get(lid) !== phone) {
+          map.set(lid, phone);
+          newly.push([lid, phone]);
+        }
       }
     }
+    if (newly.length) this.persistLidPhoneMap(sessionId, newly);
   }
 
   private async resolveLidPhone(sessionId: string, lid: string, msg: any): Promise<string | null> {
@@ -263,8 +271,18 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     const session = await this.prisma.whatsappUnofficialSession.findUnique({
       where: { id: sessionId },
-      select: { authStateJson: true },
+      select: { authStateJson: true, lidPhoneMapJson: true },
     });
+
+    // Cache persistido (sobrevive a restart do processo) — checado antes do authStateJson
+    // porque é a fonte mais barata e mais confiável (populada por resoluções anteriores).
+    const persisted = (session?.lidPhoneMapJson as Record<string, string> | null) ?? null;
+    const persistedPhone = persisted?.[lid];
+    if (persistedPhone) {
+      this.rememberLidPhone(sessionId, lid, persistedPhone, { skipPersist: true });
+      return persistedPhone;
+    }
+
     const storedKeys = ((session?.authStateJson as any)?.keys ?? {}) as Record<string, any>;
     const pnUser = storedKeys[`lid-mapping-${lid}_reverse`];
     if (typeof pnUser === 'string' && pnUser) {
@@ -278,10 +296,33 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     return null;
   }
 
-  private rememberLidPhone(sessionId: string, lid: string, phone: string) {
+  private rememberLidPhone(sessionId: string, lid: string, phone: string, opts?: { skipPersist?: boolean }) {
     let map = this.lidToPhone.get(sessionId);
     if (!map) { map = new Map(); this.lidToPhone.set(sessionId, map); }
+    const isNew = map.get(lid) !== phone;
     map.set(lid, phone);
+    if (isNew && !opts?.skipPersist) this.persistLidPhoneMap(sessionId, [[lid, phone]]);
+  }
+
+  // Grava o mapa LID→telefone no banco (best-effort) pra sobreviver a restart/deploy da API —
+  // sem isso, mensagens de contatos de baixa frequência (LID sem remoteJidAlt) somem
+  // silenciosamente sempre que o processo reinicia antes de um novo inbound re-popular o cache.
+  private async persistLidPhoneMap(sessionId: string, entries: Array<[string, string]>) {
+    try {
+      const session = await this.prisma.whatsappUnofficialSession.findUnique({
+        where: { id: sessionId },
+        select: { lidPhoneMapJson: true },
+      });
+      const current = (session?.lidPhoneMapJson as Record<string, string> | null) ?? {};
+      const merged = { ...current };
+      for (const [lid, phone] of entries) merged[lid] = phone;
+      await this.prisma.whatsappUnofficialSession.update({
+        where: { id: sessionId },
+        data: { lidPhoneMapJson: merged },
+      });
+    } catch (e) {
+      logger.warn(`Falha ao persistir lidPhoneMapJson (sessão=${sessionId}): ${(e as Error).message}`);
+    }
   }
 
   constructor(
@@ -398,6 +439,25 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     const { state, saveCreds } = await useDatabaseAuthState(this.prisma, sessionId);
     const { version } = await fetchLatestBaileysVersion();
+
+    // Hidrata o cache LID→telefone em memória a partir do que já foi persistido —
+    // sem isso, todo restart/deploy zera o cache e mensagens do celular do corretor
+    // pra contatos de baixa frequência (LID sem remoteJidAlt) somem até um novo inbound
+    // re-popular o Map.
+    try {
+      const persisted = await this.prisma.whatsappUnofficialSession.findUnique({
+        where: { id: sessionId },
+        select: { lidPhoneMapJson: true },
+      });
+      const map = (persisted?.lidPhoneMapJson as Record<string, string> | null) ?? null;
+      if (map) {
+        let memMap = this.lidToPhone.get(sessionId);
+        if (!memMap) { memMap = new Map(); this.lidToPhone.set(sessionId, memMap); }
+        for (const [lid, phone] of Object.entries(map)) memMap.set(lid, phone);
+      }
+    } catch (e) {
+      logger.warn(`Falha ao hidratar lidPhoneMapJson (sessão=${sessionId}): ${(e as Error).message}`);
+    }
 
     const socket = makeWASocket({
       version,
@@ -700,6 +760,15 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     const tsSec = Number(msg.messageTimestamp) || 0;
     const criadoEm = tsSec > 0 ? new Date(tsSec * 1000) : new Date();
 
+    // Rastreia a mensagem mais antiga desta página para avanço de âncora
+    if (tsSec > 0 && tsSec < (ctx.minTsThisPage ?? Infinity)) {
+      ctx.minTsThisPage = tsSec;
+      ctx.minKeyThisPage = msg.key;
+    }
+
+    // Filtra mensagens anteriores ao since (backfill de gap recente)
+    if (ctx.since && criadoEm < ctx.since) return;
+
     // Mídia best-effort: imagem/vídeo/documento sobem ao Cloudinary; áudio sobe sem transcrever.
     let media: { url: string; mimeType: string; filename: string | null; kind: string } | null = null;
     let audioMediaUrl: string | null = null;
@@ -768,7 +837,10 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   }
 
   // Carrega a âncora (msg mais antiga com key) e o set de key.id já conhecidos de um lead.
-  private async loadLeadAnchor(leadId: string): Promise<{
+  private async loadLeadAnchor(
+    leadId: string,
+    strategy: 'oldest' | 'newest' = 'oldest',
+  ): Promise<{
     knownKeyIds: Set<string>;
     anchorKey: any;
     anchorTs: number;
@@ -777,7 +849,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     const events = await this.prisma.leadEvent.findMany({
       where: { leadId, channel: { in: WA_LIGHT_CHANNELS } },
       select: { payloadRaw: true },
-      orderBy: { criadoEm: 'asc' },
+      orderBy: { criadoEm: strategy === 'newest' ? 'desc' : 'asc' },
     });
     const knownKeyIds = new Set<string>();
     let anchor: { key: any; ts: number; jid: string } | null = null;
@@ -785,6 +857,8 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       const r = (ev.payloadRaw as any)?.rawMsg;
       const kid = r?.key?.id;
       if (kid) knownKeyIds.add(kid);
+      // Para 'newest': itera desc, pega o primeiro válido (= mais recente)
+      // Para 'oldest': itera asc, pega o primeiro válido (= mais antigo)
       if (!anchor && r?.key?.id && r?.key?.remoteJid) {
         anchor = { key: r.key, ts: Number(r.messageTimestamp) || 0, jid: r.key.remoteJid };
       }
@@ -793,10 +867,21 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     return { knownKeyIds, anchorKey: anchor.key, anchorTs: anchor.ts, anchorJid: anchor.jid };
   }
 
-  // Backfill do histórico de UM lead (modo de teste / Fase 0).
+  // Backfill do histórico de UM lead.
+  // anchorStrategy:
+  //   'oldest' (padrão) — pagina para trás a partir do evento mais antigo (recupera história pré-CRM)
+  //   'newest'          — pagina para trás a partir do evento mais recente em direção a `since`
+  //                       (preenche gap de período recente onde msgs do celular não eram capturadas)
   async backfillLeadHistory(
     leadId: string,
-    opts?: { maxPages?: number; pageSize?: number; delayMs?: number; processMedia?: boolean },
+    opts?: {
+      maxPages?: number;
+      pageSize?: number;
+      delayMs?: number;
+      processMedia?: boolean;
+      since?: Date;
+      anchorStrategy?: 'oldest' | 'newest';
+    },
   ) {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
@@ -811,7 +896,8 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       throw new BadRequestException('Já existe uma importação de histórico em andamento nesta sessão');
     }
 
-    const anchor = await this.loadLeadAnchor(leadId);
+    const anchorStrategy = opts?.anchorStrategy ?? 'oldest';
+    const anchor = await this.loadLeadAnchor(leadId, anchorStrategy);
     if (!anchor) {
       throw new BadRequestException('Lead sem âncora — nenhum evento Light com rawMsg.key para paginar o histórico');
     }
@@ -820,12 +906,16 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     const maxPages = opts?.maxPages ?? 10;
     const delayMs = opts?.delayMs ?? 6000;
     const processMedia = opts?.processMedia ?? true;
+    const since = opts?.since;
 
     const ctx: HistoryImportCtx = {
       tenantId: lead.tenantId,
       jidToLead: new Map([[anchor.anchorJid, { leadId, knownKeyIds: anchor.knownKeyIds }]]),
       inserted: 0,
       processMedia,
+      since,
+      minTsThisPage: Infinity,
+      minKeyThisPage: null,
     };
     this.historyImports.set(sessionId, ctx);
 
@@ -835,27 +925,40 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     try {
       for (pages = 0; pages < maxPages; pages++) {
         const before = ctx.inserted;
-        logger.log(`📜 fetchMessageHistory lead=#${lead.numero} page=${pages + 1} anchorTs=${curTs}`);
+        ctx.minTsThisPage = Infinity;
+        ctx.minKeyThisPage = null;
+
+        logger.log(`📜 fetchMessageHistory lead=#${lead.numero} page=${pages + 1} anchorTs=${curTs} strategy=${anchorStrategy}`);
         await socket.fetchMessageHistory(pageSize, curKey, curTs);
         await sleep(delayMs);
+
         if (ctx.inserted === before) break; // nada novo chegou → fim do histórico disponível
 
-        // Avança a âncora para a mensagem mais antiga agora armazenada
-        const oldest = await this.prisma.leadEvent.findFirst({
-          where: { leadId, channel: { in: WA_LIGHT_CHANNELS } },
-          select: { payloadRaw: true },
-          orderBy: { criadoEm: 'asc' },
-        });
-        const ro = (oldest?.payloadRaw as any)?.rawMsg;
-        if (!ro?.key?.id) break;
-        curKey = ro.key;
-        curTs = Number(ro.messageTimestamp) || 0;
+        if (anchorStrategy === 'newest' && ctx.minKeyThisPage) {
+          // Para 'newest': avança pela página atual (não pelo DB — o oldest no DB é anterior ao gap)
+          curKey = ctx.minKeyThisPage;
+          curTs = ctx.minTsThisPage;
+        } else {
+          // Para 'oldest': avança para a mensagem mais antiga agora armazenada no DB
+          const oldest = await this.prisma.leadEvent.findFirst({
+            where: { leadId, channel: { in: WA_LIGHT_CHANNELS } },
+            select: { payloadRaw: true },
+            orderBy: { criadoEm: 'asc' },
+          });
+          const ro = (oldest?.payloadRaw as any)?.rawMsg;
+          if (!ro?.key?.id) break;
+          curKey = ro.key;
+          curTs = Number(ro.messageTimestamp) || 0;
+        }
+
+        // Parar quando já passamos da data-limite (since)
+        if (since && curTs > 0 && curTs * 1000 < since.getTime()) break;
       }
     } finally {
       this.historyImports.delete(sessionId);
     }
 
-    logger.log(`📜 Backfill lead=#${lead.numero} concluído — inseridos=${ctx.inserted} páginas=${pages}`);
+    logger.log(`📜 Backfill lead=#${lead.numero} concluído — inseridos=${ctx.inserted} páginas=${pages} strategy=${anchorStrategy}`);
     return { leadId, numero: lead.numero, nome: lead.nome, inserted: ctx.inserted, pages };
   }
 
@@ -1205,14 +1308,18 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     if (to === 'status@broadcast' || to.endsWith('@newsletter')) return;
 
     let phone: string | null;
+    let lidForLog: string | null = null;
     if (to.endsWith('@lid')) {
       const lid = lidFromJid(to);
+      lidForLog = lid;
       phone = lid ? await this.resolveLidPhone(sessionId, lid, msg) : null;
     } else {
       phone = phoneFromJid(to) ?? to.split('@')[0].split(':')[0];
     }
     if (!phone) {
-      logger.warn(`Outbound-from-phone ignorado: destino sem telefone resolvível (sessão=${sessionId})`);
+      logger.warn(
+        `Outbound-from-phone ignorado: destino sem telefone resolvível (sessão=${sessionId}, to=${to}, lid=${lidForLog ?? '-'}, msgId=${msg?.key?.id ?? '-'})`,
+      );
       return;
     }
 
