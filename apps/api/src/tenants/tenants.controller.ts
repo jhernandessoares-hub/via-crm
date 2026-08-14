@@ -76,6 +76,8 @@ export class TenantsController {
     aiTypingEnabled?: boolean;
     aiHistoryLimit?: number;
     aiReassumirBaseFria?: boolean;
+    aiAllowedStageIds?: string[] | null;
+    aiAllowedStatuses?: string[] | null;
   }) {
     requireOwner(req);
     return this.tenantsService.updateBotConfig(req.user.tenantId, body);

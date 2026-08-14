@@ -587,6 +587,7 @@ async function handleInboundAiJob(
       nomeCorreto: true,
       telefone: true,
       status: true,
+      stageId: true,
       botPaused: true,
       passouBaseFria: true,
       lastInboundAt: true,
@@ -633,6 +634,8 @@ async function handleInboundAiJob(
       aiDelayMax: true,
       aiTypingEnabled: true,
       aiHistoryLimit: true,
+      aiAllowedStageIds: true,
+      aiAllowedStatuses: true,
     },
   });
   if (!tenant) return;
@@ -640,6 +643,18 @@ async function handleInboundAiJob(
   // ── Nível 2: Tenant autopilot ─────────────────────────────────────────────
   if (!tenant.autopilotEnabled) {
     logger.log(`⏸ AUTOPILOT desligado para tenant=${lead.tenantId}`);
+    return;
+  }
+
+  // ── Nível 2b: Etapa/status permitidos para a IA ───────────────────────────
+  const allowedStatuses = tenant.aiAllowedStatuses as string[] | null;
+  if (Array.isArray(allowedStatuses) && allowedStatuses.length > 0 && !allowedStatuses.includes(lead.status)) {
+    logger.log(`⏸ Status "${lead.status}" fora da lista permitida p/ IA — leadId=${lead.id}`);
+    return;
+  }
+  const allowedStageIds = tenant.aiAllowedStageIds as string[] | null;
+  if (Array.isArray(allowedStageIds) && allowedStageIds.length > 0 && lead.stageId && !allowedStageIds.includes(lead.stageId)) {
+    logger.log(`⏸ Etapa fora da lista permitida p/ IA — leadId=${lead.id} stageId=${lead.stageId}`);
     return;
   }
 
