@@ -732,15 +732,6 @@ export default function InboxPage() {
                 )}
               </div>
               <div className="ml-auto flex items-center gap-2">
-                <button
-                  onClick={() => setShowIncorporar(true)}
-                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors hover:opacity-80"
-                  style={{ borderColor: "var(--card-border)", color: "var(--text-muted)", background: "var(--page-bg)" }}
-                  title="Incorporar chat de outro lead"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Incorporar</span>
-                </button>
                 <a
                   href={`/leads/${leadAtivo}`}
                   target="_blank"

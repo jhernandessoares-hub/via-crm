@@ -19,7 +19,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
-import { Check, CheckCheck, Send } from "lucide-react";
+import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -2035,6 +2035,151 @@ function DevMediaModal({
   );
 }
 
+// ── Modal: Incorporar Chat ────────────────────────────────────────────────────
+
+type LeadSearchResult = { id: string; nome: string; telefone: string | null };
+
+function IncorporarChatModal({
+  leadAtual,
+  nomeAtual,
+  onClose,
+  onSuccess,
+}: {
+  leadAtual: string;
+  nomeAtual: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [resultados, setResultados] = useState<LeadSearchResult[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [selecionado, setSelecionado] = useState<LeadSearchResult | null>(null);
+  const [direcao, setDirecao] = useState<"selecionado_no_atual" | "atual_no_selecionado">("selecionado_no_atual");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!busca.trim()) { setResultados([]); return; }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const data = await apiFetch(`/leads/search?q=${encodeURIComponent(busca)}`);
+        setResultados((data ?? []).filter((r: LeadSearchResult) => r.id !== leadAtual));
+      } catch { setResultados([]); }
+      finally { setBuscando(false); }
+    }, 350);
+  }, [busca, leadAtual]);
+
+  async function confirmar() {
+    if (!selecionado) return;
+    setSalvando(true);
+    setErro(null);
+    const sourceId = direcao === "selecionado_no_atual" ? selecionado.id : leadAtual;
+    const destId   = direcao === "selecionado_no_atual" ? leadAtual       : selecionado.id;
+    try {
+      await apiFetch(`/leads/${sourceId}/incorporar-chat`, {
+        method: "POST",
+        body: JSON.stringify({ destLeadId: destId }),
+      });
+      onSuccess();
+      onClose();
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao incorporar chat");
+    } finally { setSalvando(false); }
+  }
+
+  const nomeSource = direcao === "selecionado_no_atual" ? selecionado?.nome : nomeAtual;
+  const nomeDest   = direcao === "selecionado_no_atual" ? nomeAtual         : selecionado?.nome;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+      <div className="w-full max-w-md rounded-2xl shadow-2xl p-6 flex flex-col gap-4" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-base" style={{ color: "var(--text-primary)" }}>Incorporar Chat</h2>
+          <button onClick={onClose} style={{ color: "var(--text-muted)" }}><X className="w-4 h-4" /></button>
+        </div>
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+          Busque o lead cujo chat deseja unir a este. O lead incorporado some da lista e aparece como aba dentro do lead destino.
+        </p>
+
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-muted)" }} />
+          <input
+            value={busca}
+            onChange={(e) => { setBusca(e.target.value); setSelecionado(null); }}
+            placeholder="Nome, telefone ou CPF..."
+            className="w-full pl-9 pr-3 py-2 rounded-lg text-sm border outline-none"
+            style={{ borderColor: "var(--card-border)", background: "var(--page-bg)", color: "var(--text-primary)" }}
+          />
+          {buscando && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "var(--text-muted)" }}>Buscando...</span>}
+        </div>
+
+        {resultados.length > 0 && !selecionado && (
+          <div className="rounded-lg border overflow-hidden max-h-48 overflow-y-auto" style={{ borderColor: "var(--card-border)" }}>
+            {resultados.map((r) => (
+              <button key={r.id} onClick={() => setSelecionado(r)}
+                className="w-full text-left px-3 py-2.5 flex items-center gap-2 border-b last:border-0 hover:opacity-80"
+                style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                  {r.nome.split(" ").slice(0,2).map((p: string) => p[0]?.toUpperCase()).join("")}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{r.nome}</p>
+                  {r.telefone && <p className="text-xs" style={{ color: "var(--text-muted)" }}>{r.telefone}</p>}
+                </div>
+                <ChevronRight className="w-4 h-4 ml-auto shrink-0" style={{ color: "var(--text-muted)" }} />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selecionado && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "var(--brand-accent-muted)", border: "1px solid var(--brand-accent)" }}>
+              <span className="text-sm font-medium flex-1" style={{ color: "var(--text-primary)" }}>{selecionado.nome}</span>
+              <button onClick={() => setSelecionado(null)} style={{ color: "var(--text-muted)" }}><X className="w-3.5 h-3.5" /></button>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Quem entra como aba?</p>
+              {(["selecionado_no_atual", "atual_no_selecionado"] as const).map((d) => {
+                const source = d === "selecionado_no_atual" ? selecionado.nome : nomeAtual;
+                const dest   = d === "selecionado_no_atual" ? nomeAtual        : selecionado.nome;
+                return (
+                  <button key={d} onClick={() => setDirecao(d)}
+                    className="w-full text-left px-3 py-2 rounded-lg border text-sm flex items-center gap-2"
+                    style={{ borderColor: direcao === d ? "var(--brand-accent)" : "var(--card-border)", background: direcao === d ? "var(--brand-accent-muted)" : "var(--page-bg)", color: "var(--text-primary)" }}
+                  >
+                    <span className="w-4 h-4 rounded-full border-2 shrink-0" style={{ borderColor: direcao === d ? "var(--brand-accent)" : "var(--text-muted)", background: direcao === d ? "var(--brand-accent)" : "transparent" }} />
+                    <strong>{source}</strong> entra como aba em <strong>{dest}</strong>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: "var(--page-bg)", border: "1px solid var(--card-border)", color: "var(--text-muted)" }}>
+              <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+              Chat de <strong style={{ color: "var(--text-primary)", margin: "0 4px" }}>{nomeSource}</strong> ficará dentro de <strong style={{ color: "var(--text-primary)", margin: "0 4px" }}>{nomeDest}</strong>
+            </div>
+          </div>
+        )}
+
+        {erro && <p className="text-xs px-3 py-2 rounded-lg" style={{ background: "#fef2f2", color: "#dc2626" }}>{erro}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm font-medium border" style={{ borderColor: "var(--card-border)", color: "var(--text-muted)", background: "var(--page-bg)" }}>Cancelar</button>
+          <button onClick={confirmar} disabled={!selecionado || salvando} className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+            {salvando ? "Incorporando..." : "Confirmar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LeadDetailChatPage() {
@@ -2143,6 +2288,7 @@ export default function LeadDetailChatPage() {
   };
 
   const [debugOn, setDebugOn] = useState(false);
+  const [showIncorporar, setShowIncorporar] = useState(false);
   const [pollCount, setPollCount] = useState(0);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [lastPollError, setLastPollError] = useState<string | null>(null);
@@ -3800,6 +3946,7 @@ function discardAiSuggestion() {
   }, [text]);
 
   return (
+    <>
     <AppShell title="Lead">
       <div className="h-full flex flex-col overflow-hidden">
 
@@ -4509,6 +4656,17 @@ function discardAiSuggestion() {
                   disabled={loadingLead || loadingEvents}
                 >
                   Atualizar
+                </button>
+              )}
+
+              {leadInfoOpen && user?.role !== "PARTNER" && lead && (
+                <button
+                  className="mt-2 w-full rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] flex items-center justify-center gap-1.5"
+                  style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}
+                  onClick={() => setShowIncorporar(true)}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Incorporar chat
                 </button>
               )}
 
@@ -7470,5 +7628,15 @@ function discardAiSuggestion() {
         </div>
       )}
     </AppShell>
+
+    {showIncorporar && lead && (
+      <IncorporarChatModal
+        leadAtual={String(id ?? "")}
+        nomeAtual={lead.nomeCorreto ?? lead.nome ?? ""}
+        onClose={() => setShowIncorporar(false)}
+        onSuccess={() => loadAll()}
+      />
+    )}
+    </>
   );
 }
