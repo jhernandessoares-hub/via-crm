@@ -4552,7 +4552,7 @@ const aiAssistanceLabel =
         select: {
           id: true, nome: true, nomeCorreto: true, telefone: true,
           incorporadoEmLeadId: true,
-          stage: { select: { group: true } },
+          stage: { select: { key: true, group: true } },
         },
       }),
       this.prisma.lead.findFirst({
@@ -4560,7 +4560,7 @@ const aiAssistanceLabel =
         select: {
           id: true, nome: true, nomeCorreto: true,
           incorporadoEmLeadId: true,
-          stage: { select: { group: true } },
+          stage: { select: { key: true, group: true } },
         },
       }),
     ]);
@@ -4575,11 +4575,16 @@ const aiAssistanceLabel =
       throw new BadRequestException('O lead destino já está incorporado em outro');
     }
 
-    const sourceInPre = source.stage?.group === 'PRE_ATENDIMENTO';
-    const destInPre = dest.stage?.group === 'PRE_ATENDIMENTO';
-    if (!sourceInPre && !destInPre) {
+    // Pipelines customizados (ex.: SP9) marcam etapas fechadas via `group`; o pipeline
+    // padrão não usa `group`, então também checamos a `key` (mesma convenção de
+    // channels-webhook.controller.ts para não reentrada).
+    const CLOSED_STAGE_MARKERS = new Set(['BASE_FRIA', 'ENTREGA_CONTRATO_REGISTRADO', 'POS_VENDA_IA']);
+    const isClosedStage = (stage?: { key: string; group: string | null } | null) =>
+      !!stage && (CLOSED_STAGE_MARKERS.has(stage.key) || (!!stage.group && CLOSED_STAGE_MARKERS.has(stage.group)));
+
+    if (isClosedStage(source.stage) || isClosedStage(dest.stage)) {
       throw new BadRequestException(
-        'Pelo menos um dos leads deve estar no grupo Pré-Atendimento para incorporar o chat',
+        'Não é possível incorporar chat de/para um lead em etapa fechada (Base Fria, Entrega de Contrato Registrado ou Pós Venda)',
       );
     }
 
