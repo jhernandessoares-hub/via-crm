@@ -333,8 +333,9 @@ export class LeadsController {
         : [];
 
     const count = typeof result?.count === 'number' ? result.count : value.length;
+    const subConversas = Array.isArray(result?.subConversas) ? result.subConversas : [];
 
-    return { value, count };
+    return { value, count, subConversas };
   }
 
   @Post(':id/events')

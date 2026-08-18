@@ -173,6 +173,14 @@ type LeadEvent = {
   payloadRaw?: any;
 };
 
+type SubConversa = {
+  participanteId: string | null;
+  leadId: string;
+  nome: string;
+  telefone: string | null;
+  events: LeadEvent[];
+};
+
 type LeadCalendarEvent = {
   id: string;
   title: string;
@@ -2195,6 +2203,8 @@ export default function LeadDetailChatPage() {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [events, setEvents] = useState<LeadEvent[]>([]);
+  const [subConversas, setSubConversas] = useState<SubConversa[]>([]);
+  const [abaAtiva, setAbaAtiva] = useState<string | null>(null);
   const [loadingLead, setLoadingLead] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -2638,6 +2648,7 @@ export default function LeadDetailChatPage() {
     setLastEventsShape(shape);
     setLastEventsRaw(ev);
     setEvents((prev) => mergeEventsById(prev, Array.isArray(list) ? list : []));
+    setSubConversas(Array.isArray(ev?.subConversas) ? ev.subConversas : []);
     setLastFetchAt(new Date().toISOString());
 
     if (!opts?.silent) setLoadingEvents(false);
@@ -3398,11 +3409,21 @@ function discardAiSuggestion() {
     insertIntoChat(url);
   }
 
+  const activeSubConversa = useMemo(
+    () => (abaAtiva ? subConversas.find((s) => s.leadId === abaAtiva) ?? null : null),
+    [abaAtiva, subConversas]
+  );
+
+  const activeEvents = useMemo(() => {
+    if (!activeSubConversa) return orderedEvents;
+    return [...activeSubConversa.events].sort((a, b) => getEventSortTime(a) - getEventSortTime(b));
+  }, [activeSubConversa, orderedEvents]);
+
   const viewEvents = useMemo(() => {
     const reactionsMap: Record<string, string[]> = {};
     const normal: LeadEvent[] = [];
 
-    for (const ev of orderedEvents) {
+    for (const ev of activeEvents) {
       const r = extractReaction(ev);
       if (r) {
         if (!reactionsMap[r.targetMessageId]) reactionsMap[r.targetMessageId] = [];
@@ -3426,7 +3447,7 @@ function discardAiSuggestion() {
       const reactions = msgId ? reactionsMap[msgId] || [] : [];
       return { ev, reactions };
     });
-  }, [orderedEvents]);
+  }, [activeEvents]);
 
   const lastVisibleEvent = useMemo(() => {
     if (!orderedEvents.length) return null;
@@ -3664,6 +3685,11 @@ function discardAiSuggestion() {
     const msg = String(message || "").trim();
     if (!msg) return;
 
+    if (abaAtiva && !activeSubConversa?.participanteId) {
+      alert("Não foi possível identificar o telefone deste participante. Envio bloqueado.");
+      return;
+    }
+
     if (!lead?.conversaCanal) {
       if (!selectedCanalOut) {
         alert("Defina o canal de saída antes de enviar.");
@@ -3709,6 +3735,7 @@ function discardAiSuggestion() {
           aiAssistancePercent: finalPercent,
           aiAssistanceLabel: finalLabel,
           ...((!lead?.conversaCanal && selectedCanalOut?.type === "light") ? { sessionId: selectedCanalOut.sessionId } : {}),
+          ...(activeSubConversa?.participanteId ? { participanteId: activeSubConversa.participanteId } : {}),
         }),
       });
       setText("");
@@ -6373,6 +6400,36 @@ function discardAiSuggestion() {
                 ) : null}
               </div>
             </div>
+
+            {subConversas.length > 0 && (
+              <div className="flex items-center gap-1 border-b bg-[var(--shell-bg)] px-3 pt-2 overflow-x-auto" style={{ borderColor: "var(--shell-card-border)" }}>
+                <button
+                  type="button"
+                  onClick={() => setAbaAtiva(null)}
+                  className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                  style={{
+                    borderColor: abaAtiva === null ? "var(--brand-accent)" : "transparent",
+                    color: abaAtiva === null ? "var(--shell-text)" : "var(--shell-subtext)",
+                  }}
+                >
+                  {lead?.nomeCorreto ?? lead?.nome ?? "Principal"}
+                </button>
+                {subConversas.map((sc) => (
+                  <button
+                    key={sc.leadId}
+                    type="button"
+                    onClick={() => setAbaAtiva(sc.leadId)}
+                    className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                    style={{
+                      borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
+                      color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                    }}
+                  >
+                    {sc.nome}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="flex-1 overflow-auto p-4 space-y-5" style={{ background: "var(--chat-wallpaper)" }}>
               {(lead as any)?.conversaRestricted ? (

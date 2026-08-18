@@ -2308,13 +2308,60 @@ async getById(user: any, id: string) {
       where: {
         leadId: id,
         tenantId: user.tenantId,
+        leadParticipanteId: null,
       },
       orderBy: { criadoEm: 'desc' },
       take,
       skip,
     });
 
-    return events.reverse();
+    const ordered = events.reverse();
+
+    // Sub-conversas: leads incorporados neste (aparecem como abas na UI)
+    const incorporados = await this.prisma.lead.findMany({
+      where: { incorporadoEmLeadId: id, tenantId: user.tenantId, deletedAt: null },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true },
+    });
+
+    let subConversas: Array<{ participanteId: string | null; leadId: string; nome: string; telefone: string | null; events: any[] }> = [];
+    if (incorporados.length > 0) {
+      const participantes = await (this.prisma as any).leadParticipante.findMany({
+        where: { leadId: id, tenantId: user.tenantId },
+        select: { id: true, nome: true, telefone: true },
+      });
+
+      subConversas = await Promise.all(
+        incorporados.map(async (inc) => {
+          const digits = (inc.telefone || '').replace(/\D/g, '').slice(-9);
+          const participante = participantes.find(
+            (p: any) => p.telefone && p.telefone.replace(/\D/g, '').slice(-9) === digits,
+          );
+          const participanteId = participante?.id ?? null;
+          const nome = participante?.nome ?? inc.nomeCorreto ?? inc.nome;
+
+          const [historico, futuros] = await Promise.all([
+            this.prisma.leadEvent.findMany({
+              where: { leadId: inc.id, tenantId: user.tenantId },
+              orderBy: { criadoEm: 'asc' },
+            }),
+            participanteId
+              ? this.prisma.leadEvent.findMany({
+                  where: { leadId: id, tenantId: user.tenantId, leadParticipanteId: participanteId },
+                  orderBy: { criadoEm: 'asc' },
+                })
+              : Promise.resolve([]),
+          ]);
+
+          const todos = [...historico, ...futuros].sort(
+            (a, b) => a.criadoEm.getTime() - b.criadoEm.getTime(),
+          );
+
+          return { participanteId, leadId: inc.id, nome, telefone: inc.telefone, events: todos };
+        }),
+      );
+    }
+
+    return { value: ordered, count: ordered.length, subConversas };
   }
 
   async createEvent(user: any, id: string, body: any) {
@@ -3726,8 +3773,19 @@ async listTransitions(user: any, leadId: string) {
 
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
-    if (!lead.telefone) {
-      throw new Error('Lead não possui telefone cadastrado');
+    const participanteId: string | null = input?.participanteId || null;
+    let toPhone: string;
+    if (participanteId) {
+      const participante = await (this.prisma as any).leadParticipante.findFirst({
+        where: { id: participanteId, leadId, tenantId: user.tenantId },
+        select: { telefone: true },
+      });
+      if (!participante) throw new NotFoundException('Participante não encontrado');
+      if (!participante.telefone) throw new Error('Participante não possui telefone cadastrado');
+      toPhone = participante.telefone;
+    } else {
+      if (!lead.telefone) throw new Error('Lead não possui telefone cadastrado');
+      toPhone = lead.telefone;
     }
 
 const text = this.pickMessage(input);
@@ -3768,15 +3826,16 @@ const aiAssistanceLabel =
 
       let sent: { id: string | null } | undefined;
       try {
-        sent = await this.unofficialService.sendText(activeSessionId, lead.telefone, text);
+        sent = await this.unofficialService.sendText(activeSessionId, toPhone, text);
       } catch (sendErr: any) {
         await this.prisma.leadEvent.create({
           data: {
             tenantId: user.tenantId,
             leadId,
             channel: 'whatsapp.unofficial.out.failed',
+            leadParticipanteId: participanteId,
             payloadRaw: {
-              to: lead.telefone,
+              to: toPhone,
               sessionId: activeSessionId,
               type: 'text',
               message: text,
@@ -3795,8 +3854,9 @@ const aiAssistanceLabel =
           leadId,
           channel: 'whatsapp.unofficial.out',
           sourceRef: sent?.id ?? null,
+          leadParticipanteId: participanteId,
           payloadRaw: {
-            to: lead.telefone,
+            to: toPhone,
             sessionId: activeSessionId,
             type: 'text',
             text,
@@ -3823,15 +3883,16 @@ const aiAssistanceLabel =
 
     let result: Awaited<ReturnType<MessagingService['sendMetaMessage']>>;
     try {
-      result = await this.messaging.sendMetaMessage(lead.telefone, text, user.tenantId);
+      result = await this.messaging.sendMetaMessage(toPhone, text, user.tenantId);
     } catch (sendErr: any) {
       await this.prisma.leadEvent.create({
         data: {
           tenantId: user.tenantId,
           leadId,
           channel: 'whatsapp.out.failed',
+          leadParticipanteId: participanteId,
           payloadRaw: {
-            to: lead.telefone,
+            to: toPhone,
             type: 'text',
             message: text,
             error: sendErr?.message || String(sendErr),
@@ -3854,6 +3915,7 @@ const aiAssistanceLabel =
         tenantId: user.tenantId,
         leadId,
         channel: 'whatsapp.out',
+        leadParticipanteId: participanteId,
         payloadRaw: {
           to: result.to,
           type: 'text',
