@@ -1161,7 +1161,7 @@ export class LeadsService {
       extraFilter = { branchId };
     }
 
-    const baseWhere = { tenantId, ...extraFilter, deletedAt: null };
+    const baseWhere = { tenantId, ...extraFilter, deletedAt: null, incorporadoEmLeadId: null };
 
     // Total visível para este usuário
     const total = await this.prisma.lead.count({ where: baseWhere });
@@ -1978,7 +1978,7 @@ export class LeadsService {
     }
 
     const leads = await this.prisma.lead.findMany({
-      where: { tenantId, ...extraFilter, deletedAt: null },
+      where: { tenantId, ...extraFilter, deletedAt: null, incorporadoEmLeadId: null },
       orderBy: { criadoEm: 'desc' },
       include: {
         stage: { select: { id: true, name: true, key: true, group: true } },
@@ -3688,6 +3688,7 @@ async listTransitions(user: any, leadId: string) {
         tenantId: user.tenantId,
         assignedUserId: user.id,
         deletedAt: null,
+        incorporadoEmLeadId: null,
       },
       orderBy: { criadoEm: 'desc' },
       include: {
@@ -3735,6 +3736,7 @@ async listTransitions(user: any, leadId: string) {
       where: {
         tenantId: user.tenantId,
         deletedAt: null,
+        incorporadoEmLeadId: null,
         ...(branchId ? { branchId } : {}),
       },
       orderBy: { criadoEm: 'desc' },
@@ -4526,6 +4528,7 @@ const aiAssistanceLabel =
       where: {
         tenantId,
         deletedAt: null,
+        incorporadoEmLeadId: null,
         ...extraFilter,
         OR: [
           { nome: { contains: trimmed, mode: 'insensitive' } },
