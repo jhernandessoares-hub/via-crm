@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { createPortal } from "react-dom";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
 import { PendenciasModal, type PendenciaDraft, type PendenciaPessoa } from "@/components/PendenciasModal";
@@ -7629,13 +7630,14 @@ function discardAiSuggestion() {
       )}
     </AppShell>
 
-    {showIncorporar && lead && (
+    {showIncorporar && lead && typeof document !== "undefined" && createPortal(
       <IncorporarChatModal
         leadAtual={String(id ?? "")}
         nomeAtual={lead.nomeCorreto ?? lead.nome ?? ""}
         onClose={() => setShowIncorporar(false)}
         onSuccess={() => loadAll()}
-      />
+      />,
+      document.body
     )}
     </>
   );
