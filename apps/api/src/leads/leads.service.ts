@@ -4536,6 +4536,107 @@ const aiAssistanceLabel =
     }));
   }
 
+  async incorporarChat(
+    tenantId: string,
+    sourceLeadId: string,
+    destLeadId: string,
+    actor?: { id: string; nome: string },
+  ) {
+    if (sourceLeadId === destLeadId) {
+      throw new BadRequestException('Os dois leads devem ser diferentes');
+    }
+
+    const [source, dest] = await Promise.all([
+      this.prisma.lead.findFirst({
+        where: { id: sourceLeadId, tenantId, deletedAt: null },
+        select: {
+          id: true, nome: true, nomeCorreto: true, telefone: true,
+          incorporadoEmLeadId: true,
+          stage: { select: { group: true } },
+        },
+      }),
+      this.prisma.lead.findFirst({
+        where: { id: destLeadId, tenantId, deletedAt: null },
+        select: {
+          id: true, nome: true, nomeCorreto: true,
+          incorporadoEmLeadId: true,
+          stage: { select: { group: true } },
+        },
+      }),
+    ]);
+
+    if (!source) throw new NotFoundException('Lead a incorporar não encontrado');
+    if (!dest) throw new NotFoundException('Lead destino não encontrado');
+
+    if (source.incorporadoEmLeadId) {
+      throw new BadRequestException('Este lead já foi incorporado em outro');
+    }
+    if (dest.incorporadoEmLeadId) {
+      throw new BadRequestException('O lead destino já está incorporado em outro');
+    }
+
+    const sourceInPre = source.stage?.group === 'PRE_ATENDIMENTO';
+    const destInPre = dest.stage?.group === 'PRE_ATENDIMENTO';
+    if (!sourceInPre && !destInPre) {
+      throw new BadRequestException(
+        'Pelo menos um dos leads deve estar no grupo Pré-Atendimento para incorporar o chat',
+      );
+    }
+
+    const participante = await this.prisma.$transaction(async (tx: any) => {
+      const p = await tx.leadParticipante.create({
+        data: {
+          tenantId,
+          leadId: destLeadId,
+          nome: source.nomeCorreto ?? source.nome,
+          telefone: source.telefone,
+        },
+        select: { id: true },
+      });
+
+      await tx.lead.update({
+        where: { id: sourceLeadId },
+        data: { incorporadoEmLeadId: destLeadId },
+      });
+
+      await tx.leadEvent.updateMany({
+        where: { leadId: sourceLeadId, tenantId, leadParticipanteId: null },
+        data: { leadParticipanteId: p.id },
+      });
+
+      await tx.leadEvent.create({
+        data: {
+          tenantId,
+          leadId: destLeadId,
+          channel: 'system',
+          isReentry: false,
+          payloadRaw: {
+            type: 'chat_incorporated',
+            sourceLeadId,
+            sourceNome: source.nomeCorreto ?? source.nome,
+            sourceTelefone: source.telefone,
+            participanteId: p.id,
+            actor: actor?.nome ?? 'sistema',
+          },
+        },
+      });
+
+      return p;
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actor?.id,
+      action: 'CHAT_INCORPORATED',
+      resourceType: 'Lead',
+      resourceId: destLeadId,
+      metadata: { sourceLeadId, destLeadId, participanteId: participante.id, actor: actor?.nome },
+    });
+
+    this.logger.log(`Chat incorporado: source=${sourceLeadId} → dest=${destLeadId} participante=${participante.id}`);
+    return { ok: true, participanteId: participante.id, destLeadId, sourceLeadId };
+  }
+
   async mergeLeads(
     tenantId: string,
     winnerId: string,

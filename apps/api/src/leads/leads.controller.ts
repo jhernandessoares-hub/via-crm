@@ -247,6 +247,22 @@ export class LeadsController {
     return this.leadsService.markRead(req.user.tenantId, id);
   }
 
+  @Post(':id/incorporar-chat')
+  async incorporarChat(
+    @Req() req: any,
+    @Param('id') sourceLeadId: string,
+    @Body() body: { destLeadId: string },
+  ) {
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para incorporar chats');
+    if (!body?.destLeadId) throw new BadRequestException('destLeadId é obrigatório');
+    return this.leadsService.incorporarChat(
+      req.user.tenantId,
+      sourceLeadId,
+      body.destLeadId,
+      { id: req.user.sub, nome: req.user.nome },
+    );
+  }
+
   @Post(':id/merge')
   async mergeLeads(
     @Req() req: any,
