@@ -6527,12 +6527,12 @@ function discardAiSuggestion() {
                         autoFocus
                         value={observacaoDraft}
                         onChange={(e) => setObservacaoDraft(e.target.value)}
-                        placeholder="Ex: Essa é irmã do Pedro, não participa da aquisição, é chat para conversar."
+                        placeholder="Escreva um comentário aqui"
                         className="flex-1 rounded border px-2 py-1 text-xs outline-none"
                         style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)", color: "var(--shell-text)" }}
-                        onKeyDown={(e) => { if (e.key === "Enter" && activeSubConversa.participanteId) saveObservacaoAba(activeSubConversa.participanteId); if (e.key === "Escape") setEditandoObservacao(false); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && observacaoDraft.trim() && activeSubConversa.participanteId) saveObservacaoAba(activeSubConversa.participanteId); if (e.key === "Escape") setEditandoObservacao(false); }}
                       />
-                      <button type="button" disabled={savingObservacao || !activeSubConversa.participanteId} onClick={() => activeSubConversa.participanteId && saveObservacaoAba(activeSubConversa.participanteId)} style={{ color: "var(--brand-accent)" }}>
+                      <button type="button" disabled={savingObservacao || !observacaoDraft.trim() || !activeSubConversa.participanteId} onClick={() => activeSubConversa.participanteId && saveObservacaoAba(activeSubConversa.participanteId)} style={{ color: "var(--brand-accent)" }}>
                         <Check className="w-3.5 h-3.5" />
                       </button>
                       <button type="button" onClick={() => setEditandoObservacao(false)} style={{ color: "var(--shell-subtext)" }}>
