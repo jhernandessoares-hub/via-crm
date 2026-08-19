@@ -613,7 +613,7 @@ export class LeadsController {
     @Body() body: Record<string, any>,
   ) {
     await this.assertLeadWrite(req, 'edit');
-    return this.leadsService.updateParticipante(req.user.tenantId, id, partId, body);
+    return this.leadsService.updateParticipante(req.user.tenantId, id, partId, body, req.user.nome);
   }
 
   @Delete(':id/participantes/:partId')

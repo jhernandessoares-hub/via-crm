@@ -20,7 +20,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
-import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search } from "lucide-react";
+import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search, Users, StickyNote, Pencil } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -177,7 +177,11 @@ type SubConversa = {
   participanteId: string | null;
   leadId: string;
   nome: string;
+  classificacao: string | null;
   telefone: string | null;
+  observacao: string | null;
+  observacaoPorNome: string | null;
+  observacaoEm: string | null;
   events: LeadEvent[];
 };
 
@@ -2205,6 +2209,13 @@ export default function LeadDetailChatPage() {
   const [events, setEvents] = useState<LeadEvent[]>([]);
   const [subConversas, setSubConversas] = useState<SubConversa[]>([]);
   const [abaAtiva, setAbaAtiva] = useState<string | null>(null);
+  const [editandoAbaLeadId, setEditandoAbaLeadId] = useState<string | null>(null);
+  const [editAbaNome, setEditAbaNome] = useState("");
+  const [editAbaClassificacao, setEditAbaClassificacao] = useState("");
+  const [savingAbaNome, setSavingAbaNome] = useState(false);
+  const [editandoObservacao, setEditandoObservacao] = useState(false);
+  const [observacaoDraft, setObservacaoDraft] = useState("");
+  const [savingObservacao, setSavingObservacao] = useState(false);
   const [loadingLead, setLoadingLead] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -3198,6 +3209,42 @@ function discardAiSuggestion() {
       alert(err?.message || "Erro ao salvar nome confirmado.");
     } finally {
       setSavingNomeConfirmado(false);
+    }
+  }
+
+  async function saveAbaNome(sc: SubConversa) {
+    if (!lead || !sc.participanteId) return;
+    setSavingAbaNome(true);
+    try {
+      await apiFetch(`/leads/${lead.id}/participantes/${sc.participanteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          nome: editAbaNome.trim() || sc.nome,
+          classificacao: editAbaClassificacao.trim() || null,
+        }),
+      });
+      setEditandoAbaLeadId(null);
+      await loadEvents({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || "Erro ao salvar nome do participante.");
+    } finally {
+      setSavingAbaNome(false);
+    }
+  }
+
+  async function saveObservacaoAba(participanteId: string) {
+    setSavingObservacao(true);
+    try {
+      await apiFetch(`/leads/${id}/participantes/${participanteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ observacao: observacaoDraft.trim() || null }),
+      });
+      setEditandoObservacao(false);
+      await loadEvents({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || "Erro ao salvar observação.");
+    } finally {
+      setSavingObservacao(false);
     }
   }
 
@@ -6402,33 +6449,127 @@ function discardAiSuggestion() {
             </div>
 
             {subConversas.length > 0 && (
-              <div className="flex items-center gap-1 border-b bg-[var(--shell-bg)] px-3 pt-2 overflow-x-auto" style={{ borderColor: "var(--shell-card-border)" }}>
-                <button
-                  type="button"
-                  onClick={() => setAbaAtiva(null)}
-                  className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
-                  style={{
-                    borderColor: abaAtiva === null ? "var(--brand-accent)" : "transparent",
-                    color: abaAtiva === null ? "var(--shell-text)" : "var(--shell-subtext)",
-                  }}
+              <>
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium"
+                  style={{ background: "var(--brand-accent-muted)", color: "var(--shell-text)" }}
                 >
-                  {lead?.nomeCorreto ?? lead?.nome ?? "Principal"}
-                </button>
-                {subConversas.map((sc) => (
+                  <Users className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--brand-accent)" }} />
+                  {`Este lead tem ${subConversas.length + 1} conversas — veja as abas abaixo`}
+                </div>
+                <div className="flex items-center gap-1 border-b bg-[var(--shell-bg)] px-3 pt-2 overflow-x-auto" style={{ borderColor: "var(--shell-card-border)" }}>
                   <button
-                    key={sc.leadId}
                     type="button"
-                    onClick={() => setAbaAtiva(sc.leadId)}
+                    onClick={() => setAbaAtiva(null)}
                     className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
                     style={{
-                      borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
-                      color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                      borderColor: abaAtiva === null ? "var(--brand-accent)" : "transparent",
+                      color: abaAtiva === null ? "var(--shell-text)" : "var(--shell-subtext)",
                     }}
                   >
-                    {sc.nome}
+                    {lead?.nomeCorreto ?? lead?.nome ?? "Principal"}
                   </button>
-                ))}
-              </div>
+                  {subConversas.map((sc) =>
+                    editandoAbaLeadId === sc.leadId ? (
+                      <div key={sc.leadId} className="shrink-0 flex items-center gap-1 px-1.5 py-1">
+                        <input
+                          autoFocus
+                          value={editAbaNome}
+                          onChange={(e) => setEditAbaNome(e.target.value)}
+                          placeholder="Nome"
+                          className="w-28 rounded border px-1.5 py-1 text-xs outline-none"
+                          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)", color: "var(--shell-text)" }}
+                        />
+                        <input
+                          value={editAbaClassificacao}
+                          onChange={(e) => setEditAbaClassificacao(e.target.value)}
+                          placeholder="Complemento (ex: Filha)"
+                          className="w-32 rounded border px-1.5 py-1 text-xs outline-none"
+                          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)", color: "var(--shell-text)" }}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveAbaNome(sc); if (e.key === "Escape") setEditandoAbaLeadId(null); }}
+                        />
+                        <button type="button" disabled={savingAbaNome} onClick={() => saveAbaNome(sc)} style={{ color: "var(--brand-accent)" }}>
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" onClick={() => setEditandoAbaLeadId(null)} style={{ color: "var(--shell-subtext)" }}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        key={sc.leadId}
+                        type="button"
+                        onClick={() => setAbaAtiva(sc.leadId)}
+                        onDoubleClick={() => {
+                          if (!sc.participanteId) return;
+                          setEditAbaNome(sc.nome);
+                          setEditAbaClassificacao(sc.classificacao ?? "");
+                          setEditandoAbaLeadId(sc.leadId);
+                        }}
+                        title="Duplo clique para editar o nome"
+                        className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                        style={{
+                          borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
+                          color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                        }}
+                      >
+                        {sc.nome}
+                        {sc.classificacao ? <span style={{ color: "var(--shell-subtext)" }}>{" · " + sc.classificacao}</span> : null}
+                      </button>
+                    )
+                  )}
+                </div>
+                {activeSubConversa && (
+                  editandoObservacao ? (
+                    <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)" }}>
+                      <StickyNote className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--shell-subtext)" }} />
+                      <input
+                        autoFocus
+                        value={observacaoDraft}
+                        onChange={(e) => setObservacaoDraft(e.target.value)}
+                        placeholder="Ex: Essa é irmã do Pedro, não participa da aquisição, é chat para conversar."
+                        className="flex-1 rounded border px-2 py-1 text-xs outline-none"
+                        style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)", color: "var(--shell-text)" }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && activeSubConversa.participanteId) saveObservacaoAba(activeSubConversa.participanteId); if (e.key === "Escape") setEditandoObservacao(false); }}
+                      />
+                      <button type="button" disabled={savingObservacao || !activeSubConversa.participanteId} onClick={() => activeSubConversa.participanteId && saveObservacaoAba(activeSubConversa.participanteId)} style={{ color: "var(--brand-accent)" }}>
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={() => setEditandoObservacao(false)} style={{ color: "var(--shell-subtext)" }}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : activeSubConversa.observacao ? (
+                    <div
+                      className="flex items-center gap-2 px-3 py-2 border-b text-xs cursor-pointer"
+                      style={{ background: "#FEF9E7", borderColor: "var(--shell-card-border)", color: "#7A5B00" }}
+                      onClick={() => { setObservacaoDraft(activeSubConversa.observacao ?? ""); setEditandoObservacao(true); }}
+                      title="Clique para editar a observação"
+                    >
+                      <StickyNote className="w-3.5 h-3.5 shrink-0" />
+                      <span className="flex-1">
+                        {activeSubConversa.observacao}
+                        {activeSubConversa.observacaoPorNome ? (
+                          <span style={{ opacity: 0.75 }}>
+                            {" — comentário " + activeSubConversa.observacaoPorNome + (activeSubConversa.observacaoEm ? " em " + formatDateOnly(activeSubConversa.observacaoEm) + " às " + new Date(activeSubConversa.observacaoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "")}
+                          </span>
+                        ) : null}
+                      </span>
+                      <Pencil className="w-3 h-3 shrink-0" />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setObservacaoDraft(""); setEditandoObservacao(true); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 border-b text-[11px]"
+                      style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)" }}
+                    >
+                      <StickyNote className="w-3.5 h-3.5" />
+                      Adicionar observação sobre esta conversa
+                    </button>
+                  )
+                )}
+              </>
             )}
 
             <div className="flex-1 overflow-auto p-4 space-y-5" style={{ background: "var(--chat-wallpaper)" }}>
@@ -6443,9 +6584,22 @@ function discardAiSuggestion() {
               ) : viewEvents.length === 0 ? (
                 <div className="text-sm text-[var(--shell-subtext)]">Sem mensagens ainda.</div>
               ) : (
-                viewEvents.map(({ ev, reactions }) => (
-                  <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} debugOn={debugOn} />
-                ))
+                viewEvents.map(({ ev, reactions }) => {
+                  const p = ev.payloadRaw || {};
+                  if (ev.channel === "system" && p?.type === "chat_incorporated") {
+                    return (
+                      <div key={ev.id} className="flex justify-center">
+                        <span
+                          className="rounded-full px-3 py-1 text-[11px] text-center"
+                          style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                        >
+                          {"💬 Chat de " + (p.sourceNome || "outro lead") + " incorporado por " + (p.actor || "sistema")}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} debugOn={debugOn} />;
+                })
               )}
               <div ref={bottomRef} />
             </div>

@@ -2323,11 +2323,15 @@ async getById(user: any, id: string) {
       select: { id: true, nome: true, nomeCorreto: true, telefone: true },
     });
 
-    let subConversas: Array<{ participanteId: string | null; leadId: string; nome: string; telefone: string | null; events: any[] }> = [];
+    let subConversas: Array<{
+      participanteId: string | null; leadId: string; nome: string; classificacao: string | null;
+      telefone: string | null; observacao: string | null; observacaoPorNome: string | null;
+      observacaoEm: Date | null; events: any[];
+    }> = [];
     if (incorporados.length > 0) {
       const participantes = await (this.prisma as any).leadParticipante.findMany({
         where: { leadId: id, tenantId: user.tenantId },
-        select: { id: true, nome: true, telefone: true },
+        select: { id: true, nome: true, telefone: true, classificacao: true, observacao: true, observacaoPorNome: true, observacaoEm: true },
       });
 
       subConversas = await Promise.all(
@@ -2356,7 +2360,15 @@ async getById(user: any, id: string) {
             (a, b) => a.criadoEm.getTime() - b.criadoEm.getTime(),
           );
 
-          return { participanteId, leadId: inc.id, nome, telefone: inc.telefone, events: todos };
+          return {
+            participanteId, leadId: inc.id, nome,
+            classificacao: participante?.classificacao ?? null,
+            telefone: inc.telefone,
+            observacao: participante?.observacao ?? null,
+            observacaoPorNome: participante?.observacaoPorNome ?? null,
+            observacaoEm: participante?.observacaoEm ?? null,
+            events: todos,
+          };
         }),
       );
     }
@@ -4126,16 +4138,22 @@ const aiAssistanceLabel =
     });
   }
 
-  async updateParticipante(tenantId: string, leadId: string, partId: string, data: Record<string, any>) {
+  async updateParticipante(tenantId: string, leadId: string, partId: string, data: Record<string, any>, actorNome?: string) {
     await this.assertLeadAccess(tenantId, leadId);
     // CPF: bloqueia salvar valor inválido (vazio/null é permitido)
     if (data.cpf !== undefined && data.cpf !== null && String(data.cpf).trim() !== '' && !isValidCPF(data.cpf)) {
       throw new BadRequestException('CPF inválido');
     }
-    const allowed = ['nome', 'classificacao', 'cpf', 'rg', 'dataNascimento', 'estadoCivil', 'naturalidade', 'profissao', 'empresa', 'renda', 'telefone', 'email', 'endereco', 'cep', 'cidade', 'uf', 'sortOrder'];
+    const allowed = ['nome', 'classificacao', 'cpf', 'rg', 'dataNascimento', 'estadoCivil', 'naturalidade', 'profissao', 'empresa', 'renda', 'telefone', 'email', 'endereco', 'cep', 'cidade', 'uf', 'sortOrder', 'observacao'];
     const updateData: any = {};
     for (const f of allowed) {
       if (data[f] !== undefined) updateData[f] = data[f];
+    }
+    if (data.observacao !== undefined) {
+      const texto = typeof data.observacao === 'string' ? data.observacao.trim() : null;
+      updateData.observacao = texto || null;
+      updateData.observacaoPorNome = texto ? (actorNome ?? null) : null;
+      updateData.observacaoEm = texto ? new Date() : null;
     }
     // renda é Float no banco — o front envia string (input type="number")
     if (data.renda !== undefined) {

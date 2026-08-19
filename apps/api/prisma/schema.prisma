@@ -1238,6 +1238,9 @@ model LeadParticipante {
   atualizadoEm   DateTime  @updatedAt
   cadastroOrigem Json?
   sortOrder      Int       @default(0)
+  observacao        String?
+  observacaoPorNome String?
+  observacaoEm      DateTime?
   lead           Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
   tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events         LeadEvent[]    @relation("LeadParticipanteEvents")
