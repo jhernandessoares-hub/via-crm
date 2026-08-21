@@ -263,6 +263,25 @@ export class LeadsController {
     );
   }
 
+  @Post(':id/desagrupar-chat')
+  async desagruparChat(
+    @Req() req: any,
+    @Param('id') parentLeadId: string,
+    @Body() body: { participanteId: string; childLeadId: string },
+  ) {
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para desagrupar chats');
+    if (!body?.participanteId || !body?.childLeadId) {
+      throw new BadRequestException('participanteId e childLeadId são obrigatórios');
+    }
+    return this.leadsService.desagruparChat(
+      req.user.tenantId,
+      parentLeadId,
+      body.participanteId,
+      body.childLeadId,
+      { id: req.user.sub, nome: req.user.nome },
+    );
+  }
+
   @Post(':id/merge')
   async mergeLeads(
     @Req() req: any,

@@ -2343,7 +2343,7 @@ async getById(user: any, id: string) {
     let subConversas: Array<{
       participanteId: string | null; leadId: string; nome: string; classificacao: string | null;
       telefone: string | null; observacao: string | null; observacaoPorNome: string | null;
-      observacaoEm: Date | null; events: any[];
+      observacaoEm: Date | null; desagrupado: boolean; desagrupadoEm: Date | null; events: any[];
     }> = [];
     if (incorporados.length > 0) {
       const participantes = await (this.prisma as any).leadParticipante.findMany({
@@ -2384,10 +2384,51 @@ async getById(user: any, id: string) {
             observacao: participante?.observacao ?? null,
             observacaoPorNome: participante?.observacaoPorNome ?? null,
             observacaoEm: participante?.observacaoEm ?? null,
+            desagrupado: false,
+            desagrupadoEm: null,
             events: todos,
           };
         }),
       );
+    }
+
+    // Abas cinzas (histórico congelado): leads que já foram incorporados aqui e depois
+    // desagrupados. Reconstruído a partir do próprio evento de sistema (payloadRaw),
+    // sem precisar de coluna nova — o registro do LeadParticipante já foi removido.
+    const incorporadosIds = new Set(incorporados.map((inc) => inc.id));
+    const desagrupamentos = ordered.filter(
+      (ev) => ev.channel === 'system' && (ev.payloadRaw as any)?.type === 'chat_desagrupado',
+    );
+    if (desagrupamentos.length > 0) {
+      const desagrupadas = await Promise.all(
+        desagrupamentos
+          .filter((ev) => {
+            const childLeadId = (ev.payloadRaw as any)?.childLeadId;
+            return childLeadId && !incorporadosIds.has(childLeadId);
+          })
+          .map(async (ev) => {
+            const p = ev.payloadRaw as any;
+            const childLeadId = p.childLeadId as string;
+            const historico = await this.prisma.leadEvent.findMany({
+              where: { leadId: childLeadId, tenantId: user.tenantId, criadoEm: { lte: ev.criadoEm } },
+              orderBy: { criadoEm: 'asc' },
+            });
+            return {
+              participanteId: null,
+              leadId: childLeadId,
+              nome: p.childNome as string,
+              classificacao: null,
+              telefone: null,
+              observacao: null,
+              observacaoPorNome: null,
+              observacaoEm: null,
+              desagrupado: true,
+              desagrupadoEm: ev.criadoEm,
+              events: historico,
+            };
+          }),
+      );
+      subConversas = [...subConversas, ...desagrupadas];
     }
 
     return { value: ordered, count: ordered.length, subConversas };
@@ -4766,6 +4807,97 @@ const aiAssistanceLabel =
 
     this.logger.log(`Chat incorporado: source=${sourceLeadId} → dest=${destLeadId} participante=${participante.id}`);
     return { ok: true, participanteId: participante.id, destLeadId, sourceLeadId };
+  }
+
+  async desagruparChat(
+    tenantId: string,
+    parentLeadId: string,
+    participanteId: string,
+    childLeadId: string,
+    actor?: { id: string; nome: string },
+  ) {
+    const [participante, childLead, parentLead] = await Promise.all([
+      (this.prisma as any).leadParticipante.findFirst({
+        where: { id: participanteId, leadId: parentLeadId, tenantId },
+      }),
+      this.prisma.lead.findFirst({
+        where: { id: childLeadId, tenantId, deletedAt: null },
+        select: { id: true, nome: true, nomeCorreto: true, incorporadoEmLeadId: true },
+      }),
+      this.prisma.lead.findFirst({
+        where: { id: parentLeadId, tenantId },
+        select: { nome: true, nomeCorreto: true },
+      }),
+    ]);
+
+    if (!participante) throw new NotFoundException('Participante não encontrado neste lead');
+    if (!childLead) throw new NotFoundException('Lead a desagrupar não encontrado');
+    if (childLead.incorporadoEmLeadId !== parentLeadId) {
+      throw new BadRequestException('Este lead não está agrupado aqui');
+    }
+
+    const childNome = childLead.nomeCorreto ?? childLead.nome;
+    const parentNome = parentLead?.nomeCorreto ?? parentLead?.nome ?? '';
+
+    await this.prisma.$transaction(async (tx: any) => {
+      // Mensagens recebidas enquanto estava agrupado voltam a pertencer ao lead que
+      // fica independente de novo — ele "carrega" o histórico completo (antigo + novo).
+      await tx.leadEvent.updateMany({
+        where: { leadId: parentLeadId, tenantId, leadParticipanteId: participanteId },
+        data: { leadId: childLeadId, leadParticipanteId: null },
+      });
+
+      await tx.lead.update({
+        where: { id: childLeadId },
+        data: { incorporadoEmLeadId: null },
+      });
+
+      // O participante deixa de existir (era só o vínculo da incorporação); a FK em
+      // LeadEvent/LeadDocument é onDelete:SetNull, então nada fica orfão.
+      await tx.leadParticipante.delete({ where: { id: participanteId } });
+
+      await tx.leadEvent.create({
+        data: {
+          tenantId,
+          leadId: parentLeadId,
+          channel: 'system',
+          isReentry: false,
+          payloadRaw: {
+            type: 'chat_desagrupado',
+            childLeadId,
+            childNome,
+            actor: actor?.nome ?? 'sistema',
+          },
+        },
+      });
+
+      await tx.leadEvent.create({
+        data: {
+          tenantId,
+          leadId: childLeadId,
+          channel: 'system',
+          isReentry: false,
+          payloadRaw: {
+            type: 'chat_desagrupado_origem',
+            parentLeadId,
+            parentNome,
+            actor: actor?.nome ?? 'sistema',
+          },
+        },
+      });
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actor?.id,
+      action: 'CHAT_DESAGRUPADO',
+      resourceType: 'Lead',
+      resourceId: parentLeadId,
+      metadata: { childLeadId, participanteId, actor: actor?.nome },
+    });
+
+    this.logger.log(`Chat desagrupado: parent=${parentLeadId} child=${childLeadId} participante=${participanteId}`);
+    return { ok: true, childLeadId };
   }
 
   async mergeLeads(

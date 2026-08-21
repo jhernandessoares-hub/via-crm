@@ -20,7 +20,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
-import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search, Users, StickyNote, Pencil } from "lucide-react";
+import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search, Users, StickyNote, Pencil, Unlink, Lock } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -182,6 +182,8 @@ type SubConversa = {
   observacao: string | null;
   observacaoPorNome: string | null;
   observacaoEm: string | null;
+  desagrupado: boolean;
+  desagrupadoEm: string | null;
   events: LeadEvent[];
 };
 
@@ -2240,6 +2242,7 @@ export default function LeadDetailChatPage() {
   const [editandoObservacao, setEditandoObservacao] = useState(false);
   const [observacaoDraft, setObservacaoDraft] = useState("");
   const [savingObservacao, setSavingObservacao] = useState(false);
+  const [desagrupandoLeadId, setDesagrupandoLeadId] = useState<string | null>(null);
   const [loadingLead, setLoadingLead] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -3272,6 +3275,27 @@ function discardAiSuggestion() {
     }
   }
 
+  async function desagruparAba(sc: SubConversa) {
+    if (!sc.participanteId) return;
+    const ok = window.confirm(
+      `Desagrupar "${sc.nome}" deste lead? Ele volta a ser um lead independente com todo o histórico, e para de receber mensagens novas por aqui.`
+    );
+    if (!ok) return;
+    setDesagrupandoLeadId(sc.leadId);
+    try {
+      await apiFetch(`/leads/${id}/desagrupar-chat`, {
+        method: "POST",
+        body: JSON.stringify({ participanteId: sc.participanteId, childLeadId: sc.leadId }),
+      });
+      if (abaAtiva === sc.leadId) setAbaAtiva(null);
+      await loadEvents({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || "Erro ao desagrupar chat.");
+    } finally {
+      setDesagrupandoLeadId(null);
+    }
+  }
+
   async function handleAddDocument() {
     if (!lead || !newDocNome.trim()) return;
     setSavingDoc(true);
@@ -3755,6 +3779,11 @@ function discardAiSuggestion() {
     async function sendProvidedText(message: string) {
     const msg = String(message || "").trim();
     if (!msg) return;
+
+    if (abaAtiva && activeSubConversa?.desagrupado) {
+      alert("Este chat foi desagrupado — é só histórico, não é possível enviar mensagens por aqui.");
+      return;
+    }
 
     if (abaAtiva && !activeSubConversa?.participanteId) {
       alert("Não foi possível identificar o telefone deste participante. Envio bloqueado.");
@@ -6519,31 +6548,63 @@ function discardAiSuggestion() {
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                    ) : (
+                    ) : sc.desagrupado ? (
                       <button
                         key={sc.leadId}
                         type="button"
                         onClick={() => setAbaAtiva(sc.leadId)}
-                        onDoubleClick={() => {
-                          if (!sc.participanteId) return;
-                          setEditAbaNome(sc.nome);
-                          setEditAbaClassificacao(sc.classificacao ?? "");
-                          setEditandoAbaLeadId(sc.leadId);
-                        }}
-                        title="Duplo clique para editar o nome"
-                        className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                        title="Chat desagrupado — histórico apenas"
+                        className="shrink-0 flex items-center gap-1 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors opacity-50"
                         style={{
-                          borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
-                          color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                          borderColor: abaAtiva === sc.leadId ? "var(--shell-subtext)" : "transparent",
+                          color: "var(--shell-subtext)",
                         }}
                       >
+                        <Lock className="w-3 h-3 shrink-0" />
                         {sc.nome}
-                        {sc.classificacao ? <span style={{ color: "var(--shell-subtext)" }}>{" · " + sc.classificacao}</span> : null}
                       </button>
+                    ) : (
+                      <div key={sc.leadId} className="shrink-0 flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => setAbaAtiva(sc.leadId)}
+                          onDoubleClick={() => {
+                            if (!sc.participanteId) return;
+                            setEditAbaNome(sc.nome);
+                            setEditAbaClassificacao(sc.classificacao ?? "");
+                            setEditandoAbaLeadId(sc.leadId);
+                          }}
+                          title="Duplo clique para editar o nome"
+                          className="rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                          style={{
+                            borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
+                            color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                          }}
+                        >
+                          {sc.nome}
+                          {sc.classificacao ? <span style={{ color: "var(--shell-subtext)" }}>{" · " + sc.classificacao}</span> : null}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={desagrupandoLeadId === sc.leadId}
+                          onClick={() => desagruparAba(sc)}
+                          title="Desagrupar esta conversa"
+                          className="px-1 py-1.5 hover:opacity-100 opacity-40 transition-opacity"
+                          style={{ color: "var(--shell-subtext)" }}
+                        >
+                          <Unlink className="w-3 h-3" />
+                        </button>
+                      </div>
                     )
                   )}
                 </div>
-                {activeSubConversa && (
+                {activeSubConversa?.desagrupado && (
+                  <div className="flex items-center gap-2 px-3 py-2 border-b text-xs" style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)" }}>
+                    <Lock className="w-3.5 h-3.5 shrink-0" />
+                    Este chat foi desagrupado deste lead — histórico apenas, não recebe mensagens novas por aqui.
+                  </div>
+                )}
+                {activeSubConversa && !activeSubConversa.desagrupado && (
                   editandoObservacao ? (
                     <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)" }}>
                       <StickyNote className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--shell-subtext)" }} />
@@ -6618,6 +6679,30 @@ function discardAiSuggestion() {
                           style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
                         >
                           {"💬 Chat de " + (p.sourceNome || "outro lead") + " incorporado por " + (p.actor || "sistema")}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (ev.channel === "system" && p?.type === "chat_desagrupado") {
+                    return (
+                      <div key={ev.id} className="flex justify-center">
+                        <span
+                          className="rounded-full px-3 py-1 text-[11px] text-center"
+                          style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                        >
+                          {"🔓 Chat de " + (p.childNome || "outro lead") + " foi desagrupado deste lead por " + (p.actor || "sistema")}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (ev.channel === "system" && p?.type === "chat_desagrupado_origem") {
+                    return (
+                      <div key={ev.id} className="flex justify-center">
+                        <span
+                          className="rounded-full px-3 py-1 text-[11px] text-center"
+                          style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                        >
+                          {"🔓 Este lead foi desagrupado de " + (p.parentNome || "outro lead") + " por " + (p.actor || "sistema") + " e voltou a ser independente"}
                         </span>
                       </div>
                     );
