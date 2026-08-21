@@ -4608,6 +4608,20 @@ const aiAssistanceLabel =
     const userById: Record<string, string> = {};
     for (const u of users) userById[u.id] = u.nome;
 
+    const leadIds = leads.map((l) => l.id);
+    const incorporadosCounts = leadIds.length > 0
+      ? await this.prisma.lead.groupBy({
+          by: ['incorporadoEmLeadId'],
+          where: { incorporadoEmLeadId: { in: leadIds }, tenantId, deletedAt: null },
+          _count: { id: true },
+        })
+      : [];
+    const subCountMap = new Map(
+      incorporadosCounts
+        .filter((c) => c.incorporadoEmLeadId)
+        .map((c) => [c.incorporadoEmLeadId as string, c._count.id]),
+    );
+
     const fv = await this.getPartnerFieldVisibility(tenantId, role);
     const show = (k: string) => !fv || fv[k] !== false;
 
@@ -4621,6 +4635,7 @@ const aiAssistanceLabel =
       criadoEm: show('lead.dataCriacao') ? l.criadoEm : null,
       source: show('lead.origem') ? l.origem : null,
       numero: l.numero,
+      subConversasCount: subCountMap.get(l.id) ?? 0,
       stage: l.stage ? { nome: l.stage.name } : null,
       assignedUser:
         show('lead.responsavel') && l.assignedUserId
@@ -4685,6 +4700,17 @@ const aiAssistanceLabel =
     if (isClosedStage(source.stage) || isClosedStage(dest.stage)) {
       throw new BadRequestException(
         'Não é possível incorporar chat de/para um lead em etapa fechada (Base Fria, Entrega de Contrato Registrado ou Pós Venda)',
+      );
+    }
+
+    // Limite de 5 conversas agrupadas por lead (o lead em si + até 4 incorporadas)
+    const MAX_CONVERSAS_POR_LEAD = 5;
+    const destSubCount = await this.prisma.lead.count({
+      where: { incorporadoEmLeadId: destLeadId, tenantId, deletedAt: null },
+    });
+    if (destSubCount + 2 > MAX_CONVERSAS_POR_LEAD) {
+      throw new BadRequestException(
+        `Este lead já atingiu o limite de ${MAX_CONVERSAS_POR_LEAD} conversas agrupadas`,
       );
     }
 

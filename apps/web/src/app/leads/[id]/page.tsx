@@ -2050,16 +2050,20 @@ function DevMediaModal({
 
 // ── Modal: Incorporar Chat ────────────────────────────────────────────────────
 
-type LeadSearchResult = { id: string; nome: string; telefone: string | null };
+type LeadSearchResult = { id: string; nome: string; telefone: string | null; subConversasCount?: number };
+
+const MAX_CONVERSAS_POR_LEAD = 5;
 
 function IncorporarChatModal({
   leadAtual,
   nomeAtual,
+  subConversasCountAtual,
   onClose,
   onSuccess,
 }: {
   leadAtual: string;
   nomeAtual: string;
+  subConversasCountAtual: number;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -2105,6 +2109,11 @@ function IncorporarChatModal({
 
   const nomeSource = direcao === "selecionado_no_atual" ? selecionado?.nome : nomeAtual;
   const nomeDest   = direcao === "selecionado_no_atual" ? nomeAtual         : selecionado?.nome;
+
+  // Limite de conversas agrupadas: dest = lead que vira o "hub" das abas
+  const destSubCountAtual = direcao === "selecionado_no_atual" ? subConversasCountAtual : (selecionado?.subConversasCount ?? 0);
+  const totalAposIncorporar = destSubCountAtual + 2; // dest em si + sub-conversas existentes + a nova
+  const excedeuLimite = totalAposIncorporar > MAX_CONVERSAS_POR_LEAD;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.65)" }}>
@@ -2177,6 +2186,21 @@ function IncorporarChatModal({
               <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
               Chat de <strong style={{ color: "var(--shell-text)", margin: "0 4px" }}>{nomeSource}</strong> ficará dentro de <strong style={{ color: "var(--shell-text)", margin: "0 4px" }}>{nomeDest}</strong>
             </div>
+
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+              style={
+                excedeuLimite
+                  ? { background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }
+                  : totalAposIncorporar === MAX_CONVERSAS_POR_LEAD
+                    ? { background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" }
+                    : { background: "var(--shell-bg)", border: "1px solid var(--shell-card-border)", color: "var(--shell-subtext)" }
+              }
+            >
+              {excedeuLimite
+                ? `Limite de ${MAX_CONVERSAS_POR_LEAD} conversas por lead atingido — não é possível incorporar mais uma.`
+                : `Após incorporar, ${nomeDest} ficará com ${totalAposIncorporar}/${MAX_CONVERSAS_POR_LEAD} conversas agrupadas.`}
+            </div>
           </div>
         )}
 
@@ -2184,7 +2208,7 @@ function IncorporarChatModal({
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm font-medium border" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)", background: "var(--shell-bg)" }}>Cancelar</button>
-          <button onClick={confirmar} disabled={!selecionado || salvando} className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+          <button onClick={confirmar} disabled={!selecionado || salvando || excedeuLimite} className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ background: "var(--brand-accent)", color: "#fff" }}>
             {salvando ? "Incorporando..." : "Confirmar"}
           </button>
         </div>
@@ -7845,6 +7869,7 @@ function discardAiSuggestion() {
       <IncorporarChatModal
         leadAtual={String(id ?? "")}
         nomeAtual={lead.nomeCorreto ?? lead.nome ?? ""}
+        subConversasCountAtual={subConversas.length}
         onClose={() => setShowIncorporar(false)}
         onSuccess={() => loadAll()}
       />,
