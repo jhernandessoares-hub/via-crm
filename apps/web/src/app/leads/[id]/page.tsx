@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { createPortal } from "react-dom";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
 import { PendenciasModal, type PendenciaDraft, type PendenciaPessoa } from "@/components/PendenciasModal";
@@ -19,7 +20,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
-import { Check, CheckCheck, Send } from "lucide-react";
+import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search, Users, StickyNote, Pencil, Unlink, Lock } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -170,6 +171,20 @@ type LeadEvent = {
   channel?: string;
   criadoEm?: string;
   payloadRaw?: any;
+};
+
+type SubConversa = {
+  participanteId: string | null;
+  leadId: string;
+  nome: string;
+  classificacao: string | null;
+  telefone: string | null;
+  observacao: string | null;
+  observacaoPorNome: string | null;
+  observacaoEm: string | null;
+  desagrupado: boolean;
+  desagrupadoEm: string | null;
+  events: LeadEvent[];
 };
 
 type LeadCalendarEvent = {
@@ -2035,6 +2050,175 @@ function DevMediaModal({
   );
 }
 
+// ── Modal: Incorporar Chat ────────────────────────────────────────────────────
+
+type LeadSearchResult = { id: string; nome: string; telefone: string | null; subConversasCount?: number };
+
+const MAX_CONVERSAS_POR_LEAD = 5;
+
+function IncorporarChatModal({
+  leadAtual,
+  nomeAtual,
+  subConversasCountAtual,
+  onClose,
+  onSuccess,
+}: {
+  leadAtual: string;
+  nomeAtual: string;
+  subConversasCountAtual: number;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [resultados, setResultados] = useState<LeadSearchResult[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [selecionado, setSelecionado] = useState<LeadSearchResult | null>(null);
+  const [direcao, setDirecao] = useState<"selecionado_no_atual" | "atual_no_selecionado">("selecionado_no_atual");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!busca.trim()) { setResultados([]); return; }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const data = await apiFetch(`/leads/search?q=${encodeURIComponent(busca)}`);
+        setResultados((data ?? []).filter((r: LeadSearchResult) => r.id !== leadAtual));
+      } catch { setResultados([]); }
+      finally { setBuscando(false); }
+    }, 350);
+  }, [busca, leadAtual]);
+
+  async function confirmar() {
+    if (!selecionado) return;
+    setSalvando(true);
+    setErro(null);
+    const sourceId = direcao === "selecionado_no_atual" ? selecionado.id : leadAtual;
+    const destId   = direcao === "selecionado_no_atual" ? leadAtual       : selecionado.id;
+    try {
+      await apiFetch(`/leads/${sourceId}/incorporar-chat`, {
+        method: "POST",
+        body: JSON.stringify({ destLeadId: destId }),
+      });
+      onSuccess();
+      onClose();
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao incorporar chat");
+    } finally { setSalvando(false); }
+  }
+
+  const nomeSource = direcao === "selecionado_no_atual" ? selecionado?.nome : nomeAtual;
+  const nomeDest   = direcao === "selecionado_no_atual" ? nomeAtual         : selecionado?.nome;
+
+  // Limite de conversas agrupadas: dest = lead que vira o "hub" das abas
+  const destSubCountAtual = direcao === "selecionado_no_atual" ? subConversasCountAtual : (selecionado?.subConversasCount ?? 0);
+  const totalAposIncorporar = destSubCountAtual + 2; // dest em si + sub-conversas existentes + a nova
+  const excedeuLimite = totalAposIncorporar > MAX_CONVERSAS_POR_LEAD;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.65)" }}>
+      <div className="w-full max-w-md rounded-2xl shadow-2xl p-6 flex flex-col gap-4" style={{ background: "var(--shell-card-bg)", border: "1px solid var(--shell-card-border)" }}>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-base" style={{ color: "var(--shell-text)" }}>Incorporar Chat</h2>
+          <button onClick={onClose} style={{ color: "var(--shell-subtext)" }}><X className="w-4 h-4" /></button>
+        </div>
+        <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>
+          Busque o lead cujo chat deseja unir a este. O lead incorporado some da lista e aparece como aba dentro do lead destino.
+        </p>
+
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--shell-subtext)" }} />
+          <input
+            value={busca}
+            onChange={(e) => { setBusca(e.target.value); setSelecionado(null); }}
+            placeholder="Nome, telefone ou CPF..."
+            className="w-full pl-9 pr-3 py-2 rounded-lg text-sm border outline-none"
+            style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-bg)", color: "var(--shell-text)" }}
+          />
+          {buscando && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "var(--shell-subtext)" }}>Buscando...</span>}
+        </div>
+
+        {resultados.length > 0 && !selecionado && (
+          <div className="rounded-lg border overflow-hidden max-h-48 overflow-y-auto" style={{ borderColor: "var(--shell-card-border)" }}>
+            {resultados.map((r) => (
+              <button key={r.id} onClick={() => setSelecionado(r)}
+                className="w-full text-left px-3 py-2.5 flex items-center gap-2 border-b last:border-0 hover:opacity-80"
+                style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+                  {r.nome.split(" ").slice(0,2).map((p: string) => p[0]?.toUpperCase()).join("")}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--shell-text)" }}>{r.nome}</p>
+                  {r.telefone && <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>{r.telefone}</p>}
+                </div>
+                <ChevronRight className="w-4 h-4 ml-auto shrink-0" style={{ color: "var(--shell-subtext)" }} />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selecionado && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "var(--brand-accent-muted)", border: "1px solid var(--brand-accent)" }}>
+              <span className="text-sm font-medium flex-1" style={{ color: "var(--shell-text)" }}>{selecionado.nome}</span>
+              <button onClick={() => setSelecionado(null)} style={{ color: "var(--shell-subtext)" }}><X className="w-3.5 h-3.5" /></button>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>Quem entra como aba?</p>
+              {(["selecionado_no_atual", "atual_no_selecionado"] as const).map((d) => {
+                const source = d === "selecionado_no_atual" ? selecionado.nome : nomeAtual;
+                const dest   = d === "selecionado_no_atual" ? nomeAtual        : selecionado.nome;
+                return (
+                  <button key={d} onClick={() => setDirecao(d)}
+                    className="w-full text-left px-3 py-2 rounded-lg border text-sm flex items-center gap-2"
+                    style={{ borderColor: direcao === d ? "var(--brand-accent)" : "var(--shell-card-border)", background: direcao === d ? "var(--brand-accent-muted)" : "var(--shell-bg)", color: "var(--shell-text)" }}
+                  >
+                    <span className="w-4 h-4 rounded-full border-2 shrink-0" style={{ borderColor: direcao === d ? "var(--brand-accent)" : "var(--shell-subtext)", background: direcao === d ? "var(--brand-accent)" : "transparent" }} />
+                    <strong>{source}</strong> entra como aba em <strong>{dest}</strong>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: "var(--shell-bg)", border: "1px solid var(--shell-card-border)", color: "var(--shell-subtext)" }}>
+              <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+              Chat de <strong style={{ color: "var(--shell-text)", margin: "0 4px" }}>{nomeSource}</strong> ficará dentro de <strong style={{ color: "var(--shell-text)", margin: "0 4px" }}>{nomeDest}</strong>
+            </div>
+
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+              style={
+                excedeuLimite
+                  ? { background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }
+                  : totalAposIncorporar === MAX_CONVERSAS_POR_LEAD
+                    ? { background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" }
+                    : { background: "var(--shell-bg)", border: "1px solid var(--shell-card-border)", color: "var(--shell-subtext)" }
+              }
+            >
+              {excedeuLimite
+                ? `Limite de ${MAX_CONVERSAS_POR_LEAD} conversas por lead atingido — não é possível incorporar mais uma.`
+                : `Após incorporar, ${nomeDest} ficará com ${totalAposIncorporar}/${MAX_CONVERSAS_POR_LEAD} conversas agrupadas.`}
+            </div>
+          </div>
+        )}
+
+        {erro && <p className="text-xs px-3 py-2 rounded-lg" style={{ background: "#fef2f2", color: "#dc2626" }}>{erro}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm font-medium border" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)", background: "var(--shell-bg)" }}>Cancelar</button>
+          <button onClick={confirmar} disabled={!selecionado || salvando || excedeuLimite} className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ background: "var(--brand-accent)", color: "#fff" }}>
+            {salvando ? "Incorporando..." : "Confirmar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function LeadDetailChatPage() {
@@ -2049,6 +2233,16 @@ export default function LeadDetailChatPage() {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [events, setEvents] = useState<LeadEvent[]>([]);
+  const [subConversas, setSubConversas] = useState<SubConversa[]>([]);
+  const [abaAtiva, setAbaAtiva] = useState<string | null>(null);
+  const [editandoAbaLeadId, setEditandoAbaLeadId] = useState<string | null>(null);
+  const [editAbaNome, setEditAbaNome] = useState("");
+  const [editAbaClassificacao, setEditAbaClassificacao] = useState("");
+  const [savingAbaNome, setSavingAbaNome] = useState(false);
+  const [editandoObservacao, setEditandoObservacao] = useState(false);
+  const [observacaoDraft, setObservacaoDraft] = useState("");
+  const [savingObservacao, setSavingObservacao] = useState(false);
+  const [desagrupandoLeadId, setDesagrupandoLeadId] = useState<string | null>(null);
   const [loadingLead, setLoadingLead] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -2143,6 +2337,7 @@ export default function LeadDetailChatPage() {
   };
 
   const [debugOn, setDebugOn] = useState(false);
+  const [showIncorporar, setShowIncorporar] = useState(false);
   const [pollCount, setPollCount] = useState(0);
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null);
   const [lastPollError, setLastPollError] = useState<string | null>(null);
@@ -2491,6 +2686,7 @@ export default function LeadDetailChatPage() {
     setLastEventsShape(shape);
     setLastEventsRaw(ev);
     setEvents((prev) => mergeEventsById(prev, Array.isArray(list) ? list : []));
+    setSubConversas(Array.isArray(ev?.subConversas) ? ev.subConversas : []);
     setLastFetchAt(new Date().toISOString());
 
     if (!opts?.silent) setLoadingEvents(false);
@@ -3043,6 +3239,63 @@ function discardAiSuggestion() {
     }
   }
 
+  async function saveAbaNome(sc: SubConversa) {
+    if (!lead || !sc.participanteId) return;
+    setSavingAbaNome(true);
+    try {
+      await apiFetch(`/leads/${lead.id}/participantes/${sc.participanteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          nome: editAbaNome.trim() || sc.nome,
+          classificacao: editAbaClassificacao.trim() || null,
+        }),
+      });
+      setEditandoAbaLeadId(null);
+      await loadEvents({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || "Erro ao salvar nome do participante.");
+    } finally {
+      setSavingAbaNome(false);
+    }
+  }
+
+  async function saveObservacaoAba(participanteId: string) {
+    setSavingObservacao(true);
+    try {
+      await apiFetch(`/leads/${id}/participantes/${participanteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ observacao: observacaoDraft.trim() || null }),
+      });
+      setEditandoObservacao(false);
+      await loadEvents({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || "Erro ao salvar observação.");
+    } finally {
+      setSavingObservacao(false);
+    }
+  }
+
+  async function desagruparAba(sc: SubConversa) {
+    if (!sc.participanteId) return;
+    const ok = window.confirm(
+      `Desagrupar "${sc.nome}" deste lead? Ele volta a ser um lead independente com todo o histórico, e para de receber mensagens novas por aqui.`
+    );
+    if (!ok) return;
+    setDesagrupandoLeadId(sc.leadId);
+    try {
+      await apiFetch(`/leads/${id}/desagrupar-chat`, {
+        method: "POST",
+        body: JSON.stringify({ participanteId: sc.participanteId, childLeadId: sc.leadId }),
+      });
+      if (abaAtiva === sc.leadId) setAbaAtiva(null);
+      await loadEvents({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || "Erro ao desagrupar chat.");
+    } finally {
+      setDesagrupandoLeadId(null);
+    }
+  }
+
   async function handleAddDocument() {
     if (!lead || !newDocNome.trim()) return;
     setSavingDoc(true);
@@ -3251,11 +3504,21 @@ function discardAiSuggestion() {
     insertIntoChat(url);
   }
 
+  const activeSubConversa = useMemo(
+    () => (abaAtiva ? subConversas.find((s) => s.leadId === abaAtiva) ?? null : null),
+    [abaAtiva, subConversas]
+  );
+
+  const activeEvents = useMemo(() => {
+    if (!activeSubConversa) return orderedEvents;
+    return [...activeSubConversa.events].sort((a, b) => getEventSortTime(a) - getEventSortTime(b));
+  }, [activeSubConversa, orderedEvents]);
+
   const viewEvents = useMemo(() => {
     const reactionsMap: Record<string, string[]> = {};
     const normal: LeadEvent[] = [];
 
-    for (const ev of orderedEvents) {
+    for (const ev of activeEvents) {
       const r = extractReaction(ev);
       if (r) {
         if (!reactionsMap[r.targetMessageId]) reactionsMap[r.targetMessageId] = [];
@@ -3279,7 +3542,7 @@ function discardAiSuggestion() {
       const reactions = msgId ? reactionsMap[msgId] || [] : [];
       return { ev, reactions };
     });
-  }, [orderedEvents]);
+  }, [activeEvents]);
 
   const lastVisibleEvent = useMemo(() => {
     if (!orderedEvents.length) return null;
@@ -3517,6 +3780,16 @@ function discardAiSuggestion() {
     const msg = String(message || "").trim();
     if (!msg) return;
 
+    if (abaAtiva && activeSubConversa?.desagrupado) {
+      alert("Este chat foi desagrupado — é só histórico, não é possível enviar mensagens por aqui.");
+      return;
+    }
+
+    if (abaAtiva && !activeSubConversa?.participanteId) {
+      alert("Não foi possível identificar o telefone deste participante. Envio bloqueado.");
+      return;
+    }
+
     if (!lead?.conversaCanal) {
       if (!selectedCanalOut) {
         alert("Defina o canal de saída antes de enviar.");
@@ -3562,6 +3835,7 @@ function discardAiSuggestion() {
           aiAssistancePercent: finalPercent,
           aiAssistanceLabel: finalLabel,
           ...((!lead?.conversaCanal && selectedCanalOut?.type === "light") ? { sessionId: selectedCanalOut.sessionId } : {}),
+          ...(activeSubConversa?.participanteId ? { participanteId: activeSubConversa.participanteId } : {}),
         }),
       });
       setText("");
@@ -3800,6 +4074,7 @@ function discardAiSuggestion() {
   }, [text]);
 
   return (
+    <>
     <AppShell title="Lead">
       <div className="h-full flex flex-col overflow-hidden">
 
@@ -4509,6 +4784,17 @@ function discardAiSuggestion() {
                   disabled={loadingLead || loadingEvents}
                 >
                   Atualizar
+                </button>
+              )}
+
+              {leadInfoOpen && user?.role !== "PARTNER" && lead && (
+                <button
+                  className="mt-2 w-full rounded-md border bg-[var(--shell-card-bg)] px-3 py-2 text-sm hover:bg-[var(--shell-bg)] flex items-center justify-center gap-1.5"
+                  style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}
+                  onClick={() => setShowIncorporar(true)}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Incorporar chat
                 </button>
               )}
 
@@ -6215,6 +6501,162 @@ function discardAiSuggestion() {
               </div>
             </div>
 
+            {subConversas.length > 0 && (
+              <>
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium"
+                  style={{ background: "var(--brand-accent-muted)", color: "var(--shell-text)" }}
+                >
+                  <Users className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--brand-accent)" }} />
+                  {`Este lead tem ${subConversas.length + 1} conversas — veja as abas abaixo`}
+                </div>
+                <div className="flex items-center gap-1 border-b bg-[var(--shell-bg)] px-3 pt-2 overflow-x-auto" style={{ borderColor: "var(--shell-card-border)" }}>
+                  <button
+                    type="button"
+                    onClick={() => setAbaAtiva(null)}
+                    className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                    style={{
+                      borderColor: abaAtiva === null ? "var(--brand-accent)" : "transparent",
+                      color: abaAtiva === null ? "var(--shell-text)" : "var(--shell-subtext)",
+                    }}
+                  >
+                    {lead?.nomeCorreto ?? lead?.nome ?? "Principal"}
+                  </button>
+                  {subConversas.map((sc) =>
+                    editandoAbaLeadId === sc.leadId ? (
+                      <div key={sc.leadId} className="shrink-0 flex items-center gap-1 px-1.5 py-1">
+                        <input
+                          autoFocus
+                          value={editAbaNome}
+                          onChange={(e) => setEditAbaNome(e.target.value)}
+                          placeholder="Nome"
+                          className="w-28 rounded border px-1.5 py-1 text-xs outline-none"
+                          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)", color: "var(--shell-text)" }}
+                        />
+                        <input
+                          value={editAbaClassificacao}
+                          onChange={(e) => setEditAbaClassificacao(e.target.value)}
+                          placeholder="Complemento (ex: Filha)"
+                          className="w-32 rounded border px-1.5 py-1 text-xs outline-none"
+                          style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)", color: "var(--shell-text)" }}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveAbaNome(sc); if (e.key === "Escape") setEditandoAbaLeadId(null); }}
+                        />
+                        <button type="button" disabled={savingAbaNome} onClick={() => saveAbaNome(sc)} style={{ color: "var(--brand-accent)" }}>
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" onClick={() => setEditandoAbaLeadId(null)} style={{ color: "var(--shell-subtext)" }}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : sc.desagrupado ? (
+                      <button
+                        key={sc.leadId}
+                        type="button"
+                        onClick={() => setAbaAtiva(sc.leadId)}
+                        title="Chat desagrupado — histórico apenas"
+                        className="shrink-0 flex items-center gap-1 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors opacity-50"
+                        style={{
+                          borderColor: abaAtiva === sc.leadId ? "var(--shell-subtext)" : "transparent",
+                          color: "var(--shell-subtext)",
+                        }}
+                      >
+                        <Lock className="w-3 h-3 shrink-0" />
+                        {sc.nome}
+                      </button>
+                    ) : (
+                      <div key={sc.leadId} className="shrink-0 flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => setAbaAtiva(sc.leadId)}
+                          onDoubleClick={() => {
+                            if (!sc.participanteId) return;
+                            setEditAbaNome(sc.nome);
+                            setEditAbaClassificacao(sc.classificacao ?? "");
+                            setEditandoAbaLeadId(sc.leadId);
+                          }}
+                          title="Duplo clique para editar o nome"
+                          className="rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                          style={{
+                            borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
+                            color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                          }}
+                        >
+                          {sc.nome}
+                          {sc.classificacao ? <span style={{ color: "var(--shell-subtext)" }}>{" · " + sc.classificacao}</span> : null}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={desagrupandoLeadId === sc.leadId}
+                          onClick={() => desagruparAba(sc)}
+                          title="Desagrupar esta conversa"
+                          className="px-1 py-1.5 hover:opacity-100 opacity-40 transition-opacity"
+                          style={{ color: "var(--shell-subtext)" }}
+                        >
+                          <Unlink className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+                {activeSubConversa?.desagrupado && (
+                  <div className="flex items-center gap-2 px-3 py-2 border-b text-xs" style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)" }}>
+                    <Lock className="w-3.5 h-3.5 shrink-0" />
+                    Este chat foi desagrupado deste lead — histórico apenas, não recebe mensagens novas por aqui.
+                  </div>
+                )}
+                {activeSubConversa && !activeSubConversa.desagrupado && (
+                  editandoObservacao ? (
+                    <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)" }}>
+                      <StickyNote className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--shell-subtext)" }} />
+                      <input
+                        autoFocus
+                        value={observacaoDraft}
+                        onChange={(e) => setObservacaoDraft(e.target.value)}
+                        placeholder="Escreva um comentário aqui"
+                        className="flex-1 rounded border px-2 py-1 text-xs outline-none"
+                        style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)", color: "var(--shell-text)" }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && observacaoDraft.trim() && activeSubConversa.participanteId) saveObservacaoAba(activeSubConversa.participanteId); if (e.key === "Escape") setEditandoObservacao(false); }}
+                      />
+                      <button type="button" disabled={savingObservacao || !observacaoDraft.trim() || !activeSubConversa.participanteId} onClick={() => activeSubConversa.participanteId && saveObservacaoAba(activeSubConversa.participanteId)} style={{ color: "var(--brand-accent)" }}>
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={() => setEditandoObservacao(false)} style={{ color: "var(--shell-subtext)" }}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : activeSubConversa.observacao ? (
+                    <div
+                      className="flex items-center gap-2 px-3 py-2 border-b text-xs cursor-pointer"
+                      style={{ background: "#FEF9E7", borderColor: "var(--shell-card-border)", color: "#7A5B00" }}
+                      onClick={() => { setObservacaoDraft(activeSubConversa.observacao ?? ""); setEditandoObservacao(true); }}
+                      title="Clique para editar a observação"
+                    >
+                      <StickyNote className="w-3.5 h-3.5 shrink-0" />
+                      <span className="flex-1">
+                        {activeSubConversa.observacao}
+                        {activeSubConversa.observacaoPorNome ? (
+                          <span style={{ opacity: 0.75 }}>
+                            {" — comentário " + activeSubConversa.observacaoPorNome + (activeSubConversa.observacaoEm ? " em " + formatDateOnly(activeSubConversa.observacaoEm) + " às " + new Date(activeSubConversa.observacaoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "")}
+                          </span>
+                        ) : null}
+                      </span>
+                      <Pencil className="w-3 h-3 shrink-0" />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setObservacaoDraft(""); setEditandoObservacao(true); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 border-b text-[11px]"
+                      style={{ background: "var(--shell-bg)", borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)" }}
+                    >
+                      <StickyNote className="w-3.5 h-3.5" />
+                      Adicionar observação sobre esta conversa
+                    </button>
+                  )
+                )}
+              </>
+            )}
+
             <div className="flex-1 overflow-auto p-4 space-y-5" style={{ background: "var(--chat-wallpaper)" }}>
               {(lead as any)?.conversaRestricted ? (
                 <div className="flex h-full items-center justify-center">
@@ -6227,9 +6669,46 @@ function discardAiSuggestion() {
               ) : viewEvents.length === 0 ? (
                 <div className="text-sm text-[var(--shell-subtext)]">Sem mensagens ainda.</div>
               ) : (
-                viewEvents.map(({ ev, reactions }) => (
-                  <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} debugOn={debugOn} />
-                ))
+                viewEvents.map(({ ev, reactions }) => {
+                  const p = ev.payloadRaw || {};
+                  if (ev.channel === "system" && p?.type === "chat_incorporated") {
+                    return (
+                      <div key={ev.id} className="flex justify-center">
+                        <span
+                          className="rounded-full px-3 py-1 text-[11px] text-center"
+                          style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                        >
+                          {"💬 Chat de " + (p.sourceNome || "outro lead") + " incorporado por " + (p.actor || "sistema")}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (ev.channel === "system" && p?.type === "chat_desagrupado") {
+                    return (
+                      <div key={ev.id} className="flex justify-center">
+                        <span
+                          className="rounded-full px-3 py-1 text-[11px] text-center"
+                          style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                        >
+                          {"🔓 Chat de " + (p.childNome || "outro lead") + " foi desagrupado deste lead por " + (p.actor || "sistema")}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (ev.channel === "system" && p?.type === "chat_desagrupado_origem") {
+                    return (
+                      <div key={ev.id} className="flex justify-center">
+                        <span
+                          className="rounded-full px-3 py-1 text-[11px] text-center"
+                          style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                        >
+                          {"🔓 Este lead foi desagrupado de " + (p.parentNome || "outro lead") + " por " + (p.actor || "sistema") + " e voltou a ser independente"}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} debugOn={debugOn} />;
+                })
               )}
               <div ref={bottomRef} />
             </div>
@@ -7470,5 +7949,17 @@ function discardAiSuggestion() {
         </div>
       )}
     </AppShell>
+
+    {showIncorporar && lead && typeof document !== "undefined" && createPortal(
+      <IncorporarChatModal
+        leadAtual={String(id ?? "")}
+        nomeAtual={lead.nomeCorreto ?? lead.nome ?? ""}
+        subConversasCountAtual={subConversas.length}
+        onClose={() => setShowIncorporar(false)}
+        onSuccess={() => loadAll()}
+      />,
+      document.body
+    )}
+    </>
   );
 }

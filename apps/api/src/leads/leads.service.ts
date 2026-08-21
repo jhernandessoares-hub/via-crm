@@ -1161,7 +1161,7 @@ export class LeadsService {
       extraFilter = { branchId };
     }
 
-    const baseWhere = { tenantId, ...extraFilter, deletedAt: null };
+    const baseWhere = { tenantId, ...extraFilter, deletedAt: null, incorporadoEmLeadId: null };
 
     // Total visível para este usuário
     const total = await this.prisma.lead.count({ where: baseWhere });
@@ -1978,7 +1978,7 @@ export class LeadsService {
     }
 
     const leads = await this.prisma.lead.findMany({
-      where: { tenantId, ...extraFilter, deletedAt: null },
+      where: { tenantId, ...extraFilter, deletedAt: null, incorporadoEmLeadId: null },
       orderBy: { criadoEm: 'desc' },
       include: {
         stage: { select: { id: true, name: true, key: true, group: true } },
@@ -2004,10 +2004,27 @@ export class LeadsService {
       : [];
     const assignedMap = Object.fromEntries(assignedUsers.map((u) => [u.id, u.apelido || u.nome]));
     const productTitleMap = await this.buildProductTitleMap(tenantId, leads.map((l) => l.produtoInteresseId));
+
+    // Contagem de sub-conversas incorporadas por lead — exibida como selo na listagem
+    const leadIds = leads.map((l) => l.id);
+    const incorporadosCounts = leadIds.length > 0
+      ? await this.prisma.lead.groupBy({
+          by: ['incorporadoEmLeadId'],
+          where: { incorporadoEmLeadId: { in: leadIds }, tenantId, deletedAt: null },
+          _count: { id: true },
+        })
+      : [];
+    const subCountMap = new Map(
+      incorporadosCounts
+        .filter((c) => c.incorporadoEmLeadId)
+        .map((c) => [c.incorporadoEmLeadId as string, c._count.id]),
+    );
+
     const enriched = leads.map((l) => ({
       ...l,
       assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
       interesse: buildLeadInteresseLabel(l as any, productTitleMap),
+      subConversasCount: subCountMap.get(l.id) ?? 0,
     }));
 
     // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
@@ -2308,13 +2325,113 @@ async getById(user: any, id: string) {
       where: {
         leadId: id,
         tenantId: user.tenantId,
+        leadParticipanteId: null,
       },
       orderBy: { criadoEm: 'desc' },
       take,
       skip,
     });
 
-    return events.reverse();
+    const ordered = events.reverse();
+
+    // Sub-conversas: leads incorporados neste (aparecem como abas na UI)
+    const incorporados = await this.prisma.lead.findMany({
+      where: { incorporadoEmLeadId: id, tenantId: user.tenantId, deletedAt: null },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true },
+    });
+
+    let subConversas: Array<{
+      participanteId: string | null; leadId: string; nome: string; classificacao: string | null;
+      telefone: string | null; observacao: string | null; observacaoPorNome: string | null;
+      observacaoEm: Date | null; desagrupado: boolean; desagrupadoEm: Date | null; events: any[];
+    }> = [];
+    if (incorporados.length > 0) {
+      const participantes = await (this.prisma as any).leadParticipante.findMany({
+        where: { leadId: id, tenantId: user.tenantId },
+        select: { id: true, nome: true, telefone: true, classificacao: true, observacao: true, observacaoPorNome: true, observacaoEm: true },
+      });
+
+      subConversas = await Promise.all(
+        incorporados.map(async (inc) => {
+          const digits = (inc.telefone || '').replace(/\D/g, '').slice(-9);
+          const participante = participantes.find(
+            (p: any) => p.telefone && p.telefone.replace(/\D/g, '').slice(-9) === digits,
+          );
+          const participanteId = participante?.id ?? null;
+          const nome = participante?.nome ?? inc.nomeCorreto ?? inc.nome;
+
+          const [historico, futuros] = await Promise.all([
+            this.prisma.leadEvent.findMany({
+              where: { leadId: inc.id, tenantId: user.tenantId },
+              orderBy: { criadoEm: 'asc' },
+            }),
+            participanteId
+              ? this.prisma.leadEvent.findMany({
+                  where: { leadId: id, tenantId: user.tenantId, leadParticipanteId: participanteId },
+                  orderBy: { criadoEm: 'asc' },
+                })
+              : Promise.resolve([]),
+          ]);
+
+          const todos = [...historico, ...futuros].sort(
+            (a, b) => a.criadoEm.getTime() - b.criadoEm.getTime(),
+          );
+
+          return {
+            participanteId, leadId: inc.id, nome,
+            classificacao: participante?.classificacao ?? null,
+            telefone: inc.telefone,
+            observacao: participante?.observacao ?? null,
+            observacaoPorNome: participante?.observacaoPorNome ?? null,
+            observacaoEm: participante?.observacaoEm ?? null,
+            desagrupado: false,
+            desagrupadoEm: null,
+            events: todos,
+          };
+        }),
+      );
+    }
+
+    // Abas cinzas (histórico congelado): leads que já foram incorporados aqui e depois
+    // desagrupados. Reconstruído a partir do próprio evento de sistema (payloadRaw),
+    // sem precisar de coluna nova — o registro do LeadParticipante já foi removido.
+    const incorporadosIds = new Set(incorporados.map((inc) => inc.id));
+    const desagrupamentos = ordered.filter(
+      (ev) => ev.channel === 'system' && (ev.payloadRaw as any)?.type === 'chat_desagrupado',
+    );
+    if (desagrupamentos.length > 0) {
+      const desagrupadas = await Promise.all(
+        desagrupamentos
+          .filter((ev) => {
+            const childLeadId = (ev.payloadRaw as any)?.childLeadId;
+            return childLeadId && !incorporadosIds.has(childLeadId);
+          })
+          .map(async (ev) => {
+            const p = ev.payloadRaw as any;
+            const childLeadId = p.childLeadId as string;
+            const historico = await this.prisma.leadEvent.findMany({
+              where: { leadId: childLeadId, tenantId: user.tenantId, criadoEm: { lte: ev.criadoEm } },
+              orderBy: { criadoEm: 'asc' },
+            });
+            return {
+              participanteId: null,
+              leadId: childLeadId,
+              nome: p.childNome as string,
+              classificacao: null,
+              telefone: null,
+              observacao: null,
+              observacaoPorNome: null,
+              observacaoEm: null,
+              desagrupado: true,
+              desagrupadoEm: ev.criadoEm,
+              events: historico,
+            };
+          }),
+      );
+      subConversas = [...subConversas, ...desagrupadas];
+    }
+
+    return { value: ordered, count: ordered.length, subConversas };
   }
 
   async createEvent(user: any, id: string, body: any) {
@@ -3641,6 +3758,7 @@ async listTransitions(user: any, leadId: string) {
         tenantId: user.tenantId,
         assignedUserId: user.id,
         deletedAt: null,
+        incorporadoEmLeadId: null,
       },
       orderBy: { criadoEm: 'desc' },
       include: {
@@ -3688,6 +3806,7 @@ async listTransitions(user: any, leadId: string) {
       where: {
         tenantId: user.tenantId,
         deletedAt: null,
+        incorporadoEmLeadId: null,
         ...(branchId ? { branchId } : {}),
       },
       orderBy: { criadoEm: 'desc' },
@@ -3726,8 +3845,19 @@ async listTransitions(user: any, leadId: string) {
 
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
-    if (!lead.telefone) {
-      throw new Error('Lead não possui telefone cadastrado');
+    const participanteId: string | null = input?.participanteId || null;
+    let toPhone: string;
+    if (participanteId) {
+      const participante = await (this.prisma as any).leadParticipante.findFirst({
+        where: { id: participanteId, leadId, tenantId: user.tenantId },
+        select: { telefone: true },
+      });
+      if (!participante) throw new NotFoundException('Participante não encontrado');
+      if (!participante.telefone) throw new Error('Participante não possui telefone cadastrado');
+      toPhone = participante.telefone;
+    } else {
+      if (!lead.telefone) throw new Error('Lead não possui telefone cadastrado');
+      toPhone = lead.telefone;
     }
 
 const text = this.pickMessage(input);
@@ -3768,15 +3898,16 @@ const aiAssistanceLabel =
 
       let sent: { id: string | null } | undefined;
       try {
-        sent = await this.unofficialService.sendText(activeSessionId, lead.telefone, text);
+        sent = await this.unofficialService.sendText(activeSessionId, toPhone, text);
       } catch (sendErr: any) {
         await this.prisma.leadEvent.create({
           data: {
             tenantId: user.tenantId,
             leadId,
             channel: 'whatsapp.unofficial.out.failed',
+            leadParticipanteId: participanteId,
             payloadRaw: {
-              to: lead.telefone,
+              to: toPhone,
               sessionId: activeSessionId,
               type: 'text',
               message: text,
@@ -3795,8 +3926,9 @@ const aiAssistanceLabel =
           leadId,
           channel: 'whatsapp.unofficial.out',
           sourceRef: sent?.id ?? null,
+          leadParticipanteId: participanteId,
           payloadRaw: {
-            to: lead.telefone,
+            to: toPhone,
             sessionId: activeSessionId,
             type: 'text',
             text,
@@ -3823,15 +3955,16 @@ const aiAssistanceLabel =
 
     let result: Awaited<ReturnType<MessagingService['sendMetaMessage']>>;
     try {
-      result = await this.messaging.sendMetaMessage(lead.telefone, text, user.tenantId);
+      result = await this.messaging.sendMetaMessage(toPhone, text, user.tenantId);
     } catch (sendErr: any) {
       await this.prisma.leadEvent.create({
         data: {
           tenantId: user.tenantId,
           leadId,
           channel: 'whatsapp.out.failed',
+          leadParticipanteId: participanteId,
           payloadRaw: {
-            to: lead.telefone,
+            to: toPhone,
             type: 'text',
             message: text,
             error: sendErr?.message || String(sendErr),
@@ -3854,6 +3987,7 @@ const aiAssistanceLabel =
         tenantId: user.tenantId,
         leadId,
         channel: 'whatsapp.out',
+        leadParticipanteId: participanteId,
         payloadRaw: {
           to: result.to,
           type: 'text',
@@ -4062,16 +4196,22 @@ const aiAssistanceLabel =
     });
   }
 
-  async updateParticipante(tenantId: string, leadId: string, partId: string, data: Record<string, any>) {
+  async updateParticipante(tenantId: string, leadId: string, partId: string, data: Record<string, any>, actorNome?: string) {
     await this.assertLeadAccess(tenantId, leadId);
     // CPF: bloqueia salvar valor inválido (vazio/null é permitido)
     if (data.cpf !== undefined && data.cpf !== null && String(data.cpf).trim() !== '' && !isValidCPF(data.cpf)) {
       throw new BadRequestException('CPF inválido');
     }
-    const allowed = ['nome', 'classificacao', 'cpf', 'rg', 'dataNascimento', 'estadoCivil', 'naturalidade', 'profissao', 'empresa', 'renda', 'telefone', 'email', 'endereco', 'cep', 'cidade', 'uf', 'sortOrder'];
+    const allowed = ['nome', 'classificacao', 'cpf', 'rg', 'dataNascimento', 'estadoCivil', 'naturalidade', 'profissao', 'empresa', 'renda', 'telefone', 'email', 'endereco', 'cep', 'cidade', 'uf', 'sortOrder', 'observacao'];
     const updateData: any = {};
     for (const f of allowed) {
       if (data[f] !== undefined) updateData[f] = data[f];
+    }
+    if (data.observacao !== undefined) {
+      const texto = typeof data.observacao === 'string' ? data.observacao.trim() : null;
+      updateData.observacao = texto || null;
+      updateData.observacaoPorNome = texto ? (actorNome ?? null) : null;
+      updateData.observacaoEm = texto ? new Date() : null;
     }
     // renda é Float no banco — o front envia string (input type="number")
     if (data.renda !== undefined) {
@@ -4464,6 +4604,7 @@ const aiAssistanceLabel =
       where: {
         tenantId,
         deletedAt: null,
+        incorporadoEmLeadId: null,
         ...extraFilter,
         OR: [
           { nome: { contains: trimmed, mode: 'insensitive' } },
@@ -4508,6 +4649,20 @@ const aiAssistanceLabel =
     const userById: Record<string, string> = {};
     for (const u of users) userById[u.id] = u.nome;
 
+    const leadIds = leads.map((l) => l.id);
+    const incorporadosCounts = leadIds.length > 0
+      ? await this.prisma.lead.groupBy({
+          by: ['incorporadoEmLeadId'],
+          where: { incorporadoEmLeadId: { in: leadIds }, tenantId, deletedAt: null },
+          _count: { id: true },
+        })
+      : [];
+    const subCountMap = new Map(
+      incorporadosCounts
+        .filter((c) => c.incorporadoEmLeadId)
+        .map((c) => [c.incorporadoEmLeadId as string, c._count.id]),
+    );
+
     const fv = await this.getPartnerFieldVisibility(tenantId, role);
     const show = (k: string) => !fv || fv[k] !== false;
 
@@ -4521,6 +4676,7 @@ const aiAssistanceLabel =
       criadoEm: show('lead.dataCriacao') ? l.criadoEm : null,
       source: show('lead.origem') ? l.origem : null,
       numero: l.numero,
+      subConversasCount: subCountMap.get(l.id) ?? 0,
       stage: l.stage ? { nome: l.stage.name } : null,
       assignedUser:
         show('lead.responsavel') && l.assignedUserId
@@ -4534,6 +4690,214 @@ const aiAssistanceLabel =
         developmentNome: show('unit.identificacao') ? u.development?.nome ?? null : null,
       })),
     }));
+  }
+
+  async incorporarChat(
+    tenantId: string,
+    sourceLeadId: string,
+    destLeadId: string,
+    actor?: { id: string; nome: string },
+  ) {
+    if (sourceLeadId === destLeadId) {
+      throw new BadRequestException('Os dois leads devem ser diferentes');
+    }
+
+    const [source, dest] = await Promise.all([
+      this.prisma.lead.findFirst({
+        where: { id: sourceLeadId, tenantId, deletedAt: null },
+        select: {
+          id: true, nome: true, nomeCorreto: true, telefone: true,
+          incorporadoEmLeadId: true,
+          stage: { select: { key: true, group: true } },
+        },
+      }),
+      this.prisma.lead.findFirst({
+        where: { id: destLeadId, tenantId, deletedAt: null },
+        select: {
+          id: true, nome: true, nomeCorreto: true,
+          incorporadoEmLeadId: true,
+          stage: { select: { key: true, group: true } },
+        },
+      }),
+    ]);
+
+    if (!source) throw new NotFoundException('Lead a incorporar não encontrado');
+    if (!dest) throw new NotFoundException('Lead destino não encontrado');
+
+    if (source.incorporadoEmLeadId) {
+      throw new BadRequestException('Este lead já foi incorporado em outro');
+    }
+    if (dest.incorporadoEmLeadId) {
+      throw new BadRequestException('O lead destino já está incorporado em outro');
+    }
+
+    // Pipelines customizados (ex.: SP9) marcam etapas fechadas via `group`; o pipeline
+    // padrão não usa `group`, então também checamos a `key` (mesma convenção de
+    // channels-webhook.controller.ts para não reentrada).
+    const CLOSED_STAGE_MARKERS = new Set(['BASE_FRIA', 'ENTREGA_CONTRATO_REGISTRADO', 'POS_VENDA_IA']);
+    const isClosedStage = (stage?: { key: string; group: string | null } | null) =>
+      !!stage && (CLOSED_STAGE_MARKERS.has(stage.key) || (!!stage.group && CLOSED_STAGE_MARKERS.has(stage.group)));
+
+    if (isClosedStage(source.stage) || isClosedStage(dest.stage)) {
+      throw new BadRequestException(
+        'Não é possível incorporar chat de/para um lead em etapa fechada (Base Fria, Entrega de Contrato Registrado ou Pós Venda)',
+      );
+    }
+
+    // Limite de 5 conversas agrupadas por lead (o lead em si + até 4 incorporadas)
+    const MAX_CONVERSAS_POR_LEAD = 5;
+    const destSubCount = await this.prisma.lead.count({
+      where: { incorporadoEmLeadId: destLeadId, tenantId, deletedAt: null },
+    });
+    if (destSubCount + 2 > MAX_CONVERSAS_POR_LEAD) {
+      throw new BadRequestException(
+        `Este lead já atingiu o limite de ${MAX_CONVERSAS_POR_LEAD} conversas agrupadas`,
+      );
+    }
+
+    const participante = await this.prisma.$transaction(async (tx: any) => {
+      const p = await tx.leadParticipante.create({
+        data: {
+          tenantId,
+          leadId: destLeadId,
+          nome: source.nomeCorreto ?? source.nome,
+          telefone: source.telefone,
+        },
+        select: { id: true },
+      });
+
+      await tx.lead.update({
+        where: { id: sourceLeadId },
+        data: { incorporadoEmLeadId: destLeadId },
+      });
+
+      await tx.leadEvent.updateMany({
+        where: { leadId: sourceLeadId, tenantId, leadParticipanteId: null },
+        data: { leadParticipanteId: p.id },
+      });
+
+      await tx.leadEvent.create({
+        data: {
+          tenantId,
+          leadId: destLeadId,
+          channel: 'system',
+          isReentry: false,
+          payloadRaw: {
+            type: 'chat_incorporated',
+            sourceLeadId,
+            sourceNome: source.nomeCorreto ?? source.nome,
+            sourceTelefone: source.telefone,
+            participanteId: p.id,
+            actor: actor?.nome ?? 'sistema',
+          },
+        },
+      });
+
+      return p;
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actor?.id,
+      action: 'CHAT_INCORPORATED',
+      resourceType: 'Lead',
+      resourceId: destLeadId,
+      metadata: { sourceLeadId, destLeadId, participanteId: participante.id, actor: actor?.nome },
+    });
+
+    this.logger.log(`Chat incorporado: source=${sourceLeadId} → dest=${destLeadId} participante=${participante.id}`);
+    return { ok: true, participanteId: participante.id, destLeadId, sourceLeadId };
+  }
+
+  async desagruparChat(
+    tenantId: string,
+    parentLeadId: string,
+    participanteId: string,
+    childLeadId: string,
+    actor?: { id: string; nome: string },
+  ) {
+    const [participante, childLead, parentLead] = await Promise.all([
+      (this.prisma as any).leadParticipante.findFirst({
+        where: { id: participanteId, leadId: parentLeadId, tenantId },
+      }),
+      this.prisma.lead.findFirst({
+        where: { id: childLeadId, tenantId, deletedAt: null },
+        select: { id: true, nome: true, nomeCorreto: true, incorporadoEmLeadId: true },
+      }),
+      this.prisma.lead.findFirst({
+        where: { id: parentLeadId, tenantId },
+        select: { nome: true, nomeCorreto: true },
+      }),
+    ]);
+
+    if (!participante) throw new NotFoundException('Participante não encontrado neste lead');
+    if (!childLead) throw new NotFoundException('Lead a desagrupar não encontrado');
+    if (childLead.incorporadoEmLeadId !== parentLeadId) {
+      throw new BadRequestException('Este lead não está agrupado aqui');
+    }
+
+    const childNome = childLead.nomeCorreto ?? childLead.nome;
+    const parentNome = parentLead?.nomeCorreto ?? parentLead?.nome ?? '';
+
+    await this.prisma.$transaction(async (tx: any) => {
+      // Mensagens recebidas enquanto estava agrupado voltam a pertencer ao lead que
+      // fica independente de novo — ele "carrega" o histórico completo (antigo + novo).
+      await tx.leadEvent.updateMany({
+        where: { leadId: parentLeadId, tenantId, leadParticipanteId: participanteId },
+        data: { leadId: childLeadId, leadParticipanteId: null },
+      });
+
+      await tx.lead.update({
+        where: { id: childLeadId },
+        data: { incorporadoEmLeadId: null },
+      });
+
+      // O participante deixa de existir (era só o vínculo da incorporação); a FK em
+      // LeadEvent/LeadDocument é onDelete:SetNull, então nada fica orfão.
+      await tx.leadParticipante.delete({ where: { id: participanteId } });
+
+      await tx.leadEvent.create({
+        data: {
+          tenantId,
+          leadId: parentLeadId,
+          channel: 'system',
+          isReentry: false,
+          payloadRaw: {
+            type: 'chat_desagrupado',
+            childLeadId,
+            childNome,
+            actor: actor?.nome ?? 'sistema',
+          },
+        },
+      });
+
+      await tx.leadEvent.create({
+        data: {
+          tenantId,
+          leadId: childLeadId,
+          channel: 'system',
+          isReentry: false,
+          payloadRaw: {
+            type: 'chat_desagrupado_origem',
+            parentLeadId,
+            parentNome,
+            actor: actor?.nome ?? 'sistema',
+          },
+        },
+      });
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actor?.id,
+      action: 'CHAT_DESAGRUPADO',
+      resourceType: 'Lead',
+      resourceId: parentLeadId,
+      metadata: { childLeadId, participanteId, actor: actor?.nome },
+    });
+
+    this.logger.log(`Chat desagrupado: parent=${parentLeadId} child=${childLeadId} participante=${participanteId}`);
+    return { ok: true, childLeadId };
   }
 
   async mergeLeads(

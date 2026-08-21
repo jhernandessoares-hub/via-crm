@@ -89,8 +89,8 @@ export class InboxService {
       }
     }
 
-    // ── Passo 2: Leads principais (exclui os já representados por campanha) ─
-    const whereRole: any = { tenantId, deletedAt: null, conversaCanal: 'WHATSAPP_LIGHT' };
+    // ── Passo 2: Leads principais (exclui incorporados e leads de campanha) ─
+    const whereRole: any = { tenantId, deletedAt: null, conversaCanal: 'WHATSAPP_LIGHT', incorporadoEmLeadId: null };
     if (sessionId) whereRole.conversaSessionId = sessionId;
     if (role === 'AGENT') whereRole.assignedUserId = userId;
     else if (role === 'MANAGER' && branchId) whereRole.branchId = branchId;
@@ -269,17 +269,82 @@ export class InboxService {
   async getMensagens(tenantId: string, leadId: string, userId: string, role: string, branchId: string | null, cursor?: string) {
     const lead = await this.assertAccess(tenantId, leadId, userId, role, branchId);
 
-    const where: any = { leadId, channel: { in: LIGHT_CHANNELS_ALL } };
-    if (cursor) where.criadoEm = { lt: new Date(cursor) };
+    // Conversa principal: eventos sem participante (= o lead em si)
+    const mainWhere: any = { leadId, channel: { in: LIGHT_CHANNELS_ALL }, leadParticipanteId: null };
+    if (cursor) mainWhere.criadoEm = { lt: new Date(cursor) };
 
     const events = await this.prisma.leadEvent.findMany({
-      where,
+      where: mainWhere,
       orderBy: { criadoEm: 'desc' },
       take: 50,
       select: { id: true, channel: true, criadoEm: true, payloadRaw: true },
     });
-
     const ordered = [...events].reverse();
+
+    // Sub-conversas: leads incorporados neste
+    const incorporados = await this.prisma.lead.findMany({
+      where: { incorporadoEmLeadId: leadId, tenantId, deletedAt: null },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true },
+    });
+
+    const participantes: { id: string; nome: string; telefone: string | null }[] = incorporados.length > 0
+      ? await (this.prisma as any).leadParticipante.findMany({
+          where: { leadId, tenantId },
+          select: { id: true, nome: true, telefone: true },
+        })
+      : [];
+
+    const subConversas = await Promise.all(
+      incorporados.map(async (inc) => {
+        // Encontra o participante correspondente pelo telefone
+        const digits = (inc.telefone || '').replace(/\D/g, '').slice(-9);
+        const participante = participantes.find(
+          (p) => p.telefone && p.telefone.replace(/\D/g, '').slice(-9) === digits,
+        );
+        const participanteId = participante?.id ?? null;
+        const nomeSub = participante?.nome ?? inc.nomeCorreto ?? inc.nome;
+
+        // Histórico: eventos guardados no lead incorporado
+        const historico = await this.prisma.leadEvent.findMany({
+          where: { leadId: inc.id, channel: { in: LIGHT_CHANNELS_ALL } },
+          orderBy: { criadoEm: 'asc' },
+          select: { id: true, channel: true, criadoEm: true, payloadRaw: true },
+        });
+
+        // Futuros: eventos do lead pai com leadParticipanteId
+        const futuros = participanteId
+          ? await this.prisma.leadEvent.findMany({
+              where: { leadId, tenantId, channel: { in: LIGHT_CHANNELS_ALL }, leadParticipanteId: participanteId },
+              orderBy: { criadoEm: 'asc' },
+              select: { id: true, channel: true, criadoEm: true, payloadRaw: true },
+            })
+          : [];
+
+        const todos = [...historico, ...futuros].sort(
+          (a, b) => a.criadoEm.getTime() - b.criadoEm.getTime(),
+        );
+
+        return {
+          participanteId,
+          nome: nomeSub,
+          telefone: inc.telefone,
+          mensagens: todos.map((ev) => {
+            const media = extractMedia(ev.payloadRaw);
+            return {
+              id: ev.id,
+              direcao: LIGHT_CHANNELS_IN.includes(ev.channel) ? 'in' : 'out',
+              texto: extractText(ev.payloadRaw),
+              criadoEm: ev.criadoEm,
+              mediaUrl: media.mediaUrl ? signCloudinaryUrl(media.mediaUrl) : null,
+              mediaType: media.mediaType,
+              mimeType: media.mimeType,
+              filename: media.filename,
+              status: extractStatus(ev.payloadRaw),
+            };
+          }),
+        };
+      }),
+    );
 
     return {
       leadId: lead.id,
@@ -304,42 +369,54 @@ export class InboxService {
       }),
       hasMore: events.length === 50,
       nextCursor: events.length === 50 ? ordered[0]?.criadoEm?.toISOString() : null,
+      subConversas,
     };
   }
 
   // ── Envio de mensagem ─────────────────────────────────────────────────────
 
-  async enviar(tenantId: string, leadId: string, userId: string, role: string, branchId: string | null, text: string) {
+  async enviar(tenantId: string, leadId: string, userId: string, role: string, branchId: string | null, text: string, participanteId?: string) {
     const lead = await this.assertAccess(tenantId, leadId, userId, role, branchId);
 
     if (!lead.conversaSessionId) throw new NotFoundException('Lead sem sessão WhatsApp Light ativa');
-    if (!lead.telefone) throw new NotFoundException('Lead sem telefone cadastrado');
 
-    // Cria o evento ANTES de enviar — garante histórico mesmo em falha de rede
+    let toPhone: string | null = lead.telefone;
+    if (participanteId) {
+      const p = await (this.prisma as any).leadParticipante.findFirst({
+        where: { id: participanteId, leadId, tenantId },
+        select: { telefone: true },
+      });
+      if (!p) throw new NotFoundException('Participante não encontrado');
+      toPhone = p.telefone;
+    }
+
+    if (!toPhone) throw new NotFoundException('Telefone de destino não encontrado');
+
     const event = await this.prisma.leadEvent.create({
       data: {
         tenantId,
         leadId,
         channel: 'whatsapp.unofficial.out',
+        leadParticipanteId: participanteId ?? null,
         payloadRaw: {
           text,
           sentBy: userId,
           source: 'inbox',
           sentAt: new Date().toISOString(),
+          ...(participanteId ? { to: toPhone } : {}),
         },
       },
       select: { id: true, criadoEm: true },
     });
 
     try {
-      const sent = await this.unofficial.sendText(lead.conversaSessionId, lead.telefone, text);
+      const sent = await this.unofficial.sendText(lead.conversaSessionId, toPhone, text);
       if (sent?.id) {
         await this.prisma.leadEvent.update({ where: { id: event.id }, data: { sourceRef: sent.id } });
       }
-      logger.log(`Mensagem enviada via inbox leadId=${leadId} sessionId=${lead.conversaSessionId}`);
+      logger.log(`Mensagem enviada via inbox leadId=${leadId} sessionId=${lead.conversaSessionId} participante=${participanteId ?? 'principal'}`);
       return { ok: true, messageId: event.id, criadoEm: event.criadoEm };
     } catch (err) {
-      // Rollback: remove o evento se o envio falhou
       await this.prisma.leadEvent.delete({ where: { id: event.id } }).catch(() => {});
       throw err;
     }

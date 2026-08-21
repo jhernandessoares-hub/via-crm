@@ -247,6 +247,41 @@ export class LeadsController {
     return this.leadsService.markRead(req.user.tenantId, id);
   }
 
+  @Post(':id/incorporar-chat')
+  async incorporarChat(
+    @Req() req: any,
+    @Param('id') sourceLeadId: string,
+    @Body() body: { destLeadId: string },
+  ) {
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para incorporar chats');
+    if (!body?.destLeadId) throw new BadRequestException('destLeadId é obrigatório');
+    return this.leadsService.incorporarChat(
+      req.user.tenantId,
+      sourceLeadId,
+      body.destLeadId,
+      { id: req.user.sub, nome: req.user.nome },
+    );
+  }
+
+  @Post(':id/desagrupar-chat')
+  async desagruparChat(
+    @Req() req: any,
+    @Param('id') parentLeadId: string,
+    @Body() body: { participanteId: string; childLeadId: string },
+  ) {
+    await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para desagrupar chats');
+    if (!body?.participanteId || !body?.childLeadId) {
+      throw new BadRequestException('participanteId e childLeadId são obrigatórios');
+    }
+    return this.leadsService.desagruparChat(
+      req.user.tenantId,
+      parentLeadId,
+      body.participanteId,
+      body.childLeadId,
+      { id: req.user.sub, nome: req.user.nome },
+    );
+  }
+
   @Post(':id/merge')
   async mergeLeads(
     @Req() req: any,
@@ -317,8 +352,9 @@ export class LeadsController {
         : [];
 
     const count = typeof result?.count === 'number' ? result.count : value.length;
+    const subConversas = Array.isArray(result?.subConversas) ? result.subConversas : [];
 
-    return { value, count };
+    return { value, count, subConversas };
   }
 
   @Post(':id/events')
@@ -596,7 +632,7 @@ export class LeadsController {
     @Body() body: Record<string, any>,
   ) {
     await this.assertLeadWrite(req, 'edit');
-    return this.leadsService.updateParticipante(req.user.tenantId, id, partId, body);
+    return this.leadsService.updateParticipante(req.user.tenantId, id, partId, body, req.user.nome);
   }
 
   @Delete(':id/participantes/:partId')

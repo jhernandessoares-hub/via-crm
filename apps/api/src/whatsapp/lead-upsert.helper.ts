@@ -107,7 +107,7 @@ export async function upsertLeadFromWhatsapp(
   const existingLead = telefoneKey
     ? await prisma.lead.findFirst({
         where: { tenantId, telefoneKey, deletedAt: null },
-        select: { id: true, lastEntryChannel: true, nomeCorretoOrigem: true },
+        select: { id: true, lastEntryChannel: true, nomeCorretoOrigem: true, incorporadoEmLeadId: true },
         orderBy: { criadoEm: 'desc' },
       })
     : null;
@@ -117,6 +117,58 @@ export async function upsertLeadFromWhatsapp(
   let assignedUserId: string | null = null;
 
   const isSystemMessage = type === 'system';
+
+  // ── Redirect: lead incorporado → encaminhar para o lead pai ───────────────
+  if (existingLead?.incorporadoEmLeadId) {
+    const parentLeadId = existingLead.incorporadoEmLeadId;
+
+    // Encontra o participante cujo telefone corresponde ao remetente
+    const participantes = await prisma.leadParticipante.findMany({
+      where: { leadId: parentLeadId },
+      select: { id: true, telefone: true },
+    });
+    const participante = participantes.find(
+      (p) => p.telefone && telefoneKeyFrom(p.telefone) === telefoneKey,
+    );
+
+    await prisma.leadEvent.create({
+      data: {
+        tenantId,
+        leadId: parentLeadId,
+        channel,
+        isReentry: true,
+        leadParticipanteId: participante?.id ?? null,
+        payloadRaw: {
+          from, type, text,
+          rawMsg: rawMsg ?? null,
+          ...(mediaUrl ? { mediaUrl } : {}),
+          ...(mimeType ? { mimeType } : {}),
+          ...(transcription ? { transcription } : {}),
+          ...(media ? { media } : {}),
+        },
+      },
+    });
+
+    if (!isSystemMessage) {
+      await prisma.lead.update({
+        where: { id: parentLeadId },
+        data: {
+          lastInboundAt: now,
+          ...(sessionId ? { conversaCanal: canal, conversaSessionId: sessionId } : {}),
+        },
+      });
+      await prisma.leadSla.upsert({
+        where: { leadId: parentLeadId },
+        create: { tenantId, leadId: parentLeadId, lastInboundAt: now, frozenUntil: null, isActive: true },
+        update: { lastInboundAt: now, frozenUntil: null, isActive: true },
+      });
+      await queue.rescheduleSla(parentLeadId);
+      await queue.scheduleInboundAi(parentLeadId, { isFirstReply: false });
+    }
+
+    logger.log(`Inbound incorporado: source=${existingLead.id} → parent=${parentLeadId} participante=${participante?.id ?? 'null'}`);
+    return { leadId: parentLeadId, isReentry: true, assignedUserId: null };
+  }
 
   if (existingLead) {
     leadId = existingLead.id;

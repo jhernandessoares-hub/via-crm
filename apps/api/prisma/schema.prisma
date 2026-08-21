@@ -341,7 +341,10 @@ model Lead {
   conversaSession           WhatsappUnofficialSession? @relation(fields: [conversaSessionId], references: [id], onDelete: SetNull)
   empreendimentoInteresse   Development?               @relation("LeadEmpreendimentoInteresse", fields: [empreendimentoInteresseId], references: [id], onDelete: SetNull)
   aiAttendedMonths          String[]                   @default([])
+  incorporadoEmLeadId       String?                    // quando preenchido: este lead foi absorvido como sub-conversa do lead apontado
   developmentUnits          DevelopmentUnit[]
+  incorporadoEm             Lead?                      @relation("LeadIncorporado", fields: [incorporadoEmLeadId], references: [id], onDelete: SetNull)
+  leadsIncorporados         Lead[]                     @relation("LeadIncorporado")
 
   @@unique([tenantId, numero])
   @@index([tenantId, telefoneKey])
@@ -351,24 +354,28 @@ model Lead {
   @@index([tenantId, stageId])
   @@index([tenantId, conversaCanal])
   @@index([tenantId, cpf])
+  @@index([incorporadoEmLeadId])
   @@map("leads")
 }
 
 model LeadEvent {
-  id         String   @id @default(uuid())
-  tenantId   String
-  leadId     String
-  channel    String
-  isReentry  Boolean  @default(false)
-  sourceRef  String?
-  payloadRaw Json?
-  criadoEm   DateTime @default(now())
-  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(uuid())
+  tenantId           String
+  leadId             String
+  leadParticipanteId String?
+  channel            String
+  isReentry          Boolean           @default(false)
+  sourceRef          String?
+  payloadRaw         Json?
+  criadoEm           DateTime          @default(now())
+  lead               Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leadParticipante   LeadParticipante? @relation("LeadParticipanteEvents", fields: [leadParticipanteId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, leadId])
   @@index([tenantId, channel])
   @@index([leadId, channel, criadoEm])
+  @@index([leadParticipanteId])
   @@map("lead_events")
 }
 
@@ -1196,11 +1203,14 @@ model LeadDocument {
   processingStatus          String?
   processingStep            String?
   aiExtractedData           Json?
-  lead                      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tenant                    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leadParticipanteId        String?
+  lead                      Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant                    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leadParticipante          LeadParticipante? @relation("LeadParticipanteDocuments", fields: [leadParticipanteId], references: [id], onDelete: SetNull)
 
   @@index([leadId])
   @@index([tenantId])
+  @@index([leadParticipanteId])
   @@map("lead_documents")
 }
 
@@ -1228,8 +1238,13 @@ model LeadParticipante {
   atualizadoEm   DateTime  @updatedAt
   cadastroOrigem Json?
   sortOrder      Int       @default(0)
-  lead           Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  observacao        String?
+  observacaoPorNome String?
+  observacaoEm      DateTime?
+  lead           Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events         LeadEvent[]    @relation("LeadParticipanteEvents")
+  documents      LeadDocument[] @relation("LeadParticipanteDocuments")
 
   @@index([leadId])
   @@index([tenantId])

@@ -35,11 +35,11 @@ export class InboxController {
   send(
     @Req() req: any,
     @Param('leadId') leadId: string,
-    @Body() body: { text: string },
+    @Body() body: { text: string; participanteId?: string },
   ) {
     if (!body?.text?.trim()) throw new BadRequestException('text é obrigatório');
     const { tenantId, sub: userId, role, branchId } = req.user;
-    return this.service.enviar(tenantId, leadId, userId, role, branchId ?? null, body.text.trim());
+    return this.service.enviar(tenantId, leadId, userId, role, branchId ?? null, body.text.trim(), body.participanteId);
   }
 
   @Post(':leadId/read')
