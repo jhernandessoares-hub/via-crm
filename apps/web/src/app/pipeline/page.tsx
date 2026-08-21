@@ -12,6 +12,7 @@ import { ReportModal } from "@/components/ReportModal";
 import { NovoLeadModal } from "@/components/leads/NovoLeadModal";
 import { MaskedField } from "@/components/MaskedValue";
 import { useRequirePermission, usePermissions } from "@/lib/permissions";
+import { Users } from "lucide-react";
 
 type PipelineStage = {
   id: string;
@@ -41,6 +42,7 @@ type Lead = {
   cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
   conversaAberta?: boolean | null;
+  subConversasCount?: number;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -446,7 +448,14 @@ export default function PipelinePage() {
                             onMouseEnter={(e) => (e.currentTarget.style.background = isPending ? "#fef3c7" : "var(--shell-hover)")}
                             onMouseLeave={(e) => (e.currentTarget.style.background = isPending ? "#fffbeb" : "var(--shell-bg)")}>
                             {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
-                            <div className="text-sm font-medium text-[var(--shell-text)] truncate">{displayName(l)}</div>
+                            <div className="text-sm font-medium text-[var(--shell-text)] truncate flex items-center gap-1.5">
+                              <span className="truncate">{displayName(l)}</span>
+                              {!!l.subConversasCount && (
+                                <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
+                                  <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}
+                                </span>
+                              )}
+                            </div>
                             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
                               <MaskedField field="lead.telefone"><span className="truncate">{l.telefone || l.whatsapp || "—"}</span></MaskedField>
                               <span className="opacity-50">·</span>
@@ -534,8 +543,13 @@ export default function PipelinePage() {
                       <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
                         style={{ borderBottomColor: "var(--shell-card-border)", borderLeftColor: "#f59e0b", gridTemplateColumns: COL }}>
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex items-center gap-1.5">
                           <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
+                          {!!l.subConversasCount && (
+                            <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
+                              <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
@@ -581,8 +595,13 @@ export default function PipelinePage() {
                   <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
                     style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
                     <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex items-center gap-1.5">
                       <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
+                      {!!l.subConversasCount && (
+                        <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
+                          <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}
+                        </span>
+                      )}
                     </div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
