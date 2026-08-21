@@ -2004,10 +2004,27 @@ export class LeadsService {
       : [];
     const assignedMap = Object.fromEntries(assignedUsers.map((u) => [u.id, u.apelido || u.nome]));
     const productTitleMap = await this.buildProductTitleMap(tenantId, leads.map((l) => l.produtoInteresseId));
+
+    // Contagem de sub-conversas incorporadas por lead — exibida como selo na listagem
+    const leadIds = leads.map((l) => l.id);
+    const incorporadosCounts = leadIds.length > 0
+      ? await this.prisma.lead.groupBy({
+          by: ['incorporadoEmLeadId'],
+          where: { incorporadoEmLeadId: { in: leadIds }, tenantId, deletedAt: null },
+          _count: { id: true },
+        })
+      : [];
+    const subCountMap = new Map(
+      incorporadosCounts
+        .filter((c) => c.incorporadoEmLeadId)
+        .map((c) => [c.incorporadoEmLeadId as string, c._count.id]),
+    );
+
     const enriched = leads.map((l) => ({
       ...l,
       assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
       interesse: buildLeadInteresseLabel(l as any, productTitleMap),
+      subConversasCount: subCountMap.get(l.id) ?? 0,
     }));
 
     // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
