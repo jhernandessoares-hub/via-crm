@@ -235,10 +235,10 @@ export class LeadsController {
   // =========================
 
   @Post(':id/end-conversation')
-  async endConversation(@Req() req: any, @Param('id') id: string) {
+  async endConversation(@Req() req: any, @Param('id') id: string, @Body() body?: { participanteId?: string }) {
     await this.assertPerm(req, 'inbox', 'send', 'Sem permissão para encerrar conversa');
     const { tenantId } = req.user;
-    return this.leadsService.endConversation(tenantId, id);
+    return this.leadsService.endConversation(tenantId, id, body?.participanteId, { id: req.user.sub, nome: req.user.nome });
   }
 
   // Marca o lead como lido (ao abrir o detalhe) — limpa "Aguardando resposta" do sininho.

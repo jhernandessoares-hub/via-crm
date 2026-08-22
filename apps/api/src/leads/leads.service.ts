@@ -2340,10 +2340,26 @@ async getById(user: any, id: string) {
       select: { id: true, nome: true, nomeCorreto: true, telefone: true },
     });
 
+    // "Aguardando resposta" por aba: derivado dos eventos, sem coluna nova. Fica marcado
+    // enquanto a última mensagem recebida do participante for mais recente que o último
+    // "chat_encerrado_aba" registrado pra ele (limpo só pelo botão Encerrar, não pela resposta).
+    const INBOUND_CHANNELS = new Set(['whatsapp.in', 'whatsapp.unofficial.in']);
+    const encerradoMap = new Map<string, number>();
+    for (const ev of ordered) {
+      if (ev.channel === 'system' && (ev.payloadRaw as any)?.type === 'chat_encerrado_aba') {
+        const pid = (ev.payloadRaw as any)?.participanteId as string | undefined;
+        if (pid) {
+          const t = ev.criadoEm.getTime();
+          if (!encerradoMap.has(pid) || t > (encerradoMap.get(pid) as number)) encerradoMap.set(pid, t);
+        }
+      }
+    }
+
     let subConversas: Array<{
       participanteId: string | null; leadId: string; nome: string; classificacao: string | null;
       telefone: string | null; observacao: string | null; observacaoPorNome: string | null;
-      observacaoEm: Date | null; desagrupado: boolean; desagrupadoEm: Date | null; events: any[];
+      observacaoEm: Date | null; desagrupado: boolean; desagrupadoEm: Date | null;
+      aguardandoResposta: boolean; events: any[];
     }> = [];
     if (incorporados.length > 0) {
       const participantes = await (this.prisma as any).leadParticipante.findMany({
@@ -2377,6 +2393,12 @@ async getById(user: any, id: string) {
             (a, b) => a.criadoEm.getTime() - b.criadoEm.getTime(),
           );
 
+          const lastInboundAt = todos
+            .filter((ev) => INBOUND_CHANNELS.has(ev.channel))
+            .reduce((max, ev) => Math.max(max, ev.criadoEm.getTime()), 0);
+          const encerradoAt = participanteId ? (encerradoMap.get(participanteId) ?? 0) : 0;
+          const aguardandoResposta = lastInboundAt > 0 && lastInboundAt > encerradoAt;
+
           return {
             participanteId, leadId: inc.id, nome,
             classificacao: participante?.classificacao ?? null,
@@ -2386,6 +2408,7 @@ async getById(user: any, id: string) {
             observacaoEm: participante?.observacaoEm ?? null,
             desagrupado: false,
             desagrupadoEm: null,
+            aguardandoResposta,
             events: todos,
           };
         }),
@@ -2424,6 +2447,7 @@ async getById(user: any, id: string) {
               observacaoEm: null,
               desagrupado: true,
               desagrupadoEm: ev.criadoEm,
+              aguardandoResposta: false,
               events: historico,
             };
           }),
@@ -4015,7 +4039,35 @@ const aiAssistanceLabel =
     return { ok: true };
   }
 
-  async endConversation(tenantId: string, leadId: string): Promise<{ ok: boolean }> {
+  async endConversation(
+    tenantId: string,
+    leadId: string,
+    participanteId?: string,
+    actor?: { id?: string; nome?: string },
+  ): Promise<{ ok: boolean }> {
+    if (participanteId) {
+      const participante = await (this.prisma as any).leadParticipante.findFirst({
+        where: { id: participanteId, leadId, tenantId },
+        select: { id: true },
+      });
+      if (!participante) throw new NotFoundException('Participante não encontrado neste lead');
+
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId,
+          leadId,
+          channel: 'system',
+          isReentry: false,
+          payloadRaw: {
+            type: 'chat_encerrado_aba',
+            participanteId,
+            actor: actor?.nome ?? 'sistema',
+          },
+        },
+      });
+      return { ok: true };
+    }
+
     await this.prisma.lead.update({
       where: { id: leadId, tenantId },
       data: { conversaAberta: false, lastReadAt: new Date() },
