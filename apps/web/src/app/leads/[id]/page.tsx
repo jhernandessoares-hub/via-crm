@@ -184,6 +184,7 @@ type SubConversa = {
   observacaoEm: string | null;
   desagrupado: boolean;
   desagrupadoEm: string | null;
+  aguardandoResposta: boolean;
   events: LeadEvent[];
 };
 
@@ -2243,6 +2244,8 @@ export default function LeadDetailChatPage() {
   const [observacaoDraft, setObservacaoDraft] = useState("");
   const [savingObservacao, setSavingObservacao] = useState(false);
   const [desagrupandoLeadId, setDesagrupandoLeadId] = useState<string | null>(null);
+  const [pulsingTabs, setPulsingTabs] = useState<Set<string>>(new Set());
+  const prevAguardandoRef = useRef<Set<string>>(new Set());
   const [loadingLead, setLoadingLead] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -3295,6 +3298,23 @@ function discardAiSuggestion() {
       setDesagrupandoLeadId(null);
     }
   }
+
+  // Pulso de ~3s quando uma aba entra em "aguardando resposta" — chama atenção sem tela cheia.
+  useEffect(() => {
+    const current = new Set(subConversas.filter((sc) => sc.aguardandoResposta).map((sc) => sc.leadId));
+    const recemChegadas: string[] = [];
+    current.forEach((leadId) => { if (!prevAguardandoRef.current.has(leadId)) recemChegadas.push(leadId); });
+    prevAguardandoRef.current = current;
+
+    if (recemChegadas.length > 0) {
+      setPulsingTabs((prev) => new Set([...prev, ...recemChegadas]));
+      recemChegadas.forEach((leadId) => {
+        setTimeout(() => {
+          setPulsingTabs((prev) => { const next = new Set(prev); next.delete(leadId); return next; });
+        }, 3000);
+      });
+    }
+  }, [subConversas]);
 
   async function handleAddDocument() {
     if (!lead || !newDocNome.trim()) return;
@@ -6574,15 +6594,23 @@ function discardAiSuggestion() {
                             setEditAbaClassificacao(sc.classificacao ?? "");
                             setEditandoAbaLeadId(sc.leadId);
                           }}
-                          title="Duplo clique para editar o nome"
-                          className="rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
-                          style={{
-                            borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
-                            color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
-                          }}
+                          title={sc.aguardandoResposta ? "Aguardando resposta" : "Duplo clique para editar o nome"}
+                          className={
+                            "flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors" +
+                            (sc.aguardandoResposta && pulsingTabs.has(sc.leadId) ? " animate-pulse" : "")
+                          }
+                          style={
+                            sc.aguardandoResposta
+                              ? { borderColor: "#D4544F", color: "#9B2C2C", background: "#FCE4E4" }
+                              : {
+                                  borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
+                                  color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                                }
+                          }
                         >
+                          {sc.aguardandoResposta && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#D4544F" }} />}
                           {sc.nome}
-                          {sc.classificacao ? <span style={{ color: "var(--shell-subtext)" }}>{" · " + sc.classificacao}</span> : null}
+                          {sc.classificacao ? <span style={{ color: sc.aguardandoResposta ? undefined : "var(--shell-subtext)", opacity: sc.aguardandoResposta ? 0.75 : 1 }}>{" · " + sc.classificacao}</span> : null}
                         </button>
                         <button
                           type="button"
@@ -7240,13 +7268,13 @@ function discardAiSuggestion() {
                   </div>
                 </div>
 
-                {lead?.conversaAberta && (
+                {(abaAtiva ? activeSubConversa?.aguardandoResposta : lead?.conversaAberta) && (
                   <div className="flex items-center justify-end pb-1">
                     <button
                       onClick={() => setShowEndConvDialog(true)}
                       className="text-xs text-amber-600 hover:text-amber-800 border border-amber-300 rounded-md px-2 py-1 bg-amber-50 hover:bg-amber-100 transition-colors"
                     >
-                      🔒 Encerrar conversa
+                      {"🔒 Encerrar conversa" + (abaAtiva && activeSubConversa ? " com " + activeSubConversa.nome : "")}
                     </button>
                   </div>
                 )}
@@ -7712,9 +7740,13 @@ function discardAiSuggestion() {
           style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
         >
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Encerrar conversa?</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {abaAtiva && activeSubConversa ? `Encerrar conversa com ${activeSubConversa.nome}?` : "Encerrar conversa?"}
+            </h3>
             <p className="text-sm text-gray-600 mb-6">
-              O lead sairá da seção de conversas abertas. Quando o lead mandar uma nova mensagem, a conversa será reaberta automaticamente.
+              {abaAtiva && activeSubConversa
+                ? "Essa aba para de chamar atenção. Quando essa pessoa mandar uma nova mensagem, o alerta volta sozinho."
+                : "O lead sairá da seção de conversas abertas. Quando o lead mandar uma nova mensagem, a conversa será reaberta automaticamente."}
             </p>
             <div className="flex gap-3 justify-end">
               <button
@@ -7725,9 +7757,14 @@ function discardAiSuggestion() {
               </button>
               <button
                 onClick={async () => {
-                  await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+                  if (abaAtiva && activeSubConversa?.participanteId) {
+                    await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST', body: JSON.stringify({ participanteId: activeSubConversa.participanteId }) });
+                    await loadEvents({ silent: true });
+                  } else {
+                    await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+                    setLead((prev) => prev ? { ...prev, conversaAberta: false } : prev);
+                  }
                   setShowEndConvDialog(false);
-                  setLead((prev) => prev ? { ...prev, conversaAberta: false } : prev);
                 }}
                 className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600"
               >
