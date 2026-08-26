@@ -117,7 +117,7 @@ export default function LoginPage() {
             </h1>
             <p className="mt-4 text-base leading-relaxed" style={{ color: "#8DA1C9" }}>
               Gerencie leads, automatize o atendimento via WhatsApp com IA e feche
-              mais negócios — tudo em um só lugar.
+              mais negócios, tudo em um só lugar.
             </p>
           </div>
 
