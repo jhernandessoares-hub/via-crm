@@ -15,6 +15,8 @@ type FamiliaItem = {
   leadId: string;
   nome: string;
   cpf: string | null;
+  empreendimento: string | null;
+  unidade: string | null;
   statusFamilia: string;
   status: "EM_DIA" | "COM_PENDENCIA";
   faltas: number;
@@ -31,11 +33,13 @@ function csvEscape(v: string): string {
 }
 
 function baixarRelatorio(items: FamiliaItem[]) {
-  const header = ["Nº", "Família", "CPF", "Incluída em", "Demandas (total)", "Demandas abertas", "Demandas encerradas", "Status", "Faltas"];
+  const header = ["Nº", "Família", "CPF", "Empreendimento", "Unidade", "Incluída em", "Demandas (total)", "Demandas abertas", "Demandas encerradas", "Status", "Faltas"];
   const rows = items.map((f) => [
     String(f.numero).padStart(4, "0"),
     f.nome,
     f.cpf || "",
+    f.empreendimento || "",
+    f.unidade || "",
     formatDate(f.ativadoEm),
     String(f.demandasTotal),
     String(f.demandasAbertas),
@@ -236,8 +240,12 @@ export default function FamiliasPage() {
                     <td className="px-4 py-3" style={{ color: "var(--shell-subtext)" }}>
                       {f.cpf || "—"}
                     </td>
-                    <td className="px-4 py-3" style={{ color: "var(--shell-subtext)" }}>—</td>
-                    <td className="px-4 py-3" style={{ color: "var(--shell-subtext)" }}>—</td>
+                    <td className="px-4 py-3" style={{ color: "var(--shell-subtext)" }}>
+                      {f.empreendimento || "—"}
+                    </td>
+                    <td className="px-4 py-3" style={{ color: "var(--shell-subtext)" }}>
+                      {f.unidade || "—"}
+                    </td>
                     <td className="px-4 py-3" style={{ color: "var(--shell-subtext)" }}>
                       {formatDate(f.ativadoEm)}
                     </td>

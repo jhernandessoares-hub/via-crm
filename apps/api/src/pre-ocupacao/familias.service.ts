@@ -85,6 +85,7 @@ export class FamiliasService {
     });
 
     const familiaIds = familias.map((f) => f.id);
+    const leadIds = familias.map((f) => f.leadId);
     const participantes = familiaIds.length
       ? await this.prisma.preOcupacaoAtividadeParticipante.findMany({
           where: { familiaId: { in: familiaIds } },
@@ -97,6 +98,26 @@ export class FamiliasService {
           select: { familiaId: true, status: true },
         })
       : [];
+
+    // Empreendimento/Unidade vinculados ao lead (compra), quando existir. Um lead
+    // pode ter mais de uma unidade (ex: histórico de troca) — prioriza VENDIDO >
+    // RESERVADO > PROPOSTA > demais status.
+    const unidades = leadIds.length
+      ? await this.prisma.developmentUnit.findMany({
+          where: { tenantId, leadId: { in: leadIds }, ativo: true },
+          select: { leadId: true, nome: true, status: true, development: { select: { nome: true } } },
+        })
+      : [];
+    const statusPrioridade: Record<string, number> = { VENDIDO: 0, RESERVADO: 1, PROPOSTA: 2 };
+    const unidadePorLead = new Map<string, { empreendimento: string; unidade: string; prioridade: number }>();
+    for (const u of unidades) {
+      if (!u.leadId) continue;
+      const prioridade = statusPrioridade[u.status] ?? 3;
+      const atual = unidadePorLead.get(u.leadId);
+      if (!atual || prioridade < atual.prioridade) {
+        unidadePorLead.set(u.leadId, { empreendimento: u.development.nome, unidade: u.nome, prioridade });
+      }
+    }
 
     const porFamilia = new Map<string, { status: string }[]>();
     for (const p of participantes) {
@@ -115,12 +136,15 @@ export class FamiliasService {
     const items = familias.map((f) => {
       const participacoes = porFamilia.get(f.id) ?? [];
       const demandasFamilia = demandasPorFamilia.get(f.id) ?? [];
+      const unidadeInfo = unidadePorLead.get(f.leadId);
       return {
         id: f.id,
         numero: f.numero,
         leadId: f.leadId,
         nome: f.lead.nomeCorreto ?? f.lead.nome,
         cpf: f.lead.cpf,
+        empreendimento: unidadeInfo?.empreendimento ?? null,
+        unidade: unidadeInfo?.unidade ?? null,
         statusFamilia: f.status, // ATIVA | CONCLUIDA | INATIVA (ciclo de vida no programa)
         status: computeStatusAcompanhamento(participacoes), // EM_DIA | COM_PENDENCIA (acompanhamento)
         faltas: countFaltas(participacoes),
