@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import type { LeadsService } from '../leads/leads.service';
 import { PRE_OCUPACAO_CATEGORIA_LABEL } from './pre-ocupacao-status.util';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
 
@@ -14,7 +16,22 @@ export class AtividadesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /**
+   * Resolve `LeadsService` via `ModuleRef` (em vez de injeção direta no
+   * construtor) para evitar importar `whatsapp-unofficial.service.ts` no
+   * topo deste arquivo — esse import transitivo puxa o pacote ESM
+   * `@whiskeysockets/baileys`, que o Jest não consegue transformar por
+   * padrão e quebraria QUALQUER spec que importe este arquivo, mesmo sem
+   * exercitar o envio de convite (mesmo bug pré-existente em
+   * `leads.service.spec.ts`, alheio a esta mudança).
+   */
+  private async getLeadsService(): Promise<LeadsService> {
+    const { LeadsService: LeadsServiceClass } = await import('../leads/leads.service.js');
+    return this.moduleRef.get(LeadsServiceClass, { strict: false });
+  }
 
   /**
    * Cria uma sessão (Atividade). Cria também um `CalendarEvent` correspondente.
@@ -210,6 +227,66 @@ export class AtividadesService {
     }
 
     return this.detalhe(tenantId, atividadeId);
+  }
+
+  /**
+   * Envia convite via WhatsApp para uma ou mais famílias participantes desta
+   * sessão. Reaproveita `LeadsService.sendWhatsappMessage()` — mesma lógica de
+   * escolha de canal (Light/Oficial) já usada no resto do CRM. Falha de uma
+   * família não aborta as demais; retorna um resumo por família.
+   */
+  async enviarConvites(
+    tenantId: string,
+    atividadeId: string,
+    user: { tenantId: string; id?: string; nome?: string },
+    familiaIds?: string[],
+  ) {
+    const atividade = await this.prisma.preOcupacaoAtividade.findFirst({
+      where: { id: atividadeId, tenantId },
+      include: {
+        participantes: {
+          include: { familia: { include: { lead: { select: { id: true, nome: true, nomeCorreto: true } } } } },
+        },
+      },
+    });
+    if (!atividade) throw new NotFoundException('Sessão não encontrada.');
+
+    const alvo = familiaIds?.length
+      ? atividade.participantes.filter((p) => familiaIds.includes(p.familiaId))
+      : atividade.participantes;
+    if (alvo.length === 0) throw new BadRequestException('Nenhuma família participante encontrada para o envio.');
+
+    const categoriaLabel = PRE_OCUPACAO_CATEGORIA_LABEL[atividade.categoria] ?? atividade.categoria;
+    const dataLabel = atividade.dataAgendada.toLocaleDateString('pt-BR');
+    const horaLabel = atividade.dataAgendada.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const localTrecho = atividade.local ? `, em ${atividade.local}` : '';
+
+    const leadsService = await this.getLeadsService();
+    const resultados: { familiaId: string; nome: string; ok: boolean; erro?: string }[] = [];
+    for (const p of alvo) {
+      const nome = p.familia.lead.nomeCorreto ?? p.familia.lead.nome;
+      const texto =
+        `Olá, ${nome}! Você está convidado(a) para a sessão "${atividade.titulo || categoriaLabel}" ` +
+        `do Trabalho Técnico Social, no dia ${dataLabel} às ${horaLabel}${localTrecho}. Contamos com sua presença!`;
+      try {
+        await leadsService.sendWhatsappMessage(user, p.familia.leadId, { message: texto });
+        resultados.push({ familiaId: p.familiaId, nome, ok: true });
+      } catch (e: any) {
+        resultados.push({ familiaId: p.familiaId, nome, ok: false, erro: e?.message || String(e) });
+      }
+    }
+
+    const enviados = resultados.filter((r) => r.ok).length;
+    this.logger.log(`Convites enviados: atividade=${atividadeId} enviados=${enviados}/${resultados.length}`);
+    await this.audit.log({
+      tenantId,
+      action: 'PRE_OCUPACAO_ENVIAR_CONVITE',
+      resourceType: 'PreOcupacaoAtividade',
+      resourceId: atividadeId,
+      metadata: { enviados, total: resultados.length, familiaIds: alvo.map((p) => p.familiaId) },
+    });
+
+    return { resultados, enviados, total: resultados.length };
   }
 
   async marcarFalta(tenantId: string, atividadeId: string, familiaId: string, marcadoFaltaPor: string) {

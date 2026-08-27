@@ -128,6 +128,23 @@ export default function AtividadeDetalhePage() {
     }
   }
 
+  async function handleEnviarConvite(familiaIds?: string[]) {
+    try {
+      const res = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite`, {
+        method: "POST",
+        body: JSON.stringify({ familiaIds }),
+      });
+      const falhas = (res.resultados ?? []).filter((r: any) => !r.ok);
+      if (falhas.length === 0) {
+        showToast(`Convite enviado (${res.enviados}/${res.total}).`);
+      } else {
+        showToast(`Enviado ${res.enviados}/${res.total} — falhou: ${falhas.map((f: any) => f.nome).join(", ")}`);
+      }
+    } catch (e: any) {
+      showToast(e?.message ?? "Erro ao enviar convite");
+    }
+  }
+
   if (guard === null) return null;
 
   return (
@@ -222,13 +239,22 @@ export default function AtividadeDetalhePage() {
             <Card>
               <CardHeader className="flex items-center justify-between">
                 <CardTitle>Famílias participantes ({data.participantes.length})</CardTitle>
-                <button
-                  onClick={() => setAddFamiliaModal(true)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
-                >
-                  + Adicionar família
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEnviarConvite(undefined)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                    style={{ color: "var(--shell-text)" }}
+                  >
+                    Enviar convite a todos
+                  </button>
+                  <button
+                    onClick={() => setAddFamiliaModal(true)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                    style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                  >
+                    + Adicionar família
+                  </button>
+                </div>
               </CardHeader>
               <CardBody className="space-y-2">
                 {data.participantes.map((p) => (
@@ -256,6 +282,13 @@ export default function AtividadeDetalhePage() {
                       </Badge>
                       {p.status !== "CONCLUIDA" && p.status !== "FALTOU" && (
                         <>
+                          <button
+                            onClick={() => handleEnviarConvite([p.familiaId])}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                            style={{ color: "var(--shell-text)" }}
+                          >
+                            Enviar convite
+                          </button>
                           <button
                             onClick={() => handleMarcarFalta(p.familiaId)}
                             className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
