@@ -39,6 +39,8 @@ const RSVP_LABEL: Record<string, string> = {
   RECUSOU: "Não vai comparecer",
 };
 
+type MensagemTemplate = { id: string; nome: string; corpo: string };
+
 type Agendamento = {
   id: string;
   mensagem: string;
@@ -79,11 +81,17 @@ export default function AtividadeDetalhePage() {
   const [addFamiliaModal, setAddFamiliaModal] = useState(false);
   const [conviteModal, setConviteModal] = useState<string[] | "todos" | null>(null);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
+  const [templates, setTemplates] = useState<MensagemTemplate[]>([]);
+  const [novoTemplateForm, setNovoTemplateForm] = useState(false);
+  const [novoTemplateNomeForm, setNovoTemplateNomeForm] = useState("");
+  const [novoTemplateCorpoForm, setNovoTemplateCorpoForm] = useState("");
+  const [savingTemplateForm, setSavingTemplateForm] = useState(false);
 
   useEffect(() => {
     if (guard !== true || !atividadeId) return;
     load();
     loadAgendamentos();
+    loadTemplates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard, atividadeId]);
 
@@ -117,6 +125,45 @@ export default function AtividadeDetalhePage() {
       await loadAgendamentos();
     } catch (e: any) {
       showToast(e?.message ?? "Erro ao cancelar agendamento");
+    }
+  }
+
+  async function loadTemplates() {
+    try {
+      const res = await apiFetch("/pre-ocupacao/templates");
+      setTemplates(Array.isArray(res) ? res : []);
+    } catch {
+      setTemplates([]);
+    }
+  }
+
+  async function handleCriarTemplate() {
+    if (!novoTemplateNomeForm.trim() || !novoTemplateCorpoForm.trim()) return;
+    setSavingTemplateForm(true);
+    try {
+      await apiFetch("/pre-ocupacao/templates", {
+        method: "POST",
+        body: JSON.stringify({ nome: novoTemplateNomeForm.trim(), corpo: novoTemplateCorpoForm.trim() }),
+      });
+      setNovoTemplateForm(false);
+      setNovoTemplateNomeForm("");
+      setNovoTemplateCorpoForm("");
+      showToast("Modelo salvo.");
+      await loadTemplates();
+    } catch (e: any) {
+      showToast(e?.message ?? "Erro ao salvar modelo");
+    } finally {
+      setSavingTemplateForm(false);
+    }
+  }
+
+  async function handleExcluirTemplate(id: string) {
+    try {
+      await apiFetch(`/pre-ocupacao/templates/${id}`, { method: "DELETE" });
+      showToast("Modelo excluído.");
+      await loadTemplates();
+    } catch (e: any) {
+      showToast(e?.message ?? "Erro ao excluir modelo");
     }
   }
 
@@ -254,6 +301,80 @@ export default function AtividadeDetalhePage() {
                     ))}
                   </ul>
                 )}
+              </CardBody>
+            </Card>
+
+            <Card className="mb-4">
+              <CardHeader className="flex items-center justify-between">
+                <CardTitle>Modelos de mensagem ({templates.length})</CardTitle>
+                <button
+                  onClick={() => setNovoTemplateForm((v) => !v)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                >
+                  + Novo modelo
+                </button>
+              </CardHeader>
+              <CardBody className="space-y-2">
+                {novoTemplateForm && (
+                  <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: "var(--shell-card-border)" }}>
+                    <input
+                      type="text"
+                      value={novoTemplateNomeForm}
+                      onChange={(e) => setNovoTemplateNomeForm(e.target.value)}
+                      placeholder="Nome do modelo (ex: Lembrete 1 dia antes)"
+                      className="w-full h-9 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+                    />
+                    <textarea
+                      value={novoTemplateCorpoForm}
+                      onChange={(e) => setNovoTemplateCorpoForm(e.target.value)}
+                      rows={3}
+                      placeholder="Mensagem (use {{nome}} pra personalizar)"
+                      className="w-full rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] resize-none"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setNovoTemplateForm(false)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                        style={{ color: "var(--shell-text)" }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleCriarTemplate}
+                        disabled={savingTemplateForm || !novoTemplateNomeForm.trim() || !novoTemplateCorpoForm.trim()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50"
+                        style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                      >
+                        {savingTemplateForm ? "Salvando..." : "Salvar modelo"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {templates.length === 0 && !novoTemplateForm && (
+                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>
+                    Nenhum modelo salvo ainda — crie um pra reusar em convites e lembretes futuros.
+                  </p>
+                )}
+                {templates.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium" style={{ color: "var(--shell-text)" }}>{t.nome}</p>
+                      <p className="text-xs truncate" style={{ color: "var(--shell-subtext)" }}>{t.corpo}</p>
+                    </div>
+                    <button
+                      onClick={() => handleExcluirTemplate(t.id)}
+                      className="text-xs shrink-0"
+                      style={{ color: "#dc2626" }}
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                ))}
               </CardBody>
             </Card>
 
@@ -407,6 +528,8 @@ export default function AtividadeDetalhePage() {
           atividadeId={atividadeId}
           atividade={data}
           familiaIds={conviteModal === "todos" ? undefined : conviteModal}
+          templates={templates}
+          onTemplateSaved={loadTemplates}
           onClose={() => setConviteModal(null)}
           onSaved={async (mensagem) => {
             setConviteModal(null);
@@ -662,18 +785,20 @@ function AddFamiliaModal({
   );
 }
 
-type MensagemTemplate = { id: string; nome: string; corpo: string };
-
 function ConviteModal({
   atividadeId,
   atividade,
   familiaIds,
+  templates,
+  onTemplateSaved,
   onClose,
   onSaved,
 }: {
   atividadeId: string;
   atividade: Atividade;
   familiaIds?: string[];
+  templates: MensagemTemplate[];
+  onTemplateSaved: () => void;
   onClose: () => void;
   onSaved: (mensagem: string) => void;
 }) {
@@ -691,7 +816,6 @@ function ConviteModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [templates, setTemplates] = useState<MensagemTemplate[]>([]);
   const [templateSelecionado, setTemplateSelecionado] = useState("");
   const [showSalvarTemplate, setShowSalvarTemplate] = useState(false);
   const [novoTemplateNome, setNovoTemplateNome] = useState("");
@@ -699,12 +823,6 @@ function ConviteModal({
 
   const [modo, setModo] = useState<"agora" | "agendar">("agora");
   const [agendadoPara, setAgendadoPara] = useState("");
-
-  useEffect(() => {
-    apiFetch("/pre-ocupacao/templates")
-      .then((res) => setTemplates(Array.isArray(res) ? res : []))
-      .catch(() => setTemplates([]));
-  }, []);
 
   useEffect(() => {
     setPreview(mensagem.replace(/\{\{nome\}\}/gi, "Maria da Silva"));
@@ -726,7 +844,7 @@ function ConviteModal({
         method: "POST",
         body: JSON.stringify({ nome: novoTemplateNome.trim(), corpo: mensagem.trim() }),
       });
-      setTemplates((prev) => [...prev, novo].sort((a, b) => a.nome.localeCompare(b.nome)));
+      onTemplateSaved();
       setTemplateSelecionado(novo.id);
       setShowSalvarTemplate(false);
       setNovoTemplateNome("");
