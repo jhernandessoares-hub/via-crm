@@ -8,6 +8,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { apiFetch } from "@/lib/api";
 import { formatLeadNumber } from "@/lib/format-lead-number";
+import { maskPhone } from "@/lib/format";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
 import {
   CATEGORIA_LABEL,
@@ -57,6 +58,8 @@ type Detalhe = {
   };
   status: "EM_DIA" | "COM_PENDENCIA";
   faltas: number;
+  empreendimento: string | null;
+  unidade: string | null;
   participacoes: Participacao[];
   ocorrencias: Ocorrencia[];
 };
@@ -121,7 +124,10 @@ export default function FamiliaDetalhePage() {
                     </h1>
                     <p className="text-sm mt-1" style={{ color: "var(--shell-subtext)" }}>
                       {data.familia.lead.cpf ? `CPF: ${data.familia.lead.cpf}` : "CPF não informado"}
-                      {data.familia.lead.telefone ? ` · ${data.familia.lead.telefone}` : ""}
+                      {data.familia.lead.telefone ? ` · ${maskPhone(data.familia.lead.telefone)}` : " · Telefone não informado"}
+                    </p>
+                    <p className="text-sm mt-1" style={{ color: "var(--shell-subtext)" }}>
+                      {data.empreendimento ? `${data.empreendimento} · Unidade ${data.unidade}` : "Empreendimento/Unidade não vinculados"}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
@@ -132,7 +138,7 @@ export default function FamiliaDetalhePage() {
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-4 text-xs" style={{ color: "var(--shell-subtext)" }}>
-                  <span>Ativada em {formatDate(data.familia.ativadoEm)} por {data.familia.ativadoPor}</span>
+                  <span>Incluída em {formatDate(data.familia.ativadoEm)} por {data.familia.ativadoPor}</span>
                   <span>Faltas: {data.faltas}</span>
                 </div>
                 <div className="mt-4">

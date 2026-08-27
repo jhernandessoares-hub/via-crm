@@ -76,6 +76,31 @@ export class FamiliasService {
     };
   }
 
+  /**
+   * Empreendimento/Unidade vinculados ao lead (compra), quando existir. Um lead
+   * pode ter mais de uma unidade (ex: histórico de troca) — prioriza VENDIDO >
+   * RESERVADO > PROPOSTA > demais status.
+   */
+  private async buscarUnidadesPorLead(tenantId: string, leadIds: string[]) {
+    const unidades = leadIds.length
+      ? await this.prisma.developmentUnit.findMany({
+          where: { tenantId, leadId: { in: leadIds }, ativo: true },
+          select: { leadId: true, nome: true, status: true, development: { select: { nome: true } } },
+        })
+      : [];
+    const statusPrioridade: Record<string, number> = { VENDIDO: 0, RESERVADO: 1, PROPOSTA: 2 };
+    const unidadePorLead = new Map<string, { empreendimento: string; unidade: string; prioridade: number }>();
+    for (const u of unidades) {
+      if (!u.leadId) continue;
+      const prioridade = statusPrioridade[u.status] ?? 3;
+      const atual = unidadePorLead.get(u.leadId);
+      if (!atual || prioridade < atual.prioridade) {
+        unidadePorLead.set(u.leadId, { empreendimento: u.development.nome, unidade: u.nome, prioridade });
+      }
+    }
+    return unidadePorLead;
+  }
+
   /** Lista todas as famílias do tenant + dashboard agregado. */
   async listar(tenantId: string, take?: number, skip?: number) {
     const familias = await this.prisma.preOcupacaoFamilia.findMany({
@@ -99,25 +124,7 @@ export class FamiliasService {
         })
       : [];
 
-    // Empreendimento/Unidade vinculados ao lead (compra), quando existir. Um lead
-    // pode ter mais de uma unidade (ex: histórico de troca) — prioriza VENDIDO >
-    // RESERVADO > PROPOSTA > demais status.
-    const unidades = leadIds.length
-      ? await this.prisma.developmentUnit.findMany({
-          where: { tenantId, leadId: { in: leadIds }, ativo: true },
-          select: { leadId: true, nome: true, status: true, development: { select: { nome: true } } },
-        })
-      : [];
-    const statusPrioridade: Record<string, number> = { VENDIDO: 0, RESERVADO: 1, PROPOSTA: 2 };
-    const unidadePorLead = new Map<string, { empreendimento: string; unidade: string; prioridade: number }>();
-    for (const u of unidades) {
-      if (!u.leadId) continue;
-      const prioridade = statusPrioridade[u.status] ?? 3;
-      const atual = unidadePorLead.get(u.leadId);
-      if (!atual || prioridade < atual.prioridade) {
-        unidadePorLead.set(u.leadId, { empreendimento: u.development.nome, unidade: u.nome, prioridade });
-      }
-    }
+    const unidadePorLead = await this.buscarUnidadesPorLead(tenantId, leadIds);
 
     const porFamilia = new Map<string, { status: string }[]>();
     for (const p of participantes) {
@@ -186,8 +193,12 @@ export class FamiliasService {
       orderBy: { abertaEm: 'desc' },
     });
 
+    const unidadeInfo = (await this.buscarUnidadesPorLead(tenantId, [familia.leadId])).get(familia.leadId);
+
     return {
       familia,
+      empreendimento: unidadeInfo?.empreendimento ?? null,
+      unidade: unidadeInfo?.unidade ?? null,
       status: computeStatusAcompanhamento(participacoes),
       faltas: countFaltas(participacoes),
       participacoes,
