@@ -2337,7 +2337,7 @@ async getById(user: any, id: string) {
     // Sub-conversas: leads incorporados neste (aparecem como abas na UI)
     const incorporados = await this.prisma.lead.findMany({
       where: { incorporadoEmLeadId: id, tenantId: user.tenantId, deletedAt: null },
-      select: { id: true, nome: true, nomeCorreto: true, telefone: true },
+      select: { id: true, nome: true, nomeCorreto: true, telefone: true, avatarUrl: true },
     });
 
     // "Aguardando resposta" por aba: derivado dos eventos, sem coluna nova. Fica marcado
@@ -2357,7 +2357,7 @@ async getById(user: any, id: string) {
 
     let subConversas: Array<{
       participanteId: string | null; leadId: string; nome: string; classificacao: string | null;
-      telefone: string | null; observacao: string | null; observacaoPorNome: string | null;
+      telefone: string | null; avatarUrl: string | null; observacao: string | null; observacaoPorNome: string | null;
       observacaoEm: Date | null; desagrupado: boolean; desagrupadoEm: Date | null;
       aguardandoResposta: boolean; events: any[];
     }> = [];
@@ -2403,6 +2403,7 @@ async getById(user: any, id: string) {
             participanteId, leadId: inc.id, nome,
             classificacao: participante?.classificacao ?? null,
             telefone: inc.telefone,
+            avatarUrl: inc.avatarUrl ?? null,
             observacao: participante?.observacao ?? null,
             observacaoPorNome: participante?.observacaoPorNome ?? null,
             observacaoEm: participante?.observacaoEm ?? null,
@@ -2423,34 +2424,45 @@ async getById(user: any, id: string) {
       (ev) => ev.channel === 'system' && (ev.payloadRaw as any)?.type === 'chat_desagrupado',
     );
     if (desagrupamentos.length > 0) {
-      const desagrupadas = await Promise.all(
-        desagrupamentos
-          .filter((ev) => {
-            const childLeadId = (ev.payloadRaw as any)?.childLeadId;
-            return childLeadId && !incorporadosIds.has(childLeadId);
+      const desagrupamentosValidos = desagrupamentos.filter((ev) => {
+        const childLeadId = (ev.payloadRaw as any)?.childLeadId;
+        return childLeadId && !incorporadosIds.has(childLeadId);
+      });
+
+      const childLeadIds = desagrupamentosValidos.map((ev) => (ev.payloadRaw as any).childLeadId as string);
+      const childLeads = childLeadIds.length > 0
+        ? await this.prisma.lead.findMany({
+            where: { id: { in: childLeadIds }, tenantId: user.tenantId },
+            select: { id: true, telefone: true, avatarUrl: true },
           })
-          .map(async (ev) => {
-            const p = ev.payloadRaw as any;
-            const childLeadId = p.childLeadId as string;
-            const historico = await this.prisma.leadEvent.findMany({
-              where: { leadId: childLeadId, tenantId: user.tenantId, criadoEm: { lte: ev.criadoEm } },
-              orderBy: { criadoEm: 'asc' },
-            });
-            return {
-              participanteId: null,
-              leadId: childLeadId,
-              nome: p.childNome as string,
-              classificacao: null,
-              telefone: null,
-              observacao: null,
-              observacaoPorNome: null,
-              observacaoEm: null,
-              desagrupado: true,
-              desagrupadoEm: ev.criadoEm,
-              aguardandoResposta: false,
-              events: historico,
-            };
-          }),
+        : [];
+      const childLeadMap = new Map(childLeads.map((l) => [l.id, l]));
+
+      const desagrupadas = await Promise.all(
+        desagrupamentosValidos.map(async (ev) => {
+          const p = ev.payloadRaw as any;
+          const childLeadId = p.childLeadId as string;
+          const childInfo = childLeadMap.get(childLeadId);
+          const historico = await this.prisma.leadEvent.findMany({
+            where: { leadId: childLeadId, tenantId: user.tenantId, criadoEm: { lte: ev.criadoEm } },
+            orderBy: { criadoEm: 'asc' },
+          });
+          return {
+            participanteId: null,
+            leadId: childLeadId,
+            nome: p.childNome as string,
+            classificacao: null,
+            telefone: childInfo?.telefone ?? null,
+            avatarUrl: childInfo?.avatarUrl ?? null,
+            observacao: null,
+            observacaoPorNome: null,
+            observacaoEm: null,
+            desagrupado: true,
+            desagrupadoEm: ev.criadoEm,
+            aguardandoResposta: false,
+            events: historico,
+          };
+        }),
       );
       subConversas = [...subConversas, ...desagrupadas];
     }
