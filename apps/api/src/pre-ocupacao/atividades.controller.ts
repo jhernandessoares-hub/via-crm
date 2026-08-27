@@ -14,12 +14,16 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AddonGuard, RequiresAddon } from '../auth/plan.guard';
 import { AtividadesService } from './atividades.service';
+import { AgendamentoConviteService } from './agendamento-convite.service';
 
 @UseGuards(JwtAuthGuard, AddonGuard)
 @RequiresAddon('PRE_OCUPACAO')
 @Controller('pre-ocupacao/atividades')
 export class AtividadesController {
-  constructor(private readonly svc: AtividadesService) {}
+  constructor(
+    private readonly svc: AtividadesService,
+    private readonly agendamentos: AgendamentoConviteService,
+  ) {}
 
   @Post()
   criar(@Request() req: any, @Body() body: any) {
@@ -67,6 +71,22 @@ export class AtividadesController {
   ) {
     const user = { tenantId: req.user.tenantId, id: req.user.id ?? req.user.sub, nome: req.user.nome };
     return this.svc.enviarConvites(req.user.tenantId, id, user, familiaIds, mensagem);
+  }
+
+  @Post(':id/convite/agendar')
+  agendarConvite(@Request() req: any, @Param('id') id: string, @Body() body: { familiaIds?: string[]; mensagem?: string; agendadoPara?: string }) {
+    const criadoPor = req.user?.nome || req.user?.email || req.user?.id;
+    return this.agendamentos.criar(req.user.tenantId, id, criadoPor, body);
+  }
+
+  @Get(':id/agendamentos')
+  listarAgendamentos(@Request() req: any, @Param('id') id: string) {
+    return this.agendamentos.listar(req.user.tenantId, id);
+  }
+
+  @Patch('agendamentos/:agendamentoId/cancelar')
+  cancelarAgendamento(@Request() req: any, @Param('agendamentoId') agendamentoId: string) {
+    return this.agendamentos.cancelar(req.user.tenantId, agendamentoId);
   }
 
   @Patch(':id/participantes/:familiaId/falta')
