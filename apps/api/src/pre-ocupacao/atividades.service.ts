@@ -175,6 +175,43 @@ export class AtividadesService {
     });
   }
 
+  /** Adiciona famílias a uma sessão já criada — ignora as que já são participantes (idempotente). */
+  async adicionarParticipantes(tenantId: string, atividadeId: string, familiaIds: string[]) {
+    await this.getAtividadeOrThrow(tenantId, atividadeId);
+    const ids = [...new Set((familiaIds ?? []).filter(Boolean))];
+    if (ids.length === 0) throw new BadRequestException('familiaIds é obrigatório.');
+
+    const familiasValidas = await this.prisma.preOcupacaoFamilia.findMany({
+      where: { id: { in: ids }, tenantId },
+      select: { id: true },
+    });
+    const validasSet = new Set(familiasValidas.map((f) => f.id));
+    const invalidas = ids.filter((id) => !validasSet.has(id));
+    if (invalidas.length > 0) {
+      throw new BadRequestException(`Família(s) inválida(s) para este tenant: ${invalidas.join(', ')}.`);
+    }
+
+    const jaParticipantes = await this.prisma.preOcupacaoAtividadeParticipante.findMany({
+      where: { atividadeId, familiaId: { in: ids } },
+      select: { familiaId: true },
+    });
+    const jaParticipantesSet = new Set(jaParticipantes.map((p) => p.familiaId));
+    const novos = ids.filter((id) => !jaParticipantesSet.has(id));
+
+    if (novos.length > 0) {
+      await this.prisma.preOcupacaoAtividadeParticipante.createMany({
+        data: novos.map((familiaId) => ({
+          atividadeId,
+          familiaId,
+          status: 'AGUARDANDO_PREENCHIMENTO' as any,
+        })),
+      });
+      this.logger.log(`Participantes adicionados: atividade=${atividadeId} familias=${novos.length}`);
+    }
+
+    return this.detalhe(tenantId, atividadeId);
+  }
+
   async marcarFalta(tenantId: string, atividadeId: string, familiaId: string, marcadoFaltaPor: string) {
     const participante = await this.getParticipanteOrThrow(tenantId, atividadeId, familiaId);
 
