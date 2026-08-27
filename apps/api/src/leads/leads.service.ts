@@ -2334,6 +2334,15 @@ async getById(user: any, id: string) {
 
     const ordered = events.reverse();
 
+    // Eventos de sistema (incorporado/encerrado/desagrupado) — busca própria, independente
+    // da paginação/filtro da lista principal, já que agora chat_incorporated e
+    // chat_encerrado_aba viajam com leadParticipanteId (pra aparecer só na aba certa) e por
+    // isso não estariam mais em `ordered` (que é só leadParticipanteId:null).
+    const systemEvents = await this.prisma.leadEvent.findMany({
+      where: { leadId: id, tenantId: user.tenantId, channel: 'system' },
+      orderBy: { criadoEm: 'asc' },
+    });
+
     // Sub-conversas: leads incorporados neste (aparecem como abas na UI)
     const incorporados = await this.prisma.lead.findMany({
       where: { incorporadoEmLeadId: id, tenantId: user.tenantId, deletedAt: null },
@@ -2345,7 +2354,7 @@ async getById(user: any, id: string) {
     // "chat_encerrado_aba" registrado pra ele (limpo só pelo botão Encerrar, não pela resposta).
     const INBOUND_CHANNELS = new Set(['whatsapp.in', 'whatsapp.unofficial.in']);
     const encerradoMap = new Map<string, number>();
-    for (const ev of ordered) {
+    for (const ev of systemEvents) {
       if (ev.channel === 'system' && (ev.payloadRaw as any)?.type === 'chat_encerrado_aba') {
         const pid = (ev.payloadRaw as any)?.participanteId as string | undefined;
         if (pid) {
@@ -2420,7 +2429,7 @@ async getById(user: any, id: string) {
     // desagrupados. Reconstruído a partir do próprio evento de sistema (payloadRaw),
     // sem precisar de coluna nova — o registro do LeadParticipante já foi removido.
     const incorporadosIds = new Set(incorporados.map((inc) => inc.id));
-    const desagrupamentos = ordered.filter(
+    const desagrupamentos = systemEvents.filter(
       (ev) => ev.channel === 'system' && (ev.payloadRaw as any)?.type === 'chat_desagrupado',
     );
     if (desagrupamentos.length > 0) {
@@ -2460,7 +2469,9 @@ async getById(user: any, id: string) {
             desagrupado: true,
             desagrupadoEm: ev.criadoEm,
             aguardandoResposta: false,
-            events: historico,
+            // Inclui o próprio evento de desagrupamento no fim — vira o aviso "🔓 Este chat
+            // foi desagrupado..." dentro da própria aba cinza, em vez de aparecer na Principal.
+            events: [...historico, ev],
           };
         }),
       );
@@ -4070,6 +4081,7 @@ const aiAssistanceLabel =
           leadId,
           channel: 'system',
           isReentry: false,
+          leadParticipanteId: participanteId,
           payloadRaw: {
             type: 'chat_encerrado_aba',
             participanteId,
@@ -4846,6 +4858,7 @@ const aiAssistanceLabel =
           leadId: destLeadId,
           channel: 'system',
           isReentry: false,
+          leadParticipanteId: p.id,
           payloadRaw: {
             type: 'chat_incorporated',
             sourceLeadId,
