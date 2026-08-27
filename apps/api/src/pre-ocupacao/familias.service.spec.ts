@@ -6,7 +6,8 @@ function buildPrismaMock() {
     lead: { findFirst: jest.fn() },
     preOcupacaoFamilia: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
     preOcupacaoAtividadeParticipante: { findMany: jest.fn() },
-    preOcupacaoOcorrencia: { findMany: jest.fn() },
+    preOcupacaoOcorrencia: { findMany: jest.fn().mockResolvedValue([]) },
+    developmentUnit: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn(),
   };
 }

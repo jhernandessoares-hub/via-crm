@@ -36,7 +36,7 @@ describe('AtividadesService', () => {
       prisma.$transaction.mockImplementation((cb: any) => cb(tx));
 
       const result = await svc.criar(TENANT_A, 'user-1', {
-        categoria: 'DIAGNOSTICO',
+        categoria: 'ORGANIZACAO_CONDOMINIAL',
         dataAgendada: '2026-08-01T10:00:00.000Z',
         familiaIds: ['f1', 'f2'],
       });
@@ -65,7 +65,7 @@ describe('AtividadesService', () => {
       };
       prisma.$transaction.mockImplementation((cb: any) => cb(tx));
 
-      await svc.criar(TENANT_A, 'user-1', { categoria: 'MAPEAMENTO', dataAgendada: '2026-08-01T10:00:00.000Z' });
+      await svc.criar(TENANT_A, 'user-1', { categoria: 'EDUCACAO_AMBIENTAL_PATRIMONIAL', dataAgendada: '2026-08-01T10:00:00.000Z' });
 
       expect(prisma.preOcupacaoFamilia.findMany).toHaveBeenCalledWith({
         where: { tenantId: TENANT_A, status: 'ATIVA' },
@@ -87,7 +87,7 @@ describe('AtividadesService', () => {
       prisma.preOcupacaoFamilia.findMany.mockResolvedValue([]);
 
       await expect(
-        svc.criar(TENANT_A, 'user-1', { categoria: 'EDUCACAO', dataAgendada: '2026-08-01T10:00:00.000Z' }),
+        svc.criar(TENANT_A, 'user-1', { categoria: 'CONVIVENCIA_COMUNITARIA', dataAgendada: '2026-08-01T10:00:00.000Z' }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
@@ -107,7 +107,7 @@ describe('AtividadesService', () => {
       const svc = new AtividadesService(prisma, buildAuditMock() as any);
 
       await expect(
-        svc.criar(TENANT_A, 'user-1', { categoria: 'DIAGNOSTICO', dataAgendada: 'data-invalida' }),
+        svc.criar(TENANT_A, 'user-1', { categoria: 'ORGANIZACAO_CONDOMINIAL', dataAgendada: 'data-invalida' }),
       ).rejects.toThrow(BadRequestException);
     });
   });
