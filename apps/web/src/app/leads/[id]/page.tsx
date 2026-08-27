@@ -2245,6 +2245,8 @@ export default function LeadDetailChatPage() {
   const [observacaoDraft, setObservacaoDraft] = useState("");
   const [savingObservacao, setSavingObservacao] = useState(false);
   const [desagrupandoLeadId, setDesagrupandoLeadId] = useState<string | null>(null);
+  const [sendingEndConv, setSendingEndConv] = useState(false);
+  const sendingEndConvRef = useRef(false);
   const [pulsingTabs, setPulsingTabs] = useState<Set<string>>(new Set());
   const prevAguardandoRef = useRef<Set<string>>(new Set());
   const [loadingLead, setLoadingLead] = useState(true);
@@ -3561,6 +3563,9 @@ function discardAiSuggestion() {
       if (ch === "ai.broker_notify") continue;
       if (ch === "ai.qual_settle") continue;
       if (ch === "bot.outside_hours") continue;
+      // "Chat desagrupado" só faz sentido dentro da própria aba cinza que ele gera — na
+      // Principal ele já apareceria fora de contexto (a pessoa nem está mais na tela).
+      if (!abaAtiva && ch === "system" && (ev.payloadRaw as any)?.type === "chat_desagrupado") continue;
       if (isGhostEvent(ev)) continue;
       normal.push(ev);
     }
@@ -3570,7 +3575,7 @@ function discardAiSuggestion() {
       const reactions = msgId ? reactionsMap[msgId] || [] : [];
       return { ev, reactions };
     });
-  }, [activeEvents]);
+  }, [activeEvents, abaAtiva]);
 
   const lastVisibleEvent = useMemo(() => {
     if (!orderedEvents.length) return null;
@@ -7785,19 +7790,33 @@ function discardAiSuggestion() {
                 Cancelar
               </button>
               <button
+                disabled={sendingEndConv}
                 onClick={async () => {
-                  if (abaAtiva && activeSubConversa?.participanteId) {
-                    await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST', body: JSON.stringify({ participanteId: activeSubConversa.participanteId }) });
-                    await loadEvents({ silent: true });
-                  } else {
-                    await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
-                    setLead((prev) => prev ? { ...prev, conversaAberta: false } : prev);
+                  // Trava síncrona por ref — o disabled do React só reflete no DOM depois
+                  // do próximo render, então dois cliques bem próximos ainda passariam
+                  // pelo onClick antes disso. O ref bloqueia na hora, sem esperar render.
+                  if (sendingEndConvRef.current) return;
+                  sendingEndConvRef.current = true;
+                  setSendingEndConv(true);
+                  try {
+                    if (abaAtiva && activeSubConversa?.participanteId) {
+                      await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST', body: JSON.stringify({ participanteId: activeSubConversa.participanteId }) });
+                      await loadEvents({ silent: true });
+                    } else {
+                      await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+                      setLead((prev) => prev ? { ...prev, conversaAberta: false } : prev);
+                    }
+                    setShowEndConvDialog(false);
+                  } catch (err: any) {
+                    alert(err?.message || "Erro ao encerrar conversa.");
+                  } finally {
+                    sendingEndConvRef.current = false;
+                    setSendingEndConv(false);
                   }
-                  setShowEndConvDialog(false);
                 }}
-                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
               >
-                Sim, encerrar
+                {sendingEndConv ? "Encerrando..." : "Sim, encerrar"}
               </button>
             </div>
           </div>
