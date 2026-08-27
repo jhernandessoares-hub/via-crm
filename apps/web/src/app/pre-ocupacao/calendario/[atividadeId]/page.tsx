@@ -28,8 +28,15 @@ type Participante = {
   preenchidoEm: string | null;
   avaliacao: string | null;
   marcadoFaltaPor: string | null;
+  rsvpStatus: "AGUARDANDO" | "CONFIRMOU" | "RECUSOU";
   familia: { id: string; leadId: string; numero: number; lead: { id: string; nome: string; nomeCorreto: string | null } };
   anexos: { id: string; url: string; nome: string }[];
+};
+
+const RSVP_LABEL: Record<string, string> = {
+  AGUARDANDO: "Aguardando confirmação",
+  CONFIRMOU: "Confirmou presença",
+  RECUSOU: "Não vai comparecer",
 };
 
 type Atividade = {
@@ -61,6 +68,7 @@ export default function AtividadeDetalhePage() {
 
   const [fichaModal, setFichaModal] = useState<Participante | null>(null);
   const [addFamiliaModal, setAddFamiliaModal] = useState(false);
+  const [conviteModal, setConviteModal] = useState<string[] | "todos" | null>(null);
 
   useEffect(() => {
     if (guard !== true || !atividadeId) return;
@@ -125,23 +133,6 @@ export default function AtividadeDetalhePage() {
       await load();
     } catch (e: any) {
       showToast(e?.message ?? "Erro ao registrar falta");
-    }
-  }
-
-  async function handleEnviarConvite(familiaIds?: string[]) {
-    try {
-      const res = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite`, {
-        method: "POST",
-        body: JSON.stringify({ familiaIds }),
-      });
-      const falhas = (res.resultados ?? []).filter((r: any) => !r.ok);
-      if (falhas.length === 0) {
-        showToast(`Convite enviado (${res.enviados}/${res.total}).`);
-      } else {
-        showToast(`Enviado ${res.enviados}/${res.total} — falhou: ${falhas.map((f: any) => f.nome).join(", ")}`);
-      }
-    } catch (e: any) {
-      showToast(e?.message ?? "Erro ao enviar convite");
     }
   }
 
@@ -241,7 +232,7 @@ export default function AtividadeDetalhePage() {
                 <CardTitle>Famílias participantes ({data.participantes.length})</CardTitle>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleEnviarConvite(undefined)}
+                    onClick={() => setConviteModal("todos")}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
                     style={{ color: "var(--shell-text)" }}
                   >
@@ -277,13 +268,16 @@ export default function AtividadeDetalhePage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant={p.rsvpStatus === "CONFIRMOU" ? "success" : p.rsvpStatus === "RECUSOU" ? "error" : "default"}>
+                        {RSVP_LABEL[p.rsvpStatus] ?? p.rsvpStatus}
+                      </Badge>
                       <Badge variant={p.status === "FALTOU" ? "error" : p.status === "CONCLUIDA" ? "success" : p.status === "PENDENTE" ? "warning" : "default"}>
                         {PARTICIPANTE_STATUS_LABEL[p.status] ?? p.status}
                       </Badge>
                       {p.status !== "CONCLUIDA" && p.status !== "FALTOU" && (
                         <>
                           <button
-                            onClick={() => handleEnviarConvite([p.familiaId])}
+                            onClick={() => setConviteModal([p.familiaId])}
                             className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
                             style={{ color: "var(--shell-text)" }}
                           >
@@ -335,6 +329,24 @@ export default function AtividadeDetalhePage() {
           onSaved={async (qtd) => {
             setAddFamiliaModal(false);
             showToast(`${qtd} família(s) adicionada(s) à sessão.`);
+            await load();
+          }}
+        />
+      )}
+
+      {conviteModal && data && (
+        <ConviteModal
+          atividadeId={atividadeId}
+          atividade={data}
+          familiaIds={conviteModal === "todos" ? undefined : conviteModal}
+          onClose={() => setConviteModal(null)}
+          onSaved={async (enviados, total, falhas) => {
+            setConviteModal(null);
+            showToast(
+              falhas.length === 0
+                ? `Convite enviado (${enviados}/${total}).`
+                : `Enviado ${enviados}/${total} — falhou: ${falhas.join(", ")}`,
+            );
             await load();
           }}
         />
@@ -558,6 +570,112 @@ function AddFamiliaModal({
             #{String(f.numero).padStart(4, "0")} — {f.nome}
           </label>
         ))}
+        {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+function ConviteModal({
+  atividadeId,
+  atividade,
+  familiaIds,
+  onClose,
+  onSaved,
+}: {
+  atividadeId: string;
+  atividade: Atividade;
+  familiaIds?: string[];
+  onClose: () => void;
+  onSaved: (enviados: number, total: number, falhas: string[]) => void;
+}) {
+  const categoriaLabel = CATEGORIA_LABEL[atividade.categoria] ?? atividade.categoria;
+  const dataLabel = new Date(atividade.dataAgendada).toLocaleDateString("pt-BR");
+  const horaLabel = new Date(atividade.dataAgendada).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const localTrecho = atividade.local ? `, em ${atividade.local}` : "";
+  const titulo = atividade.titulo || categoriaLabel;
+  const defaultTemplate =
+    `Olá, {{nome}}! Você está convidado(a) para a sessão "${titulo}" do Trabalho Técnico Social, ` +
+    `no dia ${dataLabel} às ${horaLabel}${localTrecho}.`;
+
+  const [mensagem, setMensagem] = useState(defaultTemplate);
+  const [preview, setPreview] = useState(defaultTemplate);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPreview(mensagem.replace(/\{\{nome\}\}/gi, "Maria da Silva"));
+  }, [mensagem]);
+
+  const alvoLabel = familiaIds ? `${familiaIds.length} família(s)` : "todas as famílias participantes";
+
+  async function handleSubmit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite`, {
+        method: "POST",
+        body: JSON.stringify({ familiaIds, mensagem: mensagem.trim() }),
+      });
+      const falhas = (res.resultados ?? []).filter((r: any) => !r.ok).map((r: any) => r.nome);
+      onSaved(res.enviados, res.total, falhas);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao enviar convite");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Enviar convite"
+      description={`Convite para ${alvoLabel}. Use {{nome}} pra personalizar.`}
+      footer={
+        <>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]"
+            style={{ color: "var(--shell-text)" }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || !mensagem.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+            style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+          >
+            {saving ? "Enviando..." : "Enviar"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>
+            Mensagem
+          </label>
+          <textarea
+            value={mensagem}
+            onChange={(e) => setMensagem(e.target.value)}
+            rows={5}
+            className="w-full rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] resize-none"
+          />
+          <p className="mt-1 text-xs" style={{ color: "var(--shell-subtext)" }}>
+            O link de confirmação de presença é adicionado automaticamente no fim da mensagem.
+          </p>
+        </div>
+        {preview !== mensagem && (
+          <div className="rounded-lg p-3 text-sm" style={{ background: "var(--brand-accent-muted, #eef8f5)" }}>
+            <p className="text-xs font-medium mb-1" style={{ color: "var(--brand-accent, #1D9E75)" }}>
+              Preview:
+            </p>
+            <p style={{ color: "var(--shell-text)" }}>{preview}</p>
+          </div>
+        )}
         {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
       </div>
     </Modal>

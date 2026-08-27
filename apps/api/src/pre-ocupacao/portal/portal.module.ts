@@ -7,10 +7,12 @@ import { PortalAuthService } from './portal-auth.service';
 import { PortalDemandasService } from './portal-demandas.service';
 import { PortalConteudoService } from './portal-conteudo.service';
 import { PortalController } from './portal.controller';
+import { ConviteController } from './convite.controller';
+import { ConviteService } from './convite.service';
 
 @Module({
   imports: [PrismaModule, PreOcupacaoModule, JwtModule.register({ secret: process.env.JWT_SECRET })],
-  controllers: [PortalController],
-  providers: [FamiliaAuthGuard, PortalAuthService, PortalDemandasService, PortalConteudoService],
+  controllers: [PortalController, ConviteController],
+  providers: [FamiliaAuthGuard, PortalAuthService, PortalDemandasService, PortalConteudoService, ConviteService],
 })
 export class PreOcupacaoPortalModule {}

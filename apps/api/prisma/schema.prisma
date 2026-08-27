@@ -2098,16 +2098,21 @@ model PreOcupacaoAtividadeAnexo {
 }
 
 model PreOcupacaoAtividadeParticipante {
-  id               String                        @id @default(uuid())
-  atividadeId      String
-  familiaId        String
-  status           PreOcupacaoParticipanteStatus @default(AGUARDANDO_PREENCHIMENTO)
-  preenchidoEm     DateTime?
-  avaliacao        PreOcupacaoAvaliacao?
-  transcricaoFicha String?
-  marcadoFaltaPor  String?
-  criadoEm         DateTime                      @default(now())
-  atualizadoEm     DateTime                      @updatedAt
+  id                   String                        @id @default(uuid())
+  atividadeId          String
+  familiaId            String
+  status               PreOcupacaoParticipanteStatus @default(AGUARDANDO_PREENCHIMENTO)
+  preenchidoEm         DateTime?
+  avaliacao            PreOcupacaoAvaliacao?
+  transcricaoFicha     String?
+  marcadoFaltaPor      String?
+  rsvpStatus           PreOcupacaoRsvpStatus         @default(AGUARDANDO)
+  rsvpRespondidoEm     DateTime?
+  convidaTokenHash     String?
+  convidaTokenExpiraEm DateTime?
+  conviteEnviadoEm     DateTime?
+  criadoEm             DateTime                      @default(now())
+  atualizadoEm         DateTime                      @updatedAt
 
   atividade PreOcupacaoAtividade           @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
   familia   PreOcupacaoFamilia             @relation(fields: [familiaId], references: [id], onDelete: Cascade)
@@ -2116,7 +2121,14 @@ model PreOcupacaoAtividadeParticipante {
   @@unique([atividadeId, familiaId])
   @@index([familiaId])
   @@index([atividadeId, status])
+  @@index([convidaTokenHash])
   @@map("pre_ocupacao_atividade_participantes")
+}
+
+enum PreOcupacaoRsvpStatus {
+  AGUARDANDO
+  CONFIRMOU
+  RECUSOU
 }
 
 model PreOcupacaoParticipanteAnexo {

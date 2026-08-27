@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import type { LeadsService } from '../leads/leads.service';
 import { PRE_OCUPACAO_CATEGORIA_LABEL } from './pre-ocupacao-status.util';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
+import { CONVITE_TOKEN_VALIDADE_MS, gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
 
 const DURACAO_PADRAO_MS = 2 * 60 * 60 * 1000; // 2h — não há horário de término no desenho da sessão
 
@@ -31,6 +32,18 @@ export class AtividadesService {
   private async getLeadsService(): Promise<LeadsService> {
     const { LeadsService: LeadsServiceClass } = await import('../leads/leads.service.js');
     return this.moduleRef.get(LeadsServiceClass, { strict: false });
+  }
+
+  /** Resolve a URL pública base do site do tenant, pra montar o link de convite. */
+  private async resolvePortalBaseUrl(tenantId: string): Promise<string> {
+    const site = await this.prisma.tenantSite.findFirst({ where: { tenantId } });
+    if (site?.customDomain && site.status === 'PUBLISHED') {
+      return `https://${site.customDomain}`;
+    }
+    if (site?.slug) {
+      return `${process.env.APP_URL || ''}/s/${site.slug}`;
+    }
+    return process.env.APP_URL || '';
   }
 
   /**
@@ -234,12 +247,18 @@ export class AtividadesService {
    * sessão. Reaproveita `LeadsService.sendWhatsappMessage()` — mesma lógica de
    * escolha de canal (Light/Oficial) já usada no resto do CRM. Falha de uma
    * família não aborta as demais; retorna um resumo por família.
+   *
+   * Cada envio gera (ou renova) um token de confirmação por participante,
+   * válido por `CONVITE_TOKEN_VALIDADE_MS` (24h) a partir do envio — a
+   * família confirma/recusa presença por um link público, sem login, e pode
+   * trocar de resposta dentro dessa janela.
    */
   async enviarConvites(
     tenantId: string,
     atividadeId: string,
     user: { tenantId: string; id?: string; nome?: string },
     familiaIds?: string[],
+    mensagem?: string,
   ) {
     const atividade = await this.prisma.preOcupacaoAtividade.findFirst({
       where: { id: atividadeId, tenantId },
@@ -260,14 +279,37 @@ export class AtividadesService {
     const dataLabel = atividade.dataAgendada.toLocaleDateString('pt-BR');
     const horaLabel = atividade.dataAgendada.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const localTrecho = atividade.local ? `, em ${atividade.local}` : '';
+    const tituloSessao = atividade.titulo || categoriaLabel;
 
+    const template =
+      mensagem?.trim() ||
+      `Olá, {{nome}}! Você está convidado(a) para a sessão "${tituloSessao}" ` +
+        `do Trabalho Técnico Social, no dia ${dataLabel} às ${horaLabel}${localTrecho}.`;
+
+    const baseUrl = await this.resolvePortalBaseUrl(tenantId);
     const leadsService = await this.getLeadsService();
     const resultados: { familiaId: string; nome: string; ok: boolean; erro?: string }[] = [];
+    const now = new Date();
+    const expiraEm = new Date(now.getTime() + CONVITE_TOKEN_VALIDADE_MS);
+
     for (const p of alvo) {
       const nome = p.familia.lead.nomeCorreto ?? p.familia.lead.nome;
-      const texto =
-        `Olá, ${nome}! Você está convidado(a) para a sessão "${atividade.titulo || categoriaLabel}" ` +
-        `do Trabalho Técnico Social, no dia ${dataLabel} às ${horaLabel}${localTrecho}. Contamos com sua presença!`;
+      const token = gerarConviteToken();
+
+      await this.prisma.preOcupacaoAtividadeParticipante.update({
+        where: { id: p.id },
+        data: {
+          convidaTokenHash: hashConviteToken(token),
+          convidaTokenExpiraEm: expiraEm,
+          conviteEnviadoEm: now,
+          // reenvio de lembrete não deve apagar uma confirmação/recusa já dada
+          ...(p.rsvpRespondidoEm ? {} : { rsvpStatus: 'AGUARDANDO' as any }),
+        },
+      });
+
+      const link = `${baseUrl}/portal/convite/${token}`;
+      const texto = `${template.replace(/\{\{nome\}\}/gi, nome)}\n\nConfirme sua presença: ${link}`;
+
       try {
         await leadsService.sendWhatsappMessage(user, p.familia.leadId, { message: texto });
         resultados.push({ familiaId: p.familiaId, nome, ok: true });
