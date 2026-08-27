@@ -251,14 +251,78 @@ async function processPayload(
           let leadId: string;
           let isReentry: boolean;
 
+          const media = buildMedia(msg);
+          const safeMedia = media && media.id ? JSON.parse(JSON.stringify(media)) : null;
+
           // Busca lead existente pelo telefoneKey ANTES de tentar criar
           const existingLead = telefoneKey
             ? await prisma.lead.findFirst({
                 where: { tenantId: tenant.id, telefoneKey, deletedAt: null },
-                select: { id: true },
+                select: { id: true, incorporadoEmLeadId: true },
                 orderBy: { criadoEm: 'desc' },
               })
             : null;
+
+          // ── Redirect: lead incorporado → encaminhar para o lead pai ───────
+          if (existingLead?.incorporadoEmLeadId) {
+            const parentLeadId = existingLead.incorporadoEmLeadId;
+
+            const participantes = await prisma.leadParticipante.findMany({
+              where: { leadId: parentLeadId },
+              select: { id: true, telefone: true },
+            });
+            const participante = participantes.find(
+              (p) => p.telefone && telefoneKeyFrom(p.telefone) === telefoneKey,
+            );
+
+            const redirectedEvent = await prisma.$transaction(async (tx) => {
+              await tx.lead.update({
+                where: { id: parentLeadId },
+                data: { lastInboundAt: now, conversaCanal: 'WHATSAPP_OFICIAL' },
+              });
+
+              const ev = await tx.leadEvent.create({
+                data: {
+                  tenantId: tenant.id,
+                  leadId: parentLeadId,
+                  channel: 'whatsapp.in',
+                  isReentry: true,
+                  leadParticipanteId: participante?.id ?? null,
+                  payloadRaw: {
+                    from, type, text: finalText,
+                    messageId: msg?.id || null,
+                    transcription: null,
+                    media: safeMedia,
+                    errors: msg?.errors ?? null,
+                    rawMsg: msg,
+                  },
+                },
+                select: { id: true },
+              });
+
+              await tx.leadSla.upsert({
+                where: { leadId: parentLeadId },
+                create: { tenantId: tenant.id, leadId: parentLeadId, lastInboundAt: now, frozenUntil: null, isActive: true },
+                update: { lastInboundAt: now, frozenUntil: null, isActive: true },
+              });
+
+              return ev;
+            });
+
+            if (safeMedia?.id) {
+              await queueService.enqueueWhatsappMediaResolve(redirectedEvent.id);
+            }
+
+            if (type === 'reaction') {
+              logger.log(`💬 Reação recebida (incorporado, leadId=${parentLeadId}) — sem resposta IA`);
+              continue;
+            }
+
+            await queueService.rescheduleSla(parentLeadId);
+            await queueService.scheduleInboundAi(parentLeadId, { isFirstReply: false });
+            logger.log(`Inbound incorporado (oficial): source=${existingLead.id} → parent=${parentLeadId} participante=${participante?.id ?? 'null'}`);
+            continue;
+          }
 
           if (existingLead) {
             leadId = existingLead.id;
@@ -315,9 +379,6 @@ async function processPayload(
               }
             }
           }
-
-          const media = buildMedia(msg);
-          const safeMedia = media && media.id ? JSON.parse(JSON.stringify(media)) : null;
 
           // isReentry update + leadEvent + leadSla em transação
           const createdEvent = await prisma.$transaction(async (tx) => {
