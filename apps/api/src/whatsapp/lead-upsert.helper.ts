@@ -150,11 +150,16 @@ export async function upsertLeadFromWhatsapp(
     });
 
     if (!isSystemMessage) {
+      const AI_SILENT_TYPES_SET = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
+      const isConversaAberta = !AI_SILENT_TYPES_SET.has(type);
       await prisma.lead.update({
         where: { id: parentLeadId },
         data: {
           lastInboundAt: now,
           ...(sessionId ? { conversaCanal: canal, conversaSessionId: sessionId } : {}),
+          // Mensagem de pessoa incorporada também tem que "subir" o lead pai pra
+          // seção de conversas abertas — mesma regra do fluxo normal (não incorporado).
+          ...(isConversaAberta ? { conversaAberta: true } : {}),
         },
       });
       await prisma.leadSla.upsert({
