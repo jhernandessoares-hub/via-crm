@@ -59,9 +59,14 @@ export class AtividadesController {
   }
 
   @Post(':id/convite')
-  enviarConvites(@Request() req: any, @Param('id') id: string, @Body('familiaIds') familiaIds?: string[]) {
+  enviarConvites(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('familiaIds') familiaIds?: string[],
+    @Body('mensagem') mensagem?: string,
+  ) {
     const user = { tenantId: req.user.tenantId, id: req.user.id ?? req.user.sub, nome: req.user.nome };
-    return this.svc.enviarConvites(req.user.tenantId, id, user, familiaIds);
+    return this.svc.enviarConvites(req.user.tenantId, id, user, familiaIds, mensagem);
   }
 
   @Patch(':id/participantes/:familiaId/falta')
