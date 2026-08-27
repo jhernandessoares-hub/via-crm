@@ -39,6 +39,15 @@ const RSVP_LABEL: Record<string, string> = {
   RECUSOU: "Não vai comparecer",
 };
 
+type Agendamento = {
+  id: string;
+  mensagem: string;
+  agendadoPara: string;
+  status: "PENDENTE" | "ERRO";
+  erro: string | null;
+  familiaIds: string[] | null;
+};
+
 type Atividade = {
   id: string;
   categoria: string;
@@ -69,10 +78,12 @@ export default function AtividadeDetalhePage() {
   const [fichaModal, setFichaModal] = useState<Participante | null>(null);
   const [addFamiliaModal, setAddFamiliaModal] = useState(false);
   const [conviteModal, setConviteModal] = useState<string[] | "todos" | null>(null);
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
 
   useEffect(() => {
     if (guard !== true || !atividadeId) return;
     load();
+    loadAgendamentos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard, atividadeId]);
 
@@ -87,6 +98,25 @@ export default function AtividadeDetalhePage() {
       setError(e?.message ?? "Erro ao carregar sessão");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadAgendamentos() {
+    try {
+      const res = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/agendamentos`);
+      setAgendamentos(Array.isArray(res) ? res : []);
+    } catch {
+      setAgendamentos([]);
+    }
+  }
+
+  async function handleCancelarAgendamento(id: string) {
+    try {
+      await apiFetch(`/pre-ocupacao/atividades/agendamentos/${id}/cancelar`, { method: "PATCH" });
+      showToast("Agendamento cancelado.");
+      await loadAgendamentos();
+    } catch (e: any) {
+      showToast(e?.message ?? "Erro ao cancelar agendamento");
     }
   }
 
@@ -227,6 +257,44 @@ export default function AtividadeDetalhePage() {
               </CardBody>
             </Card>
 
+            {agendamentos.length > 0 && (
+              <Card className="mb-4">
+                <CardHeader>
+                  <CardTitle>Envios agendados ({agendamentos.length})</CardTitle>
+                </CardHeader>
+                <CardBody className="space-y-2">
+                  {agendamentos.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+                      style={{ borderColor: "var(--shell-card-border)" }}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm truncate" style={{ color: "var(--shell-text)" }}>{a.mensagem}</p>
+                        <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                          {a.familiaIds ? `${a.familiaIds.length} família(s)` : "Todas as famílias"} · Para{" "}
+                          {new Date(a.agendadoPara).toLocaleString("pt-BR")}
+                          {a.status === "ERRO" && a.erro ? ` · Erro: ${a.erro}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant={a.status === "ERRO" ? "error" : "warning"}>
+                          {a.status === "ERRO" ? "Erro no envio" : "Pendente"}
+                        </Badge>
+                        <button
+                          onClick={() => handleCancelarAgendamento(a.id)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                          style={{ color: "var(--shell-text)" }}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </CardBody>
+              </Card>
+            )}
+
             <Card>
               <CardHeader className="flex items-center justify-between">
                 <CardTitle>Famílias participantes ({data.participantes.length})</CardTitle>
@@ -340,13 +408,10 @@ export default function AtividadeDetalhePage() {
           atividade={data}
           familiaIds={conviteModal === "todos" ? undefined : conviteModal}
           onClose={() => setConviteModal(null)}
-          onSaved={async (enviados, total, falhas) => {
+          onSaved={async (mensagem) => {
             setConviteModal(null);
-            showToast(
-              falhas.length === 0
-                ? `Convite enviado (${enviados}/${total}).`
-                : `Enviado ${enviados}/${total} — falhou: ${falhas.join(", ")}`,
-            );
+            showToast(mensagem);
+            await loadAgendamentos();
             await load();
           }}
         />
@@ -487,6 +552,13 @@ function AddFamiliaModal({
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");
+
+  const familiasFiltradas = familias.filter((f) => {
+    if (!busca.trim()) return true;
+    const termo = busca.trim().toLowerCase();
+    return f.nome.toLowerCase().includes(termo) || String(f.numero).includes(termo);
+  });
 
   useEffect(() => {
     apiFetch("/pre-ocupacao/familias")
@@ -557,24 +629,40 @@ function AddFamiliaModal({
         </>
       }
     >
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        {loadingFamilias && <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>Carregando famílias...</p>}
-        {!loadingFamilias && familias.length === 0 && (
-          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-            Todas as famílias já participam desta sessão.
-          </p>
+      <div className="space-y-2">
+        {!loadingFamilias && familias.length > 0 && (
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome ou número..."
+            className="w-full h-9 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none"
+          />
         )}
-        {familias.map((f) => (
-          <label key={f.id} className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={selecionadas.has(f.id)} onChange={() => toggle(f.id)} />
-            #{String(f.numero).padStart(4, "0")} — {f.nome}
-          </label>
-        ))}
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {loadingFamilias && <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>Carregando famílias...</p>}
+          {!loadingFamilias && familias.length === 0 && (
+            <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+              Todas as famílias já participam desta sessão.
+            </p>
+          )}
+          {!loadingFamilias && familias.length > 0 && familiasFiltradas.length === 0 && (
+            <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>Nenhuma família encontrada.</p>
+          )}
+          {familiasFiltradas.map((f) => (
+            <label key={f.id} className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={selecionadas.has(f.id)} onChange={() => toggle(f.id)} />
+              #{String(f.numero).padStart(4, "0")} — {f.nome}
+            </label>
+          ))}
+        </div>
         {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
       </div>
     </Modal>
   );
 }
+
+type MensagemTemplate = { id: string; nome: string; corpo: string };
 
 function ConviteModal({
   atividadeId,
@@ -587,7 +675,7 @@ function ConviteModal({
   atividade: Atividade;
   familiaIds?: string[];
   onClose: () => void;
-  onSaved: (enviados: number, total: number, falhas: string[]) => void;
+  onSaved: (mensagem: string) => void;
 }) {
   const categoriaLabel = CATEGORIA_LABEL[atividade.categoria] ?? atividade.categoria;
   const dataLabel = new Date(atividade.dataAgendada).toLocaleDateString("pt-BR");
@@ -603,22 +691,79 @@ function ConviteModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [templates, setTemplates] = useState<MensagemTemplate[]>([]);
+  const [templateSelecionado, setTemplateSelecionado] = useState("");
+  const [showSalvarTemplate, setShowSalvarTemplate] = useState(false);
+  const [novoTemplateNome, setNovoTemplateNome] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  const [modo, setModo] = useState<"agora" | "agendar">("agora");
+  const [agendadoPara, setAgendadoPara] = useState("");
+
+  useEffect(() => {
+    apiFetch("/pre-ocupacao/templates")
+      .then((res) => setTemplates(Array.isArray(res) ? res : []))
+      .catch(() => setTemplates([]));
+  }, []);
+
   useEffect(() => {
     setPreview(mensagem.replace(/\{\{nome\}\}/gi, "Maria da Silva"));
   }, [mensagem]);
 
   const alvoLabel = familiaIds ? `${familiaIds.length} família(s)` : "todas as famílias participantes";
 
+  function aplicarTemplate(id: string) {
+    setTemplateSelecionado(id);
+    const t = templates.find((tp) => tp.id === id);
+    if (t) setMensagem(t.corpo);
+  }
+
+  async function salvarComoTemplate() {
+    if (!novoTemplateNome.trim() || !mensagem.trim()) return;
+    setSavingTemplate(true);
+    try {
+      const novo = await apiFetch("/pre-ocupacao/templates", {
+        method: "POST",
+        body: JSON.stringify({ nome: novoTemplateNome.trim(), corpo: mensagem.trim() }),
+      });
+      setTemplates((prev) => [...prev, novo].sort((a, b) => a.nome.localeCompare(b.nome)));
+      setTemplateSelecionado(novo.id);
+      setShowSalvarTemplate(false);
+      setNovoTemplateNome("");
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao salvar modelo");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
   async function handleSubmit() {
     setSaving(true);
     setError(null);
     try {
+      if (modo === "agendar") {
+        if (!agendadoPara) {
+          setError("Escolha a data e hora do envio.");
+          setSaving(false);
+          return;
+        }
+        await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite/agendar`, {
+          method: "POST",
+          body: JSON.stringify({ familiaIds, mensagem: mensagem.trim(), agendadoPara: new Date(agendadoPara).toISOString() }),
+        });
+        onSaved(`Envio agendado para ${new Date(agendadoPara).toLocaleString("pt-BR")}.`);
+        return;
+      }
       const res = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite`, {
         method: "POST",
         body: JSON.stringify({ familiaIds, mensagem: mensagem.trim() }),
       });
       const falhas = (res.resultados ?? []).filter((r: any) => !r.ok).map((r: any) => r.nome);
-      onSaved(res.enviados, res.total, falhas);
+      onSaved(
+        falhas.length === 0
+          ? `Convite enviado (${res.enviados}/${res.total}).`
+          : `Enviado ${res.enviados}/${res.total} — falhou: ${falhas.join(", ")}`,
+      );
     } catch (e: any) {
       setError(e?.message ?? "Erro ao enviar convite");
     } finally {
@@ -648,12 +793,30 @@ function ConviteModal({
             className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
             style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
           >
-            {saving ? "Enviando..." : "Enviar"}
+            {saving ? (modo === "agendar" ? "Agendando..." : "Enviando...") : modo === "agendar" ? "Agendar" : "Enviar"}
           </button>
         </>
       }
     >
       <div className="space-y-3">
+        {templates.length > 0 && (
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>
+              Usar modelo salvo
+            </label>
+            <select
+              value={templateSelecionado}
+              onChange={(e) => aplicarTemplate(e.target.value)}
+              className="w-full h-9 rounded-lg border px-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+            >
+              <option value="">— Escrever mensagem —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.nome}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div>
           <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>
             Mensagem
@@ -668,6 +831,46 @@ function ConviteModal({
             O link de confirmação de presença é adicionado automaticamente no fim da mensagem.
           </p>
         </div>
+
+        {!showSalvarTemplate ? (
+          <button
+            type="button"
+            onClick={() => setShowSalvarTemplate(true)}
+            disabled={!mensagem.trim()}
+            className="text-xs font-medium disabled:opacity-50"
+            style={{ color: "var(--via-teal, #1D9E75)" }}
+          >
+            + Salvar mensagem como modelo
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={novoTemplateNome}
+              onChange={(e) => setNovoTemplateNome(e.target.value)}
+              placeholder="Nome do modelo (ex: Lembrete 1 dia antes)"
+              className="flex-1 h-9 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+            />
+            <button
+              type="button"
+              onClick={salvarComoTemplate}
+              disabled={savingTemplate || !novoTemplateNome.trim()}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50"
+              style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+            >
+              Salvar
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSalvarTemplate(false)}
+              className="text-xs"
+              style={{ color: "var(--shell-subtext)" }}
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
         {preview !== mensagem && (
           <div className="rounded-lg p-3 text-sm" style={{ background: "var(--brand-accent-muted, #eef8f5)" }}>
             <p className="text-xs font-medium mb-1" style={{ color: "var(--brand-accent, #1D9E75)" }}>
@@ -676,6 +879,37 @@ function ConviteModal({
             <p style={{ color: "var(--shell-text)" }}>{preview}</p>
           </div>
         )}
+
+        <div className="border-t pt-3" style={{ borderColor: "var(--shell-card-border)" }}>
+          <div className="flex gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setModo("agora")}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${modo === "agora" ? "" : "border-[var(--shell-card-border)]"}`}
+              style={modo === "agora" ? { background: "var(--via-teal, #1D9E75)", color: "#fff", borderColor: "var(--via-teal, #1D9E75)" } : { color: "var(--shell-text)" }}
+            >
+              Enviar agora
+            </button>
+            <button
+              type="button"
+              onClick={() => setModo("agendar")}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${modo === "agendar" ? "" : "border-[var(--shell-card-border)]"}`}
+              style={modo === "agendar" ? { background: "var(--via-teal, #1D9E75)", color: "#fff", borderColor: "var(--via-teal, #1D9E75)" } : { color: "var(--shell-text)" }}
+            >
+              Agendar para depois
+            </button>
+          </div>
+          {modo === "agendar" && (
+            <input
+              type="datetime-local"
+              value={agendadoPara}
+              onChange={(e) => setAgendadoPara(e.target.value)}
+              min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+              className="w-full h-9 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+            />
+          )}
+        </div>
+
         {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
       </div>
     </Modal>

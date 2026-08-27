@@ -2074,10 +2074,50 @@ model PreOcupacaoAtividade {
   anexos                    PreOcupacaoAtividadeAnexo[]
   participantes             PreOcupacaoAtividadeParticipante[]
   planejamentoTtsAtividades PlanejamentoTtsAtividade[]
+  agendamentosConvite       PreOcupacaoConviteAgendamento[]
 
   @@index([tenantId, categoria])
   @@index([tenantId, dataAgendada])
   @@map("pre_ocupacao_atividades")
+}
+
+model PreOcupacaoMensagemTemplate {
+  id           String   @id @default(uuid())
+  tenantId     String
+  nome         String
+  corpo        String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("pre_ocupacao_mensagem_templates")
+}
+
+enum PreOcupacaoAgendamentoStatus {
+  PENDENTE
+  ENVIADO
+  CANCELADO
+  ERRO
+}
+
+model PreOcupacaoConviteAgendamento {
+  id           String                        @id @default(uuid())
+  tenantId     String
+  atividadeId  String
+  familiaIds   Json?
+  mensagem     String
+  agendadoPara DateTime
+  status       PreOcupacaoAgendamentoStatus @default(PENDENTE)
+  enviadoEm    DateTime?
+  erro         String?
+  criadoPor    String
+  criadoEm     DateTime                      @default(now())
+
+  atividade PreOcupacaoAtividade @relation(fields: [atividadeId], references: [id], onDelete: Cascade)
+
+  @@index([status, agendadoPara])
+  @@index([tenantId, atividadeId])
+  @@map("pre_ocupacao_convite_agendamentos")
 }
 
 model PreOcupacaoAtividadeAnexo {
