@@ -44,7 +44,7 @@ describe('EntregaveisService', () => {
       prisma.preOcupacaoAtividade.findMany.mockResolvedValue([
         {
           id: 'ativ-1',
-          categoria: 'DIAGNOSTICO',
+          categoria: 'ORGANIZACAO_CONDOMINIAL',
           titulo: null,
           dataAgendada: new Date('2026-08-15'),
           relatorio: 'Relatório da sessão',

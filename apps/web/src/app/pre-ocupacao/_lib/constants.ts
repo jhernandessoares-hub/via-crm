@@ -6,12 +6,10 @@
  */
 
 export const CATEGORIA_LABEL: Record<string, string> = {
-  DIAGNOSTICO: "Diagnóstico Social",
-  MAPEAMENTO: "Mapeamento Socioeconômico",
-  EDUCACAO: "Educação Ambiental e Convívio",
-  PLANO_MUDANCA: "Plano de Mudança",
-  MONITORAMENTO: "Monitoramento Pós-Mudança",
-  GESTAO_DOCUMENTACAO: "Gestão de Documentação",
+  ORGANIZACAO_CONDOMINIAL: "Organização Condominial, Governança e Sustentabilidade Financeira",
+  EDUCACAO_AMBIENTAL_PATRIMONIAL: "Educação Ambiental, Patrimonial e Prevenção de Riscos",
+  CONVIVENCIA_COMUNITARIA: "Convivência Comunitária, Identidade Territorial e Adaptação à Verticalização",
+  GERACAO_RENDA: "Geração de Renda, Inclusão Produtiva e Desenvolvimento Territorial",
 };
 
 export const CATEGORIA_OPTIONS = Object.entries(CATEGORIA_LABEL).map(([value, label]) => ({
