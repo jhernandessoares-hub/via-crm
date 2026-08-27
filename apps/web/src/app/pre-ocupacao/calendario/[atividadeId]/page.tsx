@@ -60,6 +60,7 @@ export default function AtividadeDetalhePage() {
   const [anexoTipo, setAnexoTipo] = useState("FOTO");
 
   const [fichaModal, setFichaModal] = useState<Participante | null>(null);
+  const [addFamiliaModal, setAddFamiliaModal] = useState(false);
 
   useEffect(() => {
     if (guard !== true || !atividadeId) return;
@@ -219,8 +220,15 @@ export default function AtividadeDetalhePage() {
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="flex items-center justify-between">
                 <CardTitle>Famílias participantes ({data.participantes.length})</CardTitle>
+                <button
+                  onClick={() => setAddFamiliaModal(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                >
+                  + Adicionar família
+                </button>
               </CardHeader>
               <CardBody className="space-y-2">
                 {data.participantes.map((p) => (
@@ -283,6 +291,19 @@ export default function AtividadeDetalhePage() {
             await load();
           }}
           atividadeId={atividadeId}
+        />
+      )}
+
+      {addFamiliaModal && data && (
+        <AddFamiliaModal
+          atividadeId={atividadeId}
+          jaParticipantes={new Set(data.participantes.map((p) => p.familiaId))}
+          onClose={() => setAddFamiliaModal(false)}
+          onSaved={async (qtd) => {
+            setAddFamiliaModal(false);
+            showToast(`${qtd} família(s) adicionada(s) à sessão.`);
+            await load();
+          }}
         />
       )}
 
@@ -397,6 +418,113 @@ function FichaModal({
             className="w-full rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
           />
         </div>
+        {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+type FamiliaOption = { id: string; numero: number; nome: string };
+
+function AddFamiliaModal({
+  atividadeId,
+  jaParticipantes,
+  onClose,
+  onSaved,
+}: {
+  atividadeId: string;
+  jaParticipantes: Set<string>;
+  onClose: () => void;
+  onSaved: (qtd: number) => void;
+}) {
+  const [familias, setFamilias] = useState<FamiliaOption[]>([]);
+  const [loadingFamilias, setLoadingFamilias] = useState(true);
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/pre-ocupacao/familias")
+      .then((res) => {
+        const opts: FamiliaOption[] = (res.items ?? [])
+          .filter((f: any) => !jaParticipantes.has(f.id))
+          .map((f: any) => ({ id: f.id, numero: f.numero, nome: f.nome }));
+        setFamilias(opts);
+      })
+      .catch(() => setFamilias([]))
+      .finally(() => setLoadingFamilias(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function toggle(id: string) {
+    setSelecionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSubmit() {
+    if (selecionadas.size === 0) {
+      setError("Selecione ao menos uma família.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/participantes`, {
+        method: "POST",
+        body: JSON.stringify({ familiaIds: [...selecionadas] }),
+      });
+      onSaved(selecionadas.size);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao adicionar famílias");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Adicionar família à sessão"
+      description="Selecione as famílias que participarão desta sessão."
+      footer={
+        <>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]"
+            style={{ color: "var(--shell-text)" }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || selecionadas.size === 0}
+            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+            style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+          >
+            {saving ? "Adicionando..." : `Adicionar (${selecionadas.size})`}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {loadingFamilias && <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>Carregando famílias...</p>}
+        {!loadingFamilias && familias.length === 0 && (
+          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+            Todas as famílias já participam desta sessão.
+          </p>
+        )}
+        {familias.map((f) => (
+          <label key={f.id} className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={selecionadas.has(f.id)} onChange={() => toggle(f.id)} />
+            #{String(f.numero).padStart(4, "0")} — {f.nome}
+          </label>
+        ))}
         {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
       </div>
     </Modal>

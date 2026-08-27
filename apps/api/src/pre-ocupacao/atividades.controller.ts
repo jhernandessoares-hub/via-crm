@@ -53,6 +53,11 @@ export class AtividadesController {
     return this.svc.adicionarAnexo(req.user.tenantId, id, file, tipo, legenda);
   }
 
+  @Post(':id/participantes')
+  adicionarParticipantes(@Request() req: any, @Param('id') id: string, @Body('familiaIds') familiaIds: string[]) {
+    return this.svc.adicionarParticipantes(req.user.tenantId, id, familiaIds);
+  }
+
   @Patch(':id/participantes/:familiaId/falta')
   marcarFalta(
     @Request() req: any,
