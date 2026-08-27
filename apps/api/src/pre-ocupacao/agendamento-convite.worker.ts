@@ -70,6 +70,7 @@ export class AgendamentoConviteWorker implements OnModuleInit, OnModuleDestroy {
           { tenantId: a.tenantId, nome: 'Envio agendado' },
           familiaIds,
           a.mensagem,
+          a.imagemUrl ?? undefined,
         );
         await this.agendamentos.marcarEnviado(a.id);
         this.logger.log(`Convite agendado enviado: id=${a.id}`);

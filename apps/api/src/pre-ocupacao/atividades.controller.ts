@@ -68,13 +68,18 @@ export class AtividadesController {
     @Param('id') id: string,
     @Body('familiaIds') familiaIds?: string[],
     @Body('mensagem') mensagem?: string,
+    @Body('imagemUrl') imagemUrl?: string,
   ) {
     const user = { tenantId: req.user.tenantId, id: req.user.id ?? req.user.sub, nome: req.user.nome };
-    return this.svc.enviarConvites(req.user.tenantId, id, user, familiaIds, mensagem);
+    return this.svc.enviarConvites(req.user.tenantId, id, user, familiaIds, mensagem, imagemUrl);
   }
 
   @Post(':id/convite/agendar')
-  agendarConvite(@Request() req: any, @Param('id') id: string, @Body() body: { familiaIds?: string[]; mensagem?: string; agendadoPara?: string }) {
+  agendarConvite(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { familiaIds?: string[]; mensagem?: string; imagemUrl?: string; agendadoPara?: string },
+  ) {
     const criadoPor = req.user?.nome || req.user?.email || req.user?.id;
     return this.agendamentos.criar(req.user.tenantId, id, criadoPor, body);
   }
