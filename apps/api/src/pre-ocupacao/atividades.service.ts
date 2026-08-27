@@ -294,26 +294,27 @@ export class AtividadesService {
 
     for (const p of alvo) {
       const nome = p.familia.lead.nomeCorreto ?? p.familia.lead.nome;
-      const token = gerarConviteToken();
-
-      await this.prisma.preOcupacaoAtividadeParticipante.update({
-        where: { id: p.id },
-        data: {
-          convidaTokenHash: hashConviteToken(token),
-          convidaTokenExpiraEm: expiraEm,
-          conviteEnviadoEm: now,
-          // reenvio de lembrete não deve apagar uma confirmação/recusa já dada
-          ...(p.rsvpRespondidoEm ? {} : { rsvpStatus: 'AGUARDANDO' as any }),
-        },
-      });
-
-      const link = `${baseUrl}/portal/convite/${token}`;
-      const texto = `${template.replace(/\{\{nome\}\}/gi, nome)}\n\nConfirme sua presença: ${link}`;
-
       try {
+        const token = gerarConviteToken();
+
+        await this.prisma.preOcupacaoAtividadeParticipante.update({
+          where: { id: p.id },
+          data: {
+            convidaTokenHash: hashConviteToken(token),
+            convidaTokenExpiraEm: expiraEm,
+            conviteEnviadoEm: now,
+            // reenvio de lembrete não deve apagar uma confirmação/recusa já dada
+            ...(p.rsvpRespondidoEm ? {} : { rsvpStatus: 'AGUARDANDO' as any }),
+          },
+        });
+
+        const link = `${baseUrl}/portal/convite/${token}`;
+        const texto = `${template.replace(/\{\{nome\}\}/gi, nome)}\n\nConfirme sua presença: ${link}`;
+
         await leadsService.sendWhatsappMessage(user, p.familia.leadId, { message: texto });
         resultados.push({ familiaId: p.familiaId, nome, ok: true });
       } catch (e: any) {
+        this.logger.error(`Falha ao enviar convite: familiaId=${p.familiaId} erro=${e?.message || e}`);
         resultados.push({ familiaId: p.familiaId, nome, ok: false, erro: e?.message || String(e) });
       }
     }

@@ -822,7 +822,8 @@ function ConviteModal({
   const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [modo, setModo] = useState<"agora" | "agendar">("agora");
-  const [agendadoPara, setAgendadoPara] = useState("");
+  const [agendadoData, setAgendadoData] = useState("");
+  const [agendadoHora, setAgendadoHora] = useState("");
 
   useEffect(() => {
     setPreview(mensagem.replace(/\{\{nome\}\}/gi, "Maria da Silva"));
@@ -860,16 +861,22 @@ function ConviteModal({
     setError(null);
     try {
       if (modo === "agendar") {
-        if (!agendadoPara) {
-          setError("Escolha a data e hora do envio.");
+        if (!agendadoData || !agendadoHora) {
+          setError("Escolha a data e o horário do envio.");
+          setSaving(false);
+          return;
+        }
+        const agendadoParaDate = new Date(`${agendadoData}T${agendadoHora}`);
+        if (Number.isNaN(agendadoParaDate.getTime())) {
+          setError("Data/horário inválidos.");
           setSaving(false);
           return;
         }
         await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite/agendar`, {
           method: "POST",
-          body: JSON.stringify({ familiaIds, mensagem: mensagem.trim(), agendadoPara: new Date(agendadoPara).toISOString() }),
+          body: JSON.stringify({ familiaIds, mensagem: mensagem.trim(), agendadoPara: agendadoParaDate.toISOString() }),
         });
-        onSaved(`Envio agendado para ${new Date(agendadoPara).toLocaleString("pt-BR")}.`);
+        onSaved(`Envio agendado para ${agendadoParaDate.toLocaleString("pt-BR")}.`);
         return;
       }
       const res = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite`, {
@@ -1018,13 +1025,27 @@ function ConviteModal({
             </button>
           </div>
           {modo === "agendar" && (
-            <input
-              type="datetime-local"
-              value={agendadoPara}
-              onChange={(e) => setAgendadoPara(e.target.value)}
-              min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-              className="w-full h-9 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-            />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Data</label>
+                <input
+                  type="date"
+                  value={agendadoData}
+                  onChange={(e) => setAgendadoData(e.target.value)}
+                  min={new Date().toLocaleDateString("sv-SE")}
+                  className="w-full h-9 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+                />
+              </div>
+              <div className="w-32">
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Horário</label>
+                <input
+                  type="time"
+                  value={agendadoHora}
+                  onChange={(e) => setAgendadoHora(e.target.value)}
+                  className="w-full h-9 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+                />
+              </div>
+            </div>
           )}
         </div>
 
