@@ -26,7 +26,7 @@ describe('AtividadesService', () => {
   describe('criar — transação atômica', () => {
     it('cria CalendarEvent + Atividade + Participantes numa única chamada de $transaction', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       const tx = {
         calendarEvent: { create: jest.fn().mockResolvedValue({ id: 'evt-1' }) },
@@ -55,7 +55,7 @@ describe('AtividadesService', () => {
 
     it('se familiaIds não for informado, usa todas as famílias ATIVA do tenant', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoFamilia.findMany.mockResolvedValue([{ id: 'f1' }, { id: 'f2' }, { id: 'f3' }]);
       const tx = {
@@ -82,7 +82,7 @@ describe('AtividadesService', () => {
 
     it('lança BadRequestException quando não há nenhuma família ativa e nenhuma foi informada — não abre transação', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoFamilia.findMany.mockResolvedValue([]);
 
@@ -94,7 +94,7 @@ describe('AtividadesService', () => {
 
     it('lança BadRequestException para categoria ausente sem tocar no banco', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       await expect(svc.criar(TENANT_A, 'user-1', { categoria: '', dataAgendada: '2026-08-01' } as any)).rejects.toThrow(
         BadRequestException,
@@ -104,7 +104,7 @@ describe('AtividadesService', () => {
 
     it('lança BadRequestException para dataAgendada inválida', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       await expect(
         svc.criar(TENANT_A, 'user-1', { categoria: 'ORGANIZACAO_CONDOMINIAL', dataAgendada: 'data-invalida' }),
@@ -115,7 +115,7 @@ describe('AtividadesService', () => {
   describe('isolamento multi-tenant — Atividade/Participante sem tenantId próprio', () => {
     it('getAtividadeOrThrow (via atualizar) filtra por tenantId — atividade de outro tenant não é encontrada', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue(null);
 
@@ -128,7 +128,7 @@ describe('AtividadesService', () => {
 
     it('marcarFalta valida a Atividade pelo tenant ANTES de tocar o Participante (isolamento indireto)', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       // Atividade não pertence ao tenant chamador
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue(null);
@@ -139,7 +139,7 @@ describe('AtividadesService', () => {
 
     it('marcarFalta lança NotFoundException quando a família não é participante desta sessão', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue({ id: 'ativ-1', tenantId: TENANT_A });
       prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue(null);
@@ -152,7 +152,7 @@ describe('AtividadesService', () => {
     it('marcarFalta funciona corretamente quando atividade e participante existem no tenant', async () => {
       const prisma: any = buildPrismaMock();
       const audit = buildAuditMock();
-      const svc = new AtividadesService(prisma, audit as any);
+      const svc = new AtividadesService(prisma, audit as any, {} as any);
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue({ id: 'ativ-1', tenantId: TENANT_A });
       prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue({ id: 'part-1' });
@@ -166,7 +166,7 @@ describe('AtividadesService', () => {
 
     it('preencherFicha valida atividade+participante do tenant antes do upload/create', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue(null);
 
@@ -178,7 +178,7 @@ describe('AtividadesService', () => {
 
     it('preencherFicha marca CONCLUIDA e grava anexo quando tudo pertence ao tenant', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue({ id: 'ativ-1', tenantId: TENANT_A });
       prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue({ id: 'part-1' });
@@ -202,7 +202,7 @@ describe('AtividadesService', () => {
 
     it('preencherFicha exige arquivo', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue({ id: 'ativ-1', tenantId: TENANT_A });
       prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue({ id: 'part-1' });
@@ -214,7 +214,7 @@ describe('AtividadesService', () => {
   describe('detalhe', () => {
     it('lança NotFoundException quando a atividade não pertence ao tenant', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new AtividadesService(prisma, buildAuditMock() as any);
+      const svc = new AtividadesService(prisma, buildAuditMock() as any, {} as any);
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue(null);
 

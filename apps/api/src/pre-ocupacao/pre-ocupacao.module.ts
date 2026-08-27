@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { LeadsModule } from '../leads/leads.module';
 import { AddonGuard } from '../auth/plan.guard';
 import { FamiliasController } from './familias.controller';
 import { FamiliasService } from './familias.service';
@@ -13,7 +14,7 @@ import { ConteudoController } from './conteudo.controller';
 import { ConteudoService } from './conteudo.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, LeadsModule],
   controllers: [FamiliasController, AtividadesController, EntregaveisController, DemandasController, ConteudoController],
   providers: [AddonGuard, FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService],
   exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService],
