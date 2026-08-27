@@ -179,6 +179,7 @@ type SubConversa = {
   nome: string;
   classificacao: string | null;
   telefone: string | null;
+  avatarUrl: string | null;
   observacao: string | null;
   observacaoPorNome: string | null;
   observacaoEm: string | null;
@@ -3534,6 +3535,13 @@ function discardAiSuggestion() {
     return [...activeSubConversa.events].sort((a, b) => getEventSortTime(a) - getEventSortTime(b));
   }, [activeSubConversa, orderedEvents]);
 
+  const chatHeaderIdentity = useMemo(() => {
+    if (abaAtiva && activeSubConversa) {
+      return { avatarUrl: activeSubConversa.avatarUrl, nome: activeSubConversa.nome, telefone: activeSubConversa.telefone };
+    }
+    return { avatarUrl: lead?.avatarUrl ?? null, nome: lead?.nomeCorreto ?? lead?.nome ?? "Chat", telefone: lead?.telefone ?? null };
+  }, [abaAtiva, activeSubConversa, lead]);
+
   const viewEvents = useMemo(() => {
     const reactionsMap: Record<string, string[]> = {};
     const normal: LeadEvent[] = [];
@@ -3570,10 +3578,10 @@ function discardAiSuggestion() {
   }, [orderedEvents]);
 
   const startedAt = useMemo(() => {
-    if (!orderedEvents.length) return null;
-    const first = orderedEvents[0];
+    if (!activeEvents.length) return null;
+    const first = activeEvents[0];
     return first?.criadoEm || null;
-  }, [orderedEvents]);
+  }, [activeEvents]);
 
   // Nome da etapa atual do funil (customizável por tenant) — é isso que representa
   // o "status" de verdade do lead, não o campo legado Lead.status (NOVO/EM_CONTATO/...).
@@ -3584,11 +3592,11 @@ function discardAiSuggestion() {
   }, [lead, pipelineStages]);
 
   const lastInboundAt = useMemo(() => {
-    const lastIn = [...orderedEvents]
+    const lastIn = [...activeEvents]
       .reverse()
       .find((e) => String(e.channel || "").toLowerCase().startsWith("whatsapp.in"));
     return lastIn?.criadoEm || null;
-  }, [orderedEvents]);
+  }, [activeEvents]);
 
   const lastInboundMs = useMemo(() => parseIsoToMs(lastInboundAt), [lastInboundAt]);
 
@@ -6408,119 +6416,6 @@ function discardAiSuggestion() {
 
           {/* CHAT */}
           <div className="rounded-xl border bg-[var(--shell-card-bg)] overflow-hidden lg:col-span-2 flex flex-col h-full lg:sticky lg:top-4">
-            <div className="border-b bg-[var(--shell-bg)] px-4 py-3 flex items-center justify-between gap-3">
-              <div className="min-w-0 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => lead?.avatarUrl && setShowAvatarModal(true)}
-                  className="h-9 w-9 rounded-full flex items-center justify-center overflow-hidden shrink-0 text-white text-xs font-bold"
-                  style={{ cursor: lead?.avatarUrl ? "pointer" : "default", background: "linear-gradient(135deg, #7c5cff, #2563eb)" }}
-                >
-                  {lead?.avatarUrl ? (
-                    <img src={lead.avatarUrl} alt="avatar" className="h-9 w-9 object-cover" />
-                  ) : (
-                    <span>
-                      {String((lead?.nomeCorreto ?? lead?.nome) || "HC")
-                        .split(" ")
-                        .slice(0, 2)
-                        .map((s) => s[0])
-                        .join("")
-                        .toUpperCase()}
-                    </span>
-                  )}
-                </button>
-
-                <div className="min-w-0">
-                  <div className="text-lg font-semibold text-[var(--shell-text)] truncate flex items-center gap-2">
-                    <span>{lead?.nomeCorreto ?? lead?.nome ?? "Chat"}</span>
-                    {hasNewInbound ? (
-                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
-                        Nova mensagem
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="text-base flex flex-wrap gap-x-3 gap-y-1" style={{ color: "#6b7280" }}>
-                    <span>{"Início " + (startedAt ? formatDateOnly(startedAt) : "—")}</span>
-                    <span>
-                      {"Último inbound: " +
-                        (lastInboundAt ? formatTime(lastInboundAt) : "—") +
-                        " - há " +
-                        lastInboundAgoLabel}
-                    </span>
-                    {lead?.telefone ? <span>{"📞 " + maskPhone(lead.telefone)}</span> : null}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                {/* Canal de saída — seletor unificado (= contato atual). "Origem" já aparece
-                    no cartão de identidade acima; não repetir aqui pra não conflitar/duplicar. */}
-                {waLightSessions.length === 0 && !waOficialConfigured ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                    <div className="min-w-0 leading-tight">
-                      <div className="text-[9.5px] text-amber-700">Canal</div>
-                      <div className="text-xs font-semibold text-amber-800">
-                        Sem número WA. <a href="/inbox-wa-light" className="underline">Cadastrar</a>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
-                    style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
-                  >
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                    <div className="min-w-0 leading-tight">
-                      <div className="text-[9.5px] text-[var(--shell-subtext)]">Canal</div>
-                    <select
-                      value={(() => {
-                        // Mudança pendente tem prioridade sempre
-                        if (pendingCanalChange) {
-                          return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
-                        }
-                        if (lead?.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
-                        if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
-                        // Sem canal gravado: usa auto-seleção
-                        return selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId
-                          : selectedCanalOut?.type === "oficial" ? "__oficial__" : "";
-                      })()}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
-                        if (newVal) { setPendingCanalChange(newVal); setShowCanalModal(true); }
-                      }}
-                      className="appearance-none bg-transparent pr-4 text-xs font-semibold outline-none"
-                      style={{ color: "var(--shell-text)" }}
-                    >
-                      <option value="">(Selecione...)</option>
-                      {waLightSessions.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {"📱 " + s.nome + (s.phoneNumber ? ` (${s.phoneNumber})` : "") + (s.status !== "CONNECTED" ? " • " + (s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status) : "")}
-                        </option>
-                      ))}
-                      {waOficialConfigured && (
-                        <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
-                      )}
-                    </select>
-                    </div>
-                    <svg className="h-3.5 w-3.5 shrink-0 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                )}
-                {pendingCanalChange && (
-                  <span className="text-[10px] font-medium text-amber-600">Troca pendente — confirme no popup</span>
-                )}
-                {debugOn ? (
-                  <div className="text-[11px] text-[var(--shell-subtext)] font-mono">
-                    {"events:" + events.length + " | render:" + viewEvents.length}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
             {subConversas.length > 0 && (
               <>
                 <div
@@ -6534,10 +6429,12 @@ function discardAiSuggestion() {
                   <button
                     type="button"
                     onClick={() => setAbaAtiva(null)}
-                    className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
+                    className="shrink-0 rounded-t-lg px-3 py-1.5 text-xs border-b-2 transition-colors"
                     style={{
                       borderColor: abaAtiva === null ? "var(--brand-accent)" : "transparent",
                       color: abaAtiva === null ? "var(--shell-text)" : "var(--shell-subtext)",
+                      background: abaAtiva === null ? "var(--shell-card-bg)" : "transparent",
+                      fontWeight: abaAtiva === null ? 700 : 500,
                     }}
                   >
                     {lead?.nomeCorreto ?? lead?.nome ?? "Principal"}
@@ -6574,10 +6471,12 @@ function discardAiSuggestion() {
                         type="button"
                         onClick={() => setAbaAtiva(sc.leadId)}
                         title="Chat desagrupado — histórico apenas"
-                        className="shrink-0 flex items-center gap-1 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors opacity-50"
+                        className="shrink-0 flex items-center gap-1 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors"
                         style={{
                           borderColor: abaAtiva === sc.leadId ? "var(--shell-subtext)" : "transparent",
                           color: "var(--shell-subtext)",
+                          background: abaAtiva === sc.leadId ? "var(--shell-card-bg)" : "transparent",
+                          opacity: abaAtiva === sc.leadId ? 0.85 : 0.5,
                         }}
                       >
                         <Lock className="w-3 h-3 shrink-0" />
@@ -6596,15 +6495,17 @@ function discardAiSuggestion() {
                           }}
                           title={sc.aguardandoResposta ? "Aguardando resposta" : "Duplo clique para editar o nome"}
                           className={
-                            "flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-xs font-medium border-b-2 transition-colors" +
+                            "flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-xs border-b-2 transition-colors" +
                             (sc.aguardandoResposta && pulsingTabs.has(sc.leadId) ? " animate-pulse" : "")
                           }
                           style={
                             sc.aguardandoResposta
-                              ? { borderColor: "#D4544F", color: "#9B2C2C", background: "#FCE4E4" }
+                              ? { borderColor: "#D4544F", color: "#9B2C2C", background: "#FCE4E4", fontWeight: 700 }
                               : {
                                   borderColor: abaAtiva === sc.leadId ? "var(--brand-accent)" : "transparent",
                                   color: abaAtiva === sc.leadId ? "var(--shell-text)" : "var(--shell-subtext)",
+                                  background: abaAtiva === sc.leadId ? "var(--shell-card-bg)" : "transparent",
+                                  fontWeight: abaAtiva === sc.leadId ? 700 : 500,
                                 }
                           }
                         >
@@ -6685,6 +6586,121 @@ function discardAiSuggestion() {
               </>
             )}
 
+            <div className="border-b bg-[var(--shell-bg)] px-4 py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => chatHeaderIdentity.avatarUrl && setShowAvatarModal(true)}
+                  className="h-9 w-9 rounded-full flex items-center justify-center overflow-hidden shrink-0 text-white text-xs font-bold"
+                  style={{ cursor: chatHeaderIdentity.avatarUrl ? "pointer" : "default", background: "linear-gradient(135deg, #7c5cff, #2563eb)" }}
+                >
+                  {chatHeaderIdentity.avatarUrl ? (
+                    <img src={chatHeaderIdentity.avatarUrl} alt="avatar" className="h-9 w-9 object-cover" />
+                  ) : (
+                    <span>
+                      {String(chatHeaderIdentity.nome || "HC")
+                        .split(" ")
+                        .slice(0, 2)
+                        .map((s) => s[0])
+                        .join("")
+                        .toUpperCase()}
+                    </span>
+                  )}
+                </button>
+
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold text-[var(--shell-text)] truncate flex items-center gap-2">
+                    <span>{chatHeaderIdentity.nome}</span>
+                    {hasNewInbound ? (
+                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
+                        Nova mensagem
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="text-base flex flex-wrap gap-x-3 gap-y-1" style={{ color: "#6b7280" }}>
+                    <span>{"Início " + (startedAt ? formatDateOnly(startedAt) : "—")}</span>
+                    <span>
+                      {"Último inbound: " +
+                        (lastInboundAt ? formatTime(lastInboundAt) : "—") +
+                        " - há " +
+                        lastInboundAgoLabel}
+                    </span>
+                    {chatHeaderIdentity.telefone ? <span>{"📞 " + maskPhone(chatHeaderIdentity.telefone)}</span> : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                {/* Canal de saída — seletor unificado (= contato atual). "Origem" já aparece
+                    no cartão de identidade acima; não repetir aqui pra não conflitar/duplicar.
+                    Sempre do lead principal, mesmo com uma sub-conversa ativa — o roteamento
+                    pro número certo já é feito via participanteId, não pelo canal. */}
+                {waLightSessions.length === 0 && !waOficialConfigured ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                    <div className="min-w-0 leading-tight">
+                      <div className="text-[9.5px] text-amber-700">Canal</div>
+                      <div className="text-xs font-semibold text-amber-800">
+                        Sem número WA. <a href="/inbox-wa-light" className="underline">Cadastrar</a>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
+                    style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                    <div className="min-w-0 leading-tight">
+                      <div className="text-[9.5px] text-[var(--shell-subtext)]">Canal</div>
+                    <select
+                      value={(() => {
+                        // Mudança pendente tem prioridade sempre
+                        if (pendingCanalChange) {
+                          return pendingCanalChange.type === "light" ? pendingCanalChange.sessionId : "__oficial__";
+                        }
+                        if (lead?.conversaCanal === "WHATSAPP_OFICIAL") return "__oficial__";
+                        if (lead?.conversaCanal === "WHATSAPP_LIGHT" && lead.conversaSessionId) return lead.conversaSessionId;
+                        // Sem canal gravado: usa auto-seleção
+                        return selectedCanalOut?.type === "light" ? selectedCanalOut.sessionId
+                          : selectedCanalOut?.type === "oficial" ? "__oficial__" : "";
+                      })()}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const newVal: CanalOut | null = v === "__oficial__" ? { type: "oficial" } : v ? { type: "light", sessionId: v } : null;
+                        if (newVal) { setPendingCanalChange(newVal); setShowCanalModal(true); }
+                      }}
+                      className="appearance-none bg-transparent pr-4 text-xs font-semibold outline-none"
+                      style={{ color: "var(--shell-text)" }}
+                    >
+                      <option value="">(Selecione...)</option>
+                      {waLightSessions.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {"📱 " + s.nome + (s.phoneNumber ? ` (${s.phoneNumber})` : "") + (s.status !== "CONNECTED" ? " • " + (s.status === "DISCONNECTED" ? "Desconectado" : s.status === "QR_PENDING" ? "Aguardando QR" : s.status) : "")}
+                        </option>
+                      ))}
+                      {waOficialConfigured && (
+                        <option value="__oficial__">✅ WhatsApp Oficial (Meta)</option>
+                      )}
+                    </select>
+                    </div>
+                    <svg className="h-3.5 w-3.5 shrink-0 text-[var(--shell-subtext)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                )}
+                {pendingCanalChange && (
+                  <span className="text-[10px] font-medium text-amber-600">Troca pendente — confirme no popup</span>
+                )}
+                {debugOn ? (
+                  <div className="text-[11px] text-[var(--shell-subtext)] font-mono">
+                    {"events:" + events.length + " | render:" + viewEvents.length}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
             <div className="flex-1 overflow-auto p-4 space-y-5" style={{ background: "var(--chat-wallpaper)" }}>
               {(lead as any)?.conversaRestricted ? (
                 <div className="flex h-full items-center justify-center">
@@ -6731,6 +6747,19 @@ function discardAiSuggestion() {
                           style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
                         >
                           {"🔓 Este lead foi desagrupado de " + (p.parentNome || "outro lead") + " por " + (p.actor || "sistema") + " e voltou a ser independente"}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (ev.channel === "system" && p?.type === "chat_encerrado_aba") {
+                    const scNome = subConversas.find((s) => s.participanteId === p.participanteId)?.nome;
+                    return (
+                      <div key={ev.id} className="flex justify-center">
+                        <span
+                          className="rounded-full px-3 py-1 text-[11px] text-center"
+                          style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                        >
+                          {"🔒 Conversa" + (scNome ? " com " + scNome : "") + " encerrada por " + (p.actor || "sistema")}
                         </span>
                       </div>
                     );
@@ -7840,7 +7869,7 @@ function discardAiSuggestion() {
         </div>
       )}
 
-      {showAvatarModal && lead?.avatarUrl && (
+      {showAvatarModal && chatHeaderIdentity.avatarUrl && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
@@ -7848,8 +7877,8 @@ function discardAiSuggestion() {
         >
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <img
-              src={lead.avatarUrl}
-              alt={lead.nomeCorreto ?? lead.nome ?? "avatar"}
+              src={chatHeaderIdentity.avatarUrl}
+              alt={chatHeaderIdentity.nome}
               className="rounded-2xl object-cover shadow-2xl"
               style={{ maxWidth: "min(360px, 90vw)", maxHeight: "min(360px, 90vh)" }}
             />
@@ -7857,10 +7886,10 @@ function discardAiSuggestion() {
               className="absolute bottom-0 left-0 right-0 rounded-b-2xl px-4 py-3"
               style={{ background: "rgba(0,0,0,0.6)" }}
             >
-              <p className="text-sm font-semibold text-white">{lead.nomeCorreto ?? lead.nome}</p>
-              {(lead.telefone || (lead as any).restrictedFields?.includes("lead.telefone")) && (
+              <p className="text-sm font-semibold text-white">{chatHeaderIdentity.nome}</p>
+              {(chatHeaderIdentity.telefone || (lead as any)?.restrictedFields?.includes("lead.telefone")) && (
                 <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
-                  <MaskedField field="lead.telefone">{lead.telefone || "—"}</MaskedField>
+                  <MaskedField field="lead.telefone">{chatHeaderIdentity.telefone || "—"}</MaskedField>
                 </p>
               )}
             </div>
