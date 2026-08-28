@@ -2154,6 +2154,9 @@ model PreOcupacaoAtividadeParticipante {
   convidaTokenHash     String?
   convidaTokenExpiraEm DateTime?
   conviteEnviadoEm     DateTime?
+  ultimaTentativaEnvioEm DateTime?
+  ultimoEnvioErro        String?
+  linkAbertoEm           DateTime?
   criadoEm             DateTime                      @default(now())
   atualizadoEm         DateTime                      @updatedAt
 

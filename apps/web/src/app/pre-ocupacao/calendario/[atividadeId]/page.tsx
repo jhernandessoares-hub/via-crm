@@ -8,6 +8,8 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
+import { maskPhone } from "@/lib/format";
+import { formatLeadNumber } from "@/lib/format-lead-number";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
 import { FileUploadButton } from "../../_lib/FileUploadButton";
 import {
@@ -29,9 +31,27 @@ type Participante = {
   avaliacao: string | null;
   marcadoFaltaPor: string | null;
   rsvpStatus: "AGUARDANDO" | "CONFIRMOU" | "RECUSOU";
-  familia: { id: string; leadId: string; numero: number; lead: { id: string; nome: string; nomeCorreto: string | null } };
+  conviteEnviadoEm: string | null;
+  ultimaTentativaEnvioEm: string | null;
+  ultimoEnvioErro: string | null;
+  linkAbertoEm: string | null;
+  familia: {
+    id: string;
+    leadId: string;
+    numero: number;
+    lead: {
+      id: string;
+      nome: string;
+      nomeCorreto: string | null;
+      numero: number | null;
+      telefone: string | null;
+      reentradaCount: number | null;
+    };
+  };
   anexos: { id: string; url: string; nome: string }[];
 };
+
+type FiltroParticipante = "ENVIADOS" | "ERRO" | "ABRIRAM" | "CONFIRMOU" | "RECUSOU" | "AGUARDANDO" | null;
 
 const RSVP_LABEL: Record<string, string> = {
   AGUARDANDO: "Aguardando confirmação",
@@ -71,6 +91,7 @@ export default function AtividadeDetalhePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [filtroParticipante, setFiltroParticipante] = useState<FiltroParticipante>(null);
 
   const [relatorio, setRelatorio] = useState("");
   const [savingRelatorio, setSavingRelatorio] = useState(false);
@@ -243,6 +264,26 @@ export default function AtividadeDetalhePage() {
     }
   }
 
+  function participanteBate(p: Participante, filtro: FiltroParticipante): boolean {
+    if (!filtro) return true;
+    if (filtro === "ENVIADOS") return !!p.conviteEnviadoEm;
+    if (filtro === "ERRO") return !!p.ultimoEnvioErro;
+    if (filtro === "ABRIRAM") return !!p.linkAbertoEm;
+    return p.rsvpStatus === filtro;
+  }
+
+  const participantes = data?.participantes ?? [];
+  const resumoConvites = {
+    total: participantes.length,
+    enviados: participantes.filter((p) => p.conviteEnviadoEm).length,
+    erro: participantes.filter((p) => p.ultimoEnvioErro).length,
+    abriram: participantes.filter((p) => p.linkAbertoEm).length,
+    confirmou: participantes.filter((p) => p.rsvpStatus === "CONFIRMOU").length,
+    recusou: participantes.filter((p) => p.rsvpStatus === "RECUSOU").length,
+    aguardando: participantes.filter((p) => p.rsvpStatus === "AGUARDANDO").length,
+  };
+  const participantesFiltrados = participantes.filter((p) => participanteBate(p, filtroParticipante));
+
   if (guard === null) return null;
 
   return (
@@ -272,31 +313,6 @@ export default function AtividadeDetalhePage() {
                   {data.local ? ` · ${data.local}` : ""}
                   {` · Prazo de preenchimento: ${data.prazoPreenchimentoDias} dia(s)`}
                 </p>
-              </CardBody>
-            </Card>
-
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle>Relatório da sessão</CardTitle>
-              </CardHeader>
-              <CardBody className="space-y-2">
-                <textarea
-                  value={relatorio}
-                  onChange={(e) => setRelatorio(e.target.value)}
-                  rows={4}
-                  placeholder="Anotações gerais sobre a sessão..."
-                  className="w-full rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-                />
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleSaveRelatorio}
-                    disabled={savingRelatorio}
-                    className="px-4 py-2 rounded-lg text-sm font-medium"
-                    style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
-                  >
-                    {savingRelatorio ? "Salvando..." : "Salvar relatório"}
-                  </button>
-                </div>
               </CardBody>
             </Card>
 
@@ -457,6 +473,41 @@ export default function AtividadeDetalhePage() {
               </CardBody>
             </Card>
 
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle>Resumo de Convites</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(
+                    [
+                      { key: null, label: "Total", valor: resumoConvites.total, cor: "var(--shell-text)" },
+                      { key: "ENVIADOS", label: "Convites enviados", valor: resumoConvites.enviados, cor: "#16a34a" },
+                      { key: "ERRO", label: "Erro no envio", valor: resumoConvites.erro, cor: "#dc2626" },
+                      { key: "ABRIRAM", label: "Abriram o link", valor: resumoConvites.abriram, cor: "var(--via-teal, #1D9E75)" },
+                      { key: "CONFIRMOU", label: "Confirmaram presença", valor: resumoConvites.confirmou, cor: "#16a34a" },
+                      { key: "RECUSOU", label: "Não vão comparecer", valor: resumoConvites.recusou, cor: "#dc2626" },
+                      { key: "AGUARDANDO", label: "Aguardando resposta", valor: resumoConvites.aguardando, cor: "#b45309" },
+                    ] as { key: FiltroParticipante; label: string; valor: number; cor: string }[]
+                  ).map((bloco) => (
+                    <button
+                      key={bloco.label}
+                      onClick={() => setFiltroParticipante((prev) => (prev === bloco.key ? null : bloco.key))}
+                      className="rounded-lg border px-3 py-2 text-left transition-colors hover:bg-[var(--shell-hover)]"
+                      style={
+                        filtroParticipante === bloco.key
+                          ? { borderColor: "var(--via-teal, #1D9E75)", boxShadow: "inset 0 0 0 1px var(--via-teal, #1D9E75)" }
+                          : { borderColor: "var(--shell-card-border)" }
+                      }
+                    >
+                      <p className="text-xl font-bold" style={{ color: bloco.cor }}>{bloco.valor}</p>
+                      <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>{bloco.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+
             {agendamentos.length > 0 && (
               <Card className="mb-4">
                 <CardHeader>
@@ -495,10 +546,21 @@ export default function AtividadeDetalhePage() {
               </Card>
             )}
 
-            <Card>
+            <Card className="mb-4">
               <CardHeader className="flex items-center justify-between">
-                <CardTitle>Famílias participantes ({data.participantes.length})</CardTitle>
+                <CardTitle>
+                  Famílias participantes ({participantesFiltrados.length}{filtroParticipante ? ` de ${resumoConvites.total}` : ""})
+                </CardTitle>
                 <div className="flex items-center gap-2">
+                  {filtroParticipante && (
+                    <button
+                      onClick={() => setFiltroParticipante(null)}
+                      className="text-xs font-medium"
+                      style={{ color: "var(--via-teal, #1D9E75)" }}
+                    >
+                      Limpar filtro
+                    </button>
+                  )}
                   <button
                     onClick={() => setConviteModal("todos")}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
@@ -516,34 +578,33 @@ export default function AtividadeDetalhePage() {
                 </div>
               </CardHeader>
               <CardBody className="space-y-2">
-                {data.participantes.map((p) => (
+                {participantesFiltrados.length === 0 && (
+                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma família nesse filtro.</p>
+                )}
+                {participantesFiltrados.map((p) => (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+                    className="rounded-lg border px-3 py-2 space-y-2"
                     style={{ borderColor: "var(--shell-card-border)" }}
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium truncate" style={{ color: "var(--shell-text)" }}>
-                        {p.familia.lead.nomeCorreto ?? p.familia.lead.nome}
-                        <span className="ml-2 text-xs font-normal" style={{ color: "var(--shell-subtext)" }}>
-                          #{String(p.familia.numero).padStart(4, "0")}
-                        </span>
-                      </p>
-                      {p.status === "CONCLUIDA" && p.avaliacao && (
-                        <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-                          Nota: {AVALIACAO_LABEL[p.avaliacao] ?? p.avaliacao}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate" style={{ color: "var(--shell-text)" }}>
+                          {p.familia.lead.nomeCorreto ?? p.familia.lead.nome}
                         </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant={p.rsvpStatus === "CONFIRMOU" ? "success" : p.rsvpStatus === "RECUSOU" ? "error" : "default"}>
-                        {RSVP_LABEL[p.rsvpStatus] ?? p.rsvpStatus}
-                      </Badge>
-                      <Badge variant={p.status === "FALTOU" ? "error" : p.status === "CONCLUIDA" ? "success" : p.status === "PENDENTE" ? "warning" : "default"}>
-                        {PARTICIPANTE_STATUS_LABEL[p.status] ?? p.status}
-                      </Badge>
+                        <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                          Família #{String(p.familia.numero).padStart(4, "0")}
+                          {p.familia.lead.numero != null && ` · Lead ${formatLeadNumber(p.familia.lead.numero, p.familia.lead.reentradaCount) ? `#${formatLeadNumber(p.familia.lead.numero, p.familia.lead.reentradaCount)}` : ""}`}
+                          {p.familia.lead.telefone && ` · ${maskPhone(p.familia.lead.telefone)}`}
+                        </p>
+                        {p.status === "CONCLUIDA" && p.avaliacao && (
+                          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                            Nota: {AVALIACAO_LABEL[p.avaliacao] ?? p.avaliacao}
+                          </p>
+                        )}
+                      </div>
                       {p.status !== "CONCLUIDA" && p.status !== "FALTOU" && (
-                        <>
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
                             onClick={() => setConviteModal([p.familiaId])}
                             className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
@@ -565,11 +626,65 @@ export default function AtividadeDetalhePage() {
                           >
                             Enviar ficha
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {p.ultimoEnvioErro ? (
+                        <Badge variant="error">Erro no envio</Badge>
+                      ) : p.conviteEnviadoEm ? (
+                        <Badge variant="success">Convite enviado</Badge>
+                      ) : (
+                        <Badge variant="default">Convite não enviado</Badge>
+                      )}
+                      <Badge variant={p.linkAbertoEm ? "success" : "default"}>
+                        {p.linkAbertoEm ? "Abriu o link" : "Não abriu o link"}
+                      </Badge>
+                      <Badge variant={p.rsvpStatus === "CONFIRMOU" ? "success" : p.rsvpStatus === "RECUSOU" ? "error" : "default"}>
+                        {RSVP_LABEL[p.rsvpStatus] ?? p.rsvpStatus}
+                      </Badge>
+                      <Badge variant={p.status === "FALTOU" ? "error" : p.status === "CONCLUIDA" ? "success" : p.status === "PENDENTE" ? "warning" : "default"}>
+                        {PARTICIPANTE_STATUS_LABEL[p.status] ?? p.status}
+                      </Badge>
+                    </div>
+
+                    {p.ultimoEnvioErro && (
+                      <p className="text-xs" style={{ color: "#dc2626" }}>Erro: {p.ultimoEnvioErro}</p>
+                    )}
+                    {p.conviteEnviadoEm && !p.ultimoEnvioErro && (
+                      <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                        Enviado em {new Date(p.conviteEnviadoEm).toLocaleString("pt-BR")}
+                        {p.linkAbertoEm && ` · Abriu em ${new Date(p.linkAbertoEm).toLocaleString("pt-BR")}`}
+                      </p>
+                    )}
                   </div>
                 ))}
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Relatório da sessão</CardTitle>
+              </CardHeader>
+              <CardBody className="space-y-2">
+                <textarea
+                  value={relatorio}
+                  onChange={(e) => setRelatorio(e.target.value)}
+                  rows={4}
+                  placeholder="Anotações gerais sobre a sessão..."
+                  className="w-full rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+                />
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleSaveRelatorio}
+                    disabled={savingRelatorio}
+                    className="px-4 py-2 rounded-lg text-sm font-medium"
+                    style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                  >
+                    {savingRelatorio ? "Salvando..." : "Salvar relatório"}
+                  </button>
+                </div>
               </CardBody>
             </Card>
           </>
@@ -969,11 +1084,11 @@ function ConviteModal({
         method: "POST",
         body: JSON.stringify({ familiaIds, mensagem: mensagem.trim(), imagemUrl: imagemUrlSelecionada || undefined }),
       });
-      const falhas = (res.resultados ?? []).filter((r: any) => !r.ok).map((r: any) => r.nome);
+      const falhas = (res.resultados ?? []).filter((r: any) => !r.ok);
       onSaved(
         falhas.length === 0
           ? `Convite enviado (${res.enviados}/${res.total}).`
-          : `Enviado ${res.enviados}/${res.total} — falhou: ${falhas.join(", ")}`,
+          : `Enviado ${res.enviados}/${res.total} — ${falhas[0].nome}: ${falhas[0].erro}${falhas.length > 1 ? ` (+${falhas.length - 1}, ver lista)` : ""}`,
       );
     } catch (e: any) {
       setError(e?.message ?? "Erro ao enviar convite");
