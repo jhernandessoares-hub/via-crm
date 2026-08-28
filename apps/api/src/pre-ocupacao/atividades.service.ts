@@ -362,7 +362,12 @@ export class AtividadesService {
       const nome = p.familia.lead.nomeCorreto ?? p.familia.lead.nome;
       const tentativaEm = new Date();
       try {
+        // Gera e "hasheia" o token ANTES de enviar — se hashConviteToken()
+        // falhar (ex.: WEBHOOK_HMAC_SECRET ausente), o erro precisa estourar
+        // aqui, antes do WhatsApp sair, senão uma mensagem já entregue fica
+        // registrada como falha (e o usuário reenvia, duplicando o envio real).
         const token = gerarConviteToken();
+        const tokenHash = hashConviteToken(token);
         const link = `${baseUrl}/portal/convite/${token}`;
         const texto = `${template.replace(/\{\{nome\}\}/gi, nome)}\n\nConfirme sua presença: ${link}`;
 
@@ -372,13 +377,10 @@ export class AtividadesService {
           await leadsService.sendWhatsappMessage(user, p.familia.leadId, { message: texto });
         }
 
-        // Só grava o token/link novo (tornando-o válido) depois de confirmar
-        // que o envio deu certo — se falhar, não faz sentido "emitir" um
-        // link que a família nunca recebeu.
         await this.prisma.preOcupacaoAtividadeParticipante.update({
           where: { id: p.id },
           data: {
-            convidaTokenHash: hashConviteToken(token),
+            convidaTokenHash: tokenHash,
             convidaTokenExpiraEm: expiraEm,
             conviteEnviadoEm: tentativaEm,
             ultimaTentativaEnvioEm: tentativaEm,
