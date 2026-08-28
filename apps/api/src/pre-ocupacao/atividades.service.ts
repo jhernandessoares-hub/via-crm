@@ -216,7 +216,13 @@ export class AtividadesService {
       include: {
         anexos: true,
         participantes: {
-          include: { familia: { include: { lead: { select: { id: true, nome: true, nomeCorreto: true } } } } },
+          include: {
+            familia: {
+              include: {
+                lead: { select: { id: true, nome: true, nomeCorreto: true, numero: true, telefone: true, reentradaCount: true } },
+              },
+            },
+          },
         },
       },
     });
@@ -354,20 +360,9 @@ export class AtividadesService {
 
     for (const p of alvo) {
       const nome = p.familia.lead.nomeCorreto ?? p.familia.lead.nome;
+      const tentativaEm = new Date();
       try {
         const token = gerarConviteToken();
-
-        await this.prisma.preOcupacaoAtividadeParticipante.update({
-          where: { id: p.id },
-          data: {
-            convidaTokenHash: hashConviteToken(token),
-            convidaTokenExpiraEm: expiraEm,
-            conviteEnviadoEm: now,
-            // reenvio de lembrete não deve apagar uma confirmação/recusa já dada
-            ...(p.rsvpRespondidoEm ? {} : { rsvpStatus: 'AGUARDANDO' as any }),
-          },
-        });
-
         const link = `${baseUrl}/portal/convite/${token}`;
         const texto = `${template.replace(/\{\{nome\}\}/gi, nome)}\n\nConfirme sua presença: ${link}`;
 
@@ -376,10 +371,32 @@ export class AtividadesService {
         } else {
           await leadsService.sendWhatsappMessage(user, p.familia.leadId, { message: texto });
         }
+
+        // Só grava o token/link novo (tornando-o válido) depois de confirmar
+        // que o envio deu certo — se falhar, não faz sentido "emitir" um
+        // link que a família nunca recebeu.
+        await this.prisma.preOcupacaoAtividadeParticipante.update({
+          where: { id: p.id },
+          data: {
+            convidaTokenHash: hashConviteToken(token),
+            convidaTokenExpiraEm: expiraEm,
+            conviteEnviadoEm: tentativaEm,
+            ultimaTentativaEnvioEm: tentativaEm,
+            ultimoEnvioErro: null,
+            // reenvio de lembrete não deve apagar uma confirmação/recusa já dada
+            ...(p.rsvpRespondidoEm ? {} : { rsvpStatus: 'AGUARDANDO' as any }),
+          },
+        });
         resultados.push({ familiaId: p.familiaId, nome, ok: true });
       } catch (e: any) {
-        this.logger.error(`Falha ao enviar convite: familiaId=${p.familiaId} erro=${e?.message || e}`);
-        resultados.push({ familiaId: p.familiaId, nome, ok: false, erro: e?.message || String(e) });
+        const erro = (e?.message || String(e)).slice(0, 500);
+        this.logger.error(`Falha ao enviar convite: familiaId=${p.familiaId} erro=${erro}`);
+        await this.prisma.preOcupacaoAtividadeParticipante
+          .update({ where: { id: p.id }, data: { ultimaTentativaEnvioEm: tentativaEm, ultimoEnvioErro: erro } })
+          .catch((updateErr: any) =>
+            this.logger.error(`Falha ao registrar erro de envio: familiaId=${p.familiaId}`, { error: updateErr?.message }),
+          );
+        resultados.push({ familiaId: p.familiaId, nome, ok: false, erro });
       }
     }
 

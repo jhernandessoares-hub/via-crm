@@ -43,6 +43,11 @@ export class ConviteService {
 
   async buscarPorToken(token: string) {
     const p = await this.buscarParticipanteValido(token);
+    if (!p.linkAbertoEm) {
+      await this.prisma.preOcupacaoAtividadeParticipante
+        .update({ where: { id: p.id }, data: { linkAbertoEm: new Date() } })
+        .catch((e: any) => this.logger.warn(`Falha ao registrar abertura do link: participante=${p.id} erro=${e?.message}`));
+    }
     return {
       nome: p.familia.lead.nomeCorreto ?? p.familia.lead.nome,
       sessao: {
