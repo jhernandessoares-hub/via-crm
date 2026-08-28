@@ -1,4 +1,4 @@
-import { GoneException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Logger } from '../../logger';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -61,6 +61,11 @@ export class ConviteService {
 
   async responder(token: string, confirmar: boolean) {
     const p = await this.buscarParticipanteValido(token);
+    // Quem já confirmou não pode mais mudar a resposta — nem reconfirmar,
+    // nem desistir. Só quem recusou (ou ainda não respondeu) pode responder.
+    if (p.rsvpStatus === 'CONFIRMOU') {
+      throw new ConflictException('Você já confirmou presença — não é possível alterar essa resposta.');
+    }
     const updated = await this.prisma.preOcupacaoAtividadeParticipante.update({
       where: { id: p.id },
       data: { rsvpStatus: confirmar ? 'CONFIRMOU' : 'RECUSOU', rsvpRespondidoEm: new Date() },

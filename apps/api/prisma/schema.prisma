@@ -2157,6 +2157,7 @@ model PreOcupacaoAtividadeParticipante {
   ultimaTentativaEnvioEm DateTime?
   ultimoEnvioErro        String?
   linkAbertoEm           DateTime?
+  enviosCount            Int                           @default(0)
   criadoEm             DateTime                      @default(now())
   atualizadoEm         DateTime                      @updatedAt
 
