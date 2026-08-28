@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LeadsModule } from '../leads/leads.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { AddonGuard } from '../auth/plan.guard';
 import { FamiliasController } from './familias.controller';
 import { FamiliasService } from './familias.service';
@@ -18,7 +19,7 @@ import { AgendamentoConviteService } from './agendamento-convite.service';
 import { AgendamentoConviteWorker } from './agendamento-convite.worker';
 
 @Module({
-  imports: [PrismaModule, LeadsModule],
+  imports: [PrismaModule, LeadsModule, MessagingModule],
   controllers: [
     FamiliasController,
     AtividadesController,

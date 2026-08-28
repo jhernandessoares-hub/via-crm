@@ -3,7 +3,9 @@ import { ModuleRef } from '@nestjs/core';
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { MessagingService } from '../messaging/messaging.service';
 import type { LeadsService } from '../leads/leads.service';
+import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { PRE_OCUPACAO_CATEGORIA_LABEL } from './pre-ocupacao-status.util';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
 import { CONVITE_TOKEN_VALIDADE_MS, gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
@@ -18,20 +20,77 @@ export class AtividadesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly moduleRef: ModuleRef,
+    private readonly messaging: MessagingService,
   ) {}
 
   /**
-   * Resolve `LeadsService` via `ModuleRef` (em vez de injeção direta no
-   * construtor) para evitar importar `whatsapp-unofficial.service.ts` no
-   * topo deste arquivo — esse import transitivo puxa o pacote ESM
-   * `@whiskeysockets/baileys`, que o Jest não consegue transformar por
-   * padrão e quebraria QUALQUER spec que importe este arquivo, mesmo sem
-   * exercitar o envio de convite (mesmo bug pré-existente em
-   * `leads.service.spec.ts`, alheio a esta mudança).
+   * Resolve `LeadsService`/`WhatsappUnofficialService` via `ModuleRef` (em vez
+   * de injeção direta no construtor) para evitar importar
+   * `whatsapp-unofficial.service.ts` no topo deste arquivo — esse import
+   * transitivo puxa o pacote ESM `@whiskeysockets/baileys`, que o Jest não
+   * consegue transformar por padrão e quebraria QUALQUER spec que importe
+   * este arquivo, mesmo sem exercitar o envio de convite (mesmo bug
+   * pré-existente em `leads.service.spec.ts`, alheio a esta mudança).
+   * `MessagingService` (Meta) não tem essa dependência — pode ser injetado
+   * normalmente.
    */
   private async getLeadsService(): Promise<LeadsService> {
     const { LeadsService: LeadsServiceClass } = await import('../leads/leads.service.js');
     return this.moduleRef.get(LeadsServiceClass, { strict: false });
+  }
+
+  private async getUnofficialService(): Promise<WhatsappUnofficialService> {
+    const { WhatsappUnofficialService: Cls } = await import('../whatsapp-unofficial/whatsapp-unofficial.service.js');
+    return this.moduleRef.get(Cls, { strict: false });
+  }
+
+  /**
+   * Envia uma imagem (com legenda) pro lead, pelo mesmo canal ativo da
+   * conversa (Light ou Oficial) — usado quando o convite tem um template
+   * com imagem anexada. Espelha a lógica de `LeadsService.sendWhatsappMessage`
+   * pra texto, mas para mídia.
+   */
+  private async enviarImagemWhatsapp(tenantId: string, leadId: string, imagemUrl: string, caption: string) {
+    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId } });
+    if (!lead) throw new NotFoundException('Lead não encontrado.');
+    if (!lead.telefone) throw new BadRequestException('Lead não possui telefone cadastrado.');
+
+    if (lead.conversaCanal === 'WHATSAPP_LIGHT' && lead.conversaSessionId) {
+      const unofficial = await this.getUnofficialService();
+      const sessionId = lead.conversaSessionId;
+      const sent = await unofficial.sendImage(sessionId, lead.telefone, imagemUrl, caption);
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId,
+          leadId,
+          channel: 'whatsapp.unofficial.out',
+          sourceRef: sent?.id ?? null,
+          payloadRaw: { to: lead.telefone, sessionId, type: 'image', media: { kind: 'image', url: imagemUrl }, caption },
+        },
+      });
+      await this.prisma.lead.update({ where: { id: leadId }, data: { conversaAberta: true } });
+      return;
+    }
+
+    const result = await this.messaging.sendMetaImageByUrl(lead.telefone, imagemUrl, caption, tenantId);
+    await this.prisma.leadEvent.create({
+      data: {
+        tenantId,
+        leadId,
+        channel: 'whatsapp.out',
+        payloadRaw: {
+          to: result.to,
+          type: 'image',
+          media: { kind: 'image', url: imagemUrl },
+          caption,
+          metaResponse: result.metaResponse,
+        },
+      },
+    });
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: { conversaAberta: true, ...(!lead.conversaCanal ? { conversaCanal: 'WHATSAPP_OFICIAL' } : {}) },
+    });
   }
 
   /** Resolve a URL pública base do site do tenant, pra montar o link de convite. */
@@ -259,6 +318,7 @@ export class AtividadesService {
     user: { tenantId: string; id?: string; nome?: string },
     familiaIds?: string[],
     mensagem?: string,
+    imagemUrl?: string,
   ) {
     const atividade = await this.prisma.preOcupacaoAtividade.findFirst({
       where: { id: atividadeId, tenantId },
@@ -311,7 +371,11 @@ export class AtividadesService {
         const link = `${baseUrl}/portal/convite/${token}`;
         const texto = `${template.replace(/\{\{nome\}\}/gi, nome)}\n\nConfirme sua presença: ${link}`;
 
-        await leadsService.sendWhatsappMessage(user, p.familia.leadId, { message: texto });
+        if (imagemUrl) {
+          await this.enviarImagemWhatsapp(tenantId, p.familia.leadId, imagemUrl, texto);
+        } else {
+          await leadsService.sendWhatsappMessage(user, p.familia.leadId, { message: texto });
+        }
         resultados.push({ familiaId: p.familiaId, nome, ok: true });
       } catch (e: any) {
         this.logger.error(`Falha ao enviar convite: familiaId=${p.familiaId} erro=${e?.message || e}`);

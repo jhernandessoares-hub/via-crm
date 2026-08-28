@@ -2082,12 +2082,14 @@ model PreOcupacaoAtividade {
 }
 
 model PreOcupacaoMensagemTemplate {
-  id           String   @id @default(uuid())
-  tenantId     String
-  nome         String
-  corpo        String
-  criadoEm     DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  id             String   @id @default(uuid())
+  tenantId       String
+  nome           String
+  corpo          String
+  imagemUrl      String?
+  imagemPublicId String?
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
 
   @@index([tenantId])
   @@map("pre_ocupacao_mensagem_templates")
@@ -2106,6 +2108,7 @@ model PreOcupacaoConviteAgendamento {
   atividadeId  String
   familiaIds   Json?
   mensagem     String
+  imagemUrl    String?
   agendadoPara DateTime
   status       PreOcupacaoAgendamentoStatus @default(PENDENTE)
   enviadoEm    DateTime?

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Request, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AddonGuard, RequiresAddon } from '../auth/plan.guard';
 import { TemplatesService } from './templates.service';
@@ -15,8 +16,27 @@ export class TemplatesController {
   }
 
   @Post()
-  criar(@Request() req: any, @Body() body: { nome?: string; corpo?: string }) {
-    return this.svc.criar(req.user.tenantId, body);
+  @UseInterceptors(FileInterceptor('file'))
+  criar(@Request() req: any, @UploadedFile() file: any, @Body('nome') nome?: string, @Body('corpo') corpo?: string) {
+    return this.svc.criar(req.user.tenantId, { nome, corpo }, file);
+  }
+
+  @Patch(':id')
+  @UseInterceptors(FileInterceptor('file'))
+  atualizar(
+    @Request() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: any,
+    @Body('nome') nome?: string,
+    @Body('corpo') corpo?: string,
+    @Body('removerImagem') removerImagem?: string,
+  ) {
+    return this.svc.atualizar(
+      req.user.tenantId,
+      id,
+      { nome, corpo, removerImagem: removerImagem === 'true' || removerImagem === '1' },
+      file,
+    );
   }
 
   @Delete(':id')

@@ -12,7 +12,7 @@ export class AgendamentoConviteService {
     tenantId: string,
     atividadeId: string,
     criadoPor: string,
-    body: { familiaIds?: string[]; mensagem?: string; agendadoPara?: string },
+    body: { familiaIds?: string[]; mensagem?: string; imagemUrl?: string; agendadoPara?: string },
   ) {
     const atividade = await this.prisma.preOcupacaoAtividade.findFirst({ where: { id: atividadeId, tenantId } });
     if (!atividade) throw new NotFoundException('Sessão não encontrada.');
@@ -33,6 +33,7 @@ export class AgendamentoConviteService {
         atividadeId,
         familiaIds: body.familiaIds?.length ? body.familiaIds : undefined,
         mensagem,
+        imagemUrl: body.imagemUrl || null,
         agendadoPara,
         criadoPor,
       },

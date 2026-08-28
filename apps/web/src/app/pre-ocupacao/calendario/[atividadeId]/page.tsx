@@ -39,7 +39,7 @@ const RSVP_LABEL: Record<string, string> = {
   RECUSOU: "Não vai comparecer",
 };
 
-type MensagemTemplate = { id: string; nome: string; corpo: string };
+type MensagemTemplate = { id: string; nome: string; corpo: string; imagemUrl: string | null };
 
 type Agendamento = {
   id: string;
@@ -83,8 +83,12 @@ export default function AtividadeDetalhePage() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [templates, setTemplates] = useState<MensagemTemplate[]>([]);
   const [novoTemplateForm, setNovoTemplateForm] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [novoTemplateNomeForm, setNovoTemplateNomeForm] = useState("");
   const [novoTemplateCorpoForm, setNovoTemplateCorpoForm] = useState("");
+  const [novoTemplateImagemFile, setNovoTemplateImagemFile] = useState<File | null>(null);
+  const [novoTemplateImagemAtualUrl, setNovoTemplateImagemAtualUrl] = useState<string | null>(null);
+  const [novoTemplateRemoverImagem, setNovoTemplateRemoverImagem] = useState(false);
   const [savingTemplateForm, setSavingTemplateForm] = useState(false);
 
   useEffect(() => {
@@ -137,18 +141,44 @@ export default function AtividadeDetalhePage() {
     }
   }
 
-  async function handleCriarTemplate() {
+  function resetTemplateForm() {
+    setNovoTemplateForm(false);
+    setEditingTemplateId(null);
+    setNovoTemplateNomeForm("");
+    setNovoTemplateCorpoForm("");
+    setNovoTemplateImagemFile(null);
+    setNovoTemplateImagemAtualUrl(null);
+    setNovoTemplateRemoverImagem(false);
+  }
+
+  function handleEditarTemplateClick(t: MensagemTemplate) {
+    setEditingTemplateId(t.id);
+    setNovoTemplateNomeForm(t.nome);
+    setNovoTemplateCorpoForm(t.corpo);
+    setNovoTemplateImagemFile(null);
+    setNovoTemplateImagemAtualUrl(t.imagemUrl);
+    setNovoTemplateRemoverImagem(false);
+    setNovoTemplateForm(true);
+  }
+
+  async function handleSalvarTemplate() {
     if (!novoTemplateNomeForm.trim() || !novoTemplateCorpoForm.trim()) return;
     setSavingTemplateForm(true);
     try {
-      await apiFetch("/pre-ocupacao/templates", {
-        method: "POST",
-        body: JSON.stringify({ nome: novoTemplateNomeForm.trim(), corpo: novoTemplateCorpoForm.trim() }),
-      });
-      setNovoTemplateForm(false);
-      setNovoTemplateNomeForm("");
-      setNovoTemplateCorpoForm("");
-      showToast("Modelo salvo.");
+      const fd = new FormData();
+      fd.append("nome", novoTemplateNomeForm.trim());
+      fd.append("corpo", novoTemplateCorpoForm.trim());
+      if (novoTemplateImagemFile) fd.append("file", novoTemplateImagemFile);
+      if (editingTemplateId && novoTemplateRemoverImagem) fd.append("removerImagem", "true");
+
+      if (editingTemplateId) {
+        await apiFetch(`/pre-ocupacao/templates/${editingTemplateId}`, { method: "PATCH", body: fd });
+        showToast("Modelo atualizado.");
+      } else {
+        await apiFetch("/pre-ocupacao/templates", { method: "POST", body: fd });
+        showToast("Modelo salvo.");
+      }
+      resetTemplateForm();
       await loadTemplates();
     } catch (e: any) {
       showToast(e?.message ?? "Erro ao salvar modelo");
@@ -308,7 +338,7 @@ export default function AtividadeDetalhePage() {
               <CardHeader className="flex items-center justify-between">
                 <CardTitle>Modelos de mensagem ({templates.length})</CardTitle>
                 <button
-                  onClick={() => setNovoTemplateForm((v) => !v)}
+                  onClick={() => (novoTemplateForm ? resetTemplateForm() : setNovoTemplateForm(true))}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium"
                   style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
                 >
@@ -318,6 +348,9 @@ export default function AtividadeDetalhePage() {
               <CardBody className="space-y-2">
                 {novoTemplateForm && (
                   <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: "var(--shell-card-border)" }}>
+                    <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+                      {editingTemplateId ? "Editando modelo" : "Novo modelo"}
+                    </p>
                     <input
                       type="text"
                       value={novoTemplateNomeForm}
@@ -332,21 +365,53 @@ export default function AtividadeDetalhePage() {
                       placeholder="Mensagem (use {{nome}} pra personalizar)"
                       className="w-full rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] resize-none"
                     />
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>
+                        Imagem (opcional)
+                      </label>
+                      {novoTemplateImagemAtualUrl && !novoTemplateRemoverImagem && !novoTemplateImagemFile && (
+                        <div className="mb-2 flex items-center gap-2">
+                          <img src={novoTemplateImagemAtualUrl} alt="" className="h-16 w-16 object-cover rounded-lg border" style={{ borderColor: "var(--shell-card-border)" }} />
+                          <button
+                            type="button"
+                            onClick={() => setNovoTemplateRemoverImagem(true)}
+                            className="text-xs"
+                            style={{ color: "#dc2626" }}
+                          >
+                            Remover imagem
+                          </button>
+                        </div>
+                      )}
+                      {novoTemplateImagemFile && (
+                        <p className="text-xs mb-1" style={{ color: "var(--shell-subtext)" }}>
+                          Nova imagem selecionada: {novoTemplateImagemFile.name}
+                        </p>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          setNovoTemplateImagemFile(e.target.files?.[0] ?? null);
+                          setNovoTemplateRemoverImagem(false);
+                        }}
+                        className="w-full text-sm"
+                      />
+                    </div>
                     <div className="flex justify-end gap-2">
                       <button
-                        onClick={() => setNovoTemplateForm(false)}
+                        onClick={resetTemplateForm}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
                         style={{ color: "var(--shell-text)" }}
                       >
                         Cancelar
                       </button>
                       <button
-                        onClick={handleCriarTemplate}
+                        onClick={handleSalvarTemplate}
                         disabled={savingTemplateForm || !novoTemplateNomeForm.trim() || !novoTemplateCorpoForm.trim()}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50"
                         style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
                       >
-                        {savingTemplateForm ? "Salvando..." : "Salvar modelo"}
+                        {savingTemplateForm ? "Salvando..." : editingTemplateId ? "Salvar alterações" : "Salvar modelo"}
                       </button>
                     </div>
                   </div>
@@ -362,17 +427,31 @@ export default function AtividadeDetalhePage() {
                     className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2"
                     style={{ borderColor: "var(--shell-card-border)" }}
                   >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium" style={{ color: "var(--shell-text)" }}>{t.nome}</p>
-                      <p className="text-xs truncate" style={{ color: "var(--shell-subtext)" }}>{t.corpo}</p>
+                    <div className="min-w-0 flex items-start gap-2">
+                      {t.imagemUrl && (
+                        <img src={t.imagemUrl} alt="" className="h-10 w-10 object-cover rounded-md shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium" style={{ color: "var(--shell-text)" }}>{t.nome}</p>
+                        <p className="text-xs truncate" style={{ color: "var(--shell-subtext)" }}>{t.corpo}</p>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => handleExcluirTemplate(t.id)}
-                      className="text-xs shrink-0"
-                      style={{ color: "#dc2626" }}
-                    >
-                      Excluir
-                    </button>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={() => handleEditarTemplateClick(t)}
+                        className="text-xs font-medium"
+                        style={{ color: "var(--via-teal, #1D9E75)" }}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleExcluirTemplate(t.id)}
+                        className="text-xs"
+                        style={{ color: "#dc2626" }}
+                      >
+                        Excluir
+                      </button>
+                    </div>
                   </div>
                 ))}
               </CardBody>
@@ -817,6 +896,7 @@ function ConviteModal({
   const [error, setError] = useState<string | null>(null);
 
   const [templateSelecionado, setTemplateSelecionado] = useState("");
+  const [imagemUrlSelecionada, setImagemUrlSelecionada] = useState<string | null>(null);
   const [showSalvarTemplate, setShowSalvarTemplate] = useState(false);
   const [novoTemplateNome, setNovoTemplateNome] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -835,6 +915,7 @@ function ConviteModal({
     setTemplateSelecionado(id);
     const t = templates.find((tp) => tp.id === id);
     if (t) setMensagem(t.corpo);
+    setImagemUrlSelecionada(t?.imagemUrl ?? null);
   }
 
   async function salvarComoTemplate() {
@@ -874,14 +955,19 @@ function ConviteModal({
         }
         await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite/agendar`, {
           method: "POST",
-          body: JSON.stringify({ familiaIds, mensagem: mensagem.trim(), agendadoPara: agendadoParaDate.toISOString() }),
+          body: JSON.stringify({
+            familiaIds,
+            mensagem: mensagem.trim(),
+            imagemUrl: imagemUrlSelecionada || undefined,
+            agendadoPara: agendadoParaDate.toISOString(),
+          }),
         });
         onSaved(`Envio agendado para ${agendadoParaDate.toLocaleString("pt-BR")}.`);
         return;
       }
       const res = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/convite`, {
         method: "POST",
-        body: JSON.stringify({ familiaIds, mensagem: mensagem.trim() }),
+        body: JSON.stringify({ familiaIds, mensagem: mensagem.trim(), imagemUrl: imagemUrlSelecionada || undefined }),
       });
       const falhas = (res.resultados ?? []).filter((r: any) => !r.ok).map((r: any) => r.nome);
       onSaved(
@@ -956,6 +1042,21 @@ function ConviteModal({
             O link de confirmação de presença é adicionado automaticamente no fim da mensagem.
           </p>
         </div>
+
+        {imagemUrlSelecionada && (
+          <div className="flex items-center gap-2">
+            <img src={imagemUrlSelecionada} alt="" className="h-14 w-14 object-cover rounded-lg border" style={{ borderColor: "var(--shell-card-border)" }} />
+            <div className="flex-1 text-xs" style={{ color: "var(--shell-subtext)" }}>Imagem do modelo será enviada junto.</div>
+            <button
+              type="button"
+              onClick={() => setImagemUrlSelecionada(null)}
+              className="text-xs shrink-0"
+              style={{ color: "#dc2626" }}
+            >
+              Remover imagem
+            </button>
+          </div>
+        )}
 
         {!showSalvarTemplate ? (
           <button
