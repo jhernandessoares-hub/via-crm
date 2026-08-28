@@ -67,6 +67,8 @@ export default function ConvitePage() {
     }
   }
 
+  const locked = resposta === true;
+
   const dataLabel = data ? new Date(data.sessao.dataAgendada).toLocaleDateString("pt-BR") : "";
   const horaLabel = data
     ? new Date(data.sessao.dataAgendada).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
@@ -92,7 +94,7 @@ export default function ConvitePage() {
             </div>
           )}
 
-          {!loading && !error && data && etapa === "pergunta" && (
+          {!loading && !error && data && etapa === "pergunta" && !locked && (
             <div className="space-y-5 text-center">
               <p className="text-sm text-slate-500">Olá, {data.nome}!</p>
               <p className="text-base font-semibold text-slate-950">
@@ -103,9 +105,7 @@ export default function ConvitePage() {
                 <button
                   onClick={() => responder(true)}
                   disabled={enviando}
-                  className={`flex-1 rounded-full py-3 text-sm font-semibold transition disabled:opacity-60 ${
-                    resposta === true ? "bg-emerald-600 text-white" : "bg-slate-950 text-white hover:bg-slate-800"
-                  }`}
+                  className="flex-1 rounded-full py-3 text-sm font-semibold transition disabled:opacity-60 bg-slate-950 text-white hover:bg-slate-800"
                 >
                   SIM
                 </button>
@@ -121,15 +121,15 @@ export default function ConvitePage() {
                   NÃO
                 </button>
               </div>
-              {resposta !== null && (
+              {resposta === false && (
                 <p className="text-xs text-slate-400">
-                  Sua última resposta foi &ldquo;{resposta ? "SIM" : "NÃO"}&rdquo;. Pode trocar até o convite expirar.
+                  Sua última resposta foi &ldquo;NÃO&rdquo;. Você pode confirmar presença a qualquer momento até o convite expirar.
                 </p>
               )}
             </div>
           )}
 
-          {!loading && !error && data && etapa === "confirmacao" && (
+          {!loading && !error && data && (etapa === "confirmacao" || locked) && (
             <div className="space-y-5 text-center">
               <p className="text-3xl">{resposta ? "✅" : "❌"}</p>
               <p className="text-base font-semibold text-slate-950">
@@ -137,12 +137,16 @@ export default function ConvitePage() {
                   ? `Presença confirmada! Te esperamos na sessão em ${dataLabel} às ${horaLabel}.`
                   : "Combinado, registramos que você não vai participar desta sessão."}
               </p>
-              <button
-                onClick={() => setEtapa("pergunta")}
-                className="w-full rounded-full border border-slate-300 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Voltar
-              </button>
+              {locked ? (
+                <p className="text-xs text-slate-400">Sua presença já está confirmada e não pode ser alterada.</p>
+              ) : (
+                <button
+                  onClick={() => setEtapa("pergunta")}
+                  className="w-full rounded-full border border-slate-300 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Voltar
+                </button>
+              )}
             </div>
           )}
         </div>

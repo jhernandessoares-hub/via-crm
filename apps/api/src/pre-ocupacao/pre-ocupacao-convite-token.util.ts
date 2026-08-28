@@ -15,4 +15,4 @@ export function gerarConviteToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-export const CONVITE_TOKEN_VALIDADE_MS = 24 * 60 * 60 * 1000; // 24h a partir do envio
+export const CONVITE_TOKEN_VALIDADE_MS = 3 * 24 * 60 * 60 * 1000; // 3 dias a partir do envio

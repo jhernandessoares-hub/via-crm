@@ -35,6 +35,7 @@ type Participante = {
   ultimaTentativaEnvioEm: string | null;
   ultimoEnvioErro: string | null;
   linkAbertoEm: string | null;
+  enviosCount: number;
   familia: {
     id: string;
     leadId: string;
@@ -654,7 +655,7 @@ export default function AtividadeDetalhePage() {
                     )}
                     {p.conviteEnviadoEm && !p.ultimoEnvioErro && (
                       <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-                        Enviado em {new Date(p.conviteEnviadoEm).toLocaleString("pt-BR")}
+                        Enviado {p.enviosCount}x · última vez em {new Date(p.conviteEnviadoEm).toLocaleString("pt-BR")}
                         {p.linkAbertoEm && ` · Abriu em ${new Date(p.linkAbertoEm).toLocaleString("pt-BR")}`}
                       </p>
                     )}

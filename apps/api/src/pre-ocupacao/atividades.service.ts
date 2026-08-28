@@ -385,6 +385,7 @@ export class AtividadesService {
             conviteEnviadoEm: tentativaEm,
             ultimaTentativaEnvioEm: tentativaEm,
             ultimoEnvioErro: null,
+            enviosCount: { increment: 1 },
             // reenvio de lembrete não deve apagar uma confirmação/recusa já dada
             ...(p.rsvpRespondidoEm ? {} : { rsvpStatus: 'AGUARDANDO' as any }),
           },
