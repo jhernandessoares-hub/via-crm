@@ -17,6 +17,13 @@ import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
 import { userWantsEvent, recordUserNotice } from '../users/notification-prefs.helper';
+import {
+  computeAuthStatePrune,
+  isContactScopedAuthKey,
+  preKeyIdOf,
+  type AuthStatePruneOpts,
+  type AuthStatePruneResult,
+} from './auth-state-prune.util';
 
 const logger = new Logger('WhatsappUnofficialService');
 
@@ -160,6 +167,123 @@ function namesLookRelated(a: string | null | undefined, b: string | null | undef
 }
 
 // ── Auth state persistido no banco ───────────────────────────────────────────
+//
+// Guarda credenciais + chaves do protocolo Signal (Baileys) por sessão. O objeto
+// `keys` acumula pre-keys, sessões e sender-keys por contato — sem poda, cresce
+// sem limite pelo tempo de vida da sessão (uma sessão ativa há meses acumula
+// dezenas de milhares de chaves, vários MB — foi a causa raiz de um vazamento de
+// memória em produção: toda mensagem trocada reserializava e regravava o blob
+// INTEIRO). Duas defesas:
+//
+//   1. Persistência incremental (applyAuthStatePatch): cada set()/saveCreds()
+//      grava só o delta via jsonb_set/#- no Postgres — nunca mais o objeto
+//      `keys` inteiro, mesmo que ele já tenha milhares de entradas.
+//   2. Poda periódica (pruneNow / pruneAuthStateInDb, chamada 1x/dia pelo
+//      WaAuthPruneWorker — ver pruneAllSessions): remove pre-keys já
+//      consumidas (mantém sempre as AUTH_STATE_MAX_PREKEYS mais recentes — o
+//      protocolo só usa cada pre-key uma vez) e sessões/sender-keys de
+//      contatos sem atividade há mais de AUTH_STATE_PRUNE_INACTIVE_DAYS dias.
+//      NUNCA remove sessão/sender-key com atividade recente. Se o contato
+//      nunca teve timestamp registrado (dado anterior a este fix), a primeira
+//      poda só grava "ativo agora" — nunca remove sem antes ter um histórico.
+
+const AUTH_STATE_MAX_PREKEYS = Number(process.env.WA_AUTH_MAX_PREKEYS || 1000);
+const AUTH_STATE_PRUNE_INACTIVE_DAYS = Number(process.env.WA_AUTH_PRUNE_INACTIVE_DAYS || 90);
+const AUTH_STATE_PRUNE_CHUNK_SIZE = 200;
+
+type AuthStatePatch = {
+  creds?: any;
+  upsertKeys?: Record<string, any>;
+  deleteKeys?: string[];
+  touchMeta?: Record<string, number>;
+};
+
+// Monta a expressão SQL do patch incremental — só o delta desta chamada entra no
+// jsonb_set/#-, nunca o objeto `keys`/`meta` inteiro.
+function buildAuthStatePatchExpr(patch: AuthStatePatch) {
+  let expr = Prisma.sql`coalesce("authStateJson", '{}'::jsonb)`;
+
+  if (patch.creds !== undefined) {
+    expr = Prisma.sql`jsonb_set(${expr}, '{creds}', ${JSON.stringify(patch.creds)}::jsonb, true)`;
+  }
+  if (patch.upsertKeys && Object.keys(patch.upsertKeys).length > 0) {
+    expr = Prisma.sql`jsonb_set(${expr}, '{keys}', coalesce((${expr})->'keys', '{}'::jsonb) || ${JSON.stringify(patch.upsertKeys)}::jsonb, true)`;
+  }
+  if (patch.deleteKeys && patch.deleteKeys.length > 0) {
+    for (const k of patch.deleteKeys) {
+      expr = Prisma.sql`(${expr}) #- ARRAY['keys', ${k}]::text[]`;
+    }
+  }
+  if (patch.touchMeta && Object.keys(patch.touchMeta).length > 0) {
+    // path de 2 níveis: jsonb_set só cria o ÚLTIMO elemento faltante do path —
+    // se 'meta' também não existir ainda, a chamada vira no-op. Por isso
+    // garante 'meta' como objeto primeiro, e só então seta 'lastUsedAt' nele.
+    expr = Prisma.sql`jsonb_set(
+      ${expr},
+      '{meta}',
+      jsonb_set(
+        coalesce((${expr})->'meta', '{}'::jsonb),
+        '{lastUsedAt}',
+        coalesce((${expr})->'meta'->'lastUsedAt', '{}'::jsonb) || ${JSON.stringify(patch.touchMeta)}::jsonb,
+        true
+      ),
+      true
+    )`;
+  }
+  return expr;
+}
+
+async function applyAuthStatePatch(prisma: PrismaService, sessionId: string, patch: AuthStatePatch) {
+  const hasChange =
+    patch.creds !== undefined ||
+    !!(patch.upsertKeys && Object.keys(patch.upsertKeys).length) ||
+    !!(patch.deleteKeys && patch.deleteKeys.length) ||
+    !!(patch.touchMeta && Object.keys(patch.touchMeta).length);
+  if (!hasChange) return;
+
+  const expr = buildAuthStatePatchExpr(patch);
+  await prisma.$executeRaw`UPDATE whatsapp_unofficial_sessions SET "authStateJson" = ${expr} WHERE id = ${sessionId}`;
+}
+
+// Poda direto no banco — usada para sessões sem socket vivo neste processo
+// (status DISCONNECTED, ou vivas em outra réplica). Lê o blob atual do banco,
+// decide o que remover e aplica via applyAuthStatePatch (nunca reescreve o
+// blob inteiro, mesmo estando podando milhares de chaves de uma vez — em
+// lotes de AUTH_STATE_PRUNE_CHUNK_SIZE).
+async function pruneAuthStateInDb(
+  prisma: PrismaService,
+  sessionId: string,
+  opts?: AuthStatePruneOpts,
+): Promise<AuthStatePruneResult> {
+  const row = await prisma.whatsappUnofficialSession.findUnique({
+    where: { id: sessionId },
+    select: { authStateJson: true },
+  });
+  const blob = (row?.authStateJson as any) ?? {};
+  const keys: Record<string, any> = blob.keys ?? {};
+  const lastUsedAt: Record<string, number> = blob.meta?.lastUsedAt ?? {};
+
+  const { toDelete, seedMeta } = computeAuthStatePrune(keys, lastUsedAt, {
+    maxPreKeys: opts?.maxPreKeys ?? AUTH_STATE_MAX_PREKEYS,
+    inactiveDays: opts?.inactiveDays ?? AUTH_STATE_PRUNE_INACTIVE_DAYS,
+  });
+
+  let deletedPreKeys = 0;
+  let deletedSessions = 0;
+  for (const k of toDelete) {
+    if (preKeyIdOf(k) !== null) deletedPreKeys++;
+    else deletedSessions++;
+  }
+
+  for (let i = 0; i < toDelete.length; i += AUTH_STATE_PRUNE_CHUNK_SIZE) {
+    await applyAuthStatePatch(prisma, sessionId, { deleteKeys: toDelete.slice(i, i + AUTH_STATE_PRUNE_CHUNK_SIZE) });
+  }
+  if (Object.keys(seedMeta).length > 0) {
+    await applyAuthStatePatch(prisma, sessionId, { touchMeta: seedMeta });
+  }
+
+  return { deletedPreKeys, deletedSessions };
+}
 
 async function useDatabaseAuthState(prisma: PrismaService, sessionId: string) {
   const row = await prisma.whatsappUnofficialSession.findUnique({
@@ -171,18 +295,42 @@ async function useDatabaseAuthState(prisma: PrismaService, sessionId: string) {
   const creds = stored.creds
     ? JSON.parse(JSON.stringify(stored.creds), BufferJSON.reviver)
     : initAuthCreds();
-  const keys: Record<string, any> = stored.keys ?? {};
+  const keys: Record<string, any> = { ...(stored.keys ?? {}) };
+  const lastUsedAt: Record<string, number> = { ...(stored.meta?.lastUsedAt ?? {}) };
 
-  const persist = async () => {
-    await prisma.whatsappUnofficialSession.update({
-      where: { id: sessionId },
-      data: {
-        authStateJson: {
-          creds: JSON.parse(JSON.stringify(creds, BufferJSON.replacer)),
-          keys,
-        },
-      },
+  const persistCreds = async () => {
+    await applyAuthStatePatch(prisma, sessionId, {
+      creds: JSON.parse(JSON.stringify(creds, BufferJSON.replacer)),
     });
+  };
+
+  // Poda o estado LIVE em memória desta sessão (socket conectado neste
+  // processo) — mantém `keys`/`lastUsedAt` locais em sincronia com o que é
+  // gravado no banco, para não desalinhar do que o Baileys ainda enxerga.
+  const pruneNow = async (opts?: AuthStatePruneOpts): Promise<AuthStatePruneResult> => {
+    const { toDelete, seedMeta } = computeAuthStatePrune(keys, lastUsedAt, {
+      maxPreKeys: opts?.maxPreKeys ?? AUTH_STATE_MAX_PREKEYS,
+      inactiveDays: opts?.inactiveDays ?? AUTH_STATE_PRUNE_INACTIVE_DAYS,
+    });
+
+    let deletedPreKeys = 0;
+    let deletedSessions = 0;
+    for (const k of toDelete) {
+      delete keys[k];
+      delete lastUsedAt[k];
+      if (preKeyIdOf(k) !== null) deletedPreKeys++;
+      else deletedSessions++;
+    }
+    for (const k of Object.keys(seedMeta)) lastUsedAt[k] = seedMeta[k];
+
+    for (let i = 0; i < toDelete.length; i += AUTH_STATE_PRUNE_CHUNK_SIZE) {
+      await applyAuthStatePatch(prisma, sessionId, { deleteKeys: toDelete.slice(i, i + AUTH_STATE_PRUNE_CHUNK_SIZE) });
+    }
+    if (Object.keys(seedMeta).length > 0) {
+      await applyAuthStatePatch(prisma, sessionId, { touchMeta: seedMeta });
+    }
+
+    return { deletedPreKeys, deletedSessions };
   };
 
   return {
@@ -200,27 +348,60 @@ async function useDatabaseAuthState(prisma: PrismaService, sessionId: string) {
           return data;
         },
         set: async (data: Record<string, Record<string, any>>) => {
+          const upsertKeys: Record<string, any> = {};
+          const deleteKeys: string[] = [];
+          const touchMeta: Record<string, number> = {};
+
           for (const type in data) {
             for (const id in data[type]) {
               const k = `${type}-${id}`;
               const v = data[type][id];
               if (v != null) {
-                keys[k] = JSON.parse(JSON.stringify(v, BufferJSON.replacer));
+                const serialized = JSON.parse(JSON.stringify(v, BufferJSON.replacer));
+                keys[k] = serialized;
+                upsertKeys[k] = serialized;
+                if (isContactScopedAuthKey(k)) {
+                  const now = Date.now();
+                  lastUsedAt[k] = now;
+                  touchMeta[k] = now;
+                }
               } else {
                 delete keys[k];
+                delete lastUsedAt[k];
+                deleteKeys.push(k);
               }
             }
           }
-          await persist();
+
+          // Persistência incremental: grava só o delta desta chamada (nunca o
+          // objeto `keys` inteiro, por maior que ele já esteja).
+          await applyAuthStatePatch(prisma, sessionId, {
+            upsertKeys: Object.keys(upsertKeys).length ? upsertKeys : undefined,
+            deleteKeys: deleteKeys.length ? deleteKeys : undefined,
+            touchMeta: Object.keys(touchMeta).length ? touchMeta : undefined,
+          });
         },
         clear: async () => {
           for (const k in keys) delete keys[k];
-          await persist();
+          for (const k in lastUsedAt) delete lastUsedAt[k];
+          // Reset completo (logout) — evento raro, escrever o blob inteiro aqui
+          // é aceitável (é exatamente um estado vazio).
+          await prisma.whatsappUnofficialSession.update({
+            where: { id: sessionId },
+            data: {
+              authStateJson: {
+                creds: JSON.parse(JSON.stringify(creds, BufferJSON.replacer)),
+                keys: {},
+                meta: { lastUsedAt: {} },
+              },
+            },
+          });
         },
         transaction: async <T>(code: () => Promise<T>): Promise<T> => code(),
       },
     },
-    saveCreds: persist,
+    saveCreds: persistCreds,
+    pruneNow,
   };
 }
 
@@ -241,6 +422,10 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   // Usado pra diferenciar o eco do próprio envio de uma mensagem genuína mandada direto do celular
   // do corretor (mesma conta, outro dispositivo) — ambas chegam com `key.fromMe: true`.
   private recentlySentByCrm = new Map<string, number>();
+  // Handle do auth-state (Baileys/Signal) da sessão com socket vivo neste processo —
+  // usado pela poda periódica pra operar sobre o mesmo estado em memória que o
+  // socket enxerga, em vez de reescrever o banco por baixo dele (ver pruneSession).
+  private authStates = new Map<string, Awaited<ReturnType<typeof useDatabaseAuthState>>>();
 
   private updateLidMap(sessionId: string, contacts: Array<{ id: string; lid?: string | null }>) {
     let map = this.lidToPhone.get(sessionId);
@@ -415,6 +600,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     this.closeSocket(sessionId);
     this.lidToPhone.delete(sessionId);
     this.disconnectedAt.delete(sessionId);
+    this.authStates.delete(sessionId);
     await this.prisma.whatsappUnofficialSession.delete({ where: { id: sessionId } });
   }
 
@@ -431,13 +617,54 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     logger.log(`Reconectando ${sessions.length} sessão(ões) WhatsApp Light`);
   }
 
+  // Poda uma sessão específica. Se o socket estiver vivo neste processo, poda o
+  // estado EM MEMÓRIA (mesmo objeto que o Baileys usa) pra manter tudo em
+  // sincronia; senão poda direto no banco (sessão desconectada ou viva em outra
+  // réplica). Nunca remove chave contact-scoped com atividade recente.
+  async pruneSession(sessionId: string, opts?: AuthStatePruneOpts): Promise<AuthStatePruneResult> {
+    const live = this.authStates.get(sessionId);
+    if (live) return live.pruneNow(opts);
+    return pruneAuthStateInDb(this.prisma, sessionId, opts);
+  }
+
+  // Roda a poda em TODAS as sessões de TODOS os tenants — chamada 1x/dia pelo
+  // WaAuthPruneWorker. O vazamento é estrutural (nasce de como o auth-state é
+  // guardado), não de um tenant específico, então a poda cobre todo mundo.
+  async pruneAllSessions(opts?: AuthStatePruneOpts): Promise<{ sessions: number } & AuthStatePruneResult> {
+    const sessions = await this.prisma.whatsappUnofficialSession.findMany({ select: { id: true } });
+    let deletedPreKeys = 0;
+    let deletedSessions = 0;
+
+    for (const s of sessions) {
+      try {
+        const result = await this.pruneSession(s.id, opts);
+        deletedPreKeys += result.deletedPreKeys;
+        deletedSessions += result.deletedSessions;
+        if (result.deletedPreKeys || result.deletedSessions) {
+          logger.log(
+            `🧹 Poda auth-state sessão=${s.id}: preKeys=${result.deletedPreKeys} sessões=${result.deletedSessions}`,
+          );
+        }
+      } catch (e: any) {
+        logger.warn(`Falha ao podar auth-state sessão=${s.id}: ${e?.message}`);
+      }
+    }
+
+    logger.log(
+      `🧹 Poda auth-state concluída: ${sessions.length} sessão(ões), ${deletedPreKeys} pre-keys removidas, ${deletedSessions} sessões de contato removidas`,
+    );
+    return { sessions: sessions.length, deletedPreKeys, deletedSessions };
+  }
+
   async connect(sessionId: string) {
     if (this.sockets.has(sessionId)) {
       logger.warn(`Sessão ${sessionId} já possui socket ativo — ignorando connect`);
       return;
     }
 
-    const { state, saveCreds } = await useDatabaseAuthState(this.prisma, sessionId);
+    const authHandle = await useDatabaseAuthState(this.prisma, sessionId);
+    const { state, saveCreds } = authHandle;
+    this.authStates.set(sessionId, authHandle);
     const { version } = await fetchLatestBaileysVersion();
 
     // Hidrata o cache LID→telefone em memória a partir do que já foi persistido —
@@ -588,6 +815,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   async disconnect(sessionId: string) {
     this.manuallyDisconnected.add(sessionId);
     this.closeSocket(sessionId);
+    this.authStates.delete(sessionId); // desconexão manual não reconecta sozinha — não fica handle zumbi em memória
     await this.prisma.whatsappUnofficialSession.update({
       where: { id: sessionId },
       data: { status: 'DISCONNECTED' },

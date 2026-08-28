@@ -34,10 +34,16 @@ import { NestLogger, Logger } from "./logger";
 import { seedAiModelDefaults } from "./ai/resolve-ai-model";
 import { seedPlanConfigs } from "./plans/plans.seed";
 import { initCloudinary } from "./cloudinary/cloudinary-init";
+import { suppressLibsignalSecretLogs } from "./whatsapp-unofficial/suppress-signal-logs.util";
+import { startWaAuthPruneWorker } from "./queue/wa-auth-prune.worker";
 
 const logger = new Logger('Bootstrap');
 
 async function bootstrap() {
+  // Antes de qualquer coisa — inclusive antes do Nest subir — pra garantir que
+  // nenhum log de sessão Signal com chaves privadas escape pro stdout.
+  suppressLibsignalSecretLogs();
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: new NestLogger() });
 
   // 🔒 Security headers (LGPD / OWASP)
@@ -150,6 +156,10 @@ async function bootstrap() {
 
   // 📊 INICIAR WORKER DE ROLLOVER MENSAL DE USO
   startUsageRolloverWorker(app.get(PrismaService), queueService);
+
+  // 🧹 INICIAR WORKER DE PODA DO AUTH-STATE WHATSAPP LIGHT (evita crescimento
+  // ilimitado do blob de chaves Signal — ver whatsapp-unofficial.service.ts)
+  startWaAuthPruneWorker(app.get(WhatsappUnofficialService), queueService);
 
   // 🔌 RECONECTAR SESSÕES WHATSAPP LIGHT que estavam ativas antes do restart
   app.get(WhatsappUnofficialService).reconnectAll();
