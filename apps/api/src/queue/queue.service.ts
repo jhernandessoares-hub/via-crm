@@ -13,6 +13,7 @@ export class QueueService implements OnModuleDestroy {
   private campaignQueue: Queue;
   reminderQueue: Queue;
   private usageRolloverQueue: Queue;
+  private waAuthPruneQueue: Queue;
 
   constructor(private readonly prisma: PrismaService) {
     const host = process.env.REDIS_HOST || '127.0.0.1';
@@ -51,6 +52,11 @@ export class QueueService implements OnModuleDestroy {
     this.usageRolloverQueue = new Queue('usage-rollover-queue', {
       connection: { host, port, password },
     });
+
+    // ✅ fila para poda diária do auth-state WhatsApp Light (pre-keys/sessões antigas)
+    this.waAuthPruneQueue = new Queue('wa-auth-prune-queue', {
+      connection: { host, port, password },
+    });
   }
 
   async scheduleReminderRepeat() {
@@ -68,6 +74,16 @@ export class QueueService implements OnModuleDestroy {
       'usage-rollover',
       {},
       { repeat: { pattern: '0 0 1 * *' }, removeOnComplete: true, removeOnFail: false },
+    );
+  }
+
+  // ✅ poda diária do auth-state WhatsApp Light — 04:00 (fora do horário comercial)
+  async scheduleWaAuthPruneRepeat() {
+    await this.waAuthPruneQueue.removeRepeatable('wa-auth-prune', { pattern: '0 4 * * *' });
+    await this.waAuthPruneQueue.add(
+      'wa-auth-prune',
+      {},
+      { repeat: { pattern: '0 4 * * *' }, removeOnComplete: true, removeOnFail: false },
     );
   }
 
