@@ -2,6 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { Logger } from '../logger';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
+import { resolveTenantFirstStage } from '../pipeline/pipeline.service';
 
 const logger = new Logger('LeadUpsertHelper');
 
@@ -91,6 +92,95 @@ interface UpsertLeadParams {
   mimeType?: string | null;
   transcription?: string | null;
   media?: { url: string; mimeType: string; filename: string | null; kind: string } | null;
+}
+
+interface FindOrCreateLeadParams {
+  tenantId: string;
+  from: string;
+  contactName?: string | null;
+  avatarUrl?: string | null;
+  /** Etapa inicial do lead quando precisa ser criado (não usado se lead já existir). Se ausente, usa a 1ª etapa ativa do pipeline default. */
+  stageId?: string | null;
+  /** Origem exibida no cadastro do lead (ex: 'WhatsApp Light', 'Campanha WhatsApp'). */
+  origem?: string | null;
+  /** Canal salvo em conversaCanal/lastEntryChannel. */
+  canal?: string | null;
+  /** ID da sessão Light salvo em conversaSessionId (quando aplicável). */
+  conversaSessionId?: string | null;
+  /** Marca a conversa como aberta ao criar (usado no fluxo de inbound; padrão false). */
+  conversaAberta?: boolean;
+  /** Grava lastInboundAt=now ao criar (só faz sentido quando há mensagem recebida do contato). Padrão true. */
+  setLastInboundAt?: boolean;
+}
+
+/**
+ * Encontra (por telefoneKey, dedup) ou cria um Lead a partir de um telefone de
+ * WhatsApp. Cuida de: dedup, resolução de branch + round-robin de atribuição,
+ * numeração sequencial e criação do registro (+ LeadTransitionLog inicial).
+ *
+ * Diferente de `upsertLeadFromWhatsapp`, esta função NÃO cria LeadEvent nem
+ * agenda IA/SLA — é usada em contextos onde não houve uma mensagem recebida
+ * do contato (ex: criação de lead no momento do disparo de campanha).
+ */
+export async function findOrCreateLeadByPhone(
+  prisma: PrismaService,
+  params: FindOrCreateLeadParams,
+): Promise<{ leadId: string; isNew: boolean; assignedUserId: string | null }> {
+  const { tenantId, from, contactName, avatarUrl, stageId, origem, canal, conversaSessionId, conversaAberta, setLastInboundAt } = params;
+  const now = new Date();
+  const telefoneKey = telefoneKeyFrom(from);
+
+  const existingLead = telefoneKey
+    ? await prisma.lead.findFirst({
+        where: { tenantId, telefoneKey, deletedAt: null },
+        select: { id: true },
+        orderBy: { criadoEm: 'desc' },
+      })
+    : null;
+
+  if (existingLead) {
+    return { leadId: existingLead.id, isNew: false, assignedUserId: null };
+  }
+
+  const [resolvedStage, assignment] = await Promise.all([
+    stageId
+      ? prisma.pipelineStage.findFirst({ where: { id: stageId, tenantId }, select: { id: true, pipelineId: true } })
+      : resolveTenantFirstStage(prisma, tenantId),
+    resolveAssignment(prisma, tenantId),
+  ]);
+
+  const created = await prisma.$transaction(async (tx) => {
+    const numero = await getNextLeadNumber(tx, tenantId);
+    const c = await tx.lead.create({
+      data: {
+        tenantId,
+        numero,
+        nome: contactName || digitsOnly(from) || 'Lead WhatsApp',
+        telefone: digitsOnly(from) || null,
+        telefoneKey: telefoneKey || null,
+        origem: origem || 'WhatsApp',
+        status: 'NOVO',
+        ...(setLastInboundAt !== false ? { lastInboundAt: now } : {}),
+        stageId: resolvedStage?.id ?? null,
+        pipelineId: resolvedStage?.pipelineId ?? null,
+        conversaCanal: canal ?? null,
+        lastEntryChannel: canal ?? null,
+        branchId: assignment.branchId,
+        assignedUserId: assignment.assignedUserId,
+        conversaAberta: conversaAberta ?? false,
+        ...(conversaSessionId ? { conversaSessionId } : {}),
+        ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
+        ...(avatarUrl ? { avatarUrl } : {}),
+      },
+      select: { id: true },
+    });
+    await tx.leadTransitionLog.create({
+      data: { tenantId, leadId: c.id, fromStage: null, toStage: 'NOVO', changedBy: 'SYSTEM' },
+    });
+    return c;
+  });
+
+  return { leadId: created.id, isNew: true, assignedUserId: assignment.assignedUserId };
 }
 
 export async function upsertLeadFromWhatsapp(
@@ -195,47 +285,22 @@ export async function upsertLeadFromWhatsapp(
       },
     });
   } else {
-    const [firstStage, assignment] = await Promise.all([
-      prisma.pipelineStage
-        .findFirst({ where: { tenantId, isActive: true }, orderBy: { sortOrder: 'asc' }, select: { id: true, pipelineId: true } }),
-      resolveAssignment(prisma, tenantId),
-    ]);
-
     const AI_SILENT_TYPES_NEW = new Set(['reaction', 'system', 'sticker', 'poll', 'edited', 'unknown']);
-    const created = await prisma.$transaction(async (tx) => {
-      const numero = await getNextLeadNumber(tx, tenantId);
-      const c = await tx.lead.create({
-        data: {
-          tenantId,
-          numero,
-          nome: contactName || digitsOnly(from) || 'Lead WhatsApp',
-          telefone: digitsOnly(from) || null,
-          telefoneKey: telefoneKey || null,
-          origem: sessionId ? 'WhatsApp Light' : 'WhatsApp',
-          status: 'NOVO',
-          lastInboundAt: now,
-          stageId: firstStage?.id ?? null,
-          pipelineId: firstStage?.pipelineId ?? null,
-          conversaCanal: canal,
-          lastEntryChannel: canal,
-          branchId: assignment.branchId,
-          assignedUserId: assignment.assignedUserId,
-          conversaAberta: !AI_SILENT_TYPES_NEW.has(type),
-          ...(sessionId ? { conversaSessionId: sessionId } : {}),
-          ...(contactName ? { nomeCorreto: contactName, nomeCorretoOrigem: 'IA' } : {}),
-          ...(avatarUrl ? { avatarUrl } : {}),
-        },
-        select: { id: true },
-      });
-      await tx.leadTransitionLog.create({
-        data: { tenantId, leadId: c.id, fromStage: null, toStage: 'NOVO', changedBy: 'SYSTEM' },
-      });
-      return c;
+    const created = await findOrCreateLeadByPhone(prisma, {
+      tenantId,
+      from,
+      contactName,
+      avatarUrl,
+      origem: sessionId ? 'WhatsApp Light' : 'WhatsApp',
+      canal,
+      conversaSessionId: sessionId,
+      conversaAberta: !AI_SILENT_TYPES_NEW.has(type),
+      setLastInboundAt: true,
     });
 
-    leadId = created.id;
+    leadId = created.leadId;
     isReentry = false;
-    assignedUserId = assignment.assignedUserId;
+    assignedUserId = created.assignedUserId;
   }
 
   await prisma.leadEvent.create({

@@ -43,9 +43,10 @@ model PipelineStage {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   leads              Lead[]
-  pipeline           Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipeline           Pipeline          @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   slaRules           SlaRule[]
+  campanhaDisparos   CampanhaDisparo[]
 
   @@unique([tenantId, pipelineId, key], name: "tenantId_pipelineId_key")
   @@index([tenantId, pipelineId, isActive, sortOrder])
@@ -1923,30 +1924,34 @@ model CampanhaModelo {
 }
 
 model CampanhaDisparo {
-  id            String    @id @default(uuid())
-  tenantId      String
-  userId        String
-  sessionId     String?
-  modeloId      String
-  nome          String
-  status        String    @default("RASCUNHO")
-  totalContatos Int       @default(0)
-  enviados      Int       @default(0)
-  falhas        Int       @default(0)
-  responderam   Int       @default(0)
-  iniciadaEm    DateTime  @default(now())
-  concluidaEm   DateTime?
-  criadoEm      DateTime  @default(now())
-  atualizadoEm  DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  tenantId         String
+  userId           String
+  sessionId        String?
+  modeloId         String
+  nome             String
+  status           String    @default("RASCUNHO")
+  totalContatos    Int       @default(0)
+  enviados         Int       @default(0)
+  falhas           Int       @default(0)
+  responderam      Int       @default(0)
+  criarLeadNoEnvio Boolean   @default(false)
+  leadStageId      String?
+  iniciadaEm       DateTime  @default(now())
+  concluidaEm      DateTime?
+  criadoEm         DateTime  @default(now())
+  atualizadoEm     DateTime  @updatedAt
 
-  tenant   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user     User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session  WhatsappUnofficialSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  modelo   CampanhaModelo             @relation(fields: [modeloId], references: [id])
-  contatos CampanhaContato[]
+  tenant    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session   WhatsappUnofficialSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  modelo    CampanhaModelo             @relation(fields: [modeloId], references: [id])
+  leadStage PipelineStage?             @relation(fields: [leadStageId], references: [id])
+  contatos  CampanhaContato[]
 
   @@index([tenantId])
   @@index([sessionId])
+  @@index([leadStageId])
   @@map("campanha_disparos")
 }
 

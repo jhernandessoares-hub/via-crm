@@ -177,12 +177,26 @@ export class CampanhasService {
     mensagem: string;
     delayMinSegundos?: number;
     delayMaxSegundos?: number;
+    criarLeadNoEnvio?: boolean;
+    leadStageId?: string;
   }) {
     const session = await this.prisma.whatsappUnofficialSession.findFirst({
       where: { id: dto.sessionId, tenantId },
       select: { id: true },
     });
     if (!session) throw new NotFoundException('Sessão não encontrada');
+
+    if (dto.criarLeadNoEnvio && !dto.leadStageId) {
+      throw new BadRequestException('Selecione a etapa de destino para os leads deste disparo');
+    }
+
+    if (dto.leadStageId) {
+      const stage = await this.prisma.pipelineStage.findFirst({
+        where: { id: dto.leadStageId, tenantId },
+        select: { id: true },
+      });
+      if (!stage) throw new BadRequestException('Etapa de destino não encontrada');
+    }
 
     const min = Math.max(10, dto.delayMinSegundos ?? 10);
     const max = Math.max(min, dto.delayMaxSegundos ?? 20);
@@ -192,7 +206,15 @@ export class CampanhasService {
     });
 
     const disparo = await this.prisma.campanhaDisparo.create({
-      data: { tenantId, userId, sessionId: dto.sessionId, modeloId: modelo.id, nome: dto.nome, status: 'RASCUNHO' },
+      data: {
+        tenantId, userId,
+        sessionId: dto.sessionId,
+        modeloId: modelo.id,
+        nome: dto.nome,
+        status: 'RASCUNHO',
+        criarLeadNoEnvio: !!dto.criarLeadNoEnvio,
+        leadStageId: dto.criarLeadNoEnvio ? dto.leadStageId : null,
+      },
     });
 
     logger.log(`Rascunho de campanha criado id=${disparo.id}`);

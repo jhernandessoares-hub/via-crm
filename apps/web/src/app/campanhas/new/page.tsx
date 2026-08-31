@@ -7,23 +7,31 @@ import { apiFetch } from "@/lib/api";
 import { ArrowLeft, Loader2, Users, List } from "lucide-react";
 
 type Session = { id: string; nome: string; status: string; phoneNumber: string | null };
+type PipelineStage = { id: string; key: string; name: string; sortOrder: number };
 
 export default function NovaCampanhaPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
   const [form, setForm] = useState({
     nome: "",
     sessionId: "",
     mensagem: "",
     delayMinSegundos: 10,
     delayMaxSegundos: 20,
+    criarLeadNoEnvio: false,
+    leadStageId: "",
   });
   const [salvando, setSalvando] = useState(false);
   const [preview, setPreview] = useState("");
+  const [erro, setErro] = useState("");
 
   useEffect(() => {
     apiFetch("/whatsapp-unofficial")
       .then((d) => setSessions(d.filter((s: Session) => s.status === "CONNECTED")))
+      .catch(() => {});
+    apiFetch("/pipeline/active/stages")
+      .then((d) => { if (Array.isArray(d)) setStages(d); })
       .catch(() => {});
   }, []);
 
@@ -36,12 +44,17 @@ export default function NovaCampanhaPage() {
   }
 
   async function salvar() {
+    setErro("");
     if (!form.nome.trim() || !form.sessionId || !form.mensagem.trim()) {
       alert("Preencha nome, sessão e mensagem");
       return;
     }
     if (form.delayMinSegundos < 10) { alert("Delay mínimo é 10 segundos"); return; }
     if (form.delayMaxSegundos < form.delayMinSegundos) { alert("Delay máximo deve ser ≥ mínimo"); return; }
+    if (form.criarLeadNoEnvio && !form.leadStageId) {
+      setErro("Selecione a etapa de destino para os leads deste disparo");
+      return;
+    }
 
     setSalvando(true);
     try {
@@ -139,6 +152,55 @@ export default function NovaCampanhaPage() {
               >
                 <span className="font-medium" style={{ color: "var(--brand-accent)" }}>Preview: </span>
                 {preview}
+              </div>
+            )}
+          </div>
+
+          {/* Criar lead no envio */}
+          <div
+            className="p-4 rounded-lg border"
+            style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}
+          >
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.criarLeadNoEnvio}
+                onChange={(e) => set("criarLeadNoEnvio", e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded"
+                style={{ accentColor: "var(--brand-accent)" }}
+              />
+              <span>
+                <span className="block text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                  Criar lead para todos os contatos deste disparo (mesmo sem resposta)
+                </span>
+                <span className="block text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                  Por padrão, o lead só é criado quando o contato responder. Ative para registrar um lead
+                  para cada número desta lista, mesmo sem resposta.
+                </span>
+              </span>
+            </label>
+
+            {form.criarLeadNoEnvio && (
+              <div className="mt-3 ml-7">
+                <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-primary)" }}>
+                  Etapa de destino
+                </label>
+                <select
+                  value={form.leadStageId}
+                  onChange={(e) => set("leadStageId", e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--text-primary)" }}
+                >
+                  <option value="">Selecione uma etapa</option>
+                  {stages.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.name}
+                    </option>
+                  ))}
+                </select>
+                {erro && (
+                  <p className="text-xs mt-1.5" style={{ color: "#ef4444" }}>{erro}</p>
+                )}
               </div>
             )}
           </div>

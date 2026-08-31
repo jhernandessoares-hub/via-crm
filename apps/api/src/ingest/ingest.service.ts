@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { Logger } from '../logger';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
+import { resolveTenantFirstStage } from '../pipeline/pipeline.service';
 
 const logger = new Logger('IngestService');
 
@@ -144,11 +145,7 @@ export class IngestService {
       : await (async () => {
           const [assignedUserId, firstStage] = await Promise.all([
             this.roundRobinAssign(tenantId, branchId),
-            this.prisma.pipelineStage.findFirst({
-              where: { tenantId, isActive: true },
-              orderBy: { sortOrder: 'asc' },
-              select: { id: true, pipelineId: true },
-            }),
+            resolveTenantFirstStage(this.prisma, tenantId),
           ]);
           return this.prisma.$transaction(async (tx) => {
             const numero = await getNextLeadNumber(tx, tenantId);
