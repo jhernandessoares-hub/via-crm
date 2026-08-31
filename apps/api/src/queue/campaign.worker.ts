@@ -3,6 +3,7 @@ import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
+import { findOrCreateLeadByPhone, telefoneKeyFrom } from '../whatsapp/lead-upsert.helper';
 
 const logger = new Logger('CampaignWorker');
 
@@ -30,6 +31,8 @@ async function processNext(
     where: { id: disparoId },
     include: { modelo: true },
   });
+  // disparo.criarLeadNoEnvio / disparo.leadStageId já vêm no objeto (colunas
+  // nativas do model, findUnique sem `select` retorna todos os campos escalares).
 
   if (!disparo || disparo.status !== 'RODANDO') {
     logger.log(`Disparo ${disparoId} não está rodando — abortando`);
@@ -96,29 +99,66 @@ async function processNext(
       sent = await unofficial.sendText(sessionId, contato.telefone, texto);
     }
 
-    // Lead será criado apenas quando o contato responder (handleInbound)
+    // Por padrão, o lead só é criado quando o contato responder (handleInbound).
+    // Quando `criarLeadNoEnvio` está ativo na campanha, cria (ou reaproveita via
+    // dedup por telefoneKey) o lead já no momento do envio, na etapa escolhida
+    // na criação da campanha.
+    let leadIdParaContato = contato.leadId;
+    const leadJaSemeado = !!contato.leadId;
+    if (disparo.criarLeadNoEnvio && !leadIdParaContato) {
+      try {
+        const telefoneKey = telefoneKeyFrom(contato.telefone);
+        const leadExistente = telefoneKey
+          ? await prisma.lead.findFirst({
+              where: { tenantId, telefoneKey, deletedAt: null },
+              select: { id: true },
+              orderBy: { criadoEm: 'desc' },
+            })
+          : null;
+
+        if (leadExistente) {
+          // Dedup: reaproveita o lead existente sem alterar etapa/progresso.
+          leadIdParaContato = leadExistente.id;
+        } else {
+          const result = await findOrCreateLeadByPhone(prisma, {
+            tenantId,
+            from: contato.telefone,
+            contactName: contato.nome,
+            stageId: disparo.leadStageId,
+            origem: 'Campanha WhatsApp',
+            canal: 'WHATSAPP_LIGHT',
+            setLastInboundAt: false,
+          });
+          leadIdParaContato = result.leadId;
+        }
+      } catch (e: any) {
+        logger.warn(`Falha ao criar lead no envio (criarLeadNoEnvio) para ${contato.telefone}: ${e?.message}`);
+      }
+    }
+
     await prisma.campanhaContato.update({
       where: { id: contato.id },
-      data: { status: 'ENVIADO', enviadoEm: new Date() },
+      data: { status: 'ENVIADO', enviadoEm: new Date(), ...(leadIdParaContato ? { leadId: leadIdParaContato } : {}) },
     });
     await prisma.campanhaDisparo.update({
       where: { id: disparoId },
       data: { enviados: { increment: 1 } },
     });
 
-    // Campanha de Base Fria: o lead já existe (leadId semeado). Registra a mensagem
-    // enviada na timeline e marca o canal atual como Light, para o corretor ver o
-    // que foi disparado e responder pelo número certo.
-    if (contato.leadId) {
+    // Lead já vinculado ao contato: pode vir semeado (campanha de Base Fria) ou
+    // ter acabado de ser criado/reaproveitado acima (criarLeadNoEnvio). Registra a
+    // mensagem enviada na timeline e marca o canal atual como Light, para o
+    // corretor ver o que foi disparado e responder pelo número certo.
+    if (leadIdParaContato) {
       await prisma.leadEvent.create({
         data: {
           tenantId,
-          leadId: contato.leadId,
+          leadId: leadIdParaContato,
           channel: 'whatsapp.unofficial.out',
           sourceRef: sent?.id ?? null,
           payloadRaw: {
             text: texto,
-            source: 'campanha-base-fria',
+            source: leadJaSemeado ? 'campanha-base-fria' : 'campanha',
             disparoId,
             sentAt: new Date().toISOString(),
             // Formato que a timeline do lead renderiza (p.media.url): imagem/vídeo
@@ -136,7 +176,7 @@ async function processNext(
         },
       });
       await prisma.lead.update({
-        where: { id: contato.leadId },
+        where: { id: leadIdParaContato },
         data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: sessionId },
       }).catch(() => {});
     }

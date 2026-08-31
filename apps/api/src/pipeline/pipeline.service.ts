@@ -37,65 +37,94 @@ const DEFAULT_STAGES: Array<{ key: string; name: string; order: number }> = [
   { key: 'BASE_FRIA', name: 'Base Fria', order: 14 },
 ];
 
-@Injectable()
-export class PipelineService {
-  constructor(private readonly prisma: PrismaService) {}
+/**
+ * Resolve o id do Pipeline ATIVO e real do tenant (bootstrap idempotente: cria o
+ * pipeline genérico `VENDAS` na primeira vez, preserva qualquer customização já
+ * feita nas vezes seguintes — ex.: pipeline SP9, que reaproveita este mesmo
+ * registro com stages totalmente customizadas). Standalone (não depende de DI)
+ * para poder ser reaproveitada fora do NestJS (ex.: workers, helpers de WhatsApp).
+ */
+export async function resolveTenantPipelineId(prisma: PrismaService, tenantId: string): Promise<string> {
+  if (!tenantId) throw new BadRequestException('tenantId ausente');
 
-  async ensureDefaultPipeline(tenantId: string) {
-    if (!tenantId) throw new BadRequestException('tenantId ausente');
-
-    const pipeline = await this.prisma.pipeline.upsert({
-      where: {
-        tenantId_key: {
-          tenantId,
-          key: DEFAULT_PIPELINE_KEY,
-        },
-      },
-      create: {
+  const pipeline = await prisma.pipeline.upsert({
+    where: {
+      tenantId_key: {
         tenantId,
         key: DEFAULT_PIPELINE_KEY,
-        name: DEFAULT_PIPELINE_NAME,
-        isActive: true,
-        stages: {
-          create: DEFAULT_STAGES.map((s) => ({
-            tenantId,
-            key: s.key,
-            name: s.name,
-            sortOrder: s.order,
-            isActive: true,
-          })),
-        },
       },
-      update: {
-        name: DEFAULT_PIPELINE_NAME,
-        isActive: true,
-      },
-      select: { id: true },
-    });
-
-    const existing = await this.prisma.pipelineStage.findMany({
-      where: { tenantId, pipelineId: pipeline.id },
-      select: { key: true },
-    });
-
-    const existingKeys = new Set(existing.map((x) => x.key));
-
-    const missing = DEFAULT_STAGES.filter((s) => !existingKeys.has(s.key));
-    if (missing.length > 0) {
-      await this.prisma.pipelineStage.createMany({
-        data: missing.map((s) => ({
+    },
+    create: {
+      tenantId,
+      key: DEFAULT_PIPELINE_KEY,
+      name: DEFAULT_PIPELINE_NAME,
+      isActive: true,
+      stages: {
+        create: DEFAULT_STAGES.map((s) => ({
           tenantId,
-          pipelineId: pipeline.id,
           key: s.key,
           name: s.name,
           sortOrder: s.order,
           isActive: true,
         })),
-        skipDuplicates: true,
-      });
-    }
+      },
+    },
+    update: {
+      name: DEFAULT_PIPELINE_NAME,
+      isActive: true,
+    },
+    select: { id: true },
+  });
 
-    return pipeline.id;
+  const existing = await prisma.pipelineStage.findMany({
+    where: { tenantId, pipelineId: pipeline.id },
+    select: { key: true },
+  });
+
+  const existingKeys = new Set(existing.map((x) => x.key));
+
+  const missing = DEFAULT_STAGES.filter((s) => !existingKeys.has(s.key));
+  if (missing.length > 0) {
+    await prisma.pipelineStage.createMany({
+      data: missing.map((s) => ({
+        tenantId,
+        pipelineId: pipeline.id,
+        key: s.key,
+        name: s.name,
+        sortOrder: s.order,
+        isActive: true,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return pipeline.id;
+}
+
+/**
+ * Busca a primeira etapa ativa (menor sortOrder) do pipeline REAL do tenant —
+ * sempre filtrando por pipelineId, nunca só por tenantId, pra não pegar stage de
+ * um pipeline diferente/inativo (bug já visto no passado: leads presos numa stage
+ * genérica de um pipeline que não era mais o ativo, ver scripts/fix-sp9-leads-stage.ts).
+ */
+export async function resolveTenantFirstStage(
+  prisma: PrismaService,
+  tenantId: string,
+): Promise<{ id: string; pipelineId: string } | null> {
+  const pipelineId = await resolveTenantPipelineId(prisma, tenantId);
+  return prisma.pipelineStage.findFirst({
+    where: { tenantId, pipelineId, isActive: true },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, pipelineId: true },
+  });
+}
+
+@Injectable()
+export class PipelineService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async ensureDefaultPipeline(tenantId: string) {
+    return resolveTenantPipelineId(this.prisma, tenantId);
   }
 
   async getActiveStages(tenantId: string) {
