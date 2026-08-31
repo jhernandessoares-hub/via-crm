@@ -499,6 +499,15 @@ function AddListModal({
   const [recampanhaPhones, setRecampanhaPhones] = useState<Set<string>>(new Set());
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [criarLeadNoEnvio, setCriarLeadNoEnvio] = useState(false);
+  const [leadStageId, setLeadStageId] = useState("");
+  const [stages, setStages] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    apiFetch("/pipeline/active/stages")
+      .then((d) => { if (Array.isArray(d)) setStages(d); })
+      .catch(() => {});
+  }, []);
 
   const valid = result?.filter((item) => item.existsOnWhatsapp && !item.invalidFormat && !item.duplicate && !excludedPhones.has(item.telefone)) ?? [];
   const unavailable = result?.filter((item) => !item.existsOnWhatsapp || item.invalidFormat || item.duplicate) ?? [];
@@ -553,6 +562,10 @@ function AddListModal({
 
   async function dispatch() {
     if (valid.length === 0) return;
+    if (criarLeadNoEnvio && !leadStageId) {
+      setError("Selecione a etapa de destino para os leads deste disparo");
+      return;
+    }
     setDispatching(true);
     setError(null);
     try {
@@ -569,6 +582,8 @@ function AddListModal({
             status: "NOVO LEAD",
             preserveSessionId: true,
           },
+          criarLeadNoEnvio,
+          leadStageId: criarLeadNoEnvio ? leadStageId : undefined,
         }),
       });
       onDispatched(run);
@@ -699,6 +714,48 @@ function AddListModal({
                 </div>
               </div>
             )}
+
+            <div className="rounded-lg border p-3" style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)" }}>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={criarLeadNoEnvio}
+                  onChange={(e) => setCriarLeadNoEnvio(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded"
+                  style={{ accentColor: "var(--brand-accent)" }}
+                />
+                <span>
+                  <span className="block text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                    Criar lead para todos os contatos deste disparo (mesmo sem resposta)
+                  </span>
+                  <span className="block text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    Por padrão, o lead só é criado quando o contato responder. Ative para registrar um lead
+                    para cada número desta lista, mesmo sem resposta.
+                  </span>
+                </span>
+              </label>
+
+              {criarLeadNoEnvio && (
+                <div className="mt-3 ml-7">
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-primary)" }}>
+                    Etapa de destino
+                  </label>
+                  <select
+                    value={leadStageId}
+                    onChange={(e) => setLeadStageId(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                    style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--text-primary)" }}
+                  >
+                    <option value="">Selecione uma etapa</option>
+                    {stages.map((stage) => (
+                      <option key={stage.id} value={stage.id}>
+                        {stage.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
 
             <div className="flex gap-2">
               <button

@@ -259,6 +259,8 @@ export class CampanhasService {
     modeloId: string;
     sessionId: string;
     contatos: Array<{ telefone: string; nome?: string }>;
+    criarLeadNoEnvio?: boolean;
+    leadStageId?: string;
   }) {
     const modelo = await this.prisma.campanhaModelo.findFirst({
       where: { id: dto.modeloId, tenantId },
@@ -269,6 +271,18 @@ export class CampanhasService {
       where: { id: dto.sessionId, tenantId, status: 'CONNECTED' },
     });
     if (!session) throw new BadRequestException('Sessão não está conectada');
+
+    if (dto.criarLeadNoEnvio && !dto.leadStageId) {
+      throw new BadRequestException('Selecione a etapa de destino para os leads deste disparo');
+    }
+
+    if (dto.leadStageId) {
+      const stage = await this.prisma.pipelineStage.findFirst({
+        where: { id: dto.leadStageId, tenantId },
+        select: { id: true },
+      });
+      if (!stage) throw new BadRequestException('Etapa de destino não encontrada');
+    }
 
     const contatos = dto.contatos
       .filter((c) => c.telefone?.trim())
@@ -286,6 +300,8 @@ export class CampanhasService {
         nome,
         status: 'RODANDO',
         totalContatos: contatos.length,
+        criarLeadNoEnvio: !!dto.criarLeadNoEnvio,
+        leadStageId: dto.criarLeadNoEnvio ? dto.leadStageId : null,
         contatos: { createMany: { data: contatos.map((c) => ({ telefone: c.telefone, nome: c.nome })) } },
       },
     });
