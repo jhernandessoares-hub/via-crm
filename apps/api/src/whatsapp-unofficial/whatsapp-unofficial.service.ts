@@ -888,21 +888,35 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   // ── Processamento de áudio inbound (download + Cloudinary + Whisper) ───────
 
   private async processAudioInbound(msg: any, rawMime: string): Promise<{ mediaUrl: string | null; mimeType: string | null; transcription: string | null }> {
+    let buffer: Buffer;
     try {
-      const buffer = await downloadMediaMessage(msg, 'buffer', {}) as Buffer;
+      buffer = await downloadMediaMessage(msg, 'buffer', {}) as Buffer;
       if (!buffer || buffer.length === 0) return { mediaUrl: null, mimeType: null, transcription: null };
+    } catch (err: any) {
+      logger.warn(`⚠️ Erro ao baixar áudio inbound (Baileys): ${err?.message}`);
+      return { mediaUrl: null, mimeType: null, transcription: null };
+    }
 
-      const mimeType = rawMime.split(';')[0].trim();
-      const ext = mimeType.includes('mp4') ? 'mp4' : 'ogg';
+    const mimeType = rawMime.split(';')[0].trim();
+    const ext = mimeType.includes('mp4') ? 'mp4' : 'ogg';
 
-      const mediaUrl = await new Promise<string>((resolve, reject) => {
+    let mediaUrl: string | null = null;
+    try {
+      mediaUrl = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           { folder: 'via-crm/whatsapp-light/audio', resource_type: 'video', format: ext, type: 'upload', access_mode: 'public' },
           (err, result) => (err || !result ? reject(err) : resolve(result.secure_url)),
         );
         Readable.from(buffer).pipe(stream);
       });
+    } catch (err: any) {
+      logger.warn(`⚠️ Erro ao subir áudio inbound ao Cloudinary: ${err?.message}`);
+      return { mediaUrl: null, mimeType: null, transcription: null };
+    }
 
+    // A partir daqui o áudio já está salvo no Cloudinary — falha na transcrição
+    // não pode descartar a mediaUrl, senão o download no CRM também quebra.
+    try {
       const model = await resolveAiModel(this.prisma, 'TRANSCRIPTION');
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const audioFile = new File([new Uint8Array(buffer)], `audio.${ext}`, { type: mimeType });
@@ -911,8 +925,8 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       logger.log(`🎤 Áudio transcrito (${buffer.length} bytes): "${result.text.slice(0, 80)}"`);
       return { mediaUrl, mimeType, transcription: result.text };
     } catch (err: any) {
-      logger.warn(`⚠️ Erro ao processar áudio inbound: ${err?.message}`);
-      return { mediaUrl: null, mimeType: null, transcription: null };
+      logger.warn(`⚠️ Erro ao transcrever áudio inbound (Whisper): ${err?.message}`);
+      return { mediaUrl, mimeType, transcription: null };
     }
   }
 
