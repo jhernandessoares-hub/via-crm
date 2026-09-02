@@ -1093,10 +1093,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     }
   }
 
-  // Carrega a âncora (msg mais antiga com key) e o set de key.id já conhecidos de um lead.
+  // Carrega a âncora (msg mais antiga/recente com key) e o set de key.id já conhecidos de um lead.
+  // Eventos inbound (e histórico importado) guardam o rawMsg completo do Baileys — dali sai a
+  // âncora "ideal" (key + remoteJid + timestamp reais). Mas leads de campanha que ainda não
+  // responderam só têm eventos OUTBOUND (enviados por nós/IA), que guardam só `sourceRef`
+  // (o messageId do Baileys), sem o rawMsg — mesmo assim é uma key válida na mesma conversa,
+  // então serve de âncora quando não existe nenhum evento inbound ainda (senão nunca dava pra
+  // recuperar mensagens perdidas de quem nunca respondeu antes da queda de conexão).
   private async loadLeadAnchor(
     leadId: string,
     strategy: 'oldest' | 'newest' = 'oldest',
+    fallbackPhone?: string | null,
   ): Promise<{
     knownKeyIds: Set<string>;
     anchorKey: any;
@@ -1105,19 +1112,27 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   } | null> {
     const events = await this.prisma.leadEvent.findMany({
       where: { leadId, channel: { in: WA_LIGHT_CHANNELS } },
-      select: { payloadRaw: true },
+      select: { channel: true, sourceRef: true, payloadRaw: true, criadoEm: true },
       orderBy: { criadoEm: strategy === 'newest' ? 'desc' : 'asc' },
     });
     const knownKeyIds = new Set<string>();
     let anchor: { key: any; ts: number; jid: string } | null = null;
+    const fallbackJid = fallbackPhone ? this.toJid(fallbackPhone) : null;
     for (const ev of events) {
       const r = (ev.payloadRaw as any)?.rawMsg;
       const kid = r?.key?.id;
       if (kid) knownKeyIds.add(kid);
+      if (ev.sourceRef) knownKeyIds.add(ev.sourceRef);
       // Para 'newest': itera desc, pega o primeiro válido (= mais recente)
       // Para 'oldest': itera asc, pega o primeiro válido (= mais antigo)
       if (!anchor && r?.key?.id && r?.key?.remoteJid) {
         anchor = { key: r.key, ts: Number(r.messageTimestamp) || 0, jid: r.key.remoteJid };
+      } else if (!anchor && ev.sourceRef && fallbackJid) {
+        anchor = {
+          key: { id: ev.sourceRef, remoteJid: fallbackJid, fromMe: true },
+          ts: Math.floor(new Date(ev.criadoEm).getTime() / 1000),
+          jid: fallbackJid,
+        };
       }
     }
     if (!anchor) return null;
@@ -1142,7 +1157,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   ) {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, tenantId: true, conversaSessionId: true, numero: true, nome: true },
+      select: { id: true, tenantId: true, conversaSessionId: true, numero: true, nome: true, telefone: true },
     });
     if (!lead) throw new BadRequestException('Lead não encontrado');
     const sessionId = lead.conversaSessionId;
@@ -1154,7 +1169,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     }
 
     const anchorStrategy = opts?.anchorStrategy ?? 'oldest';
-    const anchor = await this.loadLeadAnchor(leadId, anchorStrategy);
+    const anchor = await this.loadLeadAnchor(leadId, anchorStrategy, lead.telefone);
     if (!anchor) {
       throw new BadRequestException('Lead sem âncora — nenhum evento Light com rawMsg.key para paginar o histórico');
     }
