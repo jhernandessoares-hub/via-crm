@@ -862,10 +862,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       const { messages, isLatest, syncType, progress } = payload;
       const ctx = this.historyImports.get(sessionId);
       if (!ctx) {
-        // Diagnóstico: confirma se o WhatsApp entrega histórico automaticamente na
-        // reconexão (fora de uma busca manual) — se sim, dá pra aproveitar isso pra
-        // recuperar mensagens perdidas sem precisar de fetchMessageHistory manual.
-        logger.log(`📜 messaging-history.set (SEM import ativo) sessão=${sessionId} msgs=${messages?.length ?? 0} isLatest=${isLatest} syncType=${syncType} progress=${progress}`);
+        // Sync automático do WhatsApp (acontece principalmente ao vincular o
+        // dispositivo do zero, via QR novo). Aproveita esse pacote pra recuperar
+        // mensagens que ficaram só no celular durante uma queda/restrição — algo
+        // que o fetchMessageHistory manual não consegue trazer (o WhatsApp
+        // considera aquele intervalo já sincronizado).
+        logger.log(`📜 messaging-history.set (sync automático) sessão=${sessionId} msgs=${messages?.length ?? 0} isLatest=${isLatest} syncType=${syncType} progress=${progress}`);
+        if (messages?.length) {
+          await this.handleAutoHistorySync(sessionId, messages).catch((e) =>
+            logger.warn(`Erro no sync automático de histórico sessão=${sessionId}: ${e?.message}`),
+          );
+        }
         return;
       }
       if (!messages?.length) return;
@@ -1141,6 +1148,88 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     } catch (err: any) {
       logger.warn(`⚠️ Erro ao subir áudio histórico: ${err?.message}`);
       return { mediaUrl: null, mimeType: null };
+    }
+  }
+
+  // Aproveita o pacote de histórico que o WhatsApp manda sozinho (sync automático,
+  // típico de quando o dispositivo é vinculado do zero por QR novo) pra recuperar
+  // mensagens que ficaram só no celular — ex.: respostas que chegaram durante uma
+  // restrição/queda e que o fetchMessageHistory manual não devolve.
+  //
+  // Regras (mesmas do backfill manual): só atribui a leads JÁ existentes da sessão,
+  // nunca cria lead, deduplica por key.id, preserva o timestamp original e não
+  // aciona IA/SLA. Janela limitada a AUTO_SYNC_MAX_DIAS pra não importar histórico
+  // antigo irrelevante num sync inicial (que pode trazer meses de conversa).
+  private static readonly AUTO_SYNC_MAX_DIAS = 7;
+
+  private async handleAutoHistorySync(sessionId: string, messages: any[]) {
+    const session = await this.prisma.whatsappUnofficialSession.findUnique({
+      where: { id: sessionId },
+      select: { tenantId: true },
+    });
+    if (!session) return;
+
+    const since = new Date(
+      Date.now() - WhatsappUnofficialService.AUTO_SYNC_MAX_DIAS * 24 * 60 * 60 * 1000,
+    );
+
+    // JIDs presentes neste pacote → telefone → lead da sessão (só os que já existem).
+    const jids = new Set<string>();
+    for (const msg of messages) {
+      const jid: string | undefined = msg?.key?.remoteJid;
+      if (jid && !jid.endsWith('@g.us') && !jid.endsWith('@newsletter') && jid !== 'status@broadcast') {
+        jids.add(jid);
+      }
+    }
+    if (!jids.size) return;
+
+    const jidToLead = new Map<string, { leadId: string; knownKeyIds: Set<string> }>();
+    for (const jid of jids) {
+      const phone = jid.endsWith('@lid')
+        ? this.lidToPhone.get(sessionId)?.get(lidFromJid(jid) ?? '')
+        : phoneFromJid(jid);
+      const telefoneKey = phone ? telefoneKeyFrom(phone) : null;
+      if (!telefoneKey) continue;
+
+      const lead = await this.prisma.lead.findFirst({
+        where: { tenantId: session.tenantId, telefoneKey, deletedAt: null },
+        select: { id: true },
+        orderBy: { criadoEm: 'desc' },
+      });
+      if (!lead) continue;
+
+      const eventos = await this.prisma.leadEvent.findMany({
+        where: { leadId: lead.id, channel: { in: WA_LIGHT_CHANNELS } },
+        select: { sourceRef: true, payloadRaw: true },
+      });
+      const knownKeyIds = new Set<string>();
+      for (const ev of eventos) {
+        const kid = (ev.payloadRaw as any)?.rawMsg?.key?.id;
+        if (kid) knownKeyIds.add(kid);
+        if (ev.sourceRef) knownKeyIds.add(ev.sourceRef);
+      }
+      jidToLead.set(jid, { leadId: lead.id, knownKeyIds });
+    }
+    if (!jidToLead.size) return;
+
+    const ctx: HistoryImportCtx = {
+      tenantId: session.tenantId,
+      jidToLead,
+      inserted: 0,
+      processMedia: true,
+      since,
+      minTsThisPage: Infinity,
+      minKeyThisPage: null,
+    };
+
+    for (const msg of messages) {
+      await this.persistHistoryMessage(ctx, msg).catch((e) =>
+        logger.warn(`Erro ao persistir msg do sync automático sessão=${sessionId}: ${e?.message}`),
+      );
+    }
+
+    if (ctx.inserted > 0) {
+      logger.log(`📜 Sync automático recuperou ${ctx.inserted} mensagem(ns) em ${jidToLead.size} conversa(s) — sessão=${sessionId}`);
     }
   }
 
