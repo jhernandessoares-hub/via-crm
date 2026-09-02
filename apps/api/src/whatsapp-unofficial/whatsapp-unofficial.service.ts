@@ -789,7 +789,12 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     });
 
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
+      if (type !== 'notify') {
+        // Diagnóstico: confirma se o WhatsApp entrega backlog de mensagens perdidas
+        // via tipo diferente de 'notify' (ex: 'append') — hoje isso é descartado.
+        logger.log(`messages.upsert tipo=${type} (ignorado) sessão=${sessionId} qtd=${messages?.length ?? 0}`);
+        return;
+      }
       const connectionTs = this.connectedAt.get(sessionId) ?? Date.now();
       const disconnectedAt = this.disconnectedAt.get(sessionId);
       // Janela de catchup: processa mensagens desde a última desconexão. Teto de
@@ -852,9 +857,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     // Histórico (on-demand): resultados de `fetchMessageHistory` chegam aqui.
     // Só age quando há uma importação ativa para a sessão — caso contrário ignora,
     // para não interferir no fluxo normal de mensagens novas.
-    socket.ev.on('messaging-history.set', async ({ messages }) => {
+    socket.ev.on('messaging-history.set', async (payload: any) => {
+      const { messages, isLatest, syncType, progress } = payload;
       const ctx = this.historyImports.get(sessionId);
-      if (!ctx || !messages?.length) return;
+      if (!ctx) {
+        // Diagnóstico: confirma se o WhatsApp entrega histórico automaticamente na
+        // reconexão (fora de uma busca manual) — se sim, dá pra aproveitar isso pra
+        // recuperar mensagens perdidas sem precisar de fetchMessageHistory manual.
+        logger.log(`📜 messaging-history.set (SEM import ativo) sessão=${sessionId} msgs=${messages?.length ?? 0} isLatest=${isLatest} syncType=${syncType} progress=${progress}`);
+        return;
+      }
+      if (!messages?.length) return;
       logger.log(`📜 messaging-history.set sessão=${sessionId} msgs=${messages.length} (import ativo)`);
       for (const msg of messages) {
         await this.persistHistoryMessage(ctx, msg).catch((e) =>
