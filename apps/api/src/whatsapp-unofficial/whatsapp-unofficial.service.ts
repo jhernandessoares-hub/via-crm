@@ -789,9 +789,10 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     });
 
     socket.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') {
-        // Diagnóstico: confirma se o WhatsApp entrega backlog de mensagens perdidas
-        // via tipo diferente de 'notify' (ex: 'append') — hoje isso é descartado.
+      // 'notify' = mensagem ao vivo normal. 'append' = backlog entregue pelo WhatsApp
+      // ao reconectar (mensagens que chegaram durante a queda) — confirmado via log
+      // de diagnóstico que esse é o canal real de recuperação, não fetchMessageHistory.
+      if (type !== 'notify' && type !== 'append') {
         logger.log(`messages.upsert tipo=${type} (ignorado) sessão=${sessionId} qtd=${messages?.length ?? 0}`);
         return;
       }
