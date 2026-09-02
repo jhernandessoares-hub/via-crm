@@ -1890,6 +1890,7 @@ model WhatsappUnofficialSession {
   pushName        String?
   authStateJson   Json?
   lidPhoneMapJson Json?
+  lastDisconnectedAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

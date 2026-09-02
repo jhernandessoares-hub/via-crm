@@ -726,21 +726,36 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
         const manual = this.manuallyDisconnected.has(sessionId);
         const shouldReconnect = !manual;
         logger.warn(`Sessão ${sessionId} fechada — reason=${reason} loggedOut=${isLoggedOut} manual=${manual} reconnect=${shouldReconnect}`);
-        this.disconnectedAt.set(sessionId, Date.now());
+        const nowTs = Date.now();
+        this.disconnectedAt.set(sessionId, nowTs);
         this.sockets.delete(sessionId);
         if (manual) this.manuallyDisconnected.delete(sessionId);
+
+        // Persiste o momento da queda (não só em memória) — sobrevive a restart/deploy
+        // e alimenta a busca automática de "desde quando" no botão de recuperar mensagens perdidas.
+        // Só grava na primeira queda de uma sequência (evita sobrescrever com retries de reconexão).
+        const existing = await this.prisma.whatsappUnofficialSession.findUnique({
+          where: { id: sessionId },
+          select: { lastDisconnectedAt: true, status: true },
+        }).catch(() => null);
+        const alreadyDown = existing && existing.status !== 'CONNECTED';
+        const lastDisconnectedAt = alreadyDown && existing?.lastDisconnectedAt ? undefined : new Date(nowTs);
 
         if (shouldReconnect) {
           // Logout invalida as creds no servidor do WA — limpa para forçar novo QR
           await this.prisma.whatsappUnofficialSession.update({
             where: { id: sessionId },
-            data: { status: 'CONNECTING', ...(isLoggedOut ? { authStateJson: Prisma.DbNull } : {}) },
+            data: {
+              status: 'CONNECTING',
+              ...(lastDisconnectedAt ? { lastDisconnectedAt } : {}),
+              ...(isLoggedOut ? { authStateJson: Prisma.DbNull } : {}),
+            },
           }).catch(() => {});
           setTimeout(() => this.connect(sessionId).catch(() => {}), 5000);
         } else {
           await this.prisma.whatsappUnofficialSession.update({
             where: { id: sessionId },
-            data: { status: 'DISCONNECTED' },
+            data: { status: 'DISCONNECTED', ...(lastDisconnectedAt ? { lastDisconnectedAt } : {}) },
           }).catch(() => {});
         }
       }
@@ -1204,19 +1219,112 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     return { leadId, numero: lead.numero, nome: lead.nome, inserted: ctx.inserted, pages };
   }
 
+  // ── Recuperação de mensagens perdidas (self-service, tenant) ───────────────
+  // Wrapper tenant-scoped sobre backfillLeadHistory — usado pelo botão "Buscar
+  // mensagens perdidas" em /settings/whatsapp (OWNER/MANAGER). Diferente do
+  // endpoint de admin (livre, qualquer sessão): valida que a sessão pertence
+  // ao tenant, e o `since` é automático (lastDisconnectedAt da sessão), a não
+  // ser que o chamador informe uma data manual (usuário "aumentando" a janela).
+  async recoverMissedMessages(
+    tenantId: string,
+    sessionId: string,
+    opts?: { since?: Date },
+  ) {
+    const session = await this.prisma.whatsappUnofficialSession.findFirst({
+      where: { id: sessionId, tenantId },
+      select: { id: true, lastDisconnectedAt: true },
+    });
+    if (!session) throw new BadRequestException('Sessão WhatsApp Light não encontrada.');
+
+    const since = opts?.since ?? session.lastDisconnectedAt;
+    if (!since) {
+      throw new BadRequestException('Nenhuma queda de conexão registrada para esta sessão — nada a recuperar.');
+    }
+
+    const leads = await this.prisma.lead.findMany({
+      where: { conversaSessionId: sessionId, deletedAt: null },
+      select: { id: true, numero: true, nome: true },
+      orderBy: { criadoEm: 'asc' },
+    });
+
+    const skipReasonPatterns = [/sem âncora/i, /não está conectada/i, /sem sessão/i];
+    type LeadResult = {
+      leadId: string;
+      numero: number | null;
+      nome: string | null;
+      status: 'ok' | 'skipped' | 'error';
+      inserted?: number;
+      reason?: string;
+    };
+    const results: LeadResult[] = [];
+    let ok = 0;
+    let skipped = 0;
+    let errored = 0;
+    let totalInserted = 0;
+
+    logger.log(`📜 Recuperação de mensagens perdidas iniciada — sessão=${sessionId} desde=${since.toISOString()} leads=${leads.length}`);
+
+    for (let i = 0; i < leads.length; i++) {
+      const lead = leads[i];
+      try {
+        const r = await this.backfillLeadHistory(lead.id, {
+          anchorStrategy: 'newest',
+          since,
+          maxPages: 20,
+          pageSize: 50,
+          delayMs: 4000,
+          processMedia: true,
+        });
+        ok++;
+        totalInserted += r.inserted ?? 0;
+        results.push({ leadId: lead.id, numero: lead.numero, nome: lead.nome, status: 'ok', inserted: r.inserted });
+      } catch (err: any) {
+        const reason = err?.message ?? String(err);
+        const isSkip = skipReasonPatterns.some((p) => p.test(reason));
+        if (isSkip) {
+          skipped++;
+          results.push({ leadId: lead.id, numero: lead.numero, nome: lead.nome, status: 'skipped', reason });
+        } else {
+          errored++;
+          results.push({ leadId: lead.id, numero: lead.numero, nome: lead.nome, status: 'error', reason });
+          logger.warn(`⚠️ [recuperar mensagens sessão ${sessionId}] lead #${lead.numero} erro — ${reason}`);
+        }
+      }
+
+      if (i < leads.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+
+    logger.log(
+      `📜 Recuperação de mensagens perdidas concluída — sessão=${sessionId} total=${leads.length} ok=${ok} skipped=${skipped} erro=${errored} inseridos=${totalInserted}`,
+    );
+
+    return {
+      sessionId,
+      since: since.toISOString(),
+      totalLeads: leads.length,
+      ok,
+      skipped,
+      errored,
+      totalInserted,
+      results,
+    };
+  }
+
   // ── Status ────────────────────────────────────────────────────────────────
 
   async getStatus(sessionId: string) {
     return this.prisma.whatsappUnofficialSession.findUnique({
       where: { id: sessionId },
-      select: { id: true, nome: true, status: true, qrCode: true, phoneNumber: true, pushName: true },
+      select: { id: true, nome: true, status: true, qrCode: true, phoneNumber: true, pushName: true, lastDisconnectedAt: true },
     });
   }
 
   async listSessions(tenantId: string) {
     return this.prisma.whatsappUnofficialSession.findMany({
       where: { tenantId },
-      select: { id: true, nome: true, status: true, phoneNumber: true, pushName: true, createdAt: true },
+      select: { id: true, nome: true, status: true, phoneNumber: true, pushName: true, createdAt: true, lastDisconnectedAt: true },
       orderBy: { createdAt: 'asc' },
     });
   }
