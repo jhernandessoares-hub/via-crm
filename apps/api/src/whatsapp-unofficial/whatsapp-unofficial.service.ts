@@ -422,6 +422,10 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   // Usado pra diferenciar o eco do próprio envio de uma mensagem genuína mandada direto do celular
   // do corretor (mesma conta, outro dispositivo) — ambas chegam com `key.fromMe: true`.
   private recentlySentByCrm = new Map<string, number>();
+  // Dedup da janela de catchup (reconexão) — evita reprocessar a mesma mensagem se o
+  // WhatsApp reenviar o backlog em múltiplas reconexões seguidas. TTL de processo (não
+  // persiste, mas cobre o caso comum de reconexões repetidas em sequência).
+  private catchupSeenMsgIds = new Map<string, Set<string>>();
   // Handle do auth-state (Baileys/Signal) da sessão com socket vivo neste processo —
   // usado pela poda periódica pra operar sobre o mesmo estado em memória que o
   // socket enxerga, em vez de reescrever o banco por baixo dele (ver pruneSession).
@@ -713,6 +717,20 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
         const phoneNumber = socket.user?.id?.split(':')[0] ?? null;
         const pushName = socket.user?.name ?? null;
         this.connectedAt.set(sessionId, Date.now()); // marca o momento de conexão
+
+        // Se o processo reiniciou durante a queda, a memória perdeu `disconnectedAt` —
+        // recupera do banco (persistido em connection.close) pra janela de catchup
+        // continuar cobrindo a queda inteira, não só desde o boot do processo.
+        if (!this.disconnectedAt.has(sessionId)) {
+          const persisted = await this.prisma.whatsappUnofficialSession.findUnique({
+            where: { id: sessionId },
+            select: { lastDisconnectedAt: true },
+          }).catch(() => null);
+          if (persisted?.lastDisconnectedAt) {
+            this.disconnectedAt.set(sessionId, persisted.lastDisconnectedAt.getTime());
+          }
+        }
+
         logger.log(`✅ WhatsApp Light conectado — sessão=${sessionId} número=${phoneNumber}`);
         await this.prisma.whatsappUnofficialSession.update({
           where: { id: sessionId },
@@ -728,6 +746,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
         logger.warn(`Sessão ${sessionId} fechada — reason=${reason} loggedOut=${isLoggedOut} manual=${manual} reconnect=${shouldReconnect}`);
         const nowTs = Date.now();
         this.disconnectedAt.set(sessionId, nowTs);
+        this.catchupSeenMsgIds.delete(sessionId); // nova queda → novo ciclo de dedup
         this.sockets.delete(sessionId);
         if (manual) this.manuallyDisconnected.delete(sessionId);
 
@@ -773,15 +792,33 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       if (type !== 'notify') return;
       const connectionTs = this.connectedAt.get(sessionId) ?? Date.now();
       const disconnectedAt = this.disconnectedAt.get(sessionId);
-      // Janela de catchup: processa mensagens desde a última desconexão (máx 10 min).
-      // Se não há registro de desconexão (restart abrupto), usa 60s antes da conexão.
-      const maxCatchupMs = 10 * 60 * 1000;
+      // Janela de catchup: processa mensagens desde a última desconexão. Teto de
+      // segurança de 48h (cobre o cenário de restrição do WhatsApp, que pode ficar
+      // até ~24h fora) — antes era só 10min, o que descartava tudo que chegou durante
+      // quedas longas mesmo o WhatsApp reentregando via este mesmo canal ao vivo.
+      // Se não há registro de desconexão (restart abrupto sem `lastDisconnectedAt`
+      // persistido), usa 60s antes da conexão.
+      const maxCatchupMs = 48 * 60 * 60 * 1000;
       const cutoff = disconnectedAt
         ? Math.max(disconnectedAt - 2_000, connectionTs - maxCatchupMs)
         : connectionTs - 60_000;
+
+      let seen = this.catchupSeenMsgIds.get(sessionId);
+      if (!seen) {
+        seen = new Set<string>();
+        this.catchupSeenMsgIds.set(sessionId, seen);
+      }
+
       for (const msg of messages) {
         const msgTs = (msg.messageTimestamp as number) * 1000;
         if (msgTs < cutoff) continue;
+
+        // Dedup: janela ampliada pode receber o mesmo backlog em reconexões seguidas.
+        const dedupKey = msg.key?.id;
+        if (dedupKey) {
+          if (seen.has(dedupKey)) continue;
+          seen.add(dedupKey);
+        }
 
         if (msg.key.fromMe) {
           const msgId = msg.key.id;
