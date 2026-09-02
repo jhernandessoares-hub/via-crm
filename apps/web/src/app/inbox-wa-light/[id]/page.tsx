@@ -27,6 +27,7 @@ import {
   QrCode,
   RefreshCw,
   Search,
+  SearchCheck,
   Send,
   Settings,
   Trash2,
@@ -68,6 +69,12 @@ const STATUS_LABEL: Record<WaLightStatus, string> = {
   CONNECTING: "Conectando",
   DISCONNECTED: "Desconectado",
 };
+
+function toLocalInputValue(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function initials(name: string) {
   return String(name || "?")
@@ -813,6 +820,12 @@ export default function InboxWALightPage() {
   const [isDark, setIsDark] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  const [recoverSince, setRecoverSince] = useState("");
+  const [recovering, setRecovering] = useState(false);
+  const [recoverResult, setRecoverResult] = useState<{ totalLeads: number; ok: number; skipped: number; errored: number; totalInserted: number } | null>(null);
+  const [recoverError, setRecoverError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -932,6 +945,13 @@ export default function InboxWALightPage() {
   }, []);
 
   useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      setRole(user?.role ?? null);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     fetchStatus();
     fetchConversations();
     fetchModels();
@@ -1039,6 +1059,29 @@ export default function InboxWALightPage() {
       await fetchStatus();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : "Erro ao desconectar.");
+    }
+  }
+
+  function abrirRecuperar() {
+    setRecoverResult(null);
+    setRecoverError(null);
+    setRecoverSince(status?.lastDisconnectedAt ? toLocalInputValue(status.lastDisconnectedAt) : "");
+    setRecoverOpen(true);
+  }
+
+  async function confirmarRecuperar() {
+    setRecovering(true);
+    setRecoverError(null);
+    try {
+      const result = await apiFetch(`/inbox-wa-light/${inboxId}/recover-missed-messages`, {
+        method: "POST",
+        body: JSON.stringify({ since: recoverSince ? new Date(recoverSince).toISOString() : undefined }),
+      });
+      setRecoverResult(result);
+    } catch (err: unknown) {
+      setRecoverError(err instanceof Error ? err.message : "Erro ao buscar mensagens perdidas.");
+    } finally {
+      setRecovering(false);
     }
   }
 
@@ -1508,6 +1551,12 @@ export default function InboxWALightPage() {
                       </p>
                     </div>
                   </div>
+                  {status?.status === "CONNECTED" && (role === "OWNER" || role === "MANAGER") && status?.lastDisconnectedAt && (
+                    <button type="button" onClick={abrirRecuperar} className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-xs font-medium" style={{ borderColor: "#6366f1", color: "#6366f1" }}>
+                      <SearchCheck className="h-3.5 w-3.5" />
+                      Buscar mensagens perdidas
+                    </button>
+                  )}
                   {status?.status === "CONNECTED" ? (
                     <button type="button" onClick={() => setConfirmDisconnect(true)} className="w-full rounded-lg border py-2 text-xs font-medium" style={{ borderColor: "var(--card-border)", color: "var(--text-muted)" }}>
                       Desconectar
@@ -1683,6 +1732,75 @@ export default function InboxWALightPage() {
         <p className="text-sm" style={{ color: "var(--text-primary)" }}>
           Tem certeza que deseja cancelar o disparo <strong>{activeRun?.nome}</strong>?
         </p>
+      </Modal>
+
+      <Modal
+        open={recoverOpen}
+        onClose={() => (recovering ? null : setRecoverOpen(false))}
+        title="Buscar mensagens perdidas"
+        size="sm"
+        footer={
+          recoverResult ? (
+            <button type="button" onClick={() => setRecoverOpen(false)} className="rounded-lg px-4 py-2 text-sm" style={{ color: "var(--text-muted)" }}>Fechar</button>
+          ) : (
+            <>
+              <button type="button" onClick={() => setRecoverOpen(false)} disabled={recovering} className="rounded-lg px-4 py-2 text-sm disabled:opacity-50" style={{ color: "var(--text-muted)" }}>Cancelar</button>
+              <button
+                type="button"
+                onClick={confirmarRecuperar}
+                disabled={recovering || !recoverSince}
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                style={{ background: "#6366f1", color: "#fff" }}
+              >
+                {recovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <SearchCheck className="h-4 w-4" />}
+                {recovering ? "Buscando..." : "Buscar"}
+              </button>
+            </>
+          )
+        }
+      >
+        {recoverResult ? (
+          <div className="space-y-3 text-sm" style={{ color: "var(--text-primary)" }}>
+            {recoverResult.totalInserted > 0 ? (
+              <p>
+                <strong>{recoverResult.totalInserted}</strong> mensage{recoverResult.totalInserted === 1 ? "m" : "ns"} recuperada{recoverResult.totalInserted === 1 ? "" : "s"} em{" "}
+                <strong>{recoverResult.ok}</strong> conversa{recoverResult.ok === 1 ? "" : "s"}.
+              </p>
+            ) : (
+              <p>Nenhuma mensagem perdida encontrada nesse período.</p>
+            )}
+            {recoverResult.skipped > 0 && (
+              <p style={{ color: "var(--text-muted)" }}>
+                {recoverResult.skipped} conversa{recoverResult.skipped === 1 ? "" : "s"} sem histórico suficiente pra buscar (pulada{recoverResult.skipped === 1 ? "" : "s"}).
+              </p>
+            )}
+            {recoverResult.errored > 0 && (
+              <p style={{ color: "#ef4444" }}>
+                {recoverResult.errored} conversa{recoverResult.errored === 1 ? "" : "s"} deu erro ao buscar.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm" style={{ color: "var(--text-primary)" }}>
+            <p className="mb-4" style={{ color: "var(--text-muted)" }}>
+              Detectamos que esse número ficou desconectado. Vamos buscar de novo no WhatsApp as mensagens
+              desse período em todas as conversas. Pode levar alguns minutos.
+            </p>
+            <label className="mb-1 block text-xs font-medium" style={{ color: "var(--text-muted)" }}>Buscar desde</label>
+            <input
+              type="datetime-local"
+              value={recoverSince}
+              onChange={(e) => setRecoverSince(e.target.value)}
+              disabled={recovering}
+              className="mb-2 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+            />
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Preenchido automaticamente com o momento da queda — pode adiantar a data se quiser buscar mais pra trás.
+            </p>
+            {recoverError && <p className="mt-3 text-sm" style={{ color: "#ef4444" }}>{recoverError}</p>}
+          </div>
+        )}
       </Modal>
 
       <Modal

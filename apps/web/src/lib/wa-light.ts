@@ -11,6 +11,7 @@ export type WaLightInboxStatus = {
   qrCode: string | null;
   phoneNumber: string | null;
   pushName: string | null;
+  lastDisconnectedAt: string | null;
 };
 
 export type WaLightCampaignModel = {
