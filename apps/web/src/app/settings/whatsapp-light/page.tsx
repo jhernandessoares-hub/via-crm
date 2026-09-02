@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
-import { Smartphone, Plus, Wifi, WifiOff, Loader2, QrCode, Trash2, RefreshCw, AlertTriangle } from "lucide-react";
+import { Smartphone, Plus, Wifi, WifiOff, Loader2, QrCode, Trash2, RefreshCw, AlertTriangle, SearchCheck } from "lucide-react";
 
 type Session = {
   id: string;
@@ -11,7 +11,22 @@ type Session = {
   status: "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "QR_PENDING";
   phoneNumber: string | null;
   pushName: string | null;
+  lastDisconnectedAt: string | null;
 };
+
+type RecoverResult = {
+  totalLeads: number;
+  ok: number;
+  skipped: number;
+  errored: number;
+  totalInserted: number;
+};
+
+function toLocalInputValue(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 type SessionStatus = Session & { qrCode: string | null };
 
@@ -39,6 +54,45 @@ export default function WhatsappLightPage() {
   const [qrStatus, setQrStatus] = useState<Session["status"]>("CONNECTING");
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const [aviso, setAviso] = useState(true);
+  const [role, setRole] = useState<string | null>(null);
+  const [recoverModal, setRecoverModal] = useState<Session | null>(null);
+  const [recoverSince, setRecoverSince] = useState("");
+  const [recovering, setRecovering] = useState(false);
+  const [recoverResult, setRecoverResult] = useState<RecoverResult | null>(null);
+  const [recoverError, setRecoverError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      setRole(user?.role ?? null);
+    } catch {}
+  }, []);
+
+  const canRecover = role === "OWNER" || role === "MANAGER";
+
+  function abrirRecuperar(s: Session) {
+    setRecoverResult(null);
+    setRecoverError(null);
+    setRecoverSince(s.lastDisconnectedAt ? toLocalInputValue(s.lastDisconnectedAt) : "");
+    setRecoverModal(s);
+  }
+
+  async function confirmarRecuperar() {
+    if (!recoverModal) return;
+    setRecovering(true);
+    setRecoverError(null);
+    try {
+      const result = await apiFetch(`/whatsapp-unofficial/${recoverModal.id}/recover-missed-messages`, {
+        method: "POST",
+        body: JSON.stringify({ since: recoverSince ? new Date(recoverSince).toISOString() : undefined }),
+      });
+      setRecoverResult(result);
+    } catch (e: any) {
+      setRecoverError(e?.message ?? "Erro ao buscar mensagens perdidas");
+    } finally {
+      setRecovering(false);
+    }
+  }
 
   async function fetchSessions() {
     try {
@@ -232,6 +286,16 @@ export default function WhatsappLightPage() {
                       Ver QR
                     </button>
                   )}
+                  {s.status === "CONNECTED" && canRecover && s.lastDisconnectedAt && (
+                    <button
+                      onClick={() => abrirRecuperar(s)}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium"
+                      style={{ borderColor: "#6366f1", color: "#6366f1" }}
+                    >
+                      <SearchCheck className="w-3.5 h-3.5" />
+                      Buscar mensagens perdidas
+                    </button>
+                  )}
                   {s.status === "CONNECTED" && (
                     <button
                       onClick={() => desconectar(s.id)}
@@ -263,6 +327,93 @@ export default function WhatsappLightPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Buscar mensagens perdidas */}
+      {recoverModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+          <div
+            className="rounded-2xl p-8 max-w-sm w-full mx-4"
+            style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}
+          >
+            <SearchCheck className="w-8 h-8 mb-3" style={{ color: "#6366f1" }} />
+            <h2 className="text-lg font-bold mb-1" style={{ color: "var(--text-primary)" }}>
+              Buscar mensagens perdidas
+            </h2>
+
+            {recoverResult ? (
+              <div className="py-2 text-sm space-y-3" style={{ color: "var(--text-primary)" }}>
+                {recoverResult.totalInserted > 0 ? (
+                  <p>
+                    <strong>{recoverResult.totalInserted}</strong> mensage{recoverResult.totalInserted === 1 ? "m" : "ns"} recuperada{recoverResult.totalInserted === 1 ? "" : "s"} em{" "}
+                    <strong>{recoverResult.ok}</strong> conversa{recoverResult.ok === 1 ? "" : "s"}.
+                  </p>
+                ) : (
+                  <p>Nenhuma mensagem perdida encontrada nesse período.</p>
+                )}
+                {recoverResult.skipped > 0 && (
+                  <p style={{ color: "var(--text-muted)" }}>
+                    {recoverResult.skipped} conversa{recoverResult.skipped === 1 ? "" : "s"} sem histórico suficiente pra buscar (pulada{recoverResult.skipped === 1 ? "" : "s"}).
+                  </p>
+                )}
+                {recoverResult.errored > 0 && (
+                  <p style={{ color: "#ef4444" }}>
+                    {recoverResult.errored} conversa{recoverResult.errored === 1 ? "" : "s"} deu erro ao buscar.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
+                  Detectamos que "{recoverModal.nome}" ficou desconectado. Vamos buscar de novo no WhatsApp as
+                  mensagens desse período em todas as conversas. Pode levar alguns minutos.
+                </p>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+                  Buscar desde
+                </label>
+                <input
+                  type="datetime-local"
+                  value={recoverSince}
+                  onChange={(e) => setRecoverSince(e.target.value)}
+                  disabled={recovering}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none mb-2"
+                  style={{ borderColor: "var(--card-border)", background: "var(--shell-bg)", color: "var(--text-primary)" }}
+                />
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Preenchido automaticamente com o momento da queda — pode adiantar a data se quiser buscar mais pra trás.
+                </p>
+              </>
+            )}
+
+            {recoverError && (
+              <p className="text-sm mt-3" style={{ color: "#ef4444" }}>{recoverError}</p>
+            )}
+
+            <div className="flex items-center gap-3 mt-6">
+              {!recoverResult && (
+                <button
+                  onClick={confirmarRecuperar}
+                  disabled={recovering || !recoverSince}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                  style={{ background: "#6366f1", color: "#fff" }}
+                >
+                  {recovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <SearchCheck className="w-4 h-4" />}
+                  {recovering ? "Buscando..." : "Buscar"}
+                </button>
+              )}
+              <button
+                onClick={() => setRecoverModal(null)}
+                disabled={recovering}
+                className="text-sm px-4 py-2"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {recoverResult ? "Fechar" : "Cancelar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal QR Code */}
       {qrModal && (

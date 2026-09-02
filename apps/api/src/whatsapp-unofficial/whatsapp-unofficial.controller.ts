@@ -10,6 +10,12 @@ function requireOwner(req: any) {
   if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER.');
 }
 
+function requireOwnerOrManager(req: any) {
+  if (req.user?.role !== 'OWNER' && req.user?.role !== 'MANAGER') {
+    throw new ForbiddenException('Acesso restrito ao OWNER ou MANAGER.');
+  }
+}
+
 @UseGuards(JwtAuthGuard)
 @Controller('inbox-wa-light')
 export class WhatsappUnofficialController {
@@ -76,6 +82,19 @@ export class WhatsappUnofficialController {
   async status(@Req() req: any, @Param('id') id: string) {
     await this.assertOwnership(id, req.user.tenantId);
     return this.service.getStatus(id);
+  }
+
+  @Post(':id/recover-missed-messages')
+  async recoverMissedMessages(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { since?: string },
+  ) {
+    requireOwnerOrManager(req);
+    await this.assertOwnership(id, req.user.tenantId);
+    return this.service.recoverMissedMessages(req.user.tenantId, id, {
+      since: body?.since ? new Date(body.since) : undefined,
+    });
   }
 
   @Post(':id/send-text')
