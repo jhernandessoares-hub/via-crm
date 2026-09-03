@@ -694,7 +694,9 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       version,
       auth: state,
       browser: Browsers.ubuntu('Chrome'),
-      logger: pino({ level: 'silent' }),
+      // 'warn': mostra falhas internas do Baileys (envio, criptografia, stream).
+      // Ficava 'silent', o que deixava o envio quebrado sem nenhum rastro no log.
+      logger: pino({ level: 'warn' }),
     });
 
     this.sockets.set(sessionId, socket);
@@ -911,6 +913,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     const jid = await this.resolveJid(socket, to);
     const messageId = generateMessageID();
     this.rememberSentByCrm(messageId);
+    logger.log(`➡️ Enviando texto — sessão=${sessionId} para=${to} jid=${jid} msgId=${messageId}`);
     await socket.sendMessage(jid, { text }, { messageId });
     return { id: messageId };
   }
