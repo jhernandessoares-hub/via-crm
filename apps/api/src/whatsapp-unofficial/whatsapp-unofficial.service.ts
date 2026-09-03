@@ -910,7 +910,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   async sendText(sessionId: string, to: string, text: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
-    const jid = await this.resolveJid(socket, to);
+    const jid = await this.resolveSendJid(sessionId, socket, to);
     const messageId = generateMessageID();
     this.rememberSentByCrm(messageId);
     logger.log(`➡️ Enviando texto — sessão=${sessionId} para=${to} jid=${jid} msgId=${messageId}`);
@@ -921,7 +921,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   async sendImage(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
-    const jid = await this.resolveJid(socket, to);
+    const jid = await this.resolveSendJid(sessionId, socket, to);
     const image: any = Buffer.isBuffer(content) ? content : { url: content };
     const messageId = generateMessageID();
     this.rememberSentByCrm(messageId);
@@ -935,7 +935,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   async sendVideo(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
-    const jid = this.toJid(to);
+    const jid = await this.resolveSendJid(sessionId, socket, to);
     const video: any = Buffer.isBuffer(content) ? content : { url: content };
     const messageId = generateMessageID();
     this.rememberSentByCrm(messageId);
@@ -949,7 +949,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   async sendDocument(sessionId: string, to: string, content: string | Buffer, filename: string, mimetype?: string): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
-    const jid = await this.resolveJid(socket, to);
+    const jid = await this.resolveSendJid(sessionId, socket, to);
     const document: any = Buffer.isBuffer(content) ? content : { url: content };
     const messageId = generateMessageID();
     this.rememberSentByCrm(messageId);
@@ -1873,6 +1873,42 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   // Resolve o JID correto via onWhatsApp (trata variações do 9º dígito no Brasil).
   // Fallback para JID padrão se a consulta falhar ou o número não existir.
+  // Resolve o destino de ENVIO. O WhatsApp vem migrando contas pro endereçamento por
+  // LID: nesses casos, enviar pro JID de telefone (`@s.whatsapp.net`) é rejeitado com
+  // `error: 463` no ack — a mensagem "sai" mas nunca é entregue. Então prefere o LID
+  // quando a gente conhece um pra esse telefone (mapa de contatos ou última mensagem
+  // recebida da conversa), e só cai no JID de telefone como último recurso.
+  private async resolveSendJid(sessionId: string, socket: WASocket, phone: string): Promise<string> {
+    const digits = digitsOnly(phone);
+    const alvo = phoneMatchSuffix(digits);
+
+    // 1) Mapa LID→telefone da sessão (populado no sync de contatos), invertido.
+    const map = this.lidToPhone.get(sessionId);
+    if (map) {
+      for (const [lid, ph] of map) {
+        if (phoneMatchSuffix(ph) === alvo) return `${lid}@lid`;
+      }
+    }
+
+    // 2) Último `remoteJid` visto em mensagem recebida desse contato — é o endereço
+    //    que o WhatsApp realmente usa nessa conversa.
+    const telefoneKey = telefoneKeyFrom(digits);
+    if (telefoneKey) {
+      const ev = await this.prisma.leadEvent.findFirst({
+        where: {
+          channel: 'whatsapp.unofficial.in',
+          lead: { telefoneKey, deletedAt: null },
+        },
+        orderBy: { criadoEm: 'desc' },
+        select: { payloadRaw: true },
+      }).catch(() => null);
+      const remoteJid = (ev?.payloadRaw as any)?.rawMsg?.key?.remoteJid;
+      if (typeof remoteJid === 'string' && remoteJid.endsWith('@lid')) return remoteJid;
+    }
+
+    return this.resolveJid(socket, phone);
+  }
+
   private async resolveJid(socket: WASocket, phone: string): Promise<string> {
     const digits = phone.replace(/\D/g, '');
     try {
