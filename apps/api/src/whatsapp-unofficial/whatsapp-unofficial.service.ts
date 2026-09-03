@@ -11,7 +11,7 @@ import { Readable } from 'stream';
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
-import { upsertLeadFromWhatsapp, telefoneKeyFrom } from '../whatsapp/lead-upsert.helper';
+import { upsertLeadFromWhatsapp, telefoneKeyFrom, findOrCreateLeadByPhone } from '../whatsapp/lead-upsert.helper';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
@@ -45,6 +45,11 @@ interface HistoryImportCtx {
   since?: Date;          // se definido, ignora msgs com timestamp anterior a esta data
   minTsThisPage: number; // menor timestamp visto na página atual (para avanço de âncora)
   minKeyThisPage: any;   // key da msg mais antiga da página atual
+  // Só usado pelo sync automático (handleAutoHistorySync): quando true, mensagens
+  // inbound reais marcam o lead como conversaAberta (pendente de revisão manual).
+  // O backfill manual por lead (fetchMessageHistory) nunca seta isso.
+  flagOpen?: boolean;
+  openLeadIds?: Set<string>;
 }
 
 // ── Extrator de texto/tipo de mensagens Baileys ───────────────────────────────
@@ -1126,6 +1131,12 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     target.knownKeyIds.add(keyId);
     ctx.inserted++;
+
+    // Mensagem inbound real (não eco nosso, não silenciosa) recuperada pelo sync
+    // automático → marca o lead como conversaAberta pra revisão manual (sem IA/SLA).
+    if (ctx.flagOpen && ctx.openLeadIds && !msg.key.fromMe && !SILENT_INBOUND_TYPES.has(type)) {
+      ctx.openLeadIds.add(target.leadId);
+    }
   }
 
   // Upload de áudio histórico ao Cloudinary (sem transcrição Whisper — economiza custo/tempo).
@@ -1159,11 +1170,14 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   // mensagens que ficaram só no celular — ex.: respostas que chegaram durante uma
   // restrição/queda e que o fetchMessageHistory manual não devolve.
   //
-  // Regras (mesmas do backfill manual): só atribui a leads JÁ existentes da sessão,
-  // nunca cria lead, deduplica por key.id, preserva o timestamp original e não
-  // aciona IA/SLA. Janela limitada a AUTO_SYNC_MAX_DIAS pra não importar histórico
-  // antigo irrelevante num sync inicial (que pode trazer meses de conversa).
-  private static readonly AUTO_SYNC_MAX_DIAS = 7;
+  // Completa leads já existentes E cria lead novo pra contato que nunca tinha
+  // escrito (sem isso a conversa some — não aparece nem no Inbox WA Light, que é
+  // montado a partir de Lead/LeadEvent). Em ambos os casos: deduplica por key.id,
+  // preserva o timestamp original, marca conversaAberta (revisão manual) e NUNCA
+  // aciona IA/SLA — mesmo espírito do backfill manual. Janela limitada a
+  // AUTO_SYNC_MAX_DIAS pra não trazer contato pessoal/antigo de anos atrás como
+  // lead automático num sync inicial.
+  private static readonly AUTO_SYNC_MAX_DIAS = 30;
 
   private async handleAutoHistorySync(sessionId: string, messages: any[]) {
     const session = await this.prisma.whatsappUnofficialSession.findUnique({
@@ -1176,30 +1190,63 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       Date.now() - WhatsappUnofficialService.AUTO_SYNC_MAX_DIAS * 24 * 60 * 60 * 1000,
     );
 
-    // JIDs presentes neste pacote → telefone → lead da sessão (só os que já existem).
-    const jids = new Set<string>();
+    // JIDs presentes neste pacote, com: se tem inbound real (não fromMe, não
+    // silencioso) dentro da janela `since`, e o pushName mais recente visto.
+    const jids = new Map<string, { hasRealInbound: boolean; pushName: string | null }>();
     for (const msg of messages) {
       const jid: string | undefined = msg?.key?.remoteJid;
-      if (jid && !jid.endsWith('@g.us') && !jid.endsWith('@newsletter') && jid !== 'status@broadcast') {
-        jids.add(jid);
+      if (!jid || jid.endsWith('@g.us') || jid.endsWith('@newsletter') || jid === 'status@broadcast') continue;
+
+      const info = jids.get(jid) ?? { hasRealInbound: false, pushName: null };
+      if (msg.pushName) info.pushName = msg.pushName;
+      if (!msg.key.fromMe) {
+        const msgTs = (msg.messageTimestamp as number) * 1000;
+        if (msgTs >= since.getTime()) {
+          const { type } = extractBaileysText(msg.message);
+          if (type !== 'reaction' && !SILENT_INBOUND_TYPES.has(type)) info.hasRealInbound = true;
+        }
       }
+      jids.set(jid, info);
     }
     if (!jids.size) return;
 
     const jidToLead = new Map<string, { leadId: string; knownKeyIds: Set<string> }>();
-    for (const jid of jids) {
+    let newLeadsCreated = 0;
+    for (const [jid, info] of jids) {
       const phone = jid.endsWith('@lid')
         ? this.lidToPhone.get(sessionId)?.get(lidFromJid(jid) ?? '')
         : phoneFromJid(jid);
       const telefoneKey = phone ? telefoneKeyFrom(phone) : null;
-      if (!telefoneKey) continue;
+      if (!telefoneKey || !phone) continue;
 
       const lead = await this.prisma.lead.findFirst({
         where: { tenantId: session.tenantId, telefoneKey, deletedAt: null },
         select: { id: true },
         orderBy: { criadoEm: 'desc' },
       });
-      if (!lead) continue;
+
+      if (!lead) {
+        // Contato sem lead: só cria se realmente escreveu pra gente dentro da
+        // janela de recuperação (não cria lead a partir só de mensagem nossa,
+        // nem de contato antigo fora da janela).
+        if (!info.hasRealInbound) continue;
+        const created = await findOrCreateLeadByPhone(this.prisma, {
+          tenantId: session.tenantId,
+          from: phone,
+          contactName: info.pushName,
+          origem: 'WhatsApp Light',
+          canal: 'WHATSAPP_LIGHT',
+          conversaSessionId: sessionId,
+          conversaAberta: true,
+        }).catch((e) => {
+          logger.warn(`Erro ao criar lead do sync automático sessão=${sessionId} jid=${jid}: ${e?.message}`);
+          return null;
+        });
+        if (!created) continue;
+        newLeadsCreated++;
+        jidToLead.set(jid, { leadId: created.leadId, knownKeyIds: new Set() });
+        continue;
+      }
 
       const eventos = await this.prisma.leadEvent.findMany({
         where: { leadId: lead.id, channel: { in: WA_LIGHT_CHANNELS } },
@@ -1223,6 +1270,8 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       since,
       minTsThisPage: Infinity,
       minKeyThisPage: null,
+      flagOpen: true,
+      openLeadIds: new Set<string>(),
     };
 
     for (const msg of messages) {
@@ -1231,8 +1280,18 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       );
     }
 
-    if (ctx.inserted > 0) {
-      logger.log(`📜 Sync automático recuperou ${ctx.inserted} mensagem(ns) em ${jidToLead.size} conversa(s) — sessão=${sessionId}`);
+    if (ctx.openLeadIds?.size) {
+      await this.prisma.lead.updateMany({
+        where: { id: { in: [...ctx.openLeadIds] } },
+        data: { conversaAberta: true },
+      });
+    }
+
+    if (ctx.inserted > 0 || newLeadsCreated > 0) {
+      logger.log(
+        `📜 Sync automático recuperou ${ctx.inserted} mensagem(ns) em ${jidToLead.size} conversa(s) — ` +
+        `${newLeadsCreated} lead(s) novo(s), ${ctx.openLeadIds?.size ?? 0} marcado(s) como aberto — sessão=${sessionId}`,
+      );
     }
   }
 
