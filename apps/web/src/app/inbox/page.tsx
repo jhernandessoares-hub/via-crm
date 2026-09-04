@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, type MutableRefObject, type UIEvent } from "react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import { Send, MessageSquare, Search, X, UserPlus, ChevronRight, ArrowLeftRight } from "lucide-react";
@@ -427,18 +427,37 @@ function ChatMensagens({
   mensagens,
   carregando,
   isDark,
+  conversaKey,
+  isNearBottomRef,
 }: {
   mensagens: Mensagem[];
   carregando: boolean;
   isDark: boolean;
+  conversaKey: string | null;
+  isNearBottomRef: MutableRefObject<boolean>;
 }) {
   const incomingBg = isDark ? "#1f2c34" : "#ffffff";
   const incomingText = isDark ? "#e9edef" : "#111b21";
   const endRef = useRef<HTMLDivElement>(null);
+  const initialScrollDoneRef = useRef(false);
+  const lastKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [mensagens]);
+    if (conversaKey !== lastKeyRef.current) {
+      lastKeyRef.current = conversaKey;
+      initialScrollDoneRef.current = false;
+      isNearBottomRef.current = true;
+    }
+    if (mensagens.length === 0) return;
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      endRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    if (isNearBottomRef.current) {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [mensagens, conversaKey, isNearBottomRef]);
 
   if (carregando && mensagens.length === 0) {
     return (
@@ -638,6 +657,13 @@ export default function InboxPage() {
   }, [detalhe, abaAtiva]);
 
   const temSubConversas = (detalhe?.subConversas ?? []).length > 0;
+  const conversaAtivaKey = leadAtivo ? leadAtivo + ":" + (abaAtiva ?? "") : null;
+  const isNearBottomRef = useRef(true);
+
+  function handleMessagesScroll(e: UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -780,11 +806,13 @@ export default function InboxPage() {
             )}
 
             {/* Mensagens */}
-            <div className="flex-1 overflow-y-auto px-3 py-3" style={{ background: chatBg }}>
+            <div className="flex-1 overflow-y-auto px-3 py-3" style={{ background: chatBg }} onScroll={handleMessagesScroll}>
               <ChatMensagens
                 mensagens={mensagensAtivas}
                 carregando={carregando}
                 isDark={isDark}
+                conversaKey={conversaAtivaKey}
+                isNearBottomRef={isNearBottomRef}
               />
             </div>
 

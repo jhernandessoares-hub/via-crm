@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { useEffect, useMemo, useRef, useState, startTransition, type UIEvent } from "react";
 import { createPortal } from "react-dom";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
@@ -2336,6 +2336,8 @@ export default function LeadDetailChatPage() {
   }>>([]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const isNearBottomRef = useRef(true);
+  const initialScrollDoneRef = useRef(false);
 
   const [mediaModal, setMediaModal] = useState<MediaModalState>({ open: false });
   const openMediaModal = (kind: string, title: string, src: string, mimeType?: string) => {
@@ -2899,6 +2901,8 @@ export default function LeadDetailChatPage() {
       loadAll();
       loadPipelineStages();
     }
+    initialScrollDoneRef.current = false;
+    isNearBottomRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -3666,8 +3670,21 @@ function discardAiSuggestion() {
   }, [orderedEvents]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (viewEvents.length === 0) return;
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    if (isNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [viewEvents.length]);
+
+  function handleMessagesScroll(e: UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }
 
   function insertEmoji(emoji: string) {
     const el = inputRef.current;
@@ -6706,7 +6723,7 @@ function discardAiSuggestion() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 space-y-5" style={{ background: "var(--chat-wallpaper)" }}>
+            <div className="flex-1 overflow-auto p-4 space-y-5" style={{ background: "var(--chat-wallpaper)" }} onScroll={handleMessagesScroll}>
               {(lead as any)?.conversaRestricted ? (
                 <div className="flex h-full items-center justify-center">
                   <div className="select-none rounded-lg border border-dashed border-[var(--shell-card-border)] px-6 py-4 text-center text-sm font-medium text-[var(--shell-subtext)]">

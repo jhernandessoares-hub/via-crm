@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { Modal } from "@/components/ui/Modal";
@@ -815,6 +815,9 @@ export default function InboxWALightPage() {
   const [showPhotoModal, setShowPhotoModal] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const initialScrollDoneRef = useRef(false);
+  const lastActiveKeyRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -958,8 +961,27 @@ export default function InboxWALightPage() {
   }, [activeConversation, fetchConversationDetail]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (activeKey !== lastActiveKeyRef.current) {
+      lastActiveKeyRef.current = activeKey;
+      initialScrollDoneRef.current = false;
+      isNearBottomRef.current = true;
+    }
+    const count = conversationDetail?.mensagens.length || 0;
+    if (count === 0) return;
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true;
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [conversationDetail?.mensagens.length, activeKey]);
+
+  function handleMessagesScroll(e: UIEvent<HTMLElement>) {
+    const el = e.currentTarget;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }
 
   useEffect(() => {
     if (!qrOpen || !status?.qrCode) {
@@ -1400,7 +1422,7 @@ export default function InboxWALightPage() {
                 </button>
               </header>
 
-              <section className="flex-1 overflow-y-auto px-4 py-4">
+              <section className="flex-1 overflow-y-auto px-4 py-4" onScroll={handleMessagesScroll}>
                 {loadingDetail && conversationDetail.mensagens.length === 0 ? (
                   <div className="flex h-full items-center justify-center">
                     <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--text-muted)" }} />
