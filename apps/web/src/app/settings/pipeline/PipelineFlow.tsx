@@ -450,6 +450,15 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
         {" "}A posição das caixas fica salva. Status sem nenhuma seta saindo dele continua nas regras atuais do sistema.
       </p>
 
+      {edges.length === 0 && nodes.length > 0 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <strong>Este funil ainda não tem nenhuma seta desenhada — e isso não é erro.</strong> Hoje ele funciona
+          sem restrição de caminho: dá pra mover um lead de qualquer status para qualquer outro. No momento em que
+          você desenhar a primeira seta saindo de um status, esse status passa a aceitar <em>só</em> os caminhos
+          desenhados. Os demais continuam livres até ganharem seta.
+        </div>
+      )}
+
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
       <div style={{ height: 620 }} className="rounded-2xl border border-[var(--shell-card-border)] overflow-hidden">
