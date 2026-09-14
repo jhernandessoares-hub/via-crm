@@ -1,4 +1,5 @@
 "use client";
+import { usePipelineGroups } from "@/lib/pipeline-groups";
 
 function cn(...classes: (string | undefined | false)[]): string {
   return classes.filter(Boolean).join(" ");
@@ -108,20 +109,6 @@ export const NEGATIVE_KEYS = new Set<string>([
   "BASE_FRIA_NEGOCIACOES",
 ]);
 
-// ─── Labels de grupo ──────────────────────────────────────────────────────────
-
-const GROUP_LABELS: Record<string, string> = {
-  PRE_ATENDIMENTO:     "Pré-atendimento",
-  AGENDAMENTO:         "Agendamento",
-  NEGOCIACOES:         "Negociações",
-  CREDITO_IMOBILIARIO: "Crédito Imobiliário",
-  NEGOCIO_FECHADO:     "Negócio Fechado",
-  POS_VENDA:           "Pós Venda",
-  DOCUMENTACAO:        "Documentação",
-  ESCOLHA_UNIDADE:     "Escolha da Unidade",
-  CONTRATO:            "Contrato",
-  REGISTRO:            "Registro",
-};
 
 // ─── Chip ─────────────────────────────────────────────────────────────────────
 
@@ -198,7 +185,9 @@ function GroupTransitionBadge({
   targetGroup: string;
   direction: "advance" | "return";
 }) {
-  const label = GROUP_LABELS[targetGroup] ?? targetGroup;
+  // mesma fonte do resto da tela: o nome que o tenant deu à Etapa
+  const { groupName } = usePipelineGroups();
+  const label = groupName(targetGroup);
   const isAdvance = direction === "advance";
 
   return (
@@ -267,6 +256,11 @@ export function PipelineStepper({
   disabled,
 }: PipelineStepperProps) {
   // Stages do grupo atual em ordem
+  // Nome e cor das Etapas saem do funil configurado pelo próprio tenant em
+  // /settings/pipeline — antes eram um Record fixo aqui dentro, então Etapa
+  // criada pelo cliente aparecia com a chave crua (ex.: "MINHA_ETAPA").
+  const { groupName: GROUP_LABEL, colorOf: GROUP_COLOR } = usePipelineGroups();
+
   const list = (stages || [])
     .filter((s) => !currentGroup || s.group === currentGroup)
     .slice()
@@ -279,7 +273,7 @@ export function PipelineStepper({
   if (!list.length) return null;
 
   const groupLabel = currentGroup
-    ? (GROUP_LABELS[currentGroup] ?? currentGroup)
+    ? GROUP_LABEL(currentGroup)
     : "Todas as etapas";
 
   // Determina a etapa anterior pela ordem de sortOrder mínimo de cada grupo
@@ -295,7 +289,12 @@ export function PipelineStepper({
 
   const currentGroupIndex = currentGroup ? groupOrder.indexOf(currentGroup) : -1;
   const prevGroupKey = currentGroupIndex > 0 ? groupOrder[currentGroupIndex - 1] : null;
-  const prevGroupLabel = prevGroupKey ? (GROUP_LABELS[prevGroupKey] ?? prevGroupKey) : null;
+  const prevGroupLabel = prevGroupKey ? GROUP_LABEL(prevGroupKey) : null;
+  const nextGroupKey =
+    currentGroupIndex >= 0 && currentGroupIndex < groupOrder.length - 1
+      ? groupOrder[currentGroupIndex + 1]
+      : null;
+  const nextGroupLabel = nextGroupKey ? GROUP_LABEL(nextGroupKey) : null;
 
   const prevGroupStages = prevGroupKey
     ? (stages || [])
@@ -311,6 +310,17 @@ export function PipelineStepper({
     prevGroupStages.find((s) => s.advancesToGroup === currentGroup) ??
     prevGroupStages[prevGroupStages.length - 1] ??
     null;
+
+  // Stages do PRÓXIMO grupo que já estão liberadas para este lead (salto direto de fase,
+  // ex.: matriz hardcoded de leads.service.ts permitindo LEAD_POTENCIAL_QUALIFICADO →
+  // AGUARDANDO_AGENDAMENTO). Sem isso, essas opções ficam autorizadas no backend mas
+  // invisíveis na tela, pois o `list` abaixo só cobre o grupo atual.
+  const nextGroupAllowedStages = nextGroupKey
+    ? (stages || [])
+        .filter((s) => s.group === nextGroupKey && allowedSet.has(s.id))
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    : [];
 
   // Classifica cada stage do grupo atual
   function classifyStage(s: PipelineStage): {
@@ -338,7 +348,12 @@ export function PipelineStepper({
       {/* Header — breadcrumb: fase › etapa atual */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="min-w-0 truncate text-sm">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{groupLabel}</span>
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wide"
+            style={currentGroup ? { color: GROUP_COLOR(currentGroup) } : undefined}
+          >
+            {groupLabel}
+          </span>
           {currentStage && (
             <>
               <span className="mx-1.5 text-slate-300 dark:text-neutral-600">›</span>
@@ -360,13 +375,13 @@ export function PipelineStepper({
             {groupOrder.map((g, i) => (
               <div
                 key={g}
-                title={GROUP_LABELS[g] ?? g}
-                className={cn(
-                  "h-1.5 flex-1 rounded-full transition-colors",
-                  i < currentGroupIndex && "bg-via-teal-light dark:bg-via-teal/60",
-                  i === currentGroupIndex && "bg-via-teal dark:bg-via-teal",
-                  i > currentGroupIndex && "bg-slate-200 dark:bg-neutral-700",
-                )}
+                title={GROUP_LABEL(g)}
+                className="h-1.5 flex-1 rounded-full transition-colors"
+                style={{
+                  background: GROUP_COLOR(g),
+                  // fases já passadas ficam esmaecidas; a que falta, quase apagada
+                  opacity: i < currentGroupIndex ? 0.45 : i === currentGroupIndex ? 1 : 0.15,
+                }}
               />
             ))}
           </div>
@@ -426,6 +441,32 @@ export function PipelineStepper({
             </div>
           );
         })}
+
+        {/* Stages do PRÓXIMO grupo já liberadas (salto direto de fase) */}
+        {nextGroupAllowedStages.length > 0 && nextGroupLabel && (
+          <>
+            <GroupDivider label={nextGroupLabel} />
+            {nextGroupAllowedStages.map((s, i) => {
+              const variant: ChipVariant =
+                NEGATIVE_KEYS.has(s.key) || s.returnsToGroup ? "next-negative" : "next-positive";
+
+              return (
+                <div key={s.id} className="flex items-center gap-1.5">
+                  {i > 0 && <ArrowRightIcon />}
+                  <div className="flex flex-col items-start gap-1">
+                    <StageChip
+                      name={s.name}
+                      variant={variant}
+                      disabled={disabled}
+                      onClick={() => onSelectStage?.(s)}
+                    />
+                    <GroupTransitionBadge targetGroup={nextGroupKey!} direction="advance" />
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
 
       </div>
     </div>

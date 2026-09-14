@@ -15,13 +15,37 @@ model Pipeline {
   isActive  Boolean         @default(true)
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
-  leads     Lead[]
-  stages    PipelineStage[]
-  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads       Lead[]
+  stages      PipelineStage[]
+  groups      PipelineGroup[]
+  transitions PipelineTransition[]
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key], name: "tenantId_key")
   @@index([tenantId, isActive])
   @@map("pipelines")
+}
+
+/// A "Etapa" mostrada na tela de Configurações — agrupamento macro de PipelineStage
+/// (hoje PipelineStage.group é só uma string solta; este model dá a ela nome/ordem
+/// próprios, permitindo existir vazia antes de qualquer Status ser criado dentro).
+model PipelineGroup {
+  id         String   @id @default(uuid())
+  tenantId   String
+  pipelineId String
+  key        String
+  name       String
+  color      String? // cor da Etapa em hex (#RRGGBB), escolhida em /settings/pipeline; nulo = cor automática
+  sortOrder  Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, pipelineId, key], name: "tenantId_pipelineId_key")
+  @@index([tenantId, pipelineId, isActive, sortOrder])
+  @@map("pipeline_groups")
 }
 
 model PipelineStage {
@@ -32,6 +56,8 @@ model PipelineStage {
   name               String
   sortOrder          Int
   group              String?
+  posX               Float? // posição no canvas da aba "Fluxo" (/settings/pipeline); nulo = nunca posicionado, cai no layout automático
+  posY               Float?
   advancesToGroup    String?
   returnsToGroup     String?
   isActive           Boolean   @default(true)
@@ -47,10 +73,34 @@ model PipelineStage {
   tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   slaRules           SlaRule[]
   campanhaDisparos   CampanhaDisparo[]
+  transitionsFrom    PipelineTransition[] @relation("TransitionFrom")
+  transitionsTo      PipelineTransition[] @relation("TransitionTo")
 
   @@unique([tenantId, pipelineId, key], name: "tenantId_pipelineId_key")
   @@index([tenantId, pipelineId, isActive, sortOrder])
   @@map("pipeline_stages")
+}
+
+/// Uma linha desenhada no grafo "Fluxo" da tela de Configurações — de qual
+/// Status (PipelineStage) pra qual outro um lead pode ser movido. Por tenant.
+/// Enquanto um tenant não tiver nenhuma linha própria, a movimentação de lead
+/// continua usando a regra legada (DEFAULT_STAGE_TRANSITIONS ou movimento livre
+/// em pipeline customizado) — ver leads.service.ts.
+model PipelineTransition {
+  id          String        @id @default(uuid())
+  tenantId    String
+  pipelineId  String
+  fromStageId String
+  toStageId   String
+  createdAt   DateTime      @default(now())
+  pipeline    Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromStage   PipelineStage @relation("TransitionFrom", fields: [fromStageId], references: [id], onDelete: Cascade)
+  toStage     PipelineStage @relation("TransitionTo", fields: [toStageId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, fromStageId, toStageId])
+  @@index([tenantId, pipelineId])
+  @@map("pipeline_transitions")
 }
 
 model Tenant {
@@ -117,6 +167,8 @@ model Tenant {
   reviews                       ManagerReview[]
   pipelineStages                PipelineStage[]
   pipelines                     Pipeline[]
+  pipelineGroups                PipelineGroup[]
+  pipelineTransitions           PipelineTransition[]
   productDocuments              ProductDocument[]
   productImages                 ProductImage[]
   productVideos                 ProductVideo[]

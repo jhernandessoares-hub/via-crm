@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { apiFetch } from "@/lib/api";
+import { usePipelineGroups, tint } from "@/lib/pipeline-groups";
 import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { ReportModal } from "@/components/ReportModal";
@@ -79,45 +80,9 @@ function displayName(l: Lead): string {
   return l.nomeCorreto || l.nome || "Sem nome";
 }
 
-const GROUP_LABEL_MAP: Record<string, string> = {
-  PRE_ATENDIMENTO: "Pré-Atendimento",
-  AGENDAMENTO:     "Agendamento",
-  NEGOCIACOES:     "Negociações",
-  NEGOCIO_FECHADO: "Negócio Fechado",
-  POS_VENDA:       "Pós Venda",
-  DOCUMENTACAO:    "Documentação",
-  ESCOLHA_UNIDADE: "Escolha da Unidade",
-  CONTRATO:        "Contrato",
-  REGISTRO:        "Registro",
-};
-
-const GROUP_COLOR_MAP: Record<string, string> = {
-  PRE_ATENDIMENTO: "bg-slate-100 text-slate-700 border-slate-200",
-  AGENDAMENTO:     "bg-blue-50 text-blue-700 border-blue-200",
-  NEGOCIACOES:     "bg-amber-50 text-amber-700 border-amber-200",
-  NEGOCIO_FECHADO: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  POS_VENDA:       "bg-purple-50 text-purple-700 border-purple-200",
-  DOCUMENTACAO:    "bg-sky-50 text-sky-700 border-sky-200",
-  ESCOLHA_UNIDADE: "bg-violet-50 text-violet-700 border-violet-200",
-  CONTRATO:        "bg-indigo-50 text-indigo-700 border-indigo-200",
-  REGISTRO:        "bg-green-50 text-green-700 border-green-200",
-};
-
-const GROUP_BADGE_MAP: Record<string, string> = {
-  PRE_ATENDIMENTO: "bg-slate-100 text-slate-600",
-  AGENDAMENTO:     "bg-blue-100 text-blue-700",
-  NEGOCIACOES:     "bg-amber-100 text-amber-700",
-  NEGOCIO_FECHADO: "bg-emerald-100 text-emerald-700",
-  POS_VENDA:       "bg-purple-100 text-purple-700",
-  DOCUMENTACAO:    "bg-sky-100 text-sky-700",
-  ESCOLHA_UNIDADE: "bg-violet-100 text-violet-700",
-  CONTRATO:        "bg-indigo-100 text-indigo-700",
-  REGISTRO:        "bg-green-100 text-green-700",
-};
 
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
 const STAGE_BADGE = "bg-slate-100 text-slate-700";
-const SP9_GROUPS = new Set(["DOCUMENTACAO", "ESCOLHA_UNIDADE", "CONTRATO", "REGISTRO"]);
 
 const SEL_STYLE: React.CSSProperties = {
   width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4,
@@ -169,16 +134,18 @@ export default function PipelinePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Nome e cor das Etapas vêm do funil configurado em /settings/pipeline
+  const { groupName, colorOf } = usePipelineGroups();
+
   const stageMap = useMemo(() => {
     const m: Record<string, { name: string; group: string | null }> = {};
     for (const s of stages) m[s.id] = { name: s.name, group: s.group ?? null };
     return m;
   }, [stages]);
 
-  const isGroupedPipeline = useMemo(
-    () => leads.some((l) => SP9_GROUPS.has(l.stage?.group ?? "")),
-    [leads]
-  );
+  // Antes isso era um Set fixo de grupos da SP9. Agora vale para qualquer tenant:
+  // se o funil dele tem Etapas, a tela agrupa por Etapa.
+  const isGroupedPipeline = useMemo(() => stages.some((s) => !!s.group), [stages]);
 
   function getStageName(l: Lead): string {
     return l.stage?.name ?? l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null) ?? "—";
@@ -195,7 +162,7 @@ export default function PipelinePage() {
       const sn = l.stage?.name ?? l.stageName ?? (l.stageId ? stageMap[l.stageId]?.name : null);
       if (isGroupedPipeline) {
         const g = l.stage?.group;
-        if (g) etapa.add(GROUP_LABEL_MAP[g] ?? g);
+        if (g) etapa.add(groupName(g));
         if (sn) status.add(sn);
       } else {
         if (sn) etapa.add(sn);
@@ -213,7 +180,7 @@ export default function PipelinePage() {
       interesse: [...interesse].sort(),
       indicacao: [...indicacao].sort(),
     };
-  }, [leads, stageMap, isGroupedPipeline]);
+  }, [leads, stageMap, isGroupedPipeline, groupName]);
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -228,7 +195,7 @@ export default function PipelinePage() {
       }
       const sn = getStageName(l);
       if (isGroupedPipeline) {
-        const gl = GROUP_LABEL_MAP[l.stage?.group ?? ""] ?? l.stage?.group ?? "";
+        const gl = groupName(l.stage?.group);
         if (colFilters.etapa && gl !== colFilters.etapa) return false;
         if (colFilters.status && sn !== colFilters.status) return false;
       } else {
@@ -242,23 +209,23 @@ export default function PipelinePage() {
       if (numRange.max && (l.numero ?? 0) > parseInt(numRange.max)) return false;
       return true;
     });
-  }, [leads, q, stageMap, colFilters, numRange, isGroupedPipeline]);
+  }, [leads, q, stageMap, colFilters, numRange, isGroupedPipeline, groupName]);
 
   const groups = useMemo(() => {
     const seen = new Set<string>();
-    const result: { key: string; label: string; color: string }[] = [];
+    const result: { key: string; label: string; color: string }[] = []; // color = hex da Etapa
     for (const s of stages) {
       if (s.group && !seen.has(s.group)) {
         seen.add(s.group);
         result.push({
           key:   s.group,
-          label: GROUP_LABEL_MAP[s.group] ?? s.group,
-          color: GROUP_COLOR_MAP[s.group] ?? "bg-slate-100 text-slate-700 border-slate-200",
+          label: groupName(s.group),
+          color: colorOf(s.group),
         });
       }
     }
     return result;
-  }, [stages]);
+  }, [stages, groupName, colorOf]);
 
   const groupedLeads = useMemo(() => {
     const map: Record<string, Lead[]> = {};
@@ -429,9 +396,12 @@ export default function PipelinePage() {
               return (
                 <div key={g.key} className="w-[260px] shrink-0 flex flex-col rounded-xl border overflow-hidden"
                   style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
-                  <div className={`border-b px-3 py-2.5 ${g.color}`}>
+                  <div
+                    className="border-b px-3 py-2.5"
+                    style={{ background: tint(g.color, "1f"), borderBottomColor: g.color, color: g.color }}
+                  >
                     <div className="text-sm font-semibold">{g.label}</div>
-                    <div className="text-xs opacity-70 mt-0.5">{items.length} leads</div>
+                    <div className="text-xs opacity-80 mt-0.5">{items.length} leads</div>
                   </div>
                   <div className="max-h-[72vh] overflow-y-auto space-y-2 p-2">
                     {items.length === 0 ? (
@@ -459,7 +429,7 @@ export default function PipelinePage() {
                             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
                               <MaskedField field="lead.telefone"><span className="truncate">{l.telefone || l.whatsapp || "—"}</span></MaskedField>
                               <span className="opacity-50">·</span>
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${GROUP_BADGE_MAP[g.key]}`}>{stageName}</span>
+                              <span className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: tint(g.color, "24"), color: g.color }}>{stageName}</span>
                             </div>
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
@@ -537,7 +507,7 @@ export default function PipelinePage() {
                     const stageName = getStageName(l);
                     const groupKey = getStageGroup(l);
                     const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                    const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
+                    const etapaText = isGroupedPipeline ? groupName(groupKey) : stageName;
                     const st = isGroupedPipeline ? null : formatStatus(l.status);
                     return (
                       <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
@@ -554,7 +524,7 @@ export default function PipelinePage() {
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                         <div className="min-w-0">
-                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
+                          <span className="inline-block rounded-full px-2 py-0.5 text-[11px] font-medium truncate max-w-full" style={{ background: tint(colorOf(groupKey), "24"), color: colorOf(groupKey) }} title={etapaText}>{etapaText}</span>
                         </div>
                         <div className="min-w-0">
                           {isGroupedPipeline ? (
@@ -589,7 +559,7 @@ export default function PipelinePage() {
                 const stageName = getStageName(l);
                 const groupKey = getStageGroup(l);
                 const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                const etapaText = isGroupedPipeline ? (GROUP_LABEL_MAP[groupKey] ?? groupKey) : stageName;
+                const etapaText = isGroupedPipeline ? groupName(groupKey) : stageName;
                 const st = isGroupedPipeline ? null : formatStatus(l.status);
                 return (
                   <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
@@ -606,7 +576,7 @@ export default function PipelinePage() {
                     <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                     <div className="min-w-0">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${GROUP_BADGE_MAP[groupKey] ?? "bg-slate-100 text-slate-600"} truncate max-w-full`} title={etapaText}>{etapaText}</span>
+                      <span className="inline-block rounded-full px-2 py-0.5 text-[11px] font-medium truncate max-w-full" style={{ background: tint(colorOf(groupKey), "24"), color: colorOf(groupKey) }} title={etapaText}>{etapaText}</span>
                     </div>
                     <div className="min-w-0">
                       {isGroupedPipeline ? (

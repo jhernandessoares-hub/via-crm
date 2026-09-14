@@ -48,7 +48,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 
 // ✅ NOVO: Pipeline (ETAPA 2)
-import { PipelineService } from '../pipeline/pipeline.service';
+import { PipelineService, DEFAULT_STAGE_TRANSITIONS } from '../pipeline/pipeline.service';
 import { AuditService } from '../audit/audit.service';
 import { QueueService } from '../queue/queue.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
@@ -2695,64 +2695,44 @@ async getById(user: any, id: string) {
       throw new BadRequestException('Lead sem stage atual.');
     }
 
-    const allowedTransitions: Record<string, string[]> = {
-      NOVO_LEAD: ['EM_CONTATO'],
+    // Aba "Fluxo" (tela /settings/pipeline): se o tenant já desenhou pelo menos
+    // uma linha saindo do status atual, ela manda — substitui a matriz legada
+    // abaixo só pra esse status. Enquanto não houver linha própria, comportamento
+    // 100% inalterado (matriz padrão ou movimento livre de pipeline customizado).
+    const customLinks = effectiveCurrentStageId
+      ? await this.prisma.pipelineTransition.findMany({
+          where: { tenantId: user.tenantId, fromStageId: effectiveCurrentStageId },
+          select: { toStageId: true },
+        })
+      : [];
 
-      EM_CONTATO: ['NAO_QUALIFICADO', 'LEAD_POTENCIAL_QUALIFICADO'],
+    if (customLinks.length > 0) {
+      const allowedStages = await this.prisma.pipelineStage.findMany({
+        where: {
+          tenantId: user.tenantId,
+          id: { in: customLinks.map((l) => l.toStageId) },
+          isActive: true,
+          ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
+        },
+        select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
+        orderBy: { sortOrder: 'asc' },
+      });
 
-      NAO_QUALIFICADO: ['ATENDIMENTO_ENCERRADO'],
-
-      LEAD_POTENCIAL_QUALIFICADO: [
-        'AGUARDANDO_AGENDAMENTO',
-        'AGENDADO_VISITA',
-        'ATENDIMENTO_ENCERRADO',
-      ],
-
-      ATENDIMENTO_ENCERRADO: ['BASE_FRIA_PRE'],
-
-      BASE_FRIA_PRE: ['NOVO_LEAD'],
-
-      AGUARDANDO_AGENDAMENTO: ['AGENDADO_VISITA', 'VISITA_CANCELADA'],
-
-      AGENDADO_VISITA: ['CONFIRMADOS', 'REAGENDAMENTO', 'VISITA_CANCELADA'],
-
-      REAGENDAMENTO: ['CONFIRMADOS', 'VISITA_CANCELADA'],
-
-      CONFIRMADOS: ['CRIACAO_PROPOSTA', 'NAO_COMPARECEU', 'VISITA_CANCELADA'],
-
-      NAO_COMPARECEU: ['REAGENDAMENTO', 'VISITA_CANCELADA'],
-
-      VISITA_CANCELADA: ['AGUARDANDO_AGENDAMENTO', 'BASE_FRIA_AGENDAMENTO'],
-
-      BASE_FRIA_AGENDAMENTO: ['AGUARDANDO_AGENDAMENTO'],
-
-      CRIACAO_PROPOSTA: ['PROPOSTA_ANDAMENTO'],
-
-      PROPOSTA_ANDAMENTO: ['PROPOSTA_ACEITA', 'DECLINIO'],
-
-      PROPOSTA_ACEITA: ['ANALISE_CREDITO', 'FORMALIZACAO'],
-
-      ANALISE_CREDITO: ['FORMALIZACAO', 'DECLINIO'],
-
-      FORMALIZACAO: ['CONTRATO_ASSINADO', 'DECLINIO'],
-
-      CONTRATO_ASSINADO: ['ITBI'],
-
-      DECLINIO: ['BASE_FRIA_NEGOCIACOES'],
-
-      BASE_FRIA_NEGOCIACOES: ['CRIACAO_PROPOSTA'],
-
-      ITBI: ['REGISTRO'],
-
-      REGISTRO: ['ENTREGA_CONTRATO'],
-
-      ENTREGA_CONTRATO: ['POS_VENDA'],
-
-      POS_VENDA: [],
-    };
+      return {
+        leadId,
+        currentStageId: effectiveCurrentStageId,
+        currentStageKey: fromStageKey,
+        currentRequiresEvidence,
+        currentRequiresReason,
+        currentRequiresPendencias,
+        currentUnitAction,
+        allowedStages,
+        prevGroupLastStageId: null,
+      };
+    }
 
     // Pipeline customizado: stages não presentes na matriz padrão têm livre movimento
-    const isCustomStage = fromStageKey !== 'BASE_FRIA' && !Object.prototype.hasOwnProperty.call(allowedTransitions, fromStageKey);
+    const isCustomStage = fromStageKey !== 'BASE_FRIA' && !Object.prototype.hasOwnProperty.call(DEFAULT_STAGE_TRANSITIONS, fromStageKey);
 
     if (isCustomStage) {
       const currentStageRecord = await this.prisma.pipelineStage.findFirst({
@@ -2888,7 +2868,7 @@ async getById(user: any, id: string) {
         }
       }
     } else {
-      allowedStageKeys = allowedTransitions[fromStageKey] ?? [];
+      allowedStageKeys = DEFAULT_STAGE_TRANSITIONS[fromStageKey] ?? [];
 
       // Permite voltar apenas para stages que o lead realmente visitou
       const transitions = await this.prisma.leadTransitionLog.findMany({
@@ -3383,70 +3363,27 @@ async updateStage(
     }
   };
 
-  const allowedTransitions: Record<string, string[]> = {
-    NOVO_LEAD: ['EM_CONTATO'],
-
-    EM_CONTATO: ['NAO_QUALIFICADO', 'LEAD_POTENCIAL_QUALIFICADO'],
-
-    NAO_QUALIFICADO: ['ATENDIMENTO_ENCERRADO'],
-
-    LEAD_POTENCIAL_QUALIFICADO: [
-      'AGUARDANDO_AGENDAMENTO',
-      'AGENDADO_VISITA',
-      'ATENDIMENTO_ENCERRADO',
-    ],
-
-    ATENDIMENTO_ENCERRADO: ['BASE_FRIA_PRE'],
-
-    BASE_FRIA_PRE: ['NOVO_LEAD'],
-
-    AGUARDANDO_AGENDAMENTO: ['AGENDADO_VISITA', 'VISITA_CANCELADA'],
-
-    AGENDADO_VISITA: ['CONFIRMADOS', 'REAGENDAMENTO', 'VISITA_CANCELADA'],
-
-    REAGENDAMENTO: ['CONFIRMADOS', 'VISITA_CANCELADA'],
-
-    CONFIRMADOS: ['CRIACAO_PROPOSTA', 'NAO_COMPARECEU', 'VISITA_CANCELADA'],
-
-    NAO_COMPARECEU: ['REAGENDAMENTO', 'VISITA_CANCELADA'],
-
-    VISITA_CANCELADA: ['AGUARDANDO_AGENDAMENTO', 'BASE_FRIA_AGENDAMENTO'],
-
-    BASE_FRIA_AGENDAMENTO: ['AGUARDANDO_AGENDAMENTO'],
-
-    CRIACAO_PROPOSTA: ['PROPOSTA_ANDAMENTO'],
-
-    PROPOSTA_ANDAMENTO: ['PROPOSTA_ACEITA', 'DECLINIO'],
-
-    PROPOSTA_ACEITA: ['ANALISE_CREDITO', 'FORMALIZACAO'],
-
-    ANALISE_CREDITO: ['FORMALIZACAO', 'DECLINIO'],
-
-    FORMALIZACAO: ['CONTRATO_ASSINADO', 'DECLINIO'],
-
-    CONTRATO_ASSINADO: ['ITBI'],
-
-    DECLINIO: ['BASE_FRIA_NEGOCIACOES'],
-
-    BASE_FRIA_NEGOCIACOES: ['CRIACAO_PROPOSTA'],
-
-    ITBI: ['REGISTRO'],
-
-    REGISTRO: ['ENTREGA_CONTRATO'],
-
-    ENTREGA_CONTRATO: ['POS_VENDA'],
-
-    POS_VENDA: [],
-  };
-
   if (!fromStageKey) {
     throw new BadRequestException('Lead sem stage atual.');
   }
 
-  // Pipeline customizado: stages fora da matriz padrão têm livre movimento
+  // Aba "Fluxo" (tela /settings/pipeline): se o tenant já desenhou pelo menos
+  // uma linha saindo do status atual, ela manda — nem matriz padrão, nem
+  // movimento livre de pipeline customizado. Enquanto não houver linha própria
+  // saindo desse status específico, comportamento 100% inalterado.
+  const customLinks = effectiveCurrentStageId
+    ? await this.prisma.pipelineTransition.findMany({
+        where: { tenantId: user.tenantId, fromStageId: effectiveCurrentStageId },
+        select: { toStageId: true },
+      })
+    : [];
+  const hasCustomLinks = customLinks.length > 0;
+
+  // Pipeline customizado: stages fora da matriz padrão E sem linha própria têm livre movimento
   const isCustomTransition =
+    !hasCustomLinks &&
     fromStageKey !== 'BASE_FRIA' &&
-    !Object.prototype.hasOwnProperty.call(allowedTransitions, fromStageKey);
+    !Object.prototype.hasOwnProperty.call(DEFAULT_STAGE_TRANSITIONS, fromStageKey);
 
   if (isCustomTransition) {
     const [updated] = await this.prisma.$transaction([
@@ -3504,7 +3441,9 @@ async updateStage(
 
   let isAllowed = false;
 
-  if (fromStageKey === 'BASE_FRIA') {
+  if (hasCustomLinks) {
+    isAllowed = customLinks.some((l) => l.toStageId === toStage.id);
+  } else if (fromStageKey === 'BASE_FRIA') {
     const isManagerLike = user?.role === 'MANAGER' || user?.role === 'OWNER';
 
     if (!isManagerLike) {
@@ -3565,7 +3504,7 @@ async updateStage(
 
     isAllowed = previousStage.id === toStage.id;
   } else {
-    const allowedTargets = allowedTransitions[fromStageKey] ?? [];
+    const allowedTargets = DEFAULT_STAGE_TRANSITIONS[fromStageKey] ?? [];
     isAllowed = allowedTargets.includes(toStage.key);
 
     // Permite voltar apenas para stages que o lead realmente visitou

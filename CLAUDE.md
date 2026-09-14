@@ -144,6 +144,7 @@ WhatsappUnofficialSession → sessão Baileys por tenant; status DISCONNECTED|CO
 WA Light — captura de mensagens enviadas pelo celular do corretor → sempre ativa, incondicional, para todos os tenants (sem toggle). Mensagens enviadas direto do celular do corretor (fora do CRM, mesma conta) viram LeadEvent (channel `whatsapp.unofficial.out`, `payloadRaw.source: 'corretor_celular'`) — só em leads já existentes, nunca cria lead novo. Diferenciado do eco do próprio envio do CRM via `messageId` pré-gerado (`generateMessageID()` do Baileys) registrado em memória antes do `sendMessage`. Detalhes em `squad-comunicacao.md`.
 CampanhaModelo    → template: mensagem com {{nome}}/{{telefone}}, mediaUrl, delayMin/Max (≥10s). Delete bloqueia se disparo ativo
 CampanhaDisparo   → status RODANDO|PAUSADA|CONCLUIDA|CANCELADA. ⚠️ Rota `GET /campanhas/disparos/active/:sessionId` deve ficar ANTES de `GET /campanhas/disparos/:id` no controller (NestJS resolve em ordem)
+                    criarLeadNoEnvio Boolean @default(false) + leadStageId String? (FK PipelineStage) — opção por campanha (definida na criação) para criar o Lead de TODOS os contatos já no momento do envio, na etapa escolhida, em vez de só quando o contato responde. Dedup por telefoneKey: se já existe lead, reaproveita sem regredir etapa. Ver `findOrCreateLeadByPhone()` em `whatsapp/lead-upsert.helper.ts` (extraída de `upsertLeadFromWhatsapp`, sem criar LeadEvent/acionar IA) e uso em `queue/campaign.worker.ts`
 CampanhaContato   → telefone, nome, leadId? (preenchido na resposta), status PENDENTE|ENVIADO|FALHA|RESPONDEU
                     previewMessages Json? — msgs silenciosas pré-resposta (sticker/poll/edited); replayed como LeadEvents com timestamp original antes da resposta real. Detalhes em squad-comunicacao.md
 Lead.avatarUrl    → foto de perfil do contato WhatsApp (buscado com timeout 2s via profilePictureUrl do Baileys, salvo no upsert)
@@ -450,6 +451,33 @@ NEXT_PUBLIC_API_URL=
 - **Formato na UI:** sempre via `formatLeadNumber(numero, reentradaCount)` em `apps/web/src/lib/format-lead-number.ts` — retorna `"000010"` (1ª vez) ou `"000010 - 2x"` (reentradas). String vazia se `numero` é null/0 (lead pré-backfill).
 - **Backfill:** `apps/api/scripts/backfill-lead-numbers.ts` — idempotente, numera leads existentes por tenant ordenados por `criadoEm ASC`. Rodar com `npx ts-node scripts/backfill-lead-numbers.ts` após `prisma db push`.
 - **Schema:** `Lead.numero Int?` (nullable para conviver com leads pré-backfill — `@@unique([tenantId, numero])` permite múltiplos NULLs no Postgres). Após backfill todos os leads ficam com número.
+
+---
+
+## Pipeline: Etapas e Status
+
+Tela: `/settings/pipeline` (OWNER only), duas abas — **Colunas** (lista, ordenação) e **Fluxo**
+(canvas React Flow: arrasta a caixa, puxa a linha pra definir transição permitida).
+
+- **Padrão de tenant novo** vive em `apps/api/src/pipeline/pipeline.service.ts`:
+  `DEFAULT_GROUPS` (5 Etapas), `DEFAULT_STAGES` (26 Status) e `DEFAULT_STAGE_TRANSITIONS`
+  (matriz de movimentos permitidos). **Mudar o padrão exige deploy** — é código, não banco.
+  `resolveTenantPipelineId()` só faz esse bootstrap quando o tenant ainda **não tem** pipeline;
+  em tenant existente ele nunca injeta stage nova (só faz backfill de `PipelineGroup`).
+- **`PipelineStage.group` não é rótulo visual — é regra de negócio.** O SLA só dispara em
+  Etapa `PRE_ATENDIMENTO` (`queue/sla.worker.ts`). Também alimenta navegação de funil
+  customizado, `advancesToGroup`/`returnsToGroup` e o marcador de etapa fechada na dedup de
+  reentrada (`leads.service.ts`). Mover um Status de Etapa muda comportamento — a tela avisa
+  ("passa a ter SLA") antes de aplicar.
+- **Status sem Etapa** (`group = null`) é resto de funil legado, anterior a `PipelineGroup`.
+  **Nenhum código encaixa isso automaticamente** — decisão explícita (2026-09-14): mexer em
+  `group` muda comportamento de SLA, então tenant real com status solto se trata caso a caso,
+  por script, nunca por migração silenciosa no boot. Na tela dá pra mover status entre Etapas
+  manualmente (`PATCH /pipeline/stages/:id/group`), e isso não toca em `Lead.stageId`.
+- **Transições por tenant:** linhas desenhadas na aba Fluxo viram `PipelineTransition` e passam
+  a governar o movimento **a partir daquele Status**. Status sem linha desenhada continua na
+  regra legada (`DEFAULT_STAGE_TRANSITIONS`). Ver `getAllowedStageTransitions`/`updateStage`.
+- `PipelineStage.posX/posY` = posição no canvas; nulo cai no layout automático por Etapa.
 
 ---
 

@@ -42,6 +42,12 @@ export default function SettingsPage() {
       show: isOwner,
     },
     {
+      href: "/settings/pipeline",
+      title: "Etapas e Status",
+      desc: "Organize as etapas e status do seu funil de vendas",
+      show: isOwner,
+    },
+    {
       href: "/settings/notifications",
       title: "Notificações",
       desc: "Escolha quais eventos e etapas te notificam pelo WhatsApp",
