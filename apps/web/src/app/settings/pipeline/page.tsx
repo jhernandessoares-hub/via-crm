@@ -212,6 +212,17 @@ export default function PipelineSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ stageId: string; groupId: string } | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  const [unauthorized, setUnauthorized] = useState(false);
+
+  // O backend já recusa (requireOwner em todas as rotas de edição) e o item some do
+  // menu de Configurações, mas quem digita a URL direto merece o motivo, e não um
+  // "não foi possível carregar" genérico. Mesmo padrão de /settings/branding.
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      if (user?.role !== "OWNER") setUnauthorized(true);
+    } catch { /* sem user no storage — o AuthGuard cuida */ }
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -297,6 +308,16 @@ export default function PipelineSettingsPage() {
       }),
     );
   };
+
+  if (unauthorized) {
+    return (
+      <AppShell title="Etapas e Status">
+        <div className="flex h-64 items-center justify-center text-[var(--shell-subtext)]">
+          Acesso restrito ao proprietário da conta.
+        </div>
+      </AppShell>
+    );
+  }
 
   if (loading) {
     return (
