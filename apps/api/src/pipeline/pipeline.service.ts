@@ -620,6 +620,33 @@ export class PipelineService {
     });
   }
 
+  /**
+   * Reescreve a ordem dos Status de uma Etapa de uma vez (arrastar e soltar na
+   * tela). `reorderStage` troca dois vizinhos e não serve para soltar um item em
+   * posição arbitrária. Só mexe em `sortOrder` — nenhum lead sai do lugar.
+   */
+  async reorderStages(tenantId: string, groupId: string, orderedStageIds: string[]) {
+    if (!Array.isArray(orderedStageIds) || orderedStageIds.length === 0) {
+      throw new BadRequestException('Nenhum status para reordenar.');
+    }
+    const group = await this.getGroupOrThrow(tenantId, groupId);
+
+    const owned = await this.prisma.pipelineStage.findMany({
+      where: { id: { in: orderedStageIds }, tenantId, pipelineId: group.pipelineId, group: group.key },
+      select: { id: true },
+    });
+    if (owned.length !== orderedStageIds.length) {
+      throw new BadRequestException('Só dá para reordenar status que já estão dentro desta etapa.');
+    }
+
+    await this.prisma.$transaction(
+      orderedStageIds.map((id, i) =>
+        this.prisma.pipelineStage.update({ where: { id }, data: { sortOrder: i + 1 } }),
+      ),
+    );
+    return { reordered: orderedStageIds.length };
+  }
+
   async deactivateStage(tenantId: string, stageId: string) {
     const stage = await this.getStageOrThrow(tenantId, stageId);
 

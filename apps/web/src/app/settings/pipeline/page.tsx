@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ChevronUp, ChevronDown, Pencil, Check, X, MoveRight, Palette } from "lucide-react";
+import {
+  Plus, Trash2, ChevronLeft, ChevronRight, Pencil, Check, X,
+  MoveRight, Palette, MoreVertical, GripVertical,
+} from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import PipelineFlow from "./PipelineFlow";
@@ -11,6 +14,22 @@ type StageDTO = { id: string; key: string; name: string; sortOrder: number; grou
 type GroupDTO = { id: string; key: string; name: string; color: string | null; sortOrder: number; stages: StageDTO[] };
 type TransitionDTO = { id: string; fromStageId: string; toStageId: string };
 type StructureDTO = { pipelineId: string; groups: GroupDTO[]; ungrouped: StageDTO[]; transitions: TransitionDTO[] };
+
+const INPUT_STYLE = {
+  background: "var(--shell-input-bg)",
+  color: "var(--shell-input-text)",
+  borderColor: "var(--shell-input-border)",
+};
+
+/** Fecha um popover com Escape. */
+function useEscape(open: boolean, onClose: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [open, onClose]);
+}
 
 function IconButton({ onClick, title, danger, children }: { onClick: () => void; title: string; danger?: boolean; children: React.ReactNode }) {
   return (
@@ -25,45 +44,45 @@ function IconButton({ onClick, title, danger, children }: { onClick: () => void;
   );
 }
 
-function EditableName({ value, onSave }: { value: string; onSave: (v: string) => void }) {
-  const [editing, setEditing] = useState(false);
+/** Nome editável. O modo de edição é controlado de fora, porque quem dispara é o menu. */
+function EditableName({
+  value,
+  editing,
+  onEditingChange,
+  onSave,
+}: {
+  value: string;
+  editing: boolean;
+  onEditingChange: (v: boolean) => void;
+  onSave: (v: string) => void;
+}) {
   const [draft, setDraft] = useState(value);
-
   useEffect(() => setDraft(value), [value]);
 
-  if (!editing) {
-    return (
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span className="truncate">{value}</span>
-        <IconButton title="Renomear" onClick={() => setEditing(true)}>
-          <Pencil className="h-3 w-3" />
-        </IconButton>
-      </div>
-    );
-  }
+  if (!editing) return <span className="block break-words leading-snug">{value}</span>;
 
   const save = () => {
     const trimmed = draft.trim();
-    setEditing(false);
+    onEditingChange(false);
     if (trimmed && trimmed !== value) onSave(trimmed);
     else setDraft(value);
   };
 
   return (
-    <div className="flex items-center gap-1 min-w-0">
+    <div className="flex items-center gap-1">
       <input
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") save();
-          if (e.key === "Escape") { setDraft(value); setEditing(false); }
+          if (e.key === "Escape") { setDraft(value); onEditingChange(false); }
         }}
         className="w-full min-w-0 rounded-md border px-2 py-1 text-sm"
-        style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+        style={INPUT_STYLE}
       />
       <IconButton title="Salvar" onClick={save}><Check className="h-3.5 w-3.5" /></IconButton>
-      <IconButton title="Cancelar" onClick={() => { setDraft(value); setEditing(false); }}><X className="h-3.5 w-3.5" /></IconButton>
+      <IconButton title="Cancelar" onClick={() => { setDraft(value); onEditingChange(false); }}><X className="h-3.5 w-3.5" /></IconButton>
     </div>
   );
 }
@@ -77,7 +96,7 @@ function AddInline({ placeholder, onAdd }: { placeholder: string; onAdd: (name: 
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors w-full justify-center"
+        className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-xs font-medium text-[var(--shell-subtext)] hover:bg-[var(--shell-hover)] transition-colors"
         style={{ borderColor: "var(--shell-card-border)" }}
       >
         <Plus className="h-3.5 w-3.5" /> {placeholder}
@@ -104,7 +123,7 @@ function AddInline({ placeholder, onAdd }: { placeholder: string; onAdd: (name: 
         }}
         placeholder={placeholder}
         className="w-full min-w-0 rounded-md border px-2 py-1 text-sm"
-        style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
+        style={INPUT_STYLE}
       />
       <IconButton title="Adicionar" onClick={submit}><Check className="h-3.5 w-3.5" /></IconButton>
       <IconButton title="Cancelar" onClick={() => { setValue(""); setOpen(false); }}><X className="h-3.5 w-3.5" /></IconButton>
@@ -112,93 +131,75 @@ function AddInline({ placeholder, onAdd }: { placeholder: string; onAdd: (name: 
   );
 }
 
-/** Escolhe a cor da Etapa. Presets + cor livre + voltar para a automática. */
-function ColorPicker({ value, current, onPick }: { value: string | null; current: string; onPick: (c: string | null) => void }) {
+/** Menu de ações — um botão só no lugar dos 5 ícones que comiam o nome. */
+function RowMenu({ title, children }: { title: string; children: (close: () => void) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  useEscape(open, () => setOpen(false));
 
   return (
-    <div className="relative">
-      <IconButton title="Cor da etapa" onClick={() => setOpen((o) => !o)}>
-        <span className="flex items-center gap-1">
-          <span className="block h-3.5 w-3.5 rounded-full border border-black/15" style={{ background: current }} />
-          <Palette className="h-3 w-3" />
-        </span>
+    <div className="relative shrink-0">
+      <IconButton title={title} onClick={() => setOpen((o) => !o)}>
+        <MoreVertical className="h-4 w-4" />
       </IconButton>
-
       {open && (
         <div
-          className="absolute right-0 top-8 z-20 w-52 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-3 shadow-lg"
+          className="absolute right-0 top-8 z-20 w-56 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-1.5 shadow-lg"
         >
-          <div className="grid grid-cols-5 gap-2">
-            {GROUP_PALETTE.map((c) => (
-              <button
-                key={c}
-                type="button"
-                title={c}
-                onClick={() => { onPick(c); setOpen(false); }}
-                className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
-                style={{ background: c, borderColor: value?.toLowerCase() === c ? "var(--shell-text)" : "transparent" }}
-              />
-            ))}
-          </div>
-
-          <label className="mt-3 flex items-center gap-2 text-xs text-[var(--shell-subtext)]">
-            <input
-              type="color"
-              value={current}
-              onChange={(e) => onPick(e.target.value)}
-              className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
-            />
-            Cor personalizada
-          </label>
-
-          <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2" style={{ borderColor: "var(--shell-divider)" }}>
-            <button
-              type="button"
-              onClick={() => { onPick(null); setOpen(false); }}
-              className="text-xs text-[var(--shell-subtext)] hover:underline"
-            >
-              Cor automática
-            </button>
-            <button type="button" onClick={() => setOpen(false)} className="text-xs font-medium text-[var(--shell-text)]">
-              Fechar
-            </button>
-          </div>
+          {children(() => setOpen(false))}
         </div>
       )}
     </div>
   );
 }
 
-/** Seletor de destino que aparece embaixo do status quando se clica em "mover". */
-function MoveTarget({
-  groups,
-  currentGroupId,
-  onPick,
-  onCancel,
-}: {
-  groups: GroupDTO[];
-  currentGroupId: string | null;
-  onPick: (groupId: string) => void;
-  onCancel: () => void;
-}) {
-  const options = groups.filter((g) => g.id !== currentGroupId);
+function MenuItem({ onClick, danger, icon, children }: { onClick: () => void; danger?: boolean; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-1 px-2.5 pb-2">
-      <MoveRight className="h-3.5 w-3.5 shrink-0 text-[var(--shell-subtext)]" />
-      <select
-        autoFocus
-        defaultValue=""
-        onChange={(e) => e.target.value && onPick(e.target.value)}
-        className="w-full min-w-0 rounded-md border px-2 py-1 text-xs"
-        style={{ background: "var(--shell-input-bg)", color: "var(--shell-input-text)", borderColor: "var(--shell-input-border)" }}
-      >
-        <option value="" disabled>Mover para a etapa...</option>
-        {options.map((g) => (
-          <option key={g.id} value={g.id}>{g.name}</option>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-[var(--shell-hover)] transition-colors ${danger ? "text-red-500" : "text-[var(--shell-text)]"}`}
+    >
+      <span className="shrink-0">{icon}</span>
+      {children}
+    </button>
+  );
+}
+
+function MenuDivider() {
+  return <div className="my-1 h-px" style={{ background: "var(--shell-divider)" }} />;
+}
+
+/** Grade de cores da Etapa, usada dentro do menu. */
+function ColorSwatches({ value, current, onPick }: { value: string | null; current: string; onPick: (c: string | null) => void }) {
+  return (
+    <div className="px-2.5 py-2">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--shell-subtext)]">
+        <Palette className="h-3.5 w-3.5" /> Cor da etapa
+      </p>
+      <div className="grid grid-cols-5 gap-1.5">
+        {GROUP_PALETTE.map((c) => (
+          <button
+            key={c}
+            type="button"
+            title={c}
+            onClick={() => onPick(c)}
+            className="h-6 w-6 rounded-full border-2 transition-transform hover:scale-110"
+            style={{ background: c, borderColor: value?.toLowerCase() === c ? "var(--shell-text)" : "transparent" }}
+          />
         ))}
-      </select>
-      <IconButton title="Cancelar" onClick={onCancel}><X className="h-3.5 w-3.5" /></IconButton>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <input
+          type="color"
+          value={current}
+          onChange={(e) => onPick(e.target.value)}
+          className="h-6 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
+          title="Cor personalizada"
+        />
+        <button type="button" onClick={() => onPick(null)} className="text-xs text-[var(--shell-subtext)] hover:underline">
+          Cor automática
+        </button>
+      </div>
     </div>
   );
 }
@@ -208,7 +209,9 @@ export default function PipelineSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"colunas" | "fluxo">("colunas");
-  const [movingId, setMovingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [drag, setDrag] = useState<{ stageId: string; groupId: string } | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -246,9 +249,9 @@ export default function PipelineSettingsPage() {
 
   const reorderGroup = (group: GroupDTO, direction: -1 | 1) => {
     if (!data) return;
-    const groups = [...data.groups].sort((a, b) => a.sortOrder - b.sortOrder);
-    const idx = groups.findIndex((g) => g.id === group.id);
-    const swapWith = groups[idx + direction];
+    const gs = [...data.groups].sort((a, b) => a.sortOrder - b.sortOrder);
+    const idx = gs.findIndex((g) => g.id === group.id);
+    const swapWith = gs[idx + direction];
     if (!swapWith) return;
     withErrorHandling(async () => {
       await apiFetch(`/pipeline/groups/${group.id}`, { method: "PATCH", body: JSON.stringify({ sortOrder: swapWith.sortOrder }) });
@@ -267,33 +270,38 @@ export default function PipelineSettingsPage() {
     withErrorHandling(() => apiFetch(`/pipeline/stages/${id}`, { method: "DELETE" }));
   };
 
-  const reorderStage = (groupStages: StageDTO[], stage: StageDTO, direction: -1 | 1) => {
-    const sorted = [...groupStages].sort((a, b) => a.sortOrder - b.sortOrder);
-    const idx = sorted.findIndex((s) => s.id === stage.id);
-    const swapWith = sorted[idx + direction];
-    if (!swapWith) return;
-    withErrorHandling(async () => {
-      await apiFetch(`/pipeline/stages/${stage.id}`, { method: "PATCH", body: JSON.stringify({ sortOrder: swapWith.sortOrder }) });
-      await apiFetch(`/pipeline/stages/${swapWith.id}`, { method: "PATCH", body: JSON.stringify({ sortOrder: stage.sortOrder }) });
-    });
+  /** Trocar um Status de Etapa não move lead — só muda a que Etapa ele pertence. */
+  const moveStageToGroup = (stageId: string, groupId: string) => {
+    if (!groupId) return;
+    withErrorHandling(() => apiFetch(`/pipeline/stages/${stageId}/group`, { method: "PATCH", body: JSON.stringify({ groupId }) }));
   };
 
-  /** Move um ou vários status pra dentro de uma Etapa. Só troca a que Etapa o
-   *  status pertence — nenhum lead muda de status nem sai do lugar. */
-  const moveStagesToGroup = (stageIds: string[], groupId: string) => {
-    if (!groupId || stageIds.length === 0) return;
-    setMovingId(null);
-    withErrorHandling(async () => {
-      for (const id of stageIds) {
-        await apiFetch(`/pipeline/stages/${id}/group`, { method: "PATCH", body: JSON.stringify({ groupId }) });
-      }
-    });
+  /** Solta o status arrastado antes do alvo e grava a ordem inteira de uma vez. */
+  const dropOn = (group: GroupDTO, targetId: string) => {
+    const d = drag;
+    setDrag(null);
+    setOverId(null);
+    if (!d || d.groupId !== group.id || d.stageId === targetId) return;
+
+    const ordered = group.stages.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((s) => s.id);
+    const from = ordered.indexOf(d.stageId);
+    if (from < 0) return;
+    ordered.splice(from, 1);
+    const to = ordered.indexOf(targetId);
+    ordered.splice(to < 0 ? ordered.length : to, 0, d.stageId);
+
+    withErrorHandling(() =>
+      apiFetch("/pipeline/stages/reorder", {
+        method: "PATCH",
+        body: JSON.stringify({ groupId: group.id, orderedStageIds: ordered }),
+      }),
+    );
   };
 
   if (loading) {
     return (
       <AppShell title="Etapas e Status">
-        <div className="flex items-center justify-center h-64 text-[var(--shell-subtext)]">Carregando...</div>
+        <div className="flex h-64 items-center justify-center text-[var(--shell-subtext)]">Carregando...</div>
       </AppShell>
     );
   }
@@ -303,18 +311,16 @@ export default function PipelineSettingsPage() {
 
   return (
     <AppShell title="Etapas e Status">
-      <div className="max-w-full py-8 px-4 space-y-6">
+      <div className="max-w-full space-y-6 px-4 py-8">
         <div>
           <h1 className="text-2xl font-bold text-[var(--shell-text)]">Etapas e Status</h1>
-          <p className="text-sm text-[var(--shell-subtext)] mt-1">
+          <p className="mt-1 text-sm text-[var(--shell-subtext)]">
             As Etapas são as colunas do seu funil. Cada Etapa tem Status dentro dela — os passos que um lead passa
             até avançar para a próxima Etapa. Isso reflete exatamente o funil que sua conta usa hoje.
           </p>
         </div>
 
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{error}</div>
-        )}
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{error}</div>}
 
         <div className="flex gap-2">
           {([["colunas", "Colunas"], ["fluxo", "Fluxo"]] as const).map(([key, label]) => (
@@ -323,9 +329,7 @@ export default function PipelineSettingsPage() {
               type="button"
               onClick={() => setTab(key)}
               className="rounded-xl px-4 py-2 text-sm font-medium transition-colors"
-              style={tab === key
-                ? { background: "#1D9E75", color: "#fff" }
-                : { background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+              style={tab === key ? { background: "#1D9E75", color: "#fff" } : { background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
             >
               {label}
             </button>
@@ -335,108 +339,199 @@ export default function PipelineSettingsPage() {
         {tab === "fluxo" && data && <PipelineFlow data={data} onChanged={load} />}
 
         {tab === "colunas" && (
-        <div className="flex gap-4 overflow-x-auto pb-4 items-start">
-          {groups.map((group, groupIdx) => {
-            const stages = group.stages.slice().sort((a, b) => a.sortOrder - b.sortOrder);
-            const color = groupColor(group.color, groupIdx);
-            return (
-              <div
-                key={group.id}
-                className="w-72 shrink-0 overflow-hidden rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]"
-              >
-                <div style={{ background: color, height: 6 }} />
-                <div className="p-4">
-                <div className="flex items-center justify-between gap-2 pb-3 border-b" style={{ borderColor: "var(--shell-divider)" }}>
-                  <div className="font-bold text-[15px] min-w-0 flex-1" style={{ color }}>
-                    <EditableName value={group.name} onSave={(v) => renameGroup(group.id, v)} />
-                  </div>
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <ColorPicker value={group.color} current={color} onPick={(c) => setGroupColor(group.id, c)} />
-                    <IconButton title="Mover etapa para a esquerda" onClick={() => reorderGroup(group, -1)}><ChevronUp className="h-3.5 w-3.5 -rotate-90" /></IconButton>
-                    <IconButton title="Mover etapa para a direita" onClick={() => reorderGroup(group, 1)}><ChevronDown className="h-3.5 w-3.5 -rotate-90" /></IconButton>
-                    <IconButton title="Remover etapa" danger onClick={() => deleteGroup(group.id)}><Trash2 className="h-3.5 w-3.5" /></IconButton>
-                  </div>
-                </div>
+          <>
+            <p className="text-xs text-[var(--shell-subtext)]">
+              Arraste um status pela alça <GripVertical className="inline h-3 w-3" /> para mudar a ordem dentro da
+              Etapa. O botão <MoreVertical className="inline h-3 w-3" /> abre as opções de renomear, mudar de Etapa,
+              cor e excluir.
+            </p>
 
-                <div className="pt-3 space-y-1.5">
-                  {stages.map((stage) => (
-                    <div
-                      key={stage.id}
-                      className="rounded-lg text-[15px] font-medium"
-                      style={{ background: `${color}14`, borderLeft: `4px solid ${color}` }}
-                    >
-                      <div className="flex items-center justify-between gap-1.5 px-2.5 py-2">
-                        <div className="min-w-0 flex-1 text-[var(--shell-text)]">
-                          <EditableName value={stage.name} onSave={(v) => renameStage(stage.id, v)} />
+            <div className="flex items-start gap-4 overflow-x-auto pb-4">
+              {groups.map((group, groupIdx) => {
+                const stages = group.stages.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+                const color = groupColor(group.color, groupIdx);
+                return (
+                  <div
+                    key={group.id}
+                    className="w-72 shrink-0 overflow-hidden rounded-2xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]"
+                  >
+                    <div style={{ background: color, height: 6 }} />
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2 border-b pb-3" style={{ borderColor: "var(--shell-divider)" }}>
+                        <div className="min-w-0 flex-1 text-[15px] font-bold" style={{ color }}>
+                          <EditableName
+                            value={group.name}
+                            editing={editingId === group.id}
+                            onEditingChange={(v) => setEditingId(v ? group.id : null)}
+                            onSave={(v) => renameGroup(group.id, v)}
+                          />
                         </div>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <IconButton title="Mover para cima" onClick={() => reorderStage(stages, stage, -1)}><ChevronUp className="h-3.5 w-3.5" /></IconButton>
-                          <IconButton title="Mover para baixo" onClick={() => reorderStage(stages, stage, 1)}><ChevronDown className="h-3.5 w-3.5" /></IconButton>
-                          <IconButton title="Mover para outra etapa" onClick={() => setMovingId(movingId === stage.id ? null : stage.id)}><MoveRight className="h-3.5 w-3.5" /></IconButton>
-                          <IconButton title="Remover status" danger onClick={() => deleteStage(stage.id)}><Trash2 className="h-3.5 w-3.5" /></IconButton>
-                        </div>
+                        <RowMenu title="Opções da etapa">
+                          {(close) => (
+                            <>
+                              <MenuItem icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => { setEditingId(group.id); close(); }}>
+                                Renomear
+                              </MenuItem>
+                              <MenuDivider />
+                              <ColorSwatches value={group.color} current={color} onPick={(c) => { setGroupColor(group.id, c); close(); }} />
+                              <MenuDivider />
+                              <MenuItem icon={<ChevronLeft className="h-3.5 w-3.5" />} onClick={() => { reorderGroup(group, -1); close(); }}>
+                                Mover para a esquerda
+                              </MenuItem>
+                              <MenuItem icon={<ChevronRight className="h-3.5 w-3.5" />} onClick={() => { reorderGroup(group, 1); close(); }}>
+                                Mover para a direita
+                              </MenuItem>
+                              <MenuDivider />
+                              <MenuItem danger icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => { deleteGroup(group.id); close(); }}>
+                                Excluir etapa
+                              </MenuItem>
+                            </>
+                          )}
+                        </RowMenu>
                       </div>
-                      {movingId === stage.id && (
-                        <MoveTarget
-                          groups={groups}
-                          currentGroupId={group.id}
-                          onPick={(groupId) => moveStagesToGroup([stage.id], groupId)}
-                          onCancel={() => setMovingId(null)}
-                        />
-                      )}
-                    </div>
-                  ))}
-                  <AddInline placeholder="Novo status" onAdd={(name) => addStage(group.id, name)} />
-                </div>
-                </div>
-              </div>
-            );
-          })}
 
-          {/* Funil legado (anterior a existir Etapa) — sem isto, um tenant cujos
-              status estão todos soltos abriria esta tela em branco. */}
-          {ungrouped.length > 0 && (
-            <div className="w-72 shrink-0 overflow-hidden rounded-2xl border border-dashed border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]">
-              <div style={{ background: "#94a3b8", height: 6 }} />
-              <div className="p-4">
-                <div className="pb-3 border-b" style={{ borderColor: "var(--shell-divider)" }}>
-                  <span className="font-bold text-[15px] text-[var(--shell-subtext)]">Sem etapa</span>
-                  <p className="mt-1 text-[11px] leading-snug text-[var(--shell-subtext)]">
-                    Status do funil antigo, de antes de existir Etapa. Use a seta para colocar cada um
-                    dentro de uma Etapa — nenhum lead sai do lugar.
-                  </p>
-                </div>
-                <div className="pt-3 space-y-1.5">
-                  {ungrouped.map((stage) => (
-                    <div key={stage.id} className="rounded-lg text-[15px] font-medium" style={{ background: "var(--shell-hover)" }}>
-                      <div className="flex items-center justify-between gap-1.5 px-2.5 py-2">
-                        <div className="min-w-0 flex-1 text-[var(--shell-text)]">
-                          <EditableName value={stage.name} onSave={(v) => renameStage(stage.id, v)} />
-                        </div>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <IconButton title="Mover para uma etapa" onClick={() => setMovingId(movingId === stage.id ? null : stage.id)}><MoveRight className="h-3.5 w-3.5" /></IconButton>
-                          <IconButton title="Remover status" danger onClick={() => deleteStage(stage.id)}><Trash2 className="h-3.5 w-3.5" /></IconButton>
-                        </div>
+                      <div className="space-y-1.5 pt-3">
+                        {stages.map((stage) => (
+                          <div
+                            key={stage.id}
+                            onDragOver={(e) => {
+                              if (drag?.groupId !== group.id) return;
+                              e.preventDefault();
+                              setOverId(stage.id);
+                            }}
+                            onDrop={(e) => { e.preventDefault(); dropOn(group, stage.id); }}
+                            className="rounded-lg text-[15px] font-medium transition-shadow"
+                            style={{
+                              background: `${color}14`,
+                              borderLeft: `4px solid ${color}`,
+                              boxShadow: overId === stage.id && drag?.stageId !== stage.id ? `0 -2px 0 0 ${color}` : undefined,
+                              opacity: drag?.stageId === stage.id ? 0.4 : 1,
+                            }}
+                          >
+                            <div className="flex items-start gap-1 px-1.5 py-2">
+                              <span
+                                draggable
+                                onDragStart={() => setDrag({ stageId: stage.id, groupId: group.id })}
+                                onDragEnd={() => { setDrag(null); setOverId(null); }}
+                                title="Arraste para mudar a ordem"
+                                className="mt-0.5 shrink-0 cursor-grab p-0.5 text-[var(--shell-subtext)] active:cursor-grabbing"
+                              >
+                                <GripVertical className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0 flex-1 py-0.5 text-[var(--shell-text)]">
+                                <EditableName
+                                  value={stage.name}
+                                  editing={editingId === stage.id}
+                                  onEditingChange={(v) => setEditingId(v ? stage.id : null)}
+                                  onSave={(v) => renameStage(stage.id, v)}
+                                />
+                              </div>
+                              <RowMenu title="Opções do status">
+                                {(close) => (
+                                  <>
+                                    <MenuItem icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => { setEditingId(stage.id); close(); }}>
+                                      Renomear
+                                    </MenuItem>
+                                    <MenuDivider />
+                                    <div className="px-2.5 py-2">
+                                      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--shell-subtext)]">
+                                        <MoveRight className="h-3.5 w-3.5" /> Mover para a etapa
+                                      </p>
+                                      <select
+                                        defaultValue=""
+                                        onChange={(e) => { if (e.target.value) { moveStageToGroup(stage.id, e.target.value); close(); } }}
+                                        className="w-full rounded-md border px-2 py-1 text-xs"
+                                        style={INPUT_STYLE}
+                                      >
+                                        <option value="" disabled>Escolha a etapa...</option>
+                                        {groups.filter((g) => g.id !== group.id).map((g) => (
+                                          <option key={g.id} value={g.id}>{g.name}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <MenuDivider />
+                                    <MenuItem danger icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => { deleteStage(stage.id); close(); }}>
+                                      Excluir status
+                                    </MenuItem>
+                                  </>
+                                )}
+                              </RowMenu>
+                            </div>
+                          </div>
+                        ))}
+                        <AddInline placeholder="Novo status" onAdd={(name) => addStage(group.id, name)} />
                       </div>
-                      {movingId === stage.id && (
-                        <MoveTarget
-                          groups={groups}
-                          currentGroupId={null}
-                          onPick={(groupId) => moveStagesToGroup([stage.id], groupId)}
-                          onCancel={() => setMovingId(null)}
-                        />
-                      )}
                     </div>
-                  ))}
+                  </div>
+                );
+              })}
+
+              {/* Funil legado (anterior a existir Etapa) — sem isto, um tenant cujos
+                  status estão todos soltos abriria esta tela em branco. */}
+              {ungrouped.length > 0 && (
+                <div className="w-72 shrink-0 overflow-hidden rounded-2xl border border-dashed border-[var(--shell-card-border)] bg-[var(--shell-card-bg)]">
+                  <div style={{ background: "#94a3b8", height: 6 }} />
+                  <div className="p-4">
+                    <div className="border-b pb-3" style={{ borderColor: "var(--shell-divider)" }}>
+                      <span className="text-[15px] font-bold text-[var(--shell-subtext)]">Sem etapa</span>
+                      <p className="mt-1 text-[11px] leading-snug text-[var(--shell-subtext)]">
+                        Status do funil antigo, de antes de existir Etapa. Use o menu para colocar cada um dentro de
+                        uma Etapa — nenhum lead sai do lugar.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5 pt-3">
+                      {ungrouped.map((stage) => (
+                        <div key={stage.id} className="rounded-lg text-[15px] font-medium" style={{ background: "var(--shell-hover)" }}>
+                          <div className="flex items-start gap-1 px-2.5 py-2">
+                            <div className="min-w-0 flex-1 py-0.5 text-[var(--shell-text)]">
+                              <EditableName
+                                value={stage.name}
+                                editing={editingId === stage.id}
+                                onEditingChange={(v) => setEditingId(v ? stage.id : null)}
+                                onSave={(v) => renameStage(stage.id, v)}
+                              />
+                            </div>
+                            <RowMenu title="Opções do status">
+                              {(close) => (
+                                <>
+                                  <MenuItem icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => { setEditingId(stage.id); close(); }}>
+                                    Renomear
+                                  </MenuItem>
+                                  <MenuDivider />
+                                  <div className="px-2.5 py-2">
+                                    <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--shell-subtext)]">
+                                      <MoveRight className="h-3.5 w-3.5" /> Mover para a etapa
+                                    </p>
+                                    <select
+                                      defaultValue=""
+                                      onChange={(e) => { if (e.target.value) { moveStageToGroup(stage.id, e.target.value); close(); } }}
+                                      className="w-full rounded-md border px-2 py-1 text-xs"
+                                      style={INPUT_STYLE}
+                                    >
+                                      <option value="" disabled>Escolha a etapa...</option>
+                                      {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                    </select>
+                                  </div>
+                                  <MenuDivider />
+                                  <MenuItem danger icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => { deleteStage(stage.id); close(); }}>
+                                    Excluir status
+                                  </MenuItem>
+                                </>
+                              )}
+                            </RowMenu>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              <div className="w-72 shrink-0">
+                <AddInline placeholder="Nova etapa" onAdd={addGroup} />
               </div>
             </div>
-          )}
-
-          <div className="w-72 shrink-0">
-            <AddInline placeholder="Nova etapa" onAdd={addGroup} />
-          </div>
-        </div>
+          </>
         )}
       </div>
     </AppShell>

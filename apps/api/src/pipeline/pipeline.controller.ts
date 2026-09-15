@@ -86,6 +86,13 @@ export class PipelineController {
     return this.pipelineService.saveStagePositions(req.user.tenantId, body?.positions ?? []);
   }
 
+  /** Também precisa vir ANTES de `@Patch('stages/:id')` (ordem de rota do Nest). */
+  @Patch('stages/reorder')
+  async reorderStages(@Req() req: any, @Body() body: { groupId: string; orderedStageIds: string[] }) {
+    requireOwner(req);
+    return this.pipelineService.reorderStages(req.user.tenantId, body?.groupId, body?.orderedStageIds ?? []);
+  }
+
   @Patch('stages/:id/group')
   async assignStageToGroup(@Req() req: any, @Param('id') id: string, @Body() body: { groupId: string }) {
     requireOwner(req);
