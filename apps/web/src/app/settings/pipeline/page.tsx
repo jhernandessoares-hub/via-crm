@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus, Trash2, ChevronLeft, ChevronRight, Pencil, Check, X,
   MoveRight, Palette, MoreVertical, GripVertical,
@@ -131,23 +132,74 @@ function AddInline({ placeholder, onAdd }: { placeholder: string; onAdd: (name: 
   );
 }
 
-/** Menu de ações — um botão só no lugar dos 5 ícones que comiam o nome. */
+const MENU_WIDTH = 224; // w-56
+
+/**
+ * Menu de ações — um botão só no lugar dos 5 ícones que comiam o nome.
+ *
+ * O painel vai num portal com `position: fixed`, NÃO dentro do card. O card tem
+ * `overflow-hidden` (por causa da faixa colorida arredondada no topo) e a faixa
+ * de colunas tem `overflow-x-auto` — que no CSS também passa a cortar na
+ * vertical. Com o painel posicionado de forma absoluta lá dentro, o menu do
+ * último status de cada coluna era recortado por inteiro: clicava e não
+ * aparecia nada.
+ */
 function RowMenu({ title, children }: { title: string; children: (close: () => void) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+  const anchor = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+
   useEscape(open, () => setOpen(false));
 
+  const toggle = () => {
+    if (open) { setOpen(false); return; }
+    const r = anchor.current?.getBoundingClientRect();
+    if (!r) return;
+    // Sem espaço embaixo? abre para cima, ancorado no topo do botão.
+    const abreParaCima = window.innerHeight - r.bottom < 300;
+    setPos({
+      left: Math.max(8, Math.min(r.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8)),
+      ...(abreParaCima ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }),
+    });
+    setOpen(true);
+  };
+
+  // Flutuando por cima de tudo, tem que fechar ao clicar fora e ao rolar a tela,
+  // senão fica "solto" longe do botão que o abriu.
+  useEffect(() => {
+    if (!open) return;
+    const fora = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!panel.current?.contains(t) && !anchor.current?.contains(t)) setOpen(false);
+    };
+    const fecha = () => setOpen(false);
+    document.addEventListener("mousedown", fora);
+    window.addEventListener("scroll", fecha, true);
+    window.addEventListener("resize", fecha);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      window.removeEventListener("scroll", fecha, true);
+      window.removeEventListener("resize", fecha);
+    };
+  }, [open]);
+
   return (
-    <div className="relative shrink-0">
-      <IconButton title={title} onClick={() => setOpen((o) => !o)}>
+    <div ref={anchor} className="shrink-0">
+      <IconButton title={title} onClick={toggle}>
         <MoreVertical className="h-4 w-4" />
       </IconButton>
-      {open && (
-        <div
-          className="absolute right-0 top-8 z-20 w-56 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-1.5 shadow-lg"
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
+      {open && pos && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={panel}
+            className="fixed z-[100] w-56 overflow-y-auto rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-1.5 shadow-xl"
+            style={{ top: pos.top, bottom: pos.bottom, left: pos.left, maxHeight: "min(70vh, 420px)" }}
+          >
+            {children(() => setOpen(false))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
