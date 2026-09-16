@@ -28,6 +28,10 @@
   --brand-accent-light: #5DCAA5;
   --brand-accent-muted: rgba(29,158,117,0.18);
 
+  /* Estado ativo do item de navegação da sidebar */
+  --sidebar-active-bg: var(--brand-accent-muted);
+  --sidebar-active-text: #FFFFFF;
+
   /* Shell — light */
   --shell-bg: var(--via-offwhite);
   --shell-text: #1A202C;
@@ -44,6 +48,20 @@
 
   /* Papel de parede do chat — inspirado no fundo clássico do WhatsApp */
   --chat-wallpaper: #E9E1D3;
+
+  /* Status / tone — badges e pills semânticos (light) */
+  --status-neutral-bg: #F1F5F9;   --status-neutral-text: #475569;
+  --status-info-bg: #EFF6FF;      --status-info-text: #1D4ED8;
+  --status-success-bg: #ECFDF5;   --status-success-text: #047857;
+  --status-warning-bg: #FFFBEB;   --status-warning-text: #B45309;
+  --status-error-bg: #FEF2F2;     --status-error-text: #B91C1C;
+  --status-indigo-bg: #EEF2FF;    --status-indigo-text: #4338CA;
+  --status-violet-bg: #F5F3FF;    --status-violet-text: #6D28D9;
+  --status-brand-bg: var(--via-teal-soft); --status-brand-text: var(--via-teal);
+
+  /* Destaque de linha "pendente" (ex: conversa aberta) */
+  --row-pending-bg: #FFFBEB;        --row-pending-hover-bg: #FEF3C7;
+  --row-pending-border: #FCD34D;    --row-pending-accent: #F59E0B;
 
   /* Compat */
   --background: var(--shell-bg);
@@ -65,6 +83,19 @@ html.dark {
   --shell-hover: rgba(29, 158, 117, 0.12);
 
   --chat-wallpaper: #0C1B12;
+
+  /* Status / tone — badges e pills semânticos (dark) */
+  --status-neutral-bg: #1E293B;   --status-neutral-text: #CBD5E1;
+  --status-info-bg: #17305C;      --status-info-text: #93C5FD;
+  --status-success-bg: #113328;   --status-success-text: #6EE7B7;
+  --status-warning-bg: #3A2A0D;   --status-warning-text: #FCD34D;
+  --status-error-bg: #3B1414;     --status-error-text: #FCA5A5;
+  --status-indigo-bg: #241E4A;    --status-indigo-text: #A5B4FC;
+  --status-violet-bg: #2C1F4A;    --status-violet-text: #C4B5FD;
+  --status-brand-bg: rgba(29, 158, 117, 0.16); --status-brand-text: var(--via-teal-light);
+
+  --row-pending-bg: #2A2210;        --row-pending-hover-bg: #3A2E12;
+  --row-pending-border: #7C5A12;    --row-pending-accent: #D69E2E;
 
   --background: var(--shell-bg);
   --foreground: var(--shell-text);
@@ -103,6 +134,26 @@ html.dark {
   --color-sidebar-active: var(--sidebar-active-bg);
   --color-sidebar-active-text: var(--sidebar-active-text);
   --color-sidebar-border: var(--sidebar-border);
+
+  /* Status / tone */
+  --color-status-neutral: var(--status-neutral-bg);
+  --color-status-neutral-text: var(--status-neutral-text);
+  --color-status-info: var(--status-info-bg);
+  --color-status-info-text: var(--status-info-text);
+  --color-status-success: var(--status-success-bg);
+  --color-status-success-text: var(--status-success-text);
+  --color-status-warning: var(--status-warning-bg);
+  --color-status-warning-text: var(--status-warning-text);
+  --color-status-error: var(--status-error-bg);
+  --color-status-error-text: var(--status-error-text);
+  --color-status-indigo: var(--status-indigo-bg);
+  --color-status-indigo-text: var(--status-indigo-text);
+  --color-status-violet: var(--status-violet-bg);
+  --color-status-violet-text: var(--status-violet-text);
+  --color-status-brand: var(--status-brand-bg);
+  --color-status-brand-text: var(--status-brand-text);
+  --color-row-pending: var(--row-pending-bg);
+  --color-row-pending-border: var(--row-pending-border);
 
   --font-sans: var(--font-inter);
 }
@@ -155,6 +206,8 @@ html.dark .bg-white        { background-color: var(--shell-card-bg) !important; 
 html.dark .bg-gray-50      { background-color: var(--shell-bg) !important; }
 html.dark .bg-gray-100     { background-color: #1A2A4A !important; }
 html.dark .bg-gray-200     { background-color: #1E3A5F !important; }
+html.dark .bg-slate-50     { background-color: var(--shell-bg) !important; }
+html.dark .bg-slate-100    { background-color: #1A2A4A !important; }
 
 html.dark .text-gray-900,
 html.dark .text-gray-800   { color: var(--shell-text) !important; }
@@ -162,12 +215,93 @@ html.dark .text-gray-700   { color: #C8CDD6 !important; }
 html.dark .text-gray-600,
 html.dark .text-gray-500   { color: var(--shell-subtext) !important; }
 html.dark .text-gray-400   { color: #6B7A99 !important; }
+html.dark .text-slate-950,
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-slate-700  { color: var(--shell-text) !important; }
+html.dark .text-slate-600,
+html.dark .text-slate-500  { color: var(--shell-subtext) !important; }
+html.dark .text-slate-400  { color: #6B7A99 !important; }
+html.dark .text-gray-950   { color: var(--shell-text) !important; }
 
 html.dark .border-gray-100,
 html.dark .border-gray-200,
 html.dark .border-gray-300 { border-color: var(--shell-card-border) !important; }
+html.dark .border-slate-200,
+html.dark .border-slate-300 { border-color: var(--shell-card-border) !important; }
 
 html.dark .divide-gray-200 > * + * { border-color: var(--shell-card-border) !important; }
+
+/* Pills/banners de status escritos com classes cruas (não via <Badge>) —
+   mapeia para os mesmos tokens semânticos usados pelo componente Badge. */
+html.dark .bg-red-50      { background-color: var(--status-error-bg) !important; }
+html.dark .bg-red-100     { background-color: var(--status-error-bg) !important; }
+html.dark .text-red-800,
+html.dark .text-red-700,
+html.dark .text-red-600   { color: var(--status-error-text) !important; }
+
+html.dark .bg-amber-50    { background-color: var(--status-warning-bg) !important; }
+html.dark .bg-amber-100   { background-color: var(--status-warning-bg) !important; }
+html.dark .text-amber-800,
+html.dark .text-amber-700,
+html.dark .text-amber-600 { color: var(--status-warning-text) !important; }
+
+html.dark .bg-orange-50   { background-color: var(--status-warning-bg) !important; }
+html.dark .bg-orange-100  { background-color: var(--status-warning-bg) !important; }
+html.dark .text-orange-800,
+html.dark .text-orange-700,
+html.dark .text-orange-600 { color: var(--status-warning-text) !important; }
+
+html.dark .bg-emerald-50  { background-color: var(--status-success-bg) !important; }
+html.dark .bg-emerald-100 { background-color: var(--status-success-bg) !important; }
+html.dark .bg-green-50    { background-color: var(--status-success-bg) !important; }
+html.dark .bg-green-100   { background-color: var(--status-success-bg) !important; }
+html.dark .bg-teal-50     { background-color: var(--status-success-bg) !important; }
+html.dark .bg-teal-100    { background-color: var(--status-success-bg) !important; }
+html.dark .text-emerald-800,
+html.dark .text-emerald-700,
+html.dark .text-emerald-600,
+html.dark .text-green-800,
+html.dark .text-green-700,
+html.dark .text-green-600,
+html.dark .text-teal-700,
+html.dark .text-teal-600  { color: var(--status-success-text) !important; }
+
+html.dark .bg-blue-50     { background-color: var(--status-info-bg) !important; }
+html.dark .bg-blue-100    { background-color: var(--status-info-bg) !important; }
+html.dark .bg-sky-50      { background-color: var(--status-info-bg) !important; }
+html.dark .text-blue-700,
+html.dark .text-blue-600,
+html.dark .text-sky-700   { color: var(--status-info-text) !important; }
+
+html.dark .bg-indigo-50   { background-color: var(--status-indigo-bg) !important; }
+html.dark .text-indigo-700 { color: var(--status-indigo-text) !important; }
+
+html.dark .bg-violet-50   { background-color: var(--status-violet-bg) !important; }
+html.dark .bg-violet-100  { background-color: var(--status-violet-bg) !important; }
+html.dark .bg-purple-50   { background-color: var(--status-violet-bg) !important; }
+html.dark .bg-purple-100  { background-color: var(--status-violet-bg) !important; }
+html.dark .text-violet-800,
+html.dark .text-violet-700,
+html.dark .text-violet-600,
+html.dark .text-purple-800,
+html.dark .text-purple-700,
+html.dark .text-purple-600 { color: var(--status-violet-text) !important; }
+
+html.dark .bg-yellow-50   { background-color: var(--status-warning-bg) !important; }
+html.dark .bg-yellow-100  { background-color: var(--status-warning-bg) !important; }
+html.dark .text-yellow-700,
+html.dark .text-yellow-600 { color: var(--status-warning-text) !important; }
+
+html.dark .bg-rose-50     { background-color: var(--status-error-bg) !important; }
+html.dark .bg-rose-100    { background-color: var(--status-error-bg) !important; }
+html.dark .text-rose-700  { color: var(--status-error-text) !important; }
+
+html.dark .bg-neutral-50  { background-color: var(--status-neutral-bg) !important; }
+html.dark .bg-neutral-100 { background-color: var(--status-neutral-bg) !important; }
+html.dark .text-neutral-800,
+html.dark .text-neutral-700,
+html.dark .text-neutral-600 { color: var(--status-neutral-text) !important; }
 
 html.dark input,
 html.dark select,

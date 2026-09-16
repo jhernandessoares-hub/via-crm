@@ -5,8 +5,10 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 import { apiFetch } from "@/lib/api";
 import { usePipelineGroups, tint } from "@/lib/pipeline-groups";
+import { LEAD_STATUS_LABEL, formatLeadStatus } from "@/lib/lead-status";
 import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { ReportModal } from "@/components/ReportModal";
@@ -46,26 +48,6 @@ type Lead = {
   subConversasCount?: number;
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  NOVO: "Novo",
-  EM_CONTATO: "Em Contato",
-  QUALIFICADO: "Qualificado",
-  PROPOSTA: "Proposta",
-  FECHADO: "Fechado",
-};
-const STATUS_COLOR: Record<string, string> = {
-  NOVO: "bg-slate-100 text-slate-600",
-  EM_CONTATO: "bg-blue-100 text-blue-700",
-  QUALIFICADO: "bg-green-100 text-green-700",
-  PROPOSTA: "bg-amber-100 text-amber-700",
-  FECHADO: "bg-emerald-100 text-emerald-700",
-};
-
-function formatStatus(s: string | null | undefined) {
-  if (!s) return null;
-  return { label: STATUS_LABEL[s] ?? s, color: STATUS_COLOR[s] ?? "bg-slate-100 text-slate-600" };
-}
-
 function formatDateTime(s: string | undefined) {
   if (!s) return "—";
   const d = new Date(s);
@@ -82,7 +64,6 @@ function displayName(l: Lead): string {
 
 
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
-const STAGE_BADGE = "bg-slate-100 text-slate-700";
 
 const SEL_STYLE: React.CSSProperties = {
   width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4,
@@ -264,7 +245,7 @@ export default function PipelinePage() {
       const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "—";
       return [
         num, displayName(l), l.telefone || l.whatsapp || "—", l.origem || "—",
-        getStageName(l), STATUS_LABEL[l.status ?? ""] || l.status || "—",
+        getStageName(l), LEAD_STATUS_LABEL[l.status ?? ""] || l.status || "—",
         l.interesse || "—", (l.cadastroOrigem as any)?.indicacao || "—",
         l.assignedUserName || "—", formatDateTime(l.criadoEm),
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";");
@@ -283,7 +264,7 @@ export default function PipelinePage() {
       const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "—";
       return `<tr><td>${num}</td><td>${displayName(l)}</td><td>${l.telefone || l.whatsapp || "—"}</td>
         <td>${l.origem || "—"}</td><td>${getStageName(l)}</td>
-        <td>${STATUS_LABEL[l.status ?? ""] || l.status || "—"}</td>
+        <td>${LEAD_STATUS_LABEL[l.status ?? ""] || l.status || "—"}</td>
         <td>${l.interesse || "—"}</td><td>${(l.cadastroOrigem as any)?.indicacao || "—"}</td>
         <td>${l.assignedUserName || "—"}</td><td>${formatDateTime(l.criadoEm)}</td></tr>`;
     }).join("");
@@ -410,13 +391,13 @@ export default function PipelinePage() {
                       items.map((l) => {
                         const stageName = getStageName(l);
                         const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                        const st = formatStatus(l.status);
+                        const st = formatLeadStatus(l.status);
                         const isPending = l.conversaAberta === true;
                         return (
                           <Link key={l.id} href={`/leads/${l.id}`} className={`block rounded-lg border p-3 transition-colors ${isPending ? "border-l-4" : ""}`}
-                            style={{ borderColor: isPending ? undefined : "var(--shell-card-border)", borderLeftColor: isPending ? "#f59e0b" : undefined, borderTopColor: isPending ? "#fcd34d" : undefined, borderRightColor: isPending ? "#fcd34d" : undefined, borderBottomColor: isPending ? "#fcd34d" : undefined, background: isPending ? "#fffbeb" : "var(--shell-bg)" }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = isPending ? "#fef3c7" : "var(--shell-hover)")}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = isPending ? "#fffbeb" : "var(--shell-bg)")}>
+                            style={{ borderColor: isPending ? undefined : "var(--shell-card-border)", borderLeftColor: isPending ? "var(--row-pending-accent)" : undefined, borderTopColor: isPending ? "var(--row-pending-border)" : undefined, borderRightColor: isPending ? "var(--row-pending-border)" : undefined, borderBottomColor: isPending ? "var(--row-pending-border)" : undefined, background: isPending ? "var(--row-pending-bg)" : "var(--shell-bg)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = isPending ? "var(--row-pending-hover-bg)" : "var(--shell-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = isPending ? "var(--row-pending-bg)" : "var(--shell-bg)")}>
                             {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
                             <div className="text-sm font-medium text-[var(--shell-text)] truncate flex items-center gap-1.5">
                               <span className="truncate">{displayName(l)}</span>
@@ -433,9 +414,9 @@ export default function PipelinePage() {
                             </div>
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               {l.origem && <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>}
-                              {!isGroupedPipeline && st && <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>}
-                              {l.interesse && <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.interesse}>{l.interesse}{l.interesseOrigem === "MANUAL" && " ✎"}</span>}
-                              <MaskedField field="lead.responsavel">{l.assignedUserName ? <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]">👤 {l.assignedUserName}</span> : null}</MaskedField>
+                              {!isGroupedPipeline && st && <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>}
+                              {l.interesse && <Badge variant="indigo" className="truncate max-w-[140px]" title={l.interesse}>{l.interesse}{l.interesseOrigem === "MANUAL" && " ✎"}</Badge>}
+                              <MaskedField field="lead.responsavel">{l.assignedUserName ? <Badge variant="violet" className="truncate max-w-[120px]">👤 {l.assignedUserName}</Badge> : null}</MaskedField>
                             </div>
                           </Link>
                         );
@@ -479,7 +460,7 @@ export default function PipelinePage() {
               </select>
               <select style={SEL_STYLE} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}>
                 <option value="">Todos</option>
-                {uniqueValues.status.map((v) => <option key={v} value={v}>{isGroupedPipeline ? v : (STATUS_LABEL[v] ?? v)}</option>)}
+                {uniqueValues.status.map((v) => <option key={v} value={v}>{isGroupedPipeline ? v : (LEAD_STATUS_LABEL[v] ?? v)}</option>)}
               </select>
               <select style={SEL_STYLE} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}>
                 <option value="">Todos</option>
@@ -500,7 +481,7 @@ export default function PipelinePage() {
               {/* Seção: Conversas Abertas */}
               {pendingLeads.length > 0 && (
                 <div>
-                  <div className="px-4 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                  <div className="px-4 py-2 text-xs font-semibold border-b flex items-center gap-2" style={{ color: "var(--status-warning-text)", background: "var(--row-pending-bg)", borderBottomColor: "var(--row-pending-border)" }}>
                     💬 Conversas abertas ({pendingLeads.length})
                   </div>
                   {pendingLeads.map((l) => {
@@ -508,10 +489,12 @@ export default function PipelinePage() {
                     const groupKey = getStageGroup(l);
                     const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
                     const etapaText = isGroupedPipeline ? groupName(groupKey) : stageName;
-                    const st = isGroupedPipeline ? null : formatStatus(l.status);
+                    const st = isGroupedPipeline ? null : formatLeadStatus(l.status);
                     return (
-                      <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
-                        style={{ borderBottomColor: "var(--shell-card-border)", borderLeftColor: "#f59e0b", gridTemplateColumns: COL }}>
+                      <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 transition-colors"
+                        style={{ background: "var(--row-pending-bg)", borderBottomColor: "var(--shell-card-border)", borderLeftColor: "var(--row-pending-accent)", gridTemplateColumns: COL }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-pending-hover-bg)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "var(--row-pending-bg)")}>
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
                         <div className="min-w-0 flex items-center gap-1.5">
                           <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
@@ -528,14 +511,14 @@ export default function PipelinePage() {
                         </div>
                         <div className="min-w-0">
                           {isGroupedPipeline ? (
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                            <Badge variant="neutral">{stageName}</Badge>
                           ) : st ? (
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                            <Badge variant={st.variant}>{st.label}</Badge>
                           ) : (
                             <span className="text-sm text-[var(--shell-subtext)]">—</span>
                           )}
                         </div>
-                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px]" style={{ color: "var(--status-warning-text)" }} title="Editado manualmente">✎</span>}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                         <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
@@ -547,7 +530,7 @@ export default function PipelinePage() {
 
               {/* Separador */}
               {pendingLeads.length > 0 && (
-                <div className="flex items-center gap-3 px-4 py-2" style={{ background: "var(--shell-sidebar-bg, #f1f5f9)", borderTop: "2px solid #fcd34d", borderBottom: "2px solid var(--shell-card-border)" }}>
+                <div className="flex items-center gap-3 px-4 py-2" style={{ background: "var(--shell-bg)", borderTop: "2px solid var(--row-pending-border)", borderBottom: "2px solid var(--shell-card-border)" }}>
                   <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
                   <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--shell-subtext)" }}>Outros leads</span>
                   <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
@@ -560,7 +543,7 @@ export default function PipelinePage() {
                 const groupKey = getStageGroup(l);
                 const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
                 const etapaText = isGroupedPipeline ? groupName(groupKey) : stageName;
-                const st = isGroupedPipeline ? null : formatStatus(l.status);
+                const st = isGroupedPipeline ? null : formatLeadStatus(l.status);
                 return (
                   <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
                     style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
@@ -580,14 +563,14 @@ export default function PipelinePage() {
                     </div>
                     <div className="min-w-0">
                       {isGroupedPipeline ? (
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                        <Badge variant="neutral">{stageName}</Badge>
                       ) : st ? (
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                        <Badge variant={st.variant}>{st.label}</Badge>
                       ) : (
                         <span className="text-sm text-[var(--shell-subtext)]">—</span>
                       )}
                     </div>
-                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}</div>
+                    <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px]" style={{ color: "var(--status-warning-text)" }} title="Editado manualmente">✎</span>}</div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                     <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                     <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>

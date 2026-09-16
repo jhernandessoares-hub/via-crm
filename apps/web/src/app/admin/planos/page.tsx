@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AdminShell from '../_admin-shell';
 import { adminFetch } from '@/lib/admin-api';
 
 type PlanTier = 'STARTER' | 'PRO' | 'BUSINESS';
@@ -139,7 +138,6 @@ export default function PlanosAdminPage() {
   ];
 
   return (
-    <AdminShell>
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Planos e Preços</h1>
@@ -200,6 +198,5 @@ export default function PlanosAdminPage() {
           </div>
         )}
       </div>
-    </AdminShell>
   );
 }

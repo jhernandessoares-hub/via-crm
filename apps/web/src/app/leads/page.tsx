@@ -6,8 +6,10 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 import { apiFetch } from "@/lib/api";
 import { useLeadsViewMode } from "@/hooks/useLeadsViewMode";
+import { LEAD_STATUS_LABEL, formatLeadStatus } from "@/lib/lead-status";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { ReportModal } from "@/components/ReportModal";
 import { NovoLeadModal } from "@/components/leads/NovoLeadModal";
@@ -63,26 +65,6 @@ type Lead = {
   subConversasCount?: number;
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  NOVO: "Novo",
-  EM_CONTATO: "Em Contato",
-  QUALIFICADO: "Qualificado",
-  PROPOSTA: "Proposta",
-  FECHADO: "Fechado",
-};
-const STATUS_COLOR: Record<string, string> = {
-  NOVO: "bg-slate-100 text-slate-600",
-  EM_CONTATO: "bg-blue-100 text-blue-700",
-  QUALIFICADO: "bg-green-100 text-green-700",
-  PROPOSTA: "bg-amber-100 text-amber-700",
-  FECHADO: "bg-emerald-100 text-emerald-700",
-};
-
-function formatStatus(s: string | null | undefined) {
-  if (!s) return null;
-  return { label: STATUS_LABEL[s] ?? s, color: STATUS_COLOR[s] ?? "bg-slate-100 text-slate-600" };
-}
-
 function formatDateTime(s: string | undefined) {
   if (!s) return "—";
   const d = new Date(s);
@@ -97,7 +79,6 @@ function displayName(l: Lead): string {
   return l.nomeCorreto || l.nome || "Sem nome";
 }
 
-const STAGE_BADGE = "bg-slate-100 text-slate-700";
 const SP9_GROUPS = new Set(["DOCUMENTACAO", "ESCOLHA_UNIDADE", "CONTRATO", "REGISTRO"]);
 const COL = "90px 1.4fr 1.1fr 0.9fr 1fr 0.8fr 1fr 0.9fr 1fr 1.2fr";
 
@@ -196,7 +177,7 @@ export default function LeadsPage() {
         l.telefone || l.whatsapp || "—",
         l.origem || "—",
         getStageName(l),
-        STATUS_LABEL[l.status ?? ""] || l.status || "—",
+        LEAD_STATUS_LABEL[l.status ?? ""] || l.status || "—",
         l.interesse || "—",
         (l.cadastroOrigem as any)?.indicacao || "—",
         l.assignedUserName || "—",
@@ -218,7 +199,7 @@ export default function LeadsPage() {
       const num = formatLeadNumber(l.numero, l.reentradaCount ?? 1) ?? "—";
       return `<tr><td>${num}</td><td>${displayName(l)}</td><td>${l.telefone || l.whatsapp || "—"}</td>
         <td>${l.origem || "—"}</td><td>${getStageName(l)}</td>
-        <td>${STATUS_LABEL[l.status ?? ""] || l.status || "—"}</td>
+        <td>${LEAD_STATUS_LABEL[l.status ?? ""] || l.status || "—"}</td>
         <td>${l.interesse || "—"}</td><td>${(l.cadastroOrigem as any)?.indicacao || "—"}</td>
         <td>${l.assignedUserName || "—"}</td><td>${formatDateTime(l.criadoEm)}</td></tr>`;
     }).join("");
@@ -474,7 +455,7 @@ export default function LeadsPage() {
               <div /><div />
               <select style={S} value={colFilters.origem} onChange={(e) => setCF("origem", e.target.value)}><option value="">Todas</option>{uniqueValues.origem.map((v) => <option key={v} value={v}>{v}</option>)}</select>
               <select style={S} value={colFilters.etapa} onChange={(e) => setCF("etapa", e.target.value)}><option value="">Todas</option>{uniqueValues.etapa.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-              <select style={S} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}><option value="">Todos</option>{uniqueValues.status.map((v) => <option key={v} value={v}>{isGroupedPipeline ? v : (STATUS_LABEL[v] ?? v)}</option>)}</select>
+              <select style={S} value={colFilters.status} onChange={(e) => setCF("status", e.target.value)}><option value="">Todos</option>{uniqueValues.status.map((v) => <option key={v} value={v}>{isGroupedPipeline ? v : (LEAD_STATUS_LABEL[v] ?? v)}</option>)}</select>
               <select style={S} value={colFilters.interesse} onChange={(e) => setCF("interesse", e.target.value)}><option value="">Todos</option>{uniqueValues.interesse.map((v) => <option key={v} value={v}>{v}</option>)}</select>
               <select style={S} value={colFilters.indicacao} onChange={(e) => setCF("indicacao", e.target.value)}><option value="">Todas</option>{uniqueValues.indicacao.map((v) => <option key={v} value={v}>{v}</option>)}</select>
               <div /><div />
@@ -488,7 +469,7 @@ export default function LeadsPage() {
               {/* Seção: Conversas Abertas */}
               {pendingLeads.length > 0 && (
                 <div>
-                  <div className="px-4 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                  <div className="px-4 py-2 text-xs font-semibold border-b flex items-center gap-2" style={{ color: "var(--status-warning-text)", background: "var(--row-pending-bg)", borderBottomColor: "var(--row-pending-border)" }}>
                     <span>💬 Conversas abertas ({pendingLeads.length})</span>
                   </div>
                   {pendingLeads.map((l) => {
@@ -497,10 +478,12 @@ export default function LeadsPage() {
                     const etapaText = isGroupedPipeline
                       ? (GROUP_LABEL[l.stage?.group ?? ""] ?? l.stage?.group ?? "—")
                       : stageName;
-                    const st = isGroupedPipeline ? null : formatStatus(l.status);
+                    const st = isGroupedPipeline ? null : formatLeadStatus(l.status);
                     return (
-                      <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
-                        style={{ borderBottomColor: "var(--shell-card-border)", borderLeftColor: "#f59e0b", gridTemplateColumns: COL }}>
+                      <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 transition-colors"
+                        style={{ background: "var(--row-pending-bg)", borderBottomColor: "var(--shell-card-border)", borderLeftColor: "var(--row-pending-accent)", gridTemplateColumns: COL }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-pending-hover-bg)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "var(--row-pending-bg)")}>
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
                         <div className="min-w-0 flex items-center gap-1.5">
                           <Link className="font-medium text-[var(--shell-text)] hover:underline truncate block" href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}>{displayName(l)}</Link>
@@ -513,18 +496,18 @@ export default function LeadsPage() {
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                         <div className="min-w-0">
-                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE} truncate max-w-full`} title={etapaText}>{etapaText}</span>
+                          <Badge variant="neutral" className="truncate max-w-full" title={etapaText}>{etapaText}</Badge>
                         </div>
                         <div className="min-w-0">
                           {isGroupedPipeline ? (
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                            <Badge variant="neutral">{stageName}</Badge>
                           ) : st ? (
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                            <Badge variant={st.variant}>{st.label}</Badge>
                           ) : (
                             <span className="text-sm text-[var(--shell-subtext)]">—</span>
                           )}
                         </div>
-                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}</div>
+                        <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px]" style={{ color: "var(--status-warning-text)" }} title="Editado manualmente">✎</span>}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                         <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
@@ -536,7 +519,7 @@ export default function LeadsPage() {
 
               {/* Separador entre seções */}
               {pendingLeads.length > 0 && (
-                <div className="flex items-center gap-3 px-4 py-2" style={{ background: "var(--shell-sidebar-bg, #f1f5f9)", borderTop: "2px solid #fcd34d", borderBottom: "2px solid var(--shell-card-border)" }}>
+                <div className="flex items-center gap-3 px-4 py-2" style={{ background: "var(--shell-bg)", borderTop: "2px solid var(--row-pending-border)", borderBottom: "2px solid var(--shell-card-border)" }}>
                   <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
                   <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--shell-subtext)" }}>Outros leads</span>
                   <div className="h-px flex-1" style={{ background: "var(--shell-card-border)" }} />
@@ -555,7 +538,7 @@ export default function LeadsPage() {
                   const etapaText = isGroupedPipeline
                     ? (GROUP_LABEL[l.stage?.group ?? ""] ?? l.stage?.group ?? "—")
                     : stageName;
-                  const st = isGroupedPipeline ? null : formatStatus(l.status);
+                  const st = isGroupedPipeline ? null : formatLeadStatus(l.status);
                   return (
                     <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
                       style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
@@ -571,18 +554,18 @@ export default function LeadsPage() {
                       <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                       <div className="min-w-0">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE} truncate max-w-full`} title={etapaText}>{etapaText}</span>
+                        <Badge variant="neutral" className="truncate max-w-full" title={etapaText}>{etapaText}</Badge>
                       </div>
                       <div className="min-w-0">
                         {isGroupedPipeline ? (
-                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_BADGE}`}>{stageName}</span>
+                          <Badge variant="neutral">{stageName}</Badge>
                         ) : st ? (
-                          <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}>{st.label}</span>
+                          <Badge variant={st.variant}>{st.label}</Badge>
                         ) : (
                           <span className="text-sm text-[var(--shell-subtext)]">—</span>
                         )}
                       </div>
-                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px] text-amber-600" title="Editado manualmente">✎</span>}</div>
+                      <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.interesse ?? undefined}>{l.interesse || "—"}{l.interesseOrigem === "MANUAL" && l.interesse && <span className="ml-1 text-[10px]" style={{ color: "var(--status-warning-text)" }} title="Editado manualmente">✎</span>}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={(l.cadastroOrigem as any)?.indicacao ?? undefined}>{(l.cadastroOrigem as any)?.indicacao || "—"}</div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.responsavel">{l.assignedUserName || "—"}</MaskedField></div>
                       <div className="text-xs text-[var(--shell-subtext)] truncate whitespace-nowrap"><MaskedField field="lead.dataCriacao">{l.criadoEm ? formatDateTime(l.criadoEm) : "—"}</MaskedField></div>
@@ -618,11 +601,11 @@ export default function LeadsPage() {
                         const normalInStage  = items.filter((l) => !l.conversaAberta);
                         return [...pendingInStage, ...normalInStage].map((l) => {
                           const numero = formatLeadNumber(l.numero, l.reentradaCount ?? 1);
-                          const st = isGroupedPipeline ? null : formatStatus(l.status);
+                          const st = isGroupedPipeline ? null : formatLeadStatus(l.status);
                           const stageName = getStageName(l);
                           return (
-                            <div key={l.id} className={`rounded-lg border p-2 ${l.conversaAberta ? "border-l-4 border-l-amber-400 bg-amber-50" : ""}`}
-                              style={{ borderColor: l.conversaAberta ? undefined : "var(--shell-card-border)", background: l.conversaAberta ? undefined : "var(--shell-bg)" }}>
+                            <div key={l.id} className={`rounded-lg border p-2 ${l.conversaAberta ? "border-l-4" : ""}`}
+                              style={{ borderColor: l.conversaAberta ? "var(--row-pending-accent)" : "var(--shell-card-border)", background: l.conversaAberta ? "var(--row-pending-bg)" : "var(--shell-bg)" }}>
                               {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
                               <div className="text-sm font-medium text-[var(--shell-text)] truncate flex items-center gap-1.5">
                                 <Link className="hover:underline truncate" href={`/leads/${l.id}${activeGroup ? `?group=${activeGroup}` : ""}`}>{displayName(l)}</Link>
@@ -638,15 +621,15 @@ export default function LeadsPage() {
                                   <span className="inline-block rounded-full bg-[var(--shell-hover)] px-1.5 py-0.5 text-[10px] text-[var(--shell-subtext)] truncate max-w-[120px]" title={l.origem}>{l.origem}</span>
                                 )}
                                 {isGroupedPipeline ? (
-                                  <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${STAGE_BADGE}`}>{stageName}</span>
+                                  <Badge variant="neutral" className="text-[10px]">{stageName}</Badge>
                                 ) : st && (
-                                  <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] ${st.color}`}>{st.label}</span>
+                                  <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>
                                 )}
                                 {l.interesse && (
-                                  <span className="inline-block rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-700 truncate max-w-[140px]" title={l.interesse}>{l.interesse}{l.interesseOrigem === "MANUAL" && " ✎"}</span>
+                                  <Badge variant="indigo" className="truncate max-w-[140px]" title={l.interesse}>{l.interesse}{l.interesseOrigem === "MANUAL" && " ✎"}</Badge>
                                 )}
                                 <MaskedField field="lead.responsavel">{l.assignedUserName ? (
-                                  <span className="inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700 truncate max-w-[120px]" title={l.assignedUserName}>👤 {l.assignedUserName}</span>
+                                  <Badge variant="violet" className="truncate max-w-[120px]" title={l.assignedUserName}>👤 {l.assignedUserName}</Badge>
                                 ) : null}</MaskedField>
                               </div>
                             </div>

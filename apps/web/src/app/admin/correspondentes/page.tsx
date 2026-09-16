@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import AdminShell from "@/app/admin/_admin-shell";
 import {
   adminListCorrespondents, adminCreateCorrespondent,
   adminUpdateCorrespondent, adminDeleteCorrespondent,
@@ -81,7 +80,7 @@ export default function CorrespondentesAdminPage() {
   }
 
   return (
-    <AdminShell>
+    <>
       <div className="mx-auto max-w-4xl px-4 py-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
@@ -176,6 +175,6 @@ export default function CorrespondentesAdminPage() {
           </div>
         </div>
       </Modal>
-    </AdminShell>
+    </>
   );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AdminShell from '../_admin-shell';
 import { adminFetch } from '@/lib/admin-api';
 import { MeterCard } from '@/components/MeterCard';
 
@@ -61,7 +60,6 @@ export default function UsageAdminPage() {
   const filtered = tenants.filter((t) => t.nome.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <AdminShell>
       <div className="max-w-6xl mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -144,6 +142,5 @@ export default function UsageAdminPage() {
           </div>
         )}
       </div>
-    </AdminShell>
   );
 }

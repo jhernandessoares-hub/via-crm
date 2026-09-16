@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Sun, Moon } from "lucide-react";
 import EnvBanner from "@/components/EnvBanner";
 import { VersionBadge } from "@/components/VersionBadge";
+import { applyTheme, getStoredTheme, setStoredTheme, ADMIN_THEME_STORAGE_KEY, type Theme } from "@/lib/theme";
 
 type AdminUser = {
   nome?: string;
@@ -65,10 +67,11 @@ function NavGroup({ label, defaultOpen, children }: { label: string; defaultOpen
     <div>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-400 hover:bg-slate-800"
+        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-widest hover:bg-[var(--sidebar-hover)]"
+        style={{ color: "var(--sidebar-text-muted)" }}
       >
         {label}
-        <span className="text-slate-500">{open ? "▾" : "▸"}</span>
+        <span>{open ? "▾" : "▸"}</span>
       </button>
       {open && <div className="ml-2 mt-0.5 space-y-0.5">{children}</div>}
     </div>
@@ -83,6 +86,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // Lê localStorage apenas no cliente (useEffect), evitando disparo do router antes da inicialização
   const [adminToken, setAdminToken] = useState<string | null | undefined>(undefined);
   const [admin, setAdmin] = useState<AdminUser | null>(null);
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
     const token = localStorage.getItem("adminToken");
@@ -98,15 +102,28 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     }
   }, [isLoginRoute, router]);
 
+  useEffect(() => {
+    const t = getStoredTheme(ADMIN_THEME_STORAGE_KEY) ?? "light";
+    setTheme(t);
+    applyTheme(t);
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    applyTheme(next);
+    setStoredTheme(ADMIN_THEME_STORAGE_KEY, next);
+  }
+
   if (isLoginRoute) return <>{children}</>;
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col" style={{ background: "var(--shell-bg)", color: "var(--shell-text)" }}>
       <EnvBanner />
       <div className="flex flex-1">
-      <aside className="flex w-56 flex-col bg-slate-900 text-white">
-        <div className="border-b border-slate-700 px-4 py-5">
-          <div className="text-xs uppercase tracking-widest text-slate-400">VIA CRM</div>
+      <aside className="flex w-56 flex-col" style={{ background: "var(--sidebar-bg)", color: "var(--sidebar-text)" }}>
+        <div className="border-b px-4 py-5" style={{ borderColor: "var(--sidebar-border)" }}>
+          <div className="text-xs uppercase tracking-widest" style={{ color: "var(--sidebar-text-muted)" }}>VIA CRM</div>
           <div className="mt-0.5 text-sm font-semibold">Admin</div>
         </div>
         <nav className="flex-1 space-y-0.5 px-2 py-4">
@@ -121,7 +138,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                       <Link
                         key={sub.href}
                         href={sub.href}
-                        className={`block rounded-md px-3 py-1.5 text-sm ${active ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"}`}
+                        className="block rounded-md px-3 py-1.5 text-sm"
+                        style={active
+                          ? { background: "var(--sidebar-active-bg)", color: "var(--sidebar-active-text)" }
+                          : { color: "var(--sidebar-text-muted)" }}
                       >
                         {sub.label}
                       </Link>
@@ -135,25 +155,38 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               <Link
                 key={item.href}
                 href={item.href}
-                className={`block rounded-md px-3 py-2 text-sm ${active ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-slate-800"}`}
+                className="block rounded-md px-3 py-2 text-sm"
+                style={active
+                  ? { background: "var(--sidebar-active-bg)", color: "var(--sidebar-active-text)" }
+                  : { color: "var(--sidebar-text)" }}
               >
                 {item.label}
               </Link>
             );
           })}
         </nav>
-        <div className="border-t border-slate-700 px-4 py-4 text-xs text-slate-400">
+        <div className="border-t px-4 py-4 text-xs" style={{ borderColor: "var(--sidebar-border)", color: "var(--sidebar-text-muted)" }}>
           <div>{admin?.nome || "Admin"}</div>
-          <button
-            onClick={() => {
-              localStorage.removeItem("adminToken");
-              localStorage.removeItem("adminUser");
-              router.push("/admin/login");
-            }}
-            className="mt-1 text-slate-500 hover:text-white"
-          >
-            Sair
-          </button>
+          <div className="mt-1 flex items-center gap-3">
+            <button
+              onClick={() => {
+                localStorage.removeItem("adminToken");
+                localStorage.removeItem("adminUser");
+                router.push("/admin/login");
+              }}
+              className="hover:text-white"
+            >
+              Sair
+            </button>
+            <button
+              onClick={toggleTheme}
+              className="hover:text-white"
+              title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+              aria-label="Alternar tema"
+            >
+              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </button>
+          </div>
           <div className="mt-2">
             <VersionBadge />
           </div>

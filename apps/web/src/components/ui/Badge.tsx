@@ -1,23 +1,40 @@
 import * as React from "react";
 
-type Variant = "default" | "success" | "warning" | "error" | "info" | "teal" | "navy";
+export type BadgeVariant =
+  | "neutral"
+  | "success"
+  | "warning"
+  | "error"
+  | "info"
+  | "indigo"
+  | "violet"
+  | "brand"
+  | "navy"
+  /** @deprecated use "neutral" */
+  | "default"
+  /** @deprecated use "brand" */
+  | "teal";
 
-const variants: Record<Variant, string> = {
-  default: "bg-slate-100 text-slate-700",
-  success: "bg-[#E8F5D8] text-[#5C8A1F]",
-  warning: "bg-amber-50 text-amber-700",
-  error: "bg-red-50 text-red-700",
-  info: "bg-blue-50 text-blue-700",
-  teal: "bg-[var(--via-teal-soft)] text-[var(--via-teal)]",
+const variants: Record<BadgeVariant, string> = {
+  neutral: "bg-[var(--status-neutral-bg)] text-[var(--status-neutral-text)]",
+  success: "bg-[var(--status-success-bg)] text-[var(--status-success-text)]",
+  warning: "bg-[var(--status-warning-bg)] text-[var(--status-warning-text)]",
+  error: "bg-[var(--status-error-bg)] text-[var(--status-error-text)]",
+  info: "bg-[var(--status-info-bg)] text-[var(--status-info-text)]",
+  indigo: "bg-[var(--status-indigo-bg)] text-[var(--status-indigo-text)]",
+  violet: "bg-[var(--status-violet-bg)] text-[var(--status-violet-text)]",
+  brand: "bg-[var(--status-brand-bg)] text-[var(--status-brand-text)]",
   navy: "bg-[var(--via-navy)] text-white",
+  default: "bg-[var(--status-neutral-bg)] text-[var(--status-neutral-text)]",
+  teal: "bg-[var(--status-brand-bg)] text-[var(--status-brand-text)]",
 };
 
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: Variant;
+  variant?: BadgeVariant;
 }
 
 export function Badge({
-  variant = "default",
+  variant = "neutral",
   className = "",
   children,
   ...props

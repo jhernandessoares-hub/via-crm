@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { PasswordStrengthMeter } from "@/components/PasswordStrengthMeter";
 import { isPasswordStrong } from "@/lib/password";
+import { applyTheme } from "@/lib/theme";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -22,12 +23,6 @@ export type FullProfile = {
   branchId: string | null;
   tenant: { nome: string };
 };
-
-function applyTheme(theme: "light" | "dark") {
-  if (typeof document === "undefined") return;
-  if (theme === "dark") document.documentElement.classList.add("dark");
-  else document.documentElement.classList.remove("dark");
-}
 
 interface Props {
   profile: FullProfile;

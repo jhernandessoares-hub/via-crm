@@ -30,6 +30,11 @@ export default function RootLayout({
     <html lang="pt-BR" className={inter.variable}>
       <head>
         <meta charSet="utf-8" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k=location.pathname.indexOf("/admin")===0?"via-admin-theme":"via-theme";if(localStorage.getItem(k)==="dark")document.documentElement.classList.add("dark");}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className="antialiased">
         <ClientProviders>{children}</ClientProviders>

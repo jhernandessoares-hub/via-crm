@@ -12,6 +12,7 @@ import { SessionTimeoutModal } from "@/components/layout/SessionTimeoutModal";
 import dynamic from "next/dynamic";
 import { apiFetch, manualRefreshToken, apiLogout } from "@/lib/api";
 import { getPalette, applyPalette } from "@/lib/palettes";
+import { applyTheme, setStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 import { useSessionTimer } from "@/hooks/useSessionTimer";
 
 const WelcomeModal = dynamic(
@@ -67,12 +68,6 @@ function getInitials(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
 
-function applyTheme(theme: "light" | "dark") {
-  if (typeof document === "undefined") return;
-  if (theme === "dark") document.documentElement.classList.add("dark");
-  else document.documentElement.classList.remove("dark");
-}
-
 function AppShellInner({
   title,
   children,
@@ -113,6 +108,7 @@ function AppShellInner({
         const t = p?.preferences?.theme ?? "light";
         setTheme(t);
         applyTheme(t);
+        setStoredTheme(THEME_STORAGE_KEY, t);
         const b: TenantBranding = {
           brandPalette: (p as any)?.tenant?.brandPalette,
           logoUrl: (p as any)?.tenant?.logoUrl,
@@ -210,6 +206,7 @@ function AppShellInner({
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     applyTheme(next);
+    setStoredTheme(THEME_STORAGE_KEY, next);
     try {
       await apiFetch("/users/me", {
         method: "PATCH",
@@ -291,6 +288,7 @@ function AppShellInner({
             if (updated.preferences?.theme) {
               setTheme(updated.preferences.theme);
               applyTheme(updated.preferences.theme);
+              setStoredTheme(THEME_STORAGE_KEY, updated.preferences.theme);
             }
           }}
         />

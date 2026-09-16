@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { adminFetch } from "@/lib/admin-api";
 import Link from "next/link";
+import { Badge } from "@/components/ui/Badge";
 
 export default function AdminClientesPage() {
   const [data, setData] = useState<any>(null);
@@ -64,9 +65,9 @@ export default function AdminClientesPage() {
                   </select>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${t.ativo ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  <Badge variant={t.ativo ? "success" : "error"}>
                     {t.ativo ? "Ativo" : "Suspenso"}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="px-4 py-3 text-gray-600">{t._count?.leads ?? 0}</td>
                 <td className="px-4 py-3 text-gray-600">{t._count?.users ?? 0}</td>
