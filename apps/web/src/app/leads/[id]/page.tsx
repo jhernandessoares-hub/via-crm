@@ -2258,7 +2258,7 @@ export default function LeadDetailChatPage() {
   const [pipelineErr, setPipelineErr] = useState<string | null>(null);
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
-  const [prevGroupLastStageId, setPrevGroupLastStageId] = useState<string | null>(null);
+  const [returnableStages, setReturnableStages] = useState<any[]>([]);
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
   const [currentStageRequiresPendencias, setCurrentStageRequiresPendencias] = useState(false);
@@ -2540,14 +2540,14 @@ export default function LeadDetailChatPage() {
       const data = await apiFetch("/leads/" + leadId + "/allowed-stage-transitions", { method: "GET" });
       const list: PipelineStage[] = Array.isArray(data?.allowedStages) ? data.allowedStages : [];
       setAllowedStages(list);
-      setPrevGroupLastStageId(data?.prevGroupLastStageId ?? null);
+      setReturnableStages(data?.returnableStages ?? []);
       setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
       setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
       setCurrentStageRequiresPendencias(Boolean(data?.currentRequiresPendencias));
       setCurrentStageUnitAction(data?.currentUnitAction ?? null);
     } catch {
       setAllowedStages([]);
-      setPrevGroupLastStageId(null);
+      setReturnableStages([]);
       setCurrentStageRequiresEvidence(false);
       setCurrentStageRequiresReason(false);
       setCurrentStageRequiresPendencias(false);
@@ -4321,7 +4321,7 @@ function discardAiSuggestion() {
                   currentStageId={currentStageId}
                   currentGroup={effectiveGroup}
                   allowedStageIds={allowedStages.map((s) => s.id)}
-                  prevGroupActualStageId={prevGroupLastStageId}
+                  returnableStages={returnableStages}
                   previousStageName={(lead as any)?.stageKey === "BASE_FRIA" ? (lead as any)?.previousStageName : null}
                   disabled={movingStage || user?.role === "PARTNER"}
                   onSelectStage={handleSelectStage}

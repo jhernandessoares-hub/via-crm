@@ -239,7 +239,8 @@ interface PipelineStepperProps {
   currentStageId?: string | null;
   currentGroup?: string | null;
   allowedStageIds?: string[];
-  prevGroupActualStageId?: string | null;
+  /** Status por onde o lead já passou (do histórico). Vazio = não mostra volta. */
+  returnableStages?: PipelineStage[];
   previousStageName?: string | null;
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
@@ -250,7 +251,7 @@ export function PipelineStepper({
   currentStageId,
   currentGroup,
   allowedStageIds,
-  prevGroupActualStageId,
+  returnableStages,
   previousStageName,
   onSelectStage,
   disabled,
@@ -303,13 +304,17 @@ export function PipelineStepper({
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     : [];
 
-  // Mostra o stage real em que o lead esteve na etapa anterior (do log de transições)
-  // Fallback para o gateway configurado ou o último stage do grupo anterior
-  const prevGatewayStage =
-    (prevGroupActualStageId ? prevGroupStages.find((s) => s.id === prevGroupActualStageId) : null) ??
-    prevGroupStages.find((s) => s.advancesToGroup === currentGroup) ??
-    prevGroupStages[prevGroupStages.length - 1] ??
-    null;
+  // Voltar SÓ para status por onde o lead realmente passou — quem decide é o
+  // backend, lendo o histórico de movimentações.
+  //
+  // Antes aqui havia um encadeamento de fallbacks que, na falta de histórico,
+  // chutava "o último status da etapa anterior". Isso oferecia um chip clicável
+  // que o servidor recusava ("Transição inválida: NAO_QUALIFICADO ->
+  // BASE_FRIA_PRE"). Sem histórico agora não aparece botão de voltar nenhum.
+  const backStages = (returnableStages ?? [])
+    .filter((s) => s.id !== currentStageId && !list.some((x) => x.id === s.id))
+    .slice()
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
   // Stages do PRÓXIMO grupo que já estão liberadas para este lead (salto direto de fase,
   // ex.: matriz hardcoded de leads.service.ts permitindo LEAD_POTENCIAL_QUALIFICADO →
@@ -393,21 +398,23 @@ export function PipelineStepper({
 
       <div className="flex flex-wrap items-start gap-x-1.5 gap-y-2">
 
-        {/* Stage gateway da etapa anterior (único) */}
-        {prevGatewayStage && (
+        {/* Status por onde o lead já passou — volta permitida */}
+        {backStages.length > 0 && (
           <>
-            <div className="flex items-center gap-1.5">
-              <div className="flex flex-col items-start gap-1">
-                <StageChip
-                  name={prevGatewayStage.name}
-                  variant="prev-group"
-                  disabled={disabled}
-                  onClick={() => onSelectStage?.(prevGatewayStage)}
-                />
-                {prevGatewayStage.advancesToGroup && (
-                  <GroupTransitionBadge targetGroup={prevGatewayStage.advancesToGroup} direction="advance" />
-                )}
-              </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {backStages.map((st) => (
+                <div key={st.id} className="flex flex-col items-start gap-1">
+                  <StageChip
+                    name={st.name}
+                    variant="prev-group"
+                    disabled={disabled}
+                    onClick={() => onSelectStage?.(st)}
+                  />
+                  {st.advancesToGroup && (
+                    <GroupTransitionBadge targetGroup={st.advancesToGroup} direction="advance" />
+                  )}
+                </div>
+              ))}
             </div>
 
             {/* Separador com label da etapa atual */}

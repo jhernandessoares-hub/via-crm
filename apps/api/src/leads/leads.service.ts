@@ -2695,6 +2695,19 @@ async getById(user: any, id: string) {
       throw new BadRequestException('Lead sem stage atual.');
     }
 
+    // ── Voltar: só para status por onde o lead REALMENTE passou ───────────────
+    // Antes isso existia só no ramo de pipeline customizado (SP9). Nos tenants
+    // que usam a matriz padrão o dado nunca era calculado, e a tela acabava
+    // chutando "o último status da etapa anterior" — oferecendo um caminho que
+    // o servidor recusava (ex.: NAO_QUALIFICADO -> BASE_FRIA_PRE na VEX IMOB).
+    // Sem histórico, a lista vem vazia e a tela não mostra botão de voltar.
+    const returnableStages = await this.resolveReturnableStages(
+      user.tenantId,
+      leadId,
+      effectiveCurrentStageId,
+      user.role,
+    );
+
     // Aba "Fluxo" (tela /settings/pipeline): se o tenant já desenhou pelo menos
     // uma linha saindo do status atual, ela manda — substitui a matriz legada
     // abaixo só pra esse status. Enquanto não houver linha própria, comportamento
@@ -2727,6 +2740,7 @@ async getById(user: any, id: string) {
         currentRequiresPendencias,
         currentUnitAction,
         allowedStages,
+        returnableStages,
         prevGroupLastStageId: null,
       };
     }
@@ -2803,6 +2817,7 @@ async getById(user: any, id: string) {
         currentRequiresPendencias,
         currentUnitAction,
         allowedStages: allCustomStages,
+        returnableStages,
         prevGroupLastStageId,
       };
     }
@@ -2821,6 +2836,7 @@ async getById(user: any, id: string) {
           currentRequiresReason,
           currentUnitAction,
           allowedStages: [],
+          returnableStages: [],
         };
       }
 
@@ -2934,7 +2950,48 @@ async getById(user: any, id: string) {
       currentRequiresReason,
       currentUnitAction,
       allowedStages,
+      returnableStages,
     };
+  }
+
+  /**
+   * Status por onde o lead JÁ passou e dos quais saiu, lidos do histórico real
+   * (`LeadTransitionLog.fromStage`). É a regra de "voltar": só volta para onde
+   * esteve de verdade — nunca para um palpite.
+   *
+   * O log guarda o NOME do status, não o id. Status renomeado depois da
+   * movimentação deixa de casar e simplesmente não é oferecido — de propósito,
+   * porque o contrário seria adivinhar.
+   */
+  private async resolveReturnableStages(
+    tenantId: string,
+    leadId: string,
+    currentStageId: string | null | undefined,
+    role?: string,
+  ) {
+    const logs = await this.prisma.leadTransitionLog.findMany({
+      where: { tenantId, leadId },
+      select: { fromStage: true },
+    });
+
+    const nomes = [...new Set(logs.map((l) => l.fromStage).filter((n): n is string => !!n))];
+    if (nomes.length === 0) return [];
+
+    return this.prisma.pipelineStage.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        name: { in: nomes },
+        ...(currentStageId ? { NOT: { id: currentStageId } } : {}),
+        ...(role !== 'OWNER' ? { ownerOnly: false } : {}),
+      },
+      select: {
+        id: true, key: true, name: true, sortOrder: true, group: true,
+        requiresEvidence: true, requiresReason: true, requiresPendencias: true,
+        unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true,
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
   }
 
  // =============================
@@ -3541,6 +3598,19 @@ async updateStage(
         }
       }
     }
+  }
+
+  // Voltar atrás: se o lead JÁ esteve neste status, a volta é sempre permitida —
+  // é o conserto de engano na movimentação. Vale para qualquer tenant, inclusive
+  // quem desenhou linhas na aba Fluxo (linha manda pra frente, histórico manda
+  // pra trás). Fica de fora só a saída da Base Fria, que tem regra própria de
+  // permissão logo acima e não pode ser contornada por aqui.
+  if (!isAllowed && fromStageKey !== 'BASE_FRIA') {
+    const jaEsteve = await this.prisma.leadTransitionLog.findFirst({
+      where: { tenantId: user.tenantId, leadId, fromStage: toStage.name },
+      select: { id: true },
+    });
+    if (jaEsteve) isAllowed = true;
   }
 
   if (!isAllowed) {
