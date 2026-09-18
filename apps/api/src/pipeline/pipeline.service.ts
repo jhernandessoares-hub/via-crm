@@ -408,15 +408,21 @@ export class PipelineService {
     const stage = await this.getStageOrThrow(tenantId, stageId);
     const group = await this.getGroupOrThrow(tenantId, groupId);
 
-    const maxOrder = await this.prisma.pipelineStage.aggregate({
-      where: { tenantId, pipelineId: stage.pipelineId, group: group.key },
+    // Entra no fim da Etapa de destino com um número alto temporário; o
+    // renumber logo abaixo devolve a ordem global correta. Usar
+    // "maior do grupo + 1" aqui colidiria com o primeiro status da Etapa
+    // seguinte (ver renumberPipeline).
+    const maxGlobal = await this.prisma.pipelineStage.aggregate({
+      where: { tenantId, pipelineId: stage.pipelineId },
       _max: { sortOrder: true },
     });
 
-    return this.prisma.pipelineStage.update({
+    const atualizado = await this.prisma.pipelineStage.update({
       where: { id: stage.id },
-      data: { group: group.key, sortOrder: (maxOrder._max.sortOrder ?? 0) + 1 },
+      data: { group: group.key, sortOrder: (maxGlobal._max.sortOrder ?? 0) + 1 },
     });
+    await this.renumberPipeline(tenantId, stage.pipelineId);
+    return atualizado;
   }
 
   /**
@@ -639,12 +645,74 @@ export class PipelineService {
       throw new BadRequestException('Só dá para reordenar status que já estão dentro desta etapa.');
     }
 
+    // Grava a ordem relativa e renumera o funil inteiro logo em seguida.
+    // NUNCA usar `i + 1` direto aqui: `sortOrder` é a ordem GLOBAL do funil, não
+    // a posição dentro do grupo. Numerar 1..N por grupo colide com os outros
+    // grupos e quebra quem depende da ordem global — entre eles
+    // `resolveTenantFirstStage`, que decide em que status um lead novo nasce.
+    // Foi assim que, na VEX IMOB, "Aguardando Agendamento de Visita" empatou em
+    // 1 com "Novo Lead" e passou a receber os leads que chegavam do WhatsApp.
+    const base = await this.prisma.pipelineStage.aggregate({
+      where: { tenantId, pipelineId: group.pipelineId },
+      _max: { sortOrder: true },
+    });
+    let temp = (base._max.sortOrder ?? 0) + 1000;
+
     await this.prisma.$transaction(
-      orderedStageIds.map((id, i) =>
-        this.prisma.pipelineStage.update({ where: { id }, data: { sortOrder: i + 1 } }),
+      orderedStageIds.map((id) =>
+        this.prisma.pipelineStage.update({ where: { id }, data: { sortOrder: temp++ } }),
       ),
     );
+    await this.renumberPipeline(tenantId, group.pipelineId);
     return { reordered: orderedStageIds.length };
+  }
+
+  /**
+   * Reescreve `sortOrder` de 1..N no funil inteiro: Etapas na ordem delas, e
+   * dentro de cada Etapa os status na ordem relativa atual. Status sem Etapa vão
+   * para o fim.
+   *
+   * `sortOrder` é global e é usado como ordem do funil em vários lugares
+   * (`resolveTenantFirstStage`, o cálculo de ordem das Etapas em leads.service,
+   * o passado/futuro do stepper). Qualquer operação que mexa em posição tem que
+   * terminar chamando isto, senão dois status de Etapas diferentes acabam com o
+   * mesmo número e o funil passa a se comportar de forma imprevisível.
+   */
+  private async renumberPipeline(tenantId: string, pipelineId: string) {
+    const [groups, stages] = await Promise.all([
+      this.prisma.pipelineGroup.findMany({
+        where: { tenantId, pipelineId },
+        orderBy: { sortOrder: 'asc' },
+        select: { key: true },
+      }),
+      this.prisma.pipelineStage.findMany({
+        where: { tenantId, pipelineId },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, group: true, sortOrder: true },
+      }),
+    ]);
+
+    const ordem = new Map(groups.map((g, i) => [g.key, i]));
+    const ordenados = stages.slice().sort((a, b) => {
+      const ga = a.group ? ordem.get(a.group) ?? 9998 : 9999;
+      const gb = b.group ? ordem.get(b.group) ?? 9998 : 9999;
+      return ga !== gb ? ga - gb : a.sortOrder - b.sortOrder;
+    });
+
+    const mudou = ordenados
+      .map((s, i) => ({ id: s.id, novo: i + 1, antigo: s.sortOrder }))
+      .filter((x) => x.novo !== x.antigo);
+    if (mudou.length === 0) return;
+
+    // passa por números temporários altos para não esbarrar em valor já ocupado
+    await this.prisma.$transaction([
+      ...mudou.map((x, i) =>
+        this.prisma.pipelineStage.update({ where: { id: x.id }, data: { sortOrder: 100000 + i } }),
+      ),
+      ...mudou.map((x) =>
+        this.prisma.pipelineStage.update({ where: { id: x.id }, data: { sortOrder: x.novo } }),
+      ),
+    ]);
   }
 
   async deactivateStage(tenantId: string, stageId: string) {
