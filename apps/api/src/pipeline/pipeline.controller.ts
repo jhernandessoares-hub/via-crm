@@ -93,6 +93,13 @@ export class PipelineController {
     return this.pipelineService.reorderStages(req.user.tenantId, body?.groupId, body?.orderedStageIds ?? []);
   }
 
+  /** Marca o Status como porta de entrada do funil (onde o lead novo nasce). */
+  @Patch('stages/:id/entry')
+  async setEntryStage(@Req() req: any, @Param('id') id: string) {
+    requireOwner(req);
+    return this.pipelineService.setEntryStage(req.user.tenantId, id);
+  }
+
   @Patch('stages/:id/group')
   async assignStageToGroup(@Req() req: any, @Param('id') id: string, @Body() body: { groupId: string }) {
     requireOwner(req);

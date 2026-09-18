@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 import { ChannelsService } from './channels.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
-import { PipelineService } from '../pipeline/pipeline.service';
+import { PipelineService, resolveTenantEntryStage } from '../pipeline/pipeline.service';
 import { Logger } from '../logger';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
 import { userWantsEvent } from '../users/notification-prefs.helper';
@@ -246,13 +246,11 @@ export class ChannelsWebhookController {
       const telefone = normalized.telefone?.replace(/\D/g, '') || null;
       const telefoneKey = telefone ? telefone.slice(-9) : null;
 
-      // Busca stage inicial do funil — primeiro stage ativo por sortOrder (suporta pipelines customizados)
+      // Porta de entrada do funil — status marcado na tela (/settings/pipeline).
+      // Era uma consulta inline aqui, copiada em mais 3 lugares; agora todos os
+      // caminhos de criação de lead passam pela mesma função.
       const pipelineId = await this.pipeline.ensureDefaultPipeline(tenant.id);
-      const firstStage = await this.prisma.pipelineStage.findFirst({
-        where: { tenantId: tenant.id, pipelineId, isActive: true },
-        orderBy: { sortOrder: 'asc' },
-        select: { id: true },
-      });
+      const firstStage = await resolveTenantEntryStage(this.prisma, tenant.id);
 
       const CLOSED_STAGE_KEYS = ['BASE_FRIA', 'ENTREGA_CONTRATO_REGISTRADO', 'POS_VENDA_IA'];
 

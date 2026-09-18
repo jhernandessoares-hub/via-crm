@@ -56,6 +56,7 @@ model PipelineStage {
   name               String
   sortOrder          Int
   group              String?
+  isEntryPoint       Boolean   @default(false) // é aqui que o lead novo nasce (um por pipeline). Ver resolveTenantEntryStage
   posX               Float? // posição no canvas da aba "Fluxo" (/settings/pipeline); nulo = nunca posicionado, cai no layout automático
   posY               Float?
   advancesToGroup    String?

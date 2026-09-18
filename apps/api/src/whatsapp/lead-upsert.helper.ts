@@ -2,7 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { Logger } from '../logger';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
-import { resolveTenantFirstStage } from '../pipeline/pipeline.service';
+import { resolveTenantEntryStage } from '../pipeline/pipeline.service';
 
 const logger = new Logger('LeadUpsertHelper');
 
@@ -145,7 +145,7 @@ export async function findOrCreateLeadByPhone(
   const [resolvedStage, assignment] = await Promise.all([
     stageId
       ? prisma.pipelineStage.findFirst({ where: { id: stageId, tenantId }, select: { id: true, pipelineId: true } })
-      : resolveTenantFirstStage(prisma, tenantId),
+      : resolveTenantEntryStage(prisma, tenantId),
     resolveAssignment(prisma, tenantId),
   ]);
 

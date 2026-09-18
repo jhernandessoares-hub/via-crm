@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Plus, Trash2, ChevronLeft, ChevronRight, Pencil, Check, X,
-  MoveRight, Palette, MoreVertical, GripVertical,
+  MoveRight, Palette, MoreVertical, GripVertical, LogIn,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 import PipelineFlow from "./PipelineFlow";
 import { GROUP_PALETTE, groupColor } from "@/lib/pipeline-groups";
 
-type StageDTO = { id: string; key: string; name: string; sortOrder: number; group: string | null };
+type StageDTO = { id: string; key: string; name: string; sortOrder: number; group: string | null; isEntryPoint?: boolean };
 type GroupDTO = { id: string; key: string; name: string; color: string | null; sortOrder: number; stages: StageDTO[] };
 type TransitionDTO = { id: string; fromStageId: string; toStageId: string };
 type StructureDTO = { pipelineId: string; groups: GroupDTO[]; ungrouped: StageDTO[]; transitions: TransitionDTO[] };
@@ -328,6 +328,10 @@ export default function PipelineSettingsPage() {
   const renameStage = (id: string, name: string) =>
     withErrorHandling(() => apiFetch(`/pipeline/stages/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }));
 
+  /** Marca onde o lead novo nasce. Exatamente um por funil — o backend desmarca o anterior. */
+  const setEntryStage = (id: string) =>
+    withErrorHandling(() => apiFetch(`/pipeline/stages/${id}/entry`, { method: "PATCH" }));
+
   const deleteStage = (id: string) => {
     if (!confirm("Remover este status? Só é possível se não houver nenhum lead nele.")) return;
     withErrorHandling(() => apiFetch(`/pipeline/stages/${id}`, { method: "DELETE" }));
@@ -498,6 +502,15 @@ export default function PipelineSettingsPage() {
                                   onEditingChange={(v) => setEditingId(v ? stage.id : null)}
                                   onSave={(v) => renameStage(stage.id, v)}
                                 />
+                                {stage.isEntryPoint && (
+                                  <span
+                                    className="mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                                    style={{ background: `${color}2e`, color }}
+                                    title="Todo lead novo nasce neste status"
+                                  >
+                                    <LogIn className="h-2.5 w-2.5" /> Entrada dos leads
+                                  </span>
+                                )}
                               </div>
                               <RowMenu title="Opções do status">
                                 {(close) => (
@@ -505,6 +518,11 @@ export default function PipelineSettingsPage() {
                                     <MenuItem icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => { setEditingId(stage.id); close(); }}>
                                       Renomear
                                     </MenuItem>
+                                    {!stage.isEntryPoint && (
+                                      <MenuItem icon={<LogIn className="h-3.5 w-3.5" />} onClick={() => { setEntryStage(stage.id); close(); }}>
+                                        Entrada dos leads novos
+                                      </MenuItem>
+                                    )}
                                     <MenuDivider />
                                     <div className="px-2.5 py-2">
                                       <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-[var(--shell-subtext)]">

@@ -196,6 +196,7 @@ export async function resolveTenantPipelineId(prisma: PrismaService, tenantId: s
           sortOrder: s.order,
           group: s.group,
           isActive: true,
+          isEntryPoint: s.key === 'NOVO_LEAD',
         })),
       },
     },
@@ -283,17 +284,37 @@ async function ensureGroupsBackfilled(prisma: PrismaService, tenantId: string, p
  * um pipeline diferente/inativo (bug já visto no passado: leads presos numa stage
  * genérica de um pipeline que não era mais o ativo, ver scripts/fix-sp9-leads-stage.ts).
  */
-export async function resolveTenantFirstStage(
+export async function resolveTenantEntryStage(
   prisma: PrismaService,
   tenantId: string,
 ): Promise<{ id: string; pipelineId: string } | null> {
   const pipelineId = await resolveTenantPipelineId(prisma, tenantId);
+
+  // 1) O status marcado na tela como porta de entrada manda.
+  const marcado = await prisma.pipelineStage.findFirst({
+    where: { tenantId, pipelineId, isActive: true, isEntryPoint: true },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, pipelineId: true },
+  });
+  if (marcado) return marcado;
+
+  // 2) Nenhum marcado: cai no primeiro do funil. O desempate por createdAt é
+  //    essencial — sem ele, dois status com o mesmo sortOrder faziam o banco
+  //    escolher um deles de forma arbitrária, e lead novo nascia ora num, ora
+  //    noutro (aconteceu em produção na VEX IMOB, ver renumberPipeline).
   return prisma.pipelineStage.findFirst({
     where: { tenantId, pipelineId, isActive: true },
-    orderBy: { sortOrder: 'asc' },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     select: { id: true, pipelineId: true },
   });
 }
+
+/**
+ * @deprecated Use `resolveTenantEntryStage`. Mantido só para não quebrar import
+ * antigo; "primeiro do funil" deixou de ser a regra quando a porta de entrada
+ * virou configuração de tela.
+ */
+export const resolveTenantFirstStage = resolveTenantEntryStage;
 
 @Injectable()
 export class PipelineService {
@@ -451,6 +472,31 @@ export class PipelineService {
     if (updates.length === 0) return { updated: 0 };
     await this.prisma.$transaction(updates);
     return { updated: updates.length };
+  }
+
+  /**
+   * Define qual Status é a porta de entrada do funil — onde todo lead novo
+   * nasce. Exatamente um por pipeline: marcar um desmarca o anterior.
+   *
+   * Antes disso não existia ajuste nenhum: cada caminho de criação de lead
+   * perguntava "qual status tem o menor sortOrder?" (em 4 cópias espalhadas),
+   * então arrastar um status para o topo na tela mudava silenciosamente onde os
+   * leads passavam a cair.
+   */
+  async setEntryStage(tenantId: string, stageId: string) {
+    const stage = await this.getStageOrThrow(tenantId, stageId);
+
+    await this.prisma.$transaction([
+      this.prisma.pipelineStage.updateMany({
+        where: { tenantId, pipelineId: stage.pipelineId, isEntryPoint: true },
+        data: { isEntryPoint: false },
+      }),
+      this.prisma.pipelineStage.update({
+        where: { id: stage.id },
+        data: { isEntryPoint: true },
+      }),
+    ]);
+    return { entryStageId: stage.id };
   }
 
   async listTransitions(tenantId: string) {
@@ -717,6 +763,12 @@ export class PipelineService {
 
   async deactivateStage(tenantId: string, stageId: string) {
     const stage = await this.getStageOrThrow(tenantId, stageId);
+
+    if (stage.isEntryPoint) {
+      throw new BadRequestException(
+        'Este é o status onde os leads novos entram. Marque outro como entrada antes de remover este.',
+      );
+    }
 
     const leadsInStage = await this.prisma.lead.count({
       where: { tenantId, stageId: stage.id, deletedAt: null },

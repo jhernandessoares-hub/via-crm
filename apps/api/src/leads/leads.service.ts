@@ -48,7 +48,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 
 // ✅ NOVO: Pipeline (ETAPA 2)
-import { PipelineService, DEFAULT_STAGE_TRANSITIONS } from '../pipeline/pipeline.service';
+import { PipelineService, DEFAULT_STAGE_TRANSITIONS, resolveTenantEntryStage } from '../pipeline/pipeline.service';
 import { AuditService } from '../audit/audit.service';
 import { QueueService } from '../queue/queue.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
@@ -1054,13 +1054,13 @@ export class LeadsService {
       telefoneKey = this.telefoneKeyFrom(telefoneDigits);
     }
 
-    // ✅ garante pipeline/stages e define stage inicial (primeiro ativo por sortOrder)
+    // ✅ garante pipeline/stages e usa a porta de entrada configurada na tela
     const pipelineId = await this.pipelineService.ensureDefaultPipeline(tenantId);
-    const firstStage = await this.prisma.pipelineStage.findFirst({
-      where: { tenantId, pipelineId, isActive: true },
-      orderBy: { sortOrder: 'asc' },
-      select: { id: true, name: true },
-    });
+    const entry = await resolveTenantEntryStage(this.prisma, tenantId);
+    // o nome vai para o LeadTransitionLog logo abaixo
+    const firstStage = entry
+      ? await this.prisma.pipelineStage.findUnique({ where: { id: entry.id }, select: { id: true, name: true } })
+      : null;
 
     let lead: Awaited<ReturnType<typeof this.prisma.lead.create>>;
     try {
@@ -2167,14 +2167,16 @@ async getById(user: any, id: string) {
   let previousStageKey: string | null = null;
 
   if (!effectiveStageId) {
-    const firstStage = await this.prisma.pipelineStage.findFirst({
-      where: {
-        tenantId: user.tenantId,
-        isActive: true,
-      },
-      orderBy: { sortOrder: 'asc' },
-      select: { id: true, key: true, name: true },
-    });
+    // Esta cópia buscava só por tenantId, SEM filtrar pela pipeline — podia
+    // devolver status de outra pipeline do mesmo tenant. A função única já
+    // resolve pela pipeline ativa.
+    const entry = await resolveTenantEntryStage(this.prisma, user.tenantId);
+    const firstStage = entry
+      ? await this.prisma.pipelineStage.findUnique({
+          where: { id: entry.id },
+          select: { id: true, key: true, name: true },
+        })
+      : null;
 
     if (!firstStage?.id) {
       return lead;
