@@ -818,6 +818,8 @@ export default function InboxWALightPage() {
   const isNearBottomRef = useRef(true);
   const initialScrollDoneRef = useRef(false);
   const lastActiveKeyRef = useRef<string | null>(null);
+  const lastFreshKeyRef = useRef<string | null>(null);
+  const messagesContainerRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -864,6 +866,7 @@ export default function InboxWALightPage() {
   }, [inboxId]);
 
   const fetchConversationDetail = useCallback(async (conversation: WaLightConversation) => {
+    const key = conversationKey(conversation);
     setLoadingDetail(true);
     try {
       if (conversation.leadId) {
@@ -875,6 +878,7 @@ export default function InboxWALightPage() {
           campaignId: conversation.campaignId ?? null,
           mensagens: detail.mensagens ?? [],
         });
+        lastFreshKeyRef.current = key;
         return;
       }
 
@@ -903,12 +907,14 @@ export default function InboxWALightPage() {
             ...previews,
           ],
         });
+        lastFreshKeyRef.current = key;
         return;
       }
 
       const chatRef = conversation.chatId ?? conversation.remoteJid ?? conversation.telefone;
       const detail = await apiFetch(`/inbox-wa-light/${inboxId}/conversations/${encodeURIComponent(String(chatRef))}`);
       setConversationDetail({ ...detail, mensagens: detail.mensagens ?? [] });
+      lastFreshKeyRef.current = key;
     } catch (err: unknown) {
       setConversationDetail({
         nome: conversation.nome,
@@ -918,6 +924,7 @@ export default function InboxWALightPage() {
         tracked: isTrackedConversation(conversation),
         mensagens: [],
       });
+      lastFreshKeyRef.current = key;
       if (!conversation.leadId && !conversation.contatoId) {
         showToast(err instanceof Error ? err.message : "Não foi possível carregar o histórico da conversa.");
       }
@@ -966,6 +973,7 @@ export default function InboxWALightPage() {
       initialScrollDoneRef.current = false;
       isNearBottomRef.current = true;
     }
+    if (lastFreshKeyRef.current !== activeKey) return;
     const count = conversationDetail?.mensagens.length || 0;
     if (count === 0) return;
     if (!initialScrollDoneRef.current) {
@@ -982,6 +990,16 @@ export default function InboxWALightPage() {
     const el = e.currentTarget;
     isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
   }
+
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (isNearBottomRef.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!qrOpen || !status?.qrCode) {
@@ -1422,7 +1440,7 @@ export default function InboxWALightPage() {
                 </button>
               </header>
 
-              <section className="flex-1 overflow-y-auto px-4 py-4" onScroll={handleMessagesScroll}>
+              <section ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-4" onScroll={handleMessagesScroll}>
                 {loadingDetail && conversationDetail.mensagens.length === 0 ? (
                   <div className="flex h-full items-center justify-center">
                     <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--text-muted)" }} />

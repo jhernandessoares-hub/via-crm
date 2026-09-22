@@ -429,12 +429,16 @@ function ChatMensagens({
   isDark,
   conversaKey,
   isNearBottomRef,
+  leadAtivo,
+  lastFreshLeadRef,
 }: {
   mensagens: Mensagem[];
   carregando: boolean;
   isDark: boolean;
   conversaKey: string | null;
   isNearBottomRef: MutableRefObject<boolean>;
+  leadAtivo: string | null;
+  lastFreshLeadRef: MutableRefObject<string | null>;
 }) {
   const incomingBg = isDark ? "#1f2c34" : "#ffffff";
   const incomingText = isDark ? "#e9edef" : "#111b21";
@@ -448,6 +452,7 @@ function ChatMensagens({
       initialScrollDoneRef.current = false;
       isNearBottomRef.current = true;
     }
+    if (lastFreshLeadRef.current !== leadAtivo) return;
     if (mensagens.length === 0) return;
     if (!initialScrollDoneRef.current) {
       initialScrollDoneRef.current = true;
@@ -457,7 +462,7 @@ function ChatMensagens({
     if (isNearBottomRef.current) {
       endRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [mensagens, conversaKey, isNearBottomRef]);
+  }, [mensagens, conversaKey, isNearBottomRef, leadAtivo, lastFreshLeadRef]);
 
   if (carregando && mensagens.length === 0) {
     return (
@@ -581,6 +586,7 @@ export default function InboxPage() {
     try {
       const data: ConversaDetalhe = await apiFetch(`/inbox/${leadId}`);
       setDetalhe(data);
+      lastFreshLeadRef.current = leadId;
     } catch {}
   }, []);
 
@@ -659,6 +665,7 @@ export default function InboxPage() {
   const temSubConversas = (detalhe?.subConversas ?? []).length > 0;
   const conversaAtivaKey = leadAtivo ? leadAtivo + ":" + (abaAtiva ?? "") : null;
   const isNearBottomRef = useRef(true);
+  const lastFreshLeadRef = useRef<string | null>(null);
 
   function handleMessagesScroll(e: UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
@@ -813,6 +820,8 @@ export default function InboxPage() {
                 isDark={isDark}
                 conversaKey={conversaAtivaKey}
                 isNearBottomRef={isNearBottomRef}
+                leadAtivo={leadAtivo}
+                lastFreshLeadRef={lastFreshLeadRef}
               />
             </div>
 
