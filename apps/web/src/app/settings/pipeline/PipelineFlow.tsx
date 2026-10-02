@@ -32,7 +32,31 @@ type StageDTO = {
   posY?: number | null;
 };
 type GroupDTO = { id: string; key: string; name: string; color: string | null; sortOrder: number; stages: StageDTO[] };
-type TransitionDTO = { id: string; fromStageId: string; toStageId: string };
+type TransitionDTO = {
+  id: string;
+  fromStageId: string;
+  toStageId: string;
+  forwardRoles?: string[];
+  forwardUserIds?: string[];
+  backRoles?: string[];
+  backUserIds?: string[];
+};
+type EdgePerms = { forwardRoles: string[]; forwardUserIds: string[]; backRoles: string[]; backUserIds: string[] };
+type PermField = keyof EdgePerms;
+type TeamUser = { id: string; nome: string; role: string; ativo: boolean };
+
+const ROLE_OPTIONS = [
+  { value: "MANAGER", label: "Gerente" },
+  { value: "AGENT", label: "Corretor" },
+  { value: "PARTNER", label: "Externo Consultivo" },
+];
+
+const permsOf = (t: { forwardRoles?: string[]; forwardUserIds?: string[]; backRoles?: string[]; backUserIds?: string[] }): EdgePerms => ({
+  forwardRoles: t.forwardRoles ?? [],
+  forwardUserIds: t.forwardUserIds ?? [],
+  backRoles: t.backRoles ?? [],
+  backUserIds: t.backUserIds ?? [],
+});
 type StructureDTO = { pipelineId: string; groups: GroupDTO[]; ungrouped: StageDTO[]; transitions: TransitionDTO[] };
 
 // Layout padrão: cada Etapa é uma linha, os status vão da esquerda para a direita
@@ -147,6 +171,7 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
       id: t.id,
       source: t.fromStageId,
       target: t.toStageId,
+      data: permsOf(t),
       ...edgeStyle("normal"),
     }));
 
@@ -231,7 +256,7 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
           method: "POST",
           body: JSON.stringify({ fromStageId: connection.source, toStageId: connection.target }),
         });
-        setEdges((eds) => addEdge({ ...connection, id: created.id, ...edgeStyle("normal") }, eds));
+        setEdges((eds) => addEdge({ ...connection, id: created.id, data: permsOf(created), ...edgeStyle("normal") }, eds));
       } catch (e: any) {
         setError(e?.message || "Não foi possível criar essa transição.");
       }
@@ -299,6 +324,41 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
       setError(e?.message || "Não foi possível concluir a ação.");
     }
   };
+
+  // ── permissões da seta selecionada (quem pode avançar / voltar) ──────────────
+  const [team, setTeam] = useState<TeamUser[] | null>(null);
+  useEffect(() => {
+    if (!selectedEdge || team) return;
+    apiFetch("/users")
+      .then((d: TeamUser[]) => setTeam((Array.isArray(d) ? d : []).filter((u) => u.ativo && u.role !== "OWNER")))
+      .catch(() => setTeam([]));
+  }, [selectedEdge, team]);
+
+  const edgePerms = useMemo<EdgePerms | null>(
+    () => (selectedEdge ? permsOf((selectedEdge.data ?? {}) as Partial<EdgePerms>) : null),
+    [selectedEdge],
+  );
+
+  const toggleEdgePerm = useCallback(
+    async (field: PermField, value: string) => {
+      if (!selectedEdge) return;
+      const id = selectedEdge.id;
+      const cur = permsOf((selectedEdge.data ?? {}) as Partial<EdgePerms>);
+      const next = cur[field].includes(value) ? cur[field].filter((v) => v !== value) : [...cur[field], value];
+      setEdges((eds) => eds.map((e) => (e.id === id ? { ...e, data: { ...cur, [field]: next } } : e)));
+      setError(null);
+      try {
+        await apiFetch(`/pipeline/transitions/${id}/permissions`, {
+          method: "PATCH",
+          body: JSON.stringify({ [field]: next }),
+        });
+      } catch (e: any) {
+        setEdges((eds) => eds.map((x) => (x.id === id ? { ...x, data: cur } : x)));
+        setError(e?.message || "Não foi possível salvar a permissão.");
+      }
+    },
+    [selectedEdge, setEdges],
+  );
 
   const single = selectedNodes.length === 1 ? selectedNodes[0] : null;
 
@@ -469,6 +529,52 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
         <span className="ml-auto text-xs text-[var(--shell-subtext)]">{saving ? "Salvando..." : "Alterações salvas"}</span>
       </div>
 
+      {selectedEdge && edgePerms && (
+        <div className="grid gap-3 rounded-xl border border-[var(--shell-card-border)] bg-[var(--shell-card-bg)] p-3 text-xs md:grid-cols-2">
+          {([
+            { key: "forward", title: "Pode avançar", hint: "Vazio = todos podem. O dono sempre pode.", roles: "forwardRoles", users: "forwardUserIds", from: nameById.get(selectedEdge.source), to: nameById.get(selectedEdge.target) },
+            { key: "back", title: "Pode voltar", hint: "Vazio = só o dono. O dono sempre pode.", roles: "backRoles", users: "backUserIds", from: nameById.get(selectedEdge.target), to: nameById.get(selectedEdge.source) },
+          ] as const).map((c) => (
+            <div key={c.key}>
+              <div className="font-semibold text-[var(--shell-text)]">
+                {c.title}: {c.from ?? "?"} → {c.to ?? "?"}
+              </div>
+              <div className="mb-1.5 text-[var(--shell-subtext)]">{c.hint}</div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {ROLE_OPTIONS.map((r) => (
+                  <label key={r.value} className="inline-flex items-center gap-1.5 text-[var(--shell-text)]">
+                    <input
+                      type="checkbox"
+                      checked={edgePerms[c.roles].includes(r.value)}
+                      onChange={() => toggleEdgePerm(c.roles, r.value)}
+                    />
+                    {r.label}
+                  </label>
+                ))}
+              </div>
+              <details className="mt-1.5">
+                <summary className="cursor-pointer text-[var(--shell-subtext)]">
+                  Pessoas específicas ({edgePerms[c.users].length})
+                </summary>
+                <div className="mt-1 max-h-32 space-y-1 overflow-auto">
+                  {(team ?? []).length === 0 && <div className="text-[var(--shell-subtext)]">{team ? "Nenhum usuário." : "Carregando..."}</div>}
+                  {(team ?? []).map((u) => (
+                    <label key={u.id} className="flex items-center gap-1.5 text-[var(--shell-text)]">
+                      <input
+                        type="checkbox"
+                        checked={edgePerms[c.users].includes(u.id)}
+                        onChange={() => toggleEdgePerm(c.users, u.id)}
+                      />
+                      {u.nome}
+                    </label>
+                  ))}
+                </div>
+              </details>
+            </div>
+          ))}
+        </div>
+      )}
+
       <p className="text-xs text-[var(--shell-subtext)]">
         <strong>Setas:</strong> puxe da bolinha <span style={{ color: OUT_COLOR }}>●</span> laranja (saída, à direita)
         até a bolinha <span style={{ color: IN_COLOR }}>●</span> verde (entrada, à esquerda) de outro status para criar.
@@ -478,7 +584,7 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
         {" "}
         <strong>Vários de uma vez:</strong> segure <kbd>Shift</kbd> e arraste no fundo para selecionar em caixa, ou
         clique segurando <kbd>Ctrl</kbd>. Os selecionados arrastam juntos e podem ser movidos de Etapa ou excluídos em lote.
-        {" "}A posição das caixas fica salva. Só as setas decidem para onde um lead pode ir: status sem nenhuma seta saindo não tem destino (o lead continua nele).
+        {" "}A posição das caixas fica salva. Só as setas decidem para onde um lead pode ir (e voltar é o caminho inverso da seta, liberado só ao dono ou a quem você marcar): status sem nenhuma seta saindo não tem destino (o lead continua nele).
       </p>
 
       {edges.length === 0 && nodes.length > 0 && (

@@ -48,6 +48,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 
 // ✅ NOVO: Pipeline (ETAPA 2)
+import { canUseTransition } from '../pipeline/transition-permissions';
 import { PipelineService, resolveTenantEntryStage } from '../pipeline/pipeline.service';
 import { AuditService } from '../audit/audit.service';
 import { QueueService } from '../queue/queue.service';
@@ -2705,29 +2706,45 @@ async getById(user: any, id: string) {
       throw new BadRequestException('Lead sem stage atual.');
     }
 
-    // Aba "Fluxo" (tela /settings/pipeline): as setas saindo do status atual.
-    const customLinks = effectiveCurrentStageId
+    // Aba "Fluxo" (tela /settings/pipeline). Avançar = setas que SAEM do status atual;
+    // voltar = as mesmas setas no sentido inverso (que ENTRAM no status atual), sem
+    // precisar desenhar. Cada seta tem suas permissões (ver transition-permissions.ts).
+    const links = effectiveCurrentStageId
       ? await this.prisma.pipelineTransition.findMany({
-          where: { tenantId: user.tenantId, fromStageId: effectiveCurrentStageId },
-          select: { toStageId: true },
+          where: {
+            tenantId: user.tenantId,
+            OR: [{ fromStageId: effectiveCurrentStageId }, { toStageId: effectiveCurrentStageId }],
+          },
         })
       : [];
 
-    // Só as setas da aba "Fluxo" decidem para onde o lead pode ir. Status sem
-    // seta saindo = sem destino (o lead continua no status gravado).
-    const allowedStages =
-      customLinks.length > 0
-        ? await this.prisma.pipelineStage.findMany({
-            where: {
-              tenantId: user.tenantId,
-              id: { in: customLinks.map((l) => l.toStageId) },
-              isActive: true,
-              ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
-            },
-            select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
-            orderBy: { sortOrder: 'asc' },
-          })
-        : [];
+    const forwardIds = new Set<string>();
+    const backIds = new Set<string>();
+    let backBlocked = false;
+    for (const l of links) {
+      if (l.fromStageId === effectiveCurrentStageId) {
+        if (canUseTransition(l, user, 'forward')) forwardIds.add(l.toStageId);
+      } else if (l.toStageId === effectiveCurrentStageId) {
+        if (canUseTransition(l, user, 'back')) backIds.add(l.fromStageId);
+        else backBlocked = true;
+      }
+    }
+    for (const id of forwardIds) backIds.delete(id); // seta explícita de ida vence a "volta"
+
+    const ids = [...new Set([...forwardIds, ...backIds])];
+    const stages = ids.length
+      ? await this.prisma.pipelineStage.findMany({
+          where: {
+            tenantId: user.tenantId,
+            id: { in: ids },
+            isActive: true,
+            ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
+          },
+          select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
+          orderBy: { sortOrder: 'asc' },
+        })
+      : [];
+    const allowedStages = stages.map((s) => ({ ...s, direction: backIds.has(s.id) ? 'back' : 'forward' }));
 
     return {
       leadId,
@@ -2738,6 +2755,7 @@ async getById(user: any, id: string) {
       currentRequiresPendencias,
       currentUnitAction,
       allowedStages,
+      backBlocked,
     };
   }
 
@@ -3171,16 +3189,28 @@ async updateStage(
     throw new BadRequestException('Lead sem stage atual.');
   }
 
-  // Aba "Fluxo" (tela /settings/pipeline): só as setas saindo do status atual
-  // autorizam o movimento. Sem seta para o destino = transição inválida.
-  const customLinks = effectiveCurrentStageId
-    ? await this.prisma.pipelineTransition.findMany({
-        where: { tenantId: user.tenantId, fromStageId: effectiveCurrentStageId },
-        select: { toStageId: true },
-      })
-    : [];
+  // Aba "Fluxo": avançar = seta que sai do status atual; voltar = a mesma seta no
+  // sentido inverso. Cada seta tem suas permissões (transition-permissions.ts).
+  const [forwardLink, backLink] = effectiveCurrentStageId
+    ? await Promise.all([
+        this.prisma.pipelineTransition.findFirst({
+          where: { tenantId: user.tenantId, fromStageId: effectiveCurrentStageId, toStageId: toStage.id },
+        }),
+        this.prisma.pipelineTransition.findFirst({
+          where: { tenantId: user.tenantId, fromStageId: toStage.id, toStageId: effectiveCurrentStageId },
+        }),
+      ])
+    : [null, null];
 
-  if (!customLinks.some((l) => l.toStageId === toStage.id)) {
+  if (forwardLink) {
+    if (!canUseTransition(forwardLink, user, 'forward')) {
+      throw new ForbiddenException('Você não tem permissão para avançar para este status. Peça à liderança.');
+    }
+  } else if (backLink) {
+    if (!canUseTransition(backLink, user, 'back')) {
+      throw new ForbiddenException('Somente a liderança pode voltar este status. Peça ao seu gerente ou ao dono para corrigir.');
+    }
+  } else {
     throw new BadRequestException(
       `Transição inválida: ${fromStageKey} -> ${toStage.key}`,
     );

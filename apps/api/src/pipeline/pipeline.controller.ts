@@ -132,6 +132,17 @@ export class PipelineController {
     return this.pipelineService.createTransition(req.user.tenantId, body);
   }
 
+  /** Quem pode avançar/voltar por esta seta (papéis e/ou pessoas). OWNER sempre pode. */
+  @Patch('transitions/:id/permissions')
+  async updateTransitionPermissions(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { forwardRoles?: string[]; forwardUserIds?: string[]; backRoles?: string[]; backUserIds?: string[] },
+  ) {
+    requireOwner(req);
+    return this.pipelineService.updateTransitionPermissions(req.user.tenantId, id, body);
+  }
+
   @Delete('transitions/:id')
   async deleteTransition(@Req() req: any, @Param('id') id: string) {
     requireOwner(req);
