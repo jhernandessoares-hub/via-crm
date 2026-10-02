@@ -176,48 +176,6 @@ function StageChip({
   );
 }
 
-// ─── Badge de transição de grupo ─────────────────────────────────────────────
-
-function GroupTransitionBadge({
-  targetGroup,
-  direction,
-}: {
-  targetGroup: string;
-  direction: "advance" | "return";
-}) {
-  // mesma fonte do resto da tela: o nome que o tenant deu à Etapa
-  const { groupName } = usePipelineGroups();
-  const label = groupName(targetGroup);
-  const isAdvance = direction === "advance";
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
-        isAdvance
-          ? "border-via-teal-light bg-via-teal-soft text-via-teal dark:border-via-teal/40 dark:bg-via-teal/10 dark:text-via-teal-light"
-          : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400"
-      )}
-    >
-      {isAdvance ? (
-        <>
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-          </svg>
-          {label}
-        </>
-      ) : (
-        <>
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
-          </svg>
-          {label}
-        </>
-      )}
-    </span>
-  );
-}
-
 // ─── Separador de grupo ───────────────────────────────────────────────────────
 
 function GroupDivider({ label }: { label: string }) {
@@ -395,26 +353,15 @@ export function PipelineStepper({
         {/* Stages do grupo atual */}
         {list.map((s, i) => {
           const { variant, clickable } = classifyStage(s);
-          const showAdvanceBadge = clickable && !!s.advancesToGroup;
-          const showReturnBadge  = clickable && !!s.returnsToGroup;
-
           return (
             <div key={s.id} className="flex items-center gap-1.5">
               {i > 0 && <ArrowRightIcon />}
-              <div className="flex flex-col items-start gap-1">
-                <StageChip
-                  name={s.name}
-                  variant={variant}
-                  disabled={disabled || !clickable}
-                  onClick={clickable ? () => onSelectStage?.(s) : undefined}
-                />
-                {showAdvanceBadge && (
-                  <GroupTransitionBadge targetGroup={s.advancesToGroup!} direction="advance" />
-                )}
-                {showReturnBadge && (
-                  <GroupTransitionBadge targetGroup={s.returnsToGroup!} direction="return" />
-                )}
-              </div>
+              <StageChip
+                name={s.name}
+                variant={variant}
+                disabled={disabled || !clickable}
+                onClick={clickable ? () => onSelectStage?.(s) : undefined}
+              />
             </div>
           );
         })}

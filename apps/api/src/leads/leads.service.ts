@@ -3207,34 +3207,6 @@ async updateStage(
   await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
   await applyUnitSideEffects(toStage.unitAction);
 
-  const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
-  // Só faz cascade se o grupo destino for diferente do grupo atual do lead
-  // (evita loop: clicar em stage gateway ao voltar re-empurraria para o grupo de origem)
-  if (targetGroup && targetGroup !== fromStageGroup) {
-    const firstStageOfGroup = await this.prisma.pipelineStage.findFirst({
-      where: { tenantId: user.tenantId, group: targetGroup, isActive: true },
-      orderBy: { sortOrder: 'asc' },
-      select: { id: true, name: true, unitAction: true },
-    });
-    if (firstStageOfGroup) {
-      await this.prisma.$transaction([
-        this.prisma.lead.update({ where: { id: leadId }, data: { stageId: firstStageOfGroup.id } }),
-        this.prisma.leadTransitionLog.create({
-          data: {
-            tenantId: user.tenantId,
-            leadId,
-            fromStage: toStage.name,
-            toStage: firstStageOfGroup.name,
-            changedBy: user?.id || 'USER',
-            cascade: true,
-          },
-        }),
-      ]);
-      await auditMove(toStage.name, firstStageOfGroup.name, targetGroup, true);
-      await applyUnitSideEffects(firstStageOfGroup.unitAction);
-    }
-  }
-
   await applyBaseFriaIngress();
   return updated;
 }

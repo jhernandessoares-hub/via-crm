@@ -4232,7 +4232,7 @@ function discardAiSuggestion() {
               const units = (lead as any)?.developmentUnits ?? [];
               const reservedUnit = units.find((u: any) => u.status === "RESERVADO");
               const propostaUnit = units.find((u: any) => u.status === "PROPOSTA");
-              const willPropose = !!reservedUnit && (stage.unitAction === "PROPOSTA" || stage.advancesToGroup === "ESCOLHA_UNIDADE");
+              const willPropose = !!reservedUnit && stage.unitAction === "PROPOSTA";
               const willSell = !!propostaUnit && stage.unitAction === "VENDA";
               // Venda avulsa: etapa de VENDA e lead sem NENHUMA unidade de empreendimento.
               const isAvulsoSale = stage.unitAction === "VENDA" && units.length === 0;
