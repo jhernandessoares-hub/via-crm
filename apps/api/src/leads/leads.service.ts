@@ -48,7 +48,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { resolveAiModel } from '../ai/resolve-ai-model';
 
 // ✅ NOVO: Pipeline (ETAPA 2)
-import { PipelineService, DEFAULT_STAGE_TRANSITIONS, resolveTenantEntryStage } from '../pipeline/pipeline.service';
+import { PipelineService, resolveTenantEntryStage } from '../pipeline/pipeline.service';
 import { AuditService } from '../audit/audit.service';
 import { QueueService } from '../queue/queue.service';
 import { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
@@ -2705,10 +2705,7 @@ async getById(user: any, id: string) {
       throw new BadRequestException('Lead sem stage atual.');
     }
 
-    // Aba "Fluxo" (tela /settings/pipeline): se o tenant já desenhou pelo menos
-    // uma linha saindo do status atual, ela manda — substitui a matriz legada
-    // abaixo só pra esse status. Enquanto não houver linha própria, comportamento
-    // 100% inalterado (matriz padrão ou movimento livre de pipeline customizado).
+    // Aba "Fluxo" (tela /settings/pipeline): as setas saindo do status atual.
     const customLinks = effectiveCurrentStageId
       ? await this.prisma.pipelineTransition.findMany({
           where: { tenantId: user.tenantId, fromStageId: effectiveCurrentStageId },
@@ -2716,223 +2713,18 @@ async getById(user: any, id: string) {
         })
       : [];
 
-    if (customLinks.length > 0) {
-      const allowedStages = await this.prisma.pipelineStage.findMany({
-        where: {
-          tenantId: user.tenantId,
-          id: { in: customLinks.map((l) => l.toStageId) },
-          isActive: true,
-          ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
-        },
-        select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
-        orderBy: { sortOrder: 'asc' },
-      });
-
-      return {
-        leadId,
-        currentStageId: effectiveCurrentStageId,
-        currentStageKey: fromStageKey,
-        currentRequiresEvidence,
-        currentRequiresReason,
-        currentRequiresPendencias,
-        currentUnitAction,
-        allowedStages,
-        fluxoDefinido: true,
-        prevGroupLastStageId: null,
-      };
-    }
-
-    // Pipeline customizado: stages não presentes na matriz padrão têm livre movimento
-    const isCustomStage = fromStageKey !== 'BASE_FRIA' && !Object.prototype.hasOwnProperty.call(DEFAULT_STAGE_TRANSITIONS, fromStageKey);
-
-    if (isCustomStage) {
-      const currentStageRecord = await this.prisma.pipelineStage.findFirst({
-        where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
-        select: { pipelineId: true, group: true, sortOrder: true },
-      });
-
-      const allCustomStages = currentStageRecord
+    // Só as setas da aba "Fluxo" decidem para onde o lead pode ir. Status sem
+    // seta saindo = sem destino (o lead continua no status gravado).
+    const allowedStages =
+      customLinks.length > 0
         ? await this.prisma.pipelineStage.findMany({
             where: {
               tenantId: user.tenantId,
-              pipelineId: currentStageRecord.pipelineId,
+              id: { in: customLinks.map((l) => l.toStageId) },
               isActive: true,
-              NOT: { id: effectiveCurrentStageId ?? undefined },
               ...(user.role !== 'OWNER' ? { ownerOnly: false } : {}),
             },
             select: { id: true, key: true, name: true, sortOrder: true, group: true, requiresEvidence: true, requiresReason: true, requiresPendencias: true, unitAction: true, ownerOnly: true, advancesToGroup: true, returnsToGroup: true },
-            orderBy: { sortOrder: 'asc' },
-          })
-        : [];
-
-      // Descobre o stage real em que o lead esteve na etapa anterior (via log de transições)
-      let prevGroupLastStageId: string | null = null;
-      if (currentStageRecord?.group && allCustomStages.length > 0) {
-        // Agrupa todos os stages pelo grupo e calcula o minSortOrder de cada grupo
-        const groupMinOrder = new Map<string, number>();
-        for (const s of allCustomStages) {
-          if (!s.group) continue;
-          const cur = groupMinOrder.get(s.group) ?? Infinity;
-          groupMinOrder.set(s.group, Math.min(cur, s.sortOrder ?? 0));
-        }
-        // Inclui o grupo atual no mapa
-        if (!groupMinOrder.has(currentStageRecord.group)) {
-          groupMinOrder.set(currentStageRecord.group, currentStageRecord.sortOrder ?? 0);
-        }
-
-        const groupOrder = [...groupMinOrder.entries()]
-          .sort((a, b) => a[1] - b[1])
-          .map(([g]) => g);
-
-        const currentGroupIdx = groupOrder.indexOf(currentStageRecord.group);
-        const prevGroupKey = currentGroupIdx > 0 ? groupOrder[currentGroupIdx - 1] : null;
-
-        if (prevGroupKey) {
-          const prevGroupStages = allCustomStages.filter((s) => s.group === prevGroupKey);
-          const prevGroupNames = prevGroupStages.map((s) => s.name);
-
-          // Busca o log mais recente em que o lead saiu de um stage da etapa anterior
-          const lastLog = await this.prisma.leadTransitionLog.findFirst({
-            where: { tenantId: user.tenantId, leadId, fromStage: { in: prevGroupNames } },
-            orderBy: { createdAt: 'desc' },
-            select: { fromStage: true },
-          });
-
-          if (lastLog?.fromStage) {
-            const match = prevGroupStages.find((s) => s.name === lastLog.fromStage);
-            prevGroupLastStageId = match?.id ?? null;
-          }
-        }
-      }
-
-      return {
-        leadId,
-        currentStageId: effectiveCurrentStageId,
-        currentStageKey: fromStageKey,
-        currentRequiresEvidence,
-        currentRequiresReason,
-        currentRequiresPendencias,
-        currentUnitAction,
-        allowedStages: allCustomStages,
-        prevGroupLastStageId,
-      };
-    }
-
-    let allowedStageKeys: string[] = [];
-
-    if (fromStageKey === 'BASE_FRIA') {
-      const isManagerLike = user?.role === 'MANAGER' || user?.role === 'OWNER';
-
-      if (!isManagerLike) {
-        return {
-          leadId,
-          currentStageId: effectiveCurrentStageId,
-          currentStageKey: fromStageKey,
-          currentRequiresEvidence,
-          currentRequiresReason,
-          currentUnitAction,
-          allowedStages: [],
-        };
-      }
-
-      const baseFriaStage = await this.prisma.pipelineStage.findFirst({
-        where: {
-          tenantId: user.tenantId,
-          key: 'BASE_FRIA',
-          isActive: true,
-        },
-        select: {
-          name: true,
-        },
-      });
-
-      if (!baseFriaStage) {
-        throw new BadRequestException('Stage BASE_FRIA não encontrada.');
-      }
-
-      const lastMoveToBaseFria = await this.prisma.leadTransitionLog.findFirst({
-        where: {
-          tenantId: user.tenantId,
-          leadId,
-          toStage: baseFriaStage.name,
-        },
-        orderBy: { createdAt: 'desc' },
-        select: {
-          fromStage: true,
-        },
-      });
-
-      if (lastMoveToBaseFria?.fromStage) {
-        const previousStage = await this.prisma.pipelineStage.findFirst({
-          where: {
-            tenantId: user.tenantId,
-            name: lastMoveToBaseFria.fromStage,
-            isActive: true,
-          },
-          select: {
-            key: true,
-          },
-        });
-
-        if (previousStage?.key) {
-          allowedStageKeys = [previousStage.key];
-        }
-      }
-    } else {
-      allowedStageKeys = DEFAULT_STAGE_TRANSITIONS[fromStageKey] ?? [];
-
-      // Permite voltar apenas para stages que o lead realmente visitou
-      const transitions = await this.prisma.leadTransitionLog.findMany({
-        where: { tenantId: user.tenantId, leadId },
-        select: { fromStage: true, toStage: true },
-      });
-
-      const visitedNames = new Set<string>(
-        transitions.flatMap((t) => [t.fromStage, t.toStage]).filter((s): s is string => s !== null)
-      );
-
-      const currentStageInfo = await this.prisma.pipelineStage.findFirst({
-        where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
-        select: { sortOrder: true, group: true },
-      });
-
-      if (currentStageInfo?.group != null && currentStageInfo?.sortOrder != null) {
-        const prevStage = await this.prisma.pipelineStage.findFirst({
-          where: {
-            tenantId: user.tenantId,
-            isActive: true,
-            group: currentStageInfo.group,
-            sortOrder: { lt: currentStageInfo.sortOrder },
-            name: { in: Array.from(visitedNames) },
-          },
-          orderBy: { sortOrder: 'desc' },
-          select: { key: true },
-        });
-
-        if (prevStage?.key && !allowedStageKeys.includes(prevStage.key)) {
-          allowedStageKeys = [...allowedStageKeys, prevStage.key];
-        }
-      }
-    }
-
-    const allowedStages =
-      allowedStageKeys.length > 0
-        ? await this.prisma.pipelineStage.findMany({
-            where: {
-              tenantId: user.tenantId,
-              isActive: true,
-              key: { in: allowedStageKeys },
-            },
-            select: {
-              id: true,
-              key: true,
-              name: true,
-              sortOrder: true,
-              requiresEvidence: true,
-              requiresReason: true,
-              unitAction: true,
-              ownerOnly: true,
-            },
             orderBy: { sortOrder: 'asc' },
           })
         : [];
@@ -2943,6 +2735,7 @@ async getById(user: any, id: string) {
       currentStageKey: fromStageKey,
       currentRequiresEvidence,
       currentRequiresReason,
+      currentRequiresPendencias,
       currentUnitAction,
       allowedStages,
     };
@@ -3378,196 +3171,16 @@ async updateStage(
     throw new BadRequestException('Lead sem stage atual.');
   }
 
-  // Aba "Fluxo" (tela /settings/pipeline): se o tenant já desenhou pelo menos
-  // uma linha saindo do status atual, ela manda — nem matriz padrão, nem
-  // movimento livre de pipeline customizado. Enquanto não houver linha própria
-  // saindo desse status específico, comportamento 100% inalterado.
+  // Aba "Fluxo" (tela /settings/pipeline): só as setas saindo do status atual
+  // autorizam o movimento. Sem seta para o destino = transição inválida.
   const customLinks = effectiveCurrentStageId
     ? await this.prisma.pipelineTransition.findMany({
         where: { tenantId: user.tenantId, fromStageId: effectiveCurrentStageId },
         select: { toStageId: true },
       })
     : [];
-  const hasCustomLinks = customLinks.length > 0;
 
-  // Pipeline customizado: stages fora da matriz padrão E sem linha própria têm livre movimento
-  const isCustomTransition =
-    !hasCustomLinks &&
-    fromStageKey !== 'BASE_FRIA' &&
-    !Object.prototype.hasOwnProperty.call(DEFAULT_STAGE_TRANSITIONS, fromStageKey);
-
-  if (isCustomTransition) {
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.lead.update({
-        where: { id: leadId },
-        data: { stageId: toStage.id, ...baseFriaData },
-      }),
-      this.prisma.leadTransitionLog.create({
-        data: {
-          tenantId: user.tenantId,
-          leadId,
-          fromStage: fromStageName,
-          toStage: toStage.name,
-          changedBy: user?.id || 'USER',
-          evidenceDocumentId,
-          motivo: motivo || null,
-        },
-      }),
-    ]);
-
-    await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
-    await applyUnitSideEffects(toStage.unitAction);
-
-    const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
-    // Só faz cascade se o grupo destino for diferente do grupo atual do lead
-    // (evita loop: clicar em stage gateway ao voltar re-empurraria para o grupo de origem)
-    if (targetGroup && targetGroup !== fromStageGroup) {
-      const firstStageOfGroup = await this.prisma.pipelineStage.findFirst({
-        where: { tenantId: user.tenantId, group: targetGroup, isActive: true },
-        orderBy: { sortOrder: 'asc' },
-        select: { id: true, name: true, unitAction: true },
-      });
-      if (firstStageOfGroup) {
-        await this.prisma.$transaction([
-          this.prisma.lead.update({ where: { id: leadId }, data: { stageId: firstStageOfGroup.id } }),
-          this.prisma.leadTransitionLog.create({
-            data: {
-              tenantId: user.tenantId,
-              leadId,
-              fromStage: toStage.name,
-              toStage: firstStageOfGroup.name,
-              changedBy: user?.id || 'USER',
-              cascade: true,
-            },
-          }),
-        ]);
-        await auditMove(toStage.name, firstStageOfGroup.name, targetGroup, true);
-        await applyUnitSideEffects(firstStageOfGroup.unitAction);
-      }
-    }
-
-    await applyBaseFriaIngress();
-    return updated;
-  }
-
-  let isAllowed = false;
-
-  if (hasCustomLinks) {
-    isAllowed = customLinks.some((l) => l.toStageId === toStage.id);
-  } else if (fromStageKey === 'BASE_FRIA') {
-    const isManagerLike = user?.role === 'MANAGER' || user?.role === 'OWNER';
-
-    if (!isManagerLike) {
-      throw new BadRequestException('Somente manager pode retirar lead da Base Fria.');
-    }
-
-    const baseFriaStage = await this.prisma.pipelineStage.findFirst({
-      where: {
-        tenantId: user.tenantId,
-        key: 'BASE_FRIA',
-        isActive: true,
-      },
-      select: {
-        name: true,
-      },
-    });
-
-    if (!baseFriaStage) {
-      throw new BadRequestException('Stage BASE_FRIA não encontrada.');
-    }
-
-    const lastMoveToBaseFria = await this.prisma.leadTransitionLog.findFirst({
-      where: {
-        tenantId: user.tenantId,
-        leadId,
-        toStage: baseFriaStage.name,
-      },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        fromStage: true,
-      },
-    });
-
-    if (!lastMoveToBaseFria?.fromStage) {
-      throw new BadRequestException(
-        'Não foi possível identificar a última etapa antes da Base Fria.',
-      );
-    }
-
-    const previousStage = await this.prisma.pipelineStage.findFirst({
-      where: {
-        tenantId: user.tenantId,
-        name: lastMoveToBaseFria.fromStage,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        key: true,
-        name: true,
-      },
-    });
-
-    if (!previousStage) {
-      throw new BadRequestException(
-        'Não foi possível localizar a etapa anterior da Base Fria.',
-      );
-    }
-
-    isAllowed = previousStage.id === toStage.id;
-  } else {
-    const allowedTargets = DEFAULT_STAGE_TRANSITIONS[fromStageKey] ?? [];
-    isAllowed = allowedTargets.includes(toStage.key);
-
-    // Permite voltar apenas para stages que o lead realmente visitou
-    if (!isAllowed) {
-      const transitions = await this.prisma.leadTransitionLog.findMany({
-        where: { tenantId: user.tenantId, leadId },
-        select: { fromStage: true, toStage: true },
-      });
-
-      const visitedNames = new Set<string>(
-        transitions.flatMap((t) => [t.fromStage, t.toStage]).filter((s): s is string => s !== null)
-      );
-
-      const currentStageInfo = await this.prisma.pipelineStage.findFirst({
-        where: { tenantId: user.tenantId, key: fromStageKey, isActive: true },
-        select: { sortOrder: true, group: true },
-      });
-
-      if (currentStageInfo?.group != null && currentStageInfo?.sortOrder != null) {
-        const prevStage = await this.prisma.pipelineStage.findFirst({
-          where: {
-            tenantId: user.tenantId,
-            isActive: true,
-            group: currentStageInfo.group,
-            sortOrder: { lt: currentStageInfo.sortOrder },
-            name: { in: Array.from(visitedNames) },
-          },
-          orderBy: { sortOrder: 'desc' },
-          select: { id: true },
-        });
-
-        if (prevStage?.id === toStage.id) {
-          isAllowed = true;
-        }
-      }
-    }
-  }
-
-  // Voltar atrás: se o lead JÁ esteve neste status, a volta é sempre permitida —
-  // é o conserto de engano na movimentação. Vale para qualquer tenant, inclusive
-  // quem desenhou linhas na aba Fluxo (linha manda pra frente, histórico manda
-  // pra trás). Fica de fora só a saída da Base Fria, que tem regra própria de
-  // permissão logo acima e não pode ser contornada por aqui.
-  if (!isAllowed && fromStageKey !== 'BASE_FRIA') {
-    const jaEsteve = await this.prisma.leadTransitionLog.findFirst({
-      where: { tenantId: user.tenantId, leadId, fromStage: toStage.name },
-      select: { id: true },
-    });
-    if (jaEsteve) isAllowed = true;
-  }
-
-  if (!isAllowed) {
+  if (!customLinks.some((l) => l.toStageId === toStage.id)) {
     throw new BadRequestException(
       `Transição inválida: ${fromStageKey} -> ${toStage.key}`,
     );
@@ -3576,7 +3189,7 @@ async updateStage(
   const [updated] = await this.prisma.$transaction([
     this.prisma.lead.update({
       where: { id: leadId },
-      data: { stageId: toStage.id },
+      data: { stageId: toStage.id, ...baseFriaData },
     }),
     this.prisma.leadTransitionLog.create({
       data: {
@@ -3593,6 +3206,34 @@ async updateStage(
 
   await auditMove(fromStageName, toStage.name, toStage.group ?? null, false);
   await applyUnitSideEffects(toStage.unitAction);
+
+  const targetGroup = toStage.advancesToGroup ?? toStage.returnsToGroup ?? null;
+  // Só faz cascade se o grupo destino for diferente do grupo atual do lead
+  // (evita loop: clicar em stage gateway ao voltar re-empurraria para o grupo de origem)
+  if (targetGroup && targetGroup !== fromStageGroup) {
+    const firstStageOfGroup = await this.prisma.pipelineStage.findFirst({
+      where: { tenantId: user.tenantId, group: targetGroup, isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, name: true, unitAction: true },
+    });
+    if (firstStageOfGroup) {
+      await this.prisma.$transaction([
+        this.prisma.lead.update({ where: { id: leadId }, data: { stageId: firstStageOfGroup.id } }),
+        this.prisma.leadTransitionLog.create({
+          data: {
+            tenantId: user.tenantId,
+            leadId,
+            fromStage: toStage.name,
+            toStage: firstStageOfGroup.name,
+            changedBy: user?.id || 'USER',
+            cascade: true,
+          },
+        }),
+      ]);
+      await auditMove(toStage.name, firstStageOfGroup.name, targetGroup, true);
+      await applyUnitSideEffects(firstStageOfGroup.unitAction);
+    }
+  }
 
   await applyBaseFriaIngress();
   return updated;

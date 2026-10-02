@@ -82,10 +82,9 @@ export const KNOWN_GROUP_DISPLAY: Record<string, { name: string; color: string }
 };
 
 /**
- * Fonte única da matriz de transições permitidas — antes duplicada byte-a-byte
- * em `leads.service.ts` (`getAllowedStageTransitions` e `updateStage`). Qualquer
- * chave de etapa fora deste mapa (pipeline customizado) tem movimento livre —
- * ver `isCustomStage`/`isCustomTransition` em leads.service.ts.
+ * Setas iniciais do Fluxo de um tenant NOVO (viram `PipelineTransition` em
+ * `resolveTenantPipelineId`). Não é regra de runtime: quem decide o movimento de
+ * status são só as setas gravadas no banco (aba Fluxo de /settings/pipeline).
  */
 export const DEFAULT_STAGE_TRANSITIONS: Record<string, string[]> = {
   NOVO_LEAD: ['EM_CONTATO'],

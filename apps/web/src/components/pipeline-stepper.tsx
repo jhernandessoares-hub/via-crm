@@ -238,8 +238,6 @@ interface PipelineStepperProps {
   currentStageId?: string | null;
   currentGroup?: string | null;
   allowedStageIds?: string[];
-  /** true = o tenant desenhou setas no Fluxo a partir deste status; só então mostra destinos de qualquer Etapa. */
-  fluxoDefinido?: boolean;
   previousStageName?: string | null;
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
@@ -250,7 +248,6 @@ export function PipelineStepper({
   currentStageId,
   currentGroup,
   allowedStageIds,
-  fluxoDefinido,
   previousStageName,
   onSelectStage,
   disabled,
@@ -314,7 +311,7 @@ export function PipelineStepper({
   // do que o tenant desenhou na aba "Fluxo" de /settings/pipeline (ou da matriz
   // padrão) — o histórico do lead NÃO entra aqui. Agrupados por Etapa de destino.
   const otherGroups = groupOrder
-    .filter((g) => g !== currentGroup && (fluxoDefinido || g === nextGroupKey))
+    .filter((g) => g !== currentGroup)
     .map((g) => ({
       group: g,
       stages: (stages || [])

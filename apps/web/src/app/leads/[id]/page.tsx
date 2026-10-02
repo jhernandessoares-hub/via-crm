@@ -2258,7 +2258,6 @@ export default function LeadDetailChatPage() {
   const [pipelineErr, setPipelineErr] = useState<string | null>(null);
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
-  const [fluxoDefinido, setFluxoDefinido] = useState(false);
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
   const [currentStageRequiresPendencias, setCurrentStageRequiresPendencias] = useState(false);
@@ -2541,7 +2540,6 @@ export default function LeadDetailChatPage() {
       const data = await apiFetch("/leads/" + leadId + "/allowed-stage-transitions", { method: "GET" });
       const list: PipelineStage[] = Array.isArray(data?.allowedStages) ? data.allowedStages : [];
       setAllowedStages(list);
-      setFluxoDefinido(data?.fluxoDefinido === true);
       setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
       setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
       setCurrentStageRequiresPendencias(Boolean(data?.currentRequiresPendencias));
@@ -4333,7 +4331,6 @@ function discardAiSuggestion() {
                   currentStageId={currentStageId}
                   currentGroup={effectiveGroup}
                   allowedStageIds={allowedStages.map((s) => s.id)}
-                  fluxoDefinido={fluxoDefinido}
                   previousStageName={(lead as any)?.stageKey === "BASE_FRIA" ? (lead as any)?.previousStageName : null}
                   disabled={movingStage || user?.role === "PARTNER"}
                   onSelectStage={handleSelectStage}
