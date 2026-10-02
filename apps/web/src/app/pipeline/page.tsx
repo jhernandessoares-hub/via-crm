@@ -403,14 +403,14 @@ export default function PipelinePage() {
                             onMouseLeave={(e) => (e.currentTarget.style.background = isPending ? "var(--row-pending-bg)" : "var(--shell-bg)")}>
                             {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
                             <div className="text-sm font-medium text-[var(--shell-text)] truncate flex items-center gap-1.5">
-                              <span className="truncate">{displayName(l)}</span>
-                              {isPending && l.temMensagemNova && <NewMessageBadge since={l.lastInboundAt} />}
+                              <span className="truncate" title={displayName(l)}>{displayName(l)}</span>
                               {!!l.subConversasCount && (
                                 <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
                                   <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}
                                 </span>
                               )}
                             </div>
+                            {isPending && l.temMensagemNova && <div className="mt-1"><NewMessageBadge since={l.lastInboundAt} /></div>}
                             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
                               <MaskedField field="lead.telefone"><span className="truncate">{l.telefone || l.whatsapp || "—"}</span></MaskedField>
                               <span className="opacity-50">·</span>
@@ -503,14 +503,16 @@ export default function PipelinePage() {
                         onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-pending-hover-bg)")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "var(--row-pending-bg)")}>
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                        <div className="min-w-0 flex items-center gap-1.5">
-                          <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
-                          {l.temMensagemNova && <NewMessageBadge since={l.lastInboundAt} />}
-                          {!!l.subConversasCount && (
-                            <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
-                              <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}
-                            </span>
-                          )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Link title={displayName(l)} href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
+                            {!!l.subConversasCount && (
+                              <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
+                                <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}
+                              </span>
+                            )}
+                          </div>
+                          {l.temMensagemNova && <div className="mt-1"><NewMessageBadge since={l.lastInboundAt} /></div>}
                         </div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
@@ -557,7 +559,7 @@ export default function PipelinePage() {
                     style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
                     <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
                     <div className="min-w-0 flex items-center gap-1.5">
-                      <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
+                      <Link title={displayName(l)} href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
                       {!!l.subConversasCount && (
                         <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
                           <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}

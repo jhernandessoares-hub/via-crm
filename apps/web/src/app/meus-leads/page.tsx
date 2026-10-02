@@ -442,7 +442,8 @@ export default function MeusLeadsPage() {
                             onMouseEnter={(e) => { if (!l.conversaAberta) e.currentTarget.style.background = "var(--shell-hover)"; }}
                             onMouseLeave={(e) => { if (!l.conversaAberta) e.currentTarget.style.background = "var(--shell-bg)"; }}>
                             {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
-                            <div className="text-sm font-medium text-[var(--shell-text)] truncate flex items-center gap-1.5"><span className="truncate">{displayName(l)}</span>{l.conversaAberta && l.temMensagemNova && <NewMessageBadge since={l.lastInboundAt} />}</div>
+                            <div className="text-sm font-medium text-[var(--shell-text)] truncate" title={displayName(l)}>{displayName(l)}</div>
+                            {l.conversaAberta && l.temMensagemNova && <div className="mt-1"><NewMessageBadge since={l.lastInboundAt} /></div>}
                             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--shell-subtext)] truncate">
                               <MaskedField field="lead.telefone"><span className="truncate">{l.telefone || l.whatsapp || "—"}</span></MaskedField>
                               <span className="opacity-50">·</span>
@@ -533,7 +534,7 @@ export default function MeusLeadsPage() {
                       <div key={l.id} className="grid items-center gap-2 border-b border-l-4 px-4 py-3 last:border-b-0 hover:bg-amber-100 transition-colors bg-amber-50"
                         style={{ borderBottomColor: "var(--shell-card-border)", borderLeftColor: "#f59e0b", gridTemplateColumns: COL }}>
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                        <div className="min-w-0 flex items-center gap-1.5"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{l.passouBaseFria && <span title="Reativado da Base Fria">❄️ </span>}{displayName(l)}</Link>{l.temMensagemNova && <NewMessageBadge since={l.lastInboundAt} />}</div>
+                        <div className="min-w-0"><Link title={displayName(l)} href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{l.passouBaseFria && <span title="Reativado da Base Fria">❄️ </span>}{displayName(l)}</Link>{l.temMensagemNova && <div className="mt-1"><NewMessageBadge since={l.lastInboundAt} /></div>}</div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                         <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                         <div className="min-w-0">
@@ -583,7 +584,7 @@ export default function MeusLeadsPage() {
                     <div key={l.id} className="grid items-center gap-2 border-b px-4 py-3 last:border-b-0 hover:bg-[var(--shell-hover)] transition-colors"
                       style={{ borderColor: "var(--shell-card-border)", gridTemplateColumns: COL }}>
                       <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
-                      <div className="min-w-0"><Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{l.passouBaseFria && <span title="Reativado da Base Fria">❄️ </span>}{displayName(l)}</Link></div>
+                      <div className="min-w-0"><Link title={displayName(l)} href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{l.passouBaseFria && <span title="Reativado da Base Fria">❄️ </span>}{displayName(l)}</Link></div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate"><MaskedField field="lead.telefone">{l.telefone || l.whatsapp || "—"}</MaskedField></div>
                       <div className="text-sm text-[var(--shell-subtext)] truncate" title={l.origem ?? undefined}>{l.origem || "—"}</div>
                       <div className="min-w-0">
