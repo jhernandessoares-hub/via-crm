@@ -354,19 +354,20 @@ export function PipelineStepper({
 
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
 
-        {/* Voltas para outras Etapas (início da linha) */}
+        {/* Voltas para outras Etapas (início da linha) — nome da Etapa pequeno embaixo */}
         {otherBackGroups.map((g) => (
           <div key={`back-${g.group}`} className="flex items-center gap-1.5">
-            <GroupDivider label={GROUP_LABEL(g.group)} />
-            {g.stages.map((s, i) => (
-              <div key={s.id} className="flex items-center gap-1.5">
-                {i > 0 && <span className="text-slate-300">·</span>}
+            {g.stages.map((s) => (
+              <div key={s.id} className="flex flex-col items-start gap-0.5">
                 <StageChip
                   name={s.name}
                   variant="prev-group"
                   disabled={disabled}
                   onClick={() => onSelectStage?.(s)}
                 />
+                <span className="px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  {GROUP_LABEL(g.group)}
+                </span>
               </div>
             ))}
             <ArrowRightIcon />
