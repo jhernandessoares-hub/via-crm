@@ -16,6 +16,7 @@ import { NovoLeadModal } from "@/components/leads/NovoLeadModal";
 import { MaskedField } from "@/components/MaskedValue";
 import { useRequirePermission, usePermissions } from "@/lib/permissions";
 import { Users } from "lucide-react";
+import { NewMessageBadge } from "@/components/NewMessageBadge";
 
 type PipelineStage = {
   id: string;
@@ -45,6 +46,8 @@ type Lead = {
   cadastroOrigem?: Record<string, any> | null;
   criadoEm?: string;
   conversaAberta?: boolean | null;
+  temMensagemNova?: boolean;
+  lastInboundAt?: string | null;
   subConversasCount?: number;
 };
 
@@ -401,6 +404,7 @@ export default function PipelinePage() {
                             {numero && <div className="text-xs font-mono text-[var(--shell-subtext)] truncate">{numero}</div>}
                             <div className="text-sm font-medium text-[var(--shell-text)] truncate flex items-center gap-1.5">
                               <span className="truncate">{displayName(l)}</span>
+                              {isPending && l.temMensagemNova && <NewMessageBadge since={l.lastInboundAt} />}
                               {!!l.subConversasCount && (
                                 <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
                                   <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}
@@ -483,6 +487,9 @@ export default function PipelinePage() {
                 <div>
                   <div className="px-4 py-2 text-xs font-semibold border-b flex items-center gap-2" style={{ color: "var(--status-warning-text)", background: "var(--row-pending-bg)", borderBottomColor: "var(--row-pending-border)" }}>
                     💬 Conversas abertas ({pendingLeads.length})
+                    {pendingLeads.some((l) => l.temMensagemNova) && (
+                      <span style={{ color: "#16A34A" }}>· {pendingLeads.filter((l) => l.temMensagemNova).length} com mensagem nova</span>
+                    )}
                   </div>
                   {pendingLeads.map((l) => {
                     const stageName = getStageName(l);
@@ -498,6 +505,7 @@ export default function PipelinePage() {
                         <div className="text-sm font-mono text-[var(--shell-subtext)] truncate">{numero || "—"}</div>
                         <div className="min-w-0 flex items-center gap-1.5">
                           <Link href={`/leads/${l.id}`} className="font-medium text-[var(--shell-text)] hover:underline truncate block">{displayName(l)}</Link>
+                          {l.temMensagemNova && <NewMessageBadge since={l.lastInboundAt} />}
                           {!!l.subConversasCount && (
                             <span title={`${l.subConversasCount + 1} conversas nesta lead`} className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--brand-accent-muted)", color: "var(--brand-accent)" }}>
                               <Users className="w-2.5 h-2.5" />{l.subConversasCount + 1}

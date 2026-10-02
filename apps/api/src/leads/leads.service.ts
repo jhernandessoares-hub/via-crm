@@ -63,6 +63,12 @@ import { isValidCPF } from './cpf.util';
 import { digitsOnly, normalizePhoneBR } from '../common/phone.util';
 import { resolveSlaConfig } from '../tenants/sla.config';
 
+/** Mensagem do lead que o usuário ainda não viu (chegou depois da última abertura do lead). */
+function hasUnreadInbound(l: { lastInboundAt?: Date | null; lastReadAt?: Date | null }): boolean {
+  if (!l.lastInboundAt) return false;
+  return !l.lastReadAt || l.lastInboundAt > l.lastReadAt;
+}
+
 @Injectable()
 export class LeadsService {
   private readonly logger = new Logger('LeadsService');
@@ -1267,7 +1273,7 @@ export class LeadsService {
         return true;
       })
       .map(({ lastReadAt, ...rest }) => rest)
-      .slice(0, 20);
+      .slice(0, 50);
   }
 
   async dashboard(
@@ -2025,13 +2031,15 @@ export class LeadsService {
       assignedUserName: l.assignedUserId ? (assignedMap[l.assignedUserId] ?? null) : null,
       interesse: buildLeadInteresseLabel(l as any, productTitleMap),
       subConversasCount: subCountMap.get(l.id) ?? 0,
+      temMensagemNova: hasUnreadInbound(l),
     }));
 
-    // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
+    // Conversas abertas primeiro (com mensagem nova antes, depois lastInboundAt DESC), depois demais (criadoEm DESC)
     enriched.sort((a, b) => {
       if (a.conversaAberta && !b.conversaAberta) return -1;
       if (!a.conversaAberta && b.conversaAberta) return 1;
       if (a.conversaAberta && b.conversaAberta) {
+        if (a.temMensagemNova !== b.temMensagemNova) return a.temMensagemNova ? -1 : 1;
         const ta = a.lastInboundAt ? new Date(a.lastInboundAt as any).getTime() : 0;
         const tb = b.lastInboundAt ? new Date(b.lastInboundAt as any).getTime() : 0;
         return tb - ta;
@@ -3835,13 +3843,15 @@ async listTransitions(user: any, leadId: string) {
       ...l,
       assignedUserName: myName,
       interesse: buildLeadInteresseLabel(l as any, productTitleMap),
+      temMensagemNova: hasUnreadInbound(l),
     }));
 
-    // Conversas abertas primeiro (lastInboundAt DESC), depois demais (criadoEm DESC)
+    // Conversas abertas primeiro (com mensagem nova antes, depois lastInboundAt DESC), depois demais (criadoEm DESC)
     enriched.sort((a, b) => {
       if (a.conversaAberta && !b.conversaAberta) return -1;
       if (!a.conversaAberta && b.conversaAberta) return 1;
       if (a.conversaAberta && b.conversaAberta) {
+        if (a.temMensagemNova !== b.temMensagemNova) return a.temMensagemNova ? -1 : 1;
         const ta = a.lastInboundAt ? new Date(a.lastInboundAt as any).getTime() : 0;
         const tb = b.lastInboundAt ? new Date(b.lastInboundAt as any).getTime() : 0;
         return tb - ta;
