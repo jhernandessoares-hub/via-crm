@@ -1,3 +1,4 @@
+import { TRANSITION_ROLES } from './transition-permissions';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -82,10 +83,9 @@ export const KNOWN_GROUP_DISPLAY: Record<string, { name: string; color: string }
 };
 
 /**
- * Fonte única da matriz de transições permitidas — antes duplicada byte-a-byte
- * em `leads.service.ts` (`getAllowedStageTransitions` e `updateStage`). Qualquer
- * chave de etapa fora deste mapa (pipeline customizado) tem movimento livre —
- * ver `isCustomStage`/`isCustomTransition` em leads.service.ts.
+ * Setas iniciais do Fluxo de um tenant NOVO (viram `PipelineTransition` em
+ * `resolveTenantPipelineId`). Não é regra de runtime: quem decide o movimento de
+ * status são só as setas gravadas no banco (aba Fluxo de /settings/pipeline).
  */
 export const DEFAULT_STAGE_TRANSITIONS: Record<string, string[]> = {
   NOVO_LEAD: ['EM_CONTATO'],
@@ -403,7 +403,10 @@ export class PipelineService {
       }),
       this.prisma.pipelineTransition.findMany({
         where: { tenantId, pipelineId },
-        select: { id: true, fromStageId: true, toStageId: true },
+        select: {
+          id: true, fromStageId: true, toStageId: true,
+          forwardRoles: true, forwardUserIds: true, backRoles: true, backUserIds: true,
+        },
       }),
     ]);
 
@@ -522,6 +525,40 @@ export class PipelineService {
       },
       create: { tenantId, pipelineId, fromStageId: data.fromStageId, toStageId: data.toStageId },
       update: {},
+    });
+  }
+
+  async updateTransitionPermissions(
+    tenantId: string,
+    transitionId: string,
+    data: { forwardRoles?: string[]; forwardUserIds?: string[]; backRoles?: string[]; backUserIds?: string[] },
+  ) {
+    const transition = await this.prisma.pipelineTransition.findFirst({ where: { id: transitionId, tenantId } });
+    if (!transition) throw new BadRequestException('Transição não encontrada.');
+
+    const clean = (v: unknown): string[] =>
+      Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string'))] : [];
+    const roles = (v: unknown) => clean(v).filter((r) => TRANSITION_ROLES.includes(r));
+
+    const patch: Record<string, string[]> = {};
+    if (data.forwardRoles !== undefined) patch.forwardRoles = roles(data.forwardRoles);
+    if (data.backRoles !== undefined) patch.backRoles = roles(data.backRoles);
+    for (const key of ['forwardUserIds', 'backUserIds'] as const) {
+      if (data[key] === undefined) continue;
+      const ids = clean(data[key]);
+      const valid = ids.length
+        ? await this.prisma.user.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true } })
+        : [];
+      patch[key] = valid.map((u) => u.id);
+    }
+
+    return this.prisma.pipelineTransition.update({
+      where: { id: transition.id },
+      data: patch,
+      select: {
+        id: true, fromStageId: true, toStageId: true,
+        forwardRoles: true, forwardUserIds: true, backRoles: true, backUserIds: true,
+      },
     });
   }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, startTransition, type UIEvent } from "react";
 import { createPortal } from "react-dom";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
+import { usePipelineGroups } from "@/lib/pipeline-groups";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
 import { PendenciasModal, type PendenciaDraft, type PendenciaPessoa } from "@/components/PendenciasModal";
 import { PendenciasPanel } from "@/components/PendenciasPanel";
@@ -2258,7 +2259,6 @@ export default function LeadDetailChatPage() {
   const [pipelineErr, setPipelineErr] = useState<string | null>(null);
   const [movingStage, setMovingStage] = useState(false);
   const [allowedStages, setAllowedStages] = useState<PipelineStage[]>([]);
-  const [fluxoDefinido, setFluxoDefinido] = useState(false);
   const [currentStageRequiresEvidence, setCurrentStageRequiresEvidence] = useState(false);
   const [currentStageRequiresReason, setCurrentStageRequiresReason] = useState(false);
   const [currentStageRequiresPendencias, setCurrentStageRequiresPendencias] = useState(false);
@@ -2288,6 +2288,10 @@ export default function LeadDetailChatPage() {
     return [principal, ...extras];
   }, [participantes]);
   const [unitConfirm, setUnitConfirm] = useState<{ stage: PipelineStage; message: string } | null>(null);
+  // Confirmação antes de mover de status (não vale quando o status pede evidência/motivo/pendências)
+  const [moveConfirm, setMoveConfirm] = useState<{ stage: PipelineStage; isBack: boolean } | null>(null);
+  const [backBlocked, setBackBlocked] = useState(false);
+  const { groupName: stageGroupName } = usePipelineGroups();
   // Venda avulsa (imóvel sem unidade de empreendimento): captura valor + data
   const [vendaModal, setVendaModal] = useState<{ stage: PipelineStage } | null>(null);
   const [vendaValor, setVendaValor] = useState("");
@@ -2541,13 +2545,14 @@ export default function LeadDetailChatPage() {
       const data = await apiFetch("/leads/" + leadId + "/allowed-stage-transitions", { method: "GET" });
       const list: PipelineStage[] = Array.isArray(data?.allowedStages) ? data.allowedStages : [];
       setAllowedStages(list);
-      setFluxoDefinido(data?.fluxoDefinido === true);
+      setBackBlocked(data?.backBlocked === true);
       setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
       setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
       setCurrentStageRequiresPendencias(Boolean(data?.currentRequiresPendencias));
       setCurrentStageUnitAction(data?.currentUnitAction ?? null);
     } catch {
       setAllowedStages([]);
+      setBackBlocked(false);
       setCurrentStageRequiresEvidence(false);
       setCurrentStageRequiresReason(false);
       setCurrentStageRequiresPendencias(false);
@@ -4168,7 +4173,7 @@ function discardAiSuggestion() {
               }
             }
 
-            function proceedSelectStage(stage: PipelineStage) {
+            function proceedSelectStage(stage: PipelineStage, skipConfirm = false) {
               // Ao ENTRAR numa etapa que exige pendências (ex.: Docs Pendente): abre o
               // modal de pendências, que cria os itens antes de mover.
               if (stage.requiresPendencias) {
@@ -4184,8 +4189,10 @@ function discardAiSuggestion() {
               if (needsDocument || needsReason) {
                 setPendingStage(stage);
                 setEvidenceModalOpen(true);
-              } else {
+              } else if (skipConfirm) {
                 moveToStage(stage.id);
+              } else {
+                setMoveConfirm({ stage, isBack: (allowedStages as any[]).some((a) => a.id === stage.id && a.direction === "back") });
               }
             }
 
@@ -4234,7 +4241,7 @@ function discardAiSuggestion() {
               const units = (lead as any)?.developmentUnits ?? [];
               const reservedUnit = units.find((u: any) => u.status === "RESERVADO");
               const propostaUnit = units.find((u: any) => u.status === "PROPOSTA");
-              const willPropose = !!reservedUnit && (stage.unitAction === "PROPOSTA" || stage.advancesToGroup === "ESCOLHA_UNIDADE");
+              const willPropose = !!reservedUnit && stage.unitAction === "PROPOSTA";
               const willSell = !!propostaUnit && stage.unitAction === "VENDA";
               // Venda avulsa: etapa de VENDA e lead sem NENHUMA unidade de empreendimento.
               const isAvulsoSale = stage.unitAction === "VENDA" && units.length === 0;
@@ -4333,7 +4340,8 @@ function discardAiSuggestion() {
                   currentStageId={currentStageId}
                   currentGroup={effectiveGroup}
                   allowedStageIds={allowedStages.map((s) => s.id)}
-                  fluxoDefinido={fluxoDefinido}
+                  backStageIds={(allowedStages as any[]).filter((s) => s.direction === "back").map((s) => s.id)}
+                  backBlocked={backBlocked}
                   previousStageName={(lead as any)?.stageKey === "BASE_FRIA" ? (lead as any)?.previousStageName : null}
                   disabled={movingStage || user?.role === "PARTNER"}
                   onSelectStage={handleSelectStage}
@@ -4425,6 +4433,38 @@ function discardAiSuggestion() {
                   onClose={() => { setPendenciasModalOpen(false); setPendingStage(null); }}
                   onConfirm={handlePendenciasConfirm}
                 />
+                {moveConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
+                      <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                        {moveConfirm.isBack ? "Voltar de status" : "Mudar de status"}
+                      </h2>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                        Você {moveConfirm.isBack ? "vai voltar" : "vai"} para o status <strong>{moveConfirm.stage.name}</strong>
+                        {moveConfirm.stage.group && moveConfirm.stage.group !== effectiveGroup && (
+                          <> da etapa <strong>{stageGroupName(moveConfirm.stage.group)}</strong> (muda de etapa)</>
+                        )}
+                        .
+                      </p>
+                      <div className="mt-5 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMoveConfirm(null)}
+                          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-800"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { const s = moveConfirm.stage; setMoveConfirm(null); moveToStage(s.id); }}
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                        >
+                          Confirmar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {unitConfirm && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.55)" }}>
                     <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
@@ -4440,7 +4480,7 @@ function discardAiSuggestion() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => { const s = unitConfirm.stage; setUnitConfirm(null); proceedSelectStage(s); }}
+                          onClick={() => { const s = unitConfirm.stage; setUnitConfirm(null); proceedSelectStage(s, true); }}
                           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                         >
                           Confirmar e avançar

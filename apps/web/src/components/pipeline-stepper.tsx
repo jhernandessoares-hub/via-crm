@@ -171,50 +171,9 @@ function StageChip({
       className={cn(chipBase, chipStyles[variant], "disabled:pointer-events-none")}
     >
       {done && <CheckIcon />}
+      {variant === "prev-group" && <span aria-hidden>↩</span>}
       {name}
     </button>
-  );
-}
-
-// ─── Badge de transição de grupo ─────────────────────────────────────────────
-
-function GroupTransitionBadge({
-  targetGroup,
-  direction,
-}: {
-  targetGroup: string;
-  direction: "advance" | "return";
-}) {
-  // mesma fonte do resto da tela: o nome que o tenant deu à Etapa
-  const { groupName } = usePipelineGroups();
-  const label = groupName(targetGroup);
-  const isAdvance = direction === "advance";
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
-        isAdvance
-          ? "border-via-teal-light bg-via-teal-soft text-via-teal dark:border-via-teal/40 dark:bg-via-teal/10 dark:text-via-teal-light"
-          : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-400"
-      )}
-    >
-      {isAdvance ? (
-        <>
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-          </svg>
-          {label}
-        </>
-      ) : (
-        <>
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
-          </svg>
-          {label}
-        </>
-      )}
-    </span>
   );
 }
 
@@ -238,8 +197,10 @@ interface PipelineStepperProps {
   currentStageId?: string | null;
   currentGroup?: string | null;
   allowedStageIds?: string[];
-  /** true = o tenant desenhou setas no Fluxo a partir deste status; só então mostra destinos de qualquer Etapa. */
-  fluxoDefinido?: boolean;
+  /** Subconjunto de allowedStageIds que é VOLTA (sentido inverso de uma seta). */
+  backStageIds?: string[];
+  /** Existem setas de volta, mas o usuário não tem permissão de usá-las. */
+  backBlocked?: boolean;
   previousStageName?: string | null;
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
@@ -250,7 +211,8 @@ export function PipelineStepper({
   currentStageId,
   currentGroup,
   allowedStageIds,
-  fluxoDefinido,
+  backStageIds,
+  backBlocked,
   previousStageName,
   onSelectStage,
   disabled,
@@ -269,6 +231,7 @@ export function PipelineStepper({
   const currentStage = list.find((s) => s.id === currentStageId) ?? null;
   const currentOrder = currentStage?.sortOrder ?? -1;
   const allowedSet   = new Set(allowedStageIds ?? []);
+  const backSet      = new Set(backStageIds ?? []);
 
   if (!list.length) return null;
 
@@ -303,18 +266,23 @@ export function PipelineStepper({
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     : [];
 
-  // Voltar SÓ para status por onde o lead realmente passou — quem decide é o
-  // backend, lendo o histórico de movimentações.
-  //
-  // Antes aqui havia um encadeamento de fallbacks que, na falta de histórico,
-  // chutava "o último status da etapa anterior". Isso oferecia um chip clicável
-  // que o servidor recusava ("Transição inválida: NAO_QUALIFICADO ->
-  // BASE_FRIA_PRE"). Sem histórico agora não aparece botão de voltar nenhum.
-  // Destinos liberados fora da Etapa atual (avanço de fase ou volta). A regra vem
-  // do que o tenant desenhou na aba "Fluxo" de /settings/pipeline (ou da matriz
-  // padrão) — o histórico do lead NÃO entra aqui. Agrupados por Etapa de destino.
+  // O que aparece na linha (regra do Fluxo, nunca o histórico):
+  //  • o ÚLTIMO status que ficou para trás (vizinho anterior na Etapa) — só leitura,
+  //    ou botão de voltar quando o usuário tem permissão;
+  //  • o status atual;
+  //  • SÓ os destinos possíveis (setas liberadas), da Etapa atual e das demais.
+  const currentIdx = currentStage ? list.findIndex((x) => x.id === currentStage.id) : -1;
+  const prevNeighbor = currentIdx > 0 ? list[currentIdx - 1] : null;
+  const backInGroup = list.filter((s) => s.id !== currentStageId && backSet.has(s.id) && allowedSet.has(s.id));
+  const forwardInGroup = list.filter((s) => s.id !== currentStageId && !backSet.has(s.id) && allowedSet.has(s.id));
+  const behindChips = [
+    ...(prevNeighbor && !backSet.has(prevNeighbor.id) ? [{ stage: prevNeighbor, back: false }] : []),
+    ...backInGroup.map((stage) => ({ stage, back: true })),
+  ];
+
+  // Destinos liberados fora da Etapa atual, agrupados por Etapa de destino.
   const otherGroups = groupOrder
-    .filter((g) => g !== currentGroup && (fluxoDefinido || g === nextGroupKey))
+    .filter((g) => g !== currentGroup)
     .map((g) => ({
       group: g,
       stages: (stages || [])
@@ -324,25 +292,8 @@ export function PipelineStepper({
     }))
     .filter((g) => g.stages.length > 0);
 
-  // Classifica cada stage do grupo atual
-  function classifyStage(s: PipelineStage): {
-    variant: ChipVariant;
-    clickable: boolean;
-  } {
-    if (s.id === currentStageId) return { variant: "current", clickable: false };
-    const order = s.sortOrder ?? 0;
-    const inAllowed = allowedSet.has(s.id);
-    if (order < currentOrder) {
-      return inAllowed
-        ? { variant: "past-prev", clickable: true }
-        : { variant: "past",      clickable: false };
-    }
-    if (inAllowed) {
-      return NEGATIVE_KEYS.has(s.key) || s.returnsToGroup
-        ? { variant: "next-negative", clickable: true }
-        : { variant: "next-positive", clickable: true };
-    }
-    return { variant: "future", clickable: false };
+  function forwardVariant(s: PipelineStage): ChipVariant {
+    return NEGATIVE_KEYS.has(s.key) || s.returnsToGroup ? "next-negative" : "next-positive";
   }
 
   return (
@@ -393,63 +344,62 @@ export function PipelineStepper({
         </div>
       )}
 
-      <div className="flex flex-wrap items-start gap-x-1.5 gap-y-2">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
 
-        {/* Stages do grupo atual */}
-        {list.map((s, i) => {
-          const { variant, clickable } = classifyStage(s);
-          const showAdvanceBadge = clickable && !!s.advancesToGroup;
-          const showReturnBadge  = clickable && !!s.returnsToGroup;
+        {/* Último status que ficou para trás / voltas permitidas */}
+        {behindChips.map(({ stage, back }) => (
+          <div key={stage.id} className="flex items-center gap-1.5">
+            <StageChip
+              name={stage.name}
+              variant={back ? "prev-group" : "past"}
+              disabled={disabled}
+              onClick={back ? () => onSelectStage?.(stage) : undefined}
+            />
+            <ArrowRightIcon />
+          </div>
+        ))}
 
-          return (
-            <div key={s.id} className="flex items-center gap-1.5">
-              {i > 0 && <ArrowRightIcon />}
-              <div className="flex flex-col items-start gap-1">
-                <StageChip
-                  name={s.name}
-                  variant={variant}
-                  disabled={disabled || !clickable}
-                  onClick={clickable ? () => onSelectStage?.(s) : undefined}
-                />
-                {showAdvanceBadge && (
-                  <GroupTransitionBadge targetGroup={s.advancesToGroup!} direction="advance" />
-                )}
-                {showReturnBadge && (
-                  <GroupTransitionBadge targetGroup={s.returnsToGroup!} direction="return" />
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {/* Status atual */}
+        {currentStage && <StageChip name={currentStage.name} variant="current" disabled />}
+
+        {/* Destinos possíveis nesta Etapa */}
+        {forwardInGroup.map((s) => (
+          <div key={s.id} className="flex items-center gap-1.5">
+            <ArrowRightIcon />
+            <StageChip
+              name={s.name}
+              variant={forwardVariant(s)}
+              disabled={disabled}
+              onClick={() => onSelectStage?.(s)}
+            />
+          </div>
+        ))}
 
         {/* Destinos liberados em outras Etapas, conforme o Fluxo */}
-        {otherGroups.map((g) => {
-          const isBack = groupOrder.indexOf(g.group) < currentGroupIndex;
-          return (
-            <div key={g.group} className="flex items-center gap-1.5">
-              <GroupDivider label={GROUP_LABEL(g.group)} />
-              {g.stages.map((s, i) => {
-                const variant: ChipVariant =
-                  isBack || NEGATIVE_KEYS.has(s.key) || s.returnsToGroup
-                    ? "next-negative"
-                    : "next-positive";
-                return (
-                  <div key={s.id} className="flex items-center gap-1.5">
-                    {i > 0 && <ArrowRightIcon />}
-                    <StageChip
-                      name={s.name}
-                      variant={variant}
-                      disabled={disabled}
-                      onClick={() => onSelectStage?.(s)}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+        {otherGroups.map((g) => (
+          <div key={g.group} className="flex items-center gap-1.5">
+            <GroupDivider label={GROUP_LABEL(g.group)} />
+            {g.stages.map((s, i) => (
+              <div key={s.id} className="flex items-center gap-1.5">
+                {i > 0 && <ArrowRightIcon />}
+                <StageChip
+                  name={s.name}
+                  variant={backSet.has(s.id) ? "prev-group" : forwardVariant(s)}
+                  disabled={disabled}
+                  onClick={() => onSelectStage?.(s)}
+                />
+              </div>
+            ))}
+          </div>
+        ))}
 
       </div>
+
+      {backBlocked && (
+        <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+          Para voltar este status, peça à liderança.
+        </p>
+      )}
     </div>
   );
 }

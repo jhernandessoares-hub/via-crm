@@ -122,14 +122,25 @@ export class PipelineController {
   }
 
   /**
-   * Aba "Fluxo" — grafo de transições permitidas entre Status. Enquanto o
-   * tenant não desenhar nenhuma linha própria, a movimentação de lead segue a
-   * regra legada (ver DEFAULT_STAGE_TRANSITIONS / isCustomStage em leads.service.ts).
+   * Aba "Fluxo" — grafo de transições permitidas entre Status. Só as
+   * linhas desenhadas aqui autorizam a movimentação de lead (leads.service.ts);
+   * status sem linha saindo não tem destino.
    */
   @Post('transitions')
   async createTransition(@Req() req: any, @Body() body: { fromStageId: string; toStageId: string }) {
     requireOwner(req);
     return this.pipelineService.createTransition(req.user.tenantId, body);
+  }
+
+  /** Quem pode avançar/voltar por esta seta (papéis e/ou pessoas). OWNER sempre pode. */
+  @Patch('transitions/:id/permissions')
+  async updateTransitionPermissions(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { forwardRoles?: string[]; forwardUserIds?: string[]; backRoles?: string[]; backUserIds?: string[] },
+  ) {
+    requireOwner(req);
+    return this.pipelineService.updateTransitionPermissions(req.user.tenantId, id, body);
   }
 
   @Delete('transitions/:id')

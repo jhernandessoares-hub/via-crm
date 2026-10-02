@@ -93,6 +93,12 @@ model PipelineTransition {
   pipelineId  String
   fromStageId String
   toStageId   String
+  // Quem pode usar a seta. Avançar: vazio = todos. Voltar (sentido inverso): vazio = só o OWNER.
+  // O OWNER sempre pode. Papéis: MANAGER | AGENT | PARTNER.
+  forwardRoles   String[]   @default([])
+  forwardUserIds String[]   @default([])
+  backRoles      String[]   @default([])
+  backUserIds    String[]   @default([])
   createdAt   DateTime      @default(now())
   pipeline    Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
