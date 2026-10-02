@@ -201,6 +201,8 @@ interface PipelineStepperProps {
   backStageIds?: string[];
   /** Existem setas de volta, mas o usuário não tem permissão de usá-las. */
   backBlocked?: boolean;
+  /** Último status de onde o lead realmente veio (histórico). */
+  lastStageId?: string | null;
   previousStageName?: string | null;
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
@@ -213,6 +215,7 @@ export function PipelineStepper({
   allowedStageIds,
   backStageIds,
   backBlocked,
+  lastStageId,
   previousStageName,
   onSelectStage,
   disabled,
@@ -271,12 +274,15 @@ export function PipelineStepper({
   //    ou botão de voltar quando o usuário tem permissão;
   //  • o status atual;
   //  • SÓ os destinos possíveis (setas liberadas), da Etapa atual e das demais.
-  const currentIdx = currentStage ? list.findIndex((x) => x.id === currentStage.id) : -1;
-  const prevNeighbor = currentIdx > 0 ? list[currentIdx - 1] : null;
   const backInGroup = list.filter((s) => s.id !== currentStageId && backSet.has(s.id) && allowedSet.has(s.id));
   const forwardInGroup = list.filter((s) => s.id !== currentStageId && !backSet.has(s.id) && allowedSet.has(s.id));
+  // Chip de "passado" (cinza): só o último status de onde o lead veio, e só se ele
+  // não aparece já como destino/volta liberada.
+  const lastStage = lastStageId && !allowedSet.has(lastStageId)
+    ? (stages || []).find((s) => s.id === lastStageId) ?? null
+    : null;
   const behindChips = [
-    ...(prevNeighbor && !allowedSet.has(prevNeighbor.id) ? [{ stage: prevNeighbor, back: false }] : []),
+    ...(lastStage ? [{ stage: lastStage, back: false }] : []),
     ...backInGroup.map((stage) => ({ stage, back: true })),
   ];
 
@@ -368,13 +374,19 @@ export function PipelineStepper({
 
         {/* Último status que ficou para trás / voltas permitidas nesta Etapa */}
         {behindChips.map(({ stage, back }) => (
-          <StageChip
-            key={stage.id}
-            name={stage.name}
-            variant={back ? "prev-group" : "past"}
-            disabled={disabled}
-            onClick={back ? () => onSelectStage?.(stage) : undefined}
-          />
+          <div key={stage.id} className="flex flex-col items-start gap-0.5">
+            <StageChip
+              name={stage.name}
+              variant={back ? "prev-group" : "past"}
+              disabled={disabled}
+              onClick={back ? () => onSelectStage?.(stage) : undefined}
+            />
+            {stage.group && stage.group !== currentGroup && (
+              <span className="px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                {GROUP_LABEL(stage.group)}
+              </span>
+            )}
+          </div>
         ))}
 
         {(otherBackGroups.length > 0 || behindChips.length > 0) && <ArrowRightIcon />}
