@@ -224,10 +224,9 @@ function GroupDivider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-1.5 self-stretch">
       <div className="h-full w-px bg-slate-200 dark:bg-neutral-600" style={{ minHeight: 28 }} />
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 writing-mode-vertical whitespace-nowrap">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap">
         {label}
       </span>
-      <div className="h-full w-px bg-slate-200 dark:bg-neutral-600" style={{ minHeight: 28 }} />
     </div>
   );
 }
@@ -239,8 +238,8 @@ interface PipelineStepperProps {
   currentStageId?: string | null;
   currentGroup?: string | null;
   allowedStageIds?: string[];
-  /** Status por onde o lead já passou (do histórico). Vazio = não mostra volta. */
-  returnableStages?: PipelineStage[];
+  /** true = o tenant desenhou setas no Fluxo a partir deste status; só então mostra destinos de qualquer Etapa. */
+  fluxoDefinido?: boolean;
   previousStageName?: string | null;
   onSelectStage?: (stage: PipelineStage) => void;
   disabled?: boolean;
@@ -251,7 +250,7 @@ export function PipelineStepper({
   currentStageId,
   currentGroup,
   allowedStageIds,
-  returnableStages,
+  fluxoDefinido,
   previousStageName,
   onSelectStage,
   disabled,
@@ -311,21 +310,19 @@ export function PipelineStepper({
   // chutava "o último status da etapa anterior". Isso oferecia um chip clicável
   // que o servidor recusava ("Transição inválida: NAO_QUALIFICADO ->
   // BASE_FRIA_PRE"). Sem histórico agora não aparece botão de voltar nenhum.
-  const backStages = (returnableStages ?? [])
-    .filter((s) => s.id !== currentStageId && !list.some((x) => x.id === s.id))
-    .slice()
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-
-  // Stages do PRÓXIMO grupo que já estão liberadas para este lead (salto direto de fase,
-  // ex.: matriz hardcoded de leads.service.ts permitindo LEAD_POTENCIAL_QUALIFICADO →
-  // AGUARDANDO_AGENDAMENTO). Sem isso, essas opções ficam autorizadas no backend mas
-  // invisíveis na tela, pois o `list` abaixo só cobre o grupo atual.
-  const nextGroupAllowedStages = nextGroupKey
-    ? (stages || [])
-        .filter((s) => s.group === nextGroupKey && allowedSet.has(s.id))
+  // Destinos liberados fora da Etapa atual (avanço de fase ou volta). A regra vem
+  // do que o tenant desenhou na aba "Fluxo" de /settings/pipeline (ou da matriz
+  // padrão) — o histórico do lead NÃO entra aqui. Agrupados por Etapa de destino.
+  const otherGroups = groupOrder
+    .filter((g) => g !== currentGroup && (fluxoDefinido || g === nextGroupKey))
+    .map((g) => ({
+      group: g,
+      stages: (stages || [])
+        .filter((s) => s.group === g && s.id !== currentStageId && allowedSet.has(s.id))
         .slice()
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-    : [];
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    }))
+    .filter((g) => g.stages.length > 0);
 
   // Classifica cada stage do grupo atual
   function classifyStage(s: PipelineStage): {
@@ -398,30 +395,6 @@ export function PipelineStepper({
 
       <div className="flex flex-wrap items-start gap-x-1.5 gap-y-2">
 
-        {/* Status por onde o lead já passou — volta permitida */}
-        {backStages.length > 0 && (
-          <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {backStages.map((st) => (
-                <div key={st.id} className="flex flex-col items-start gap-1">
-                  <StageChip
-                    name={st.name}
-                    variant="prev-group"
-                    disabled={disabled}
-                    onClick={() => onSelectStage?.(st)}
-                  />
-                  {st.advancesToGroup && (
-                    <GroupTransitionBadge targetGroup={st.advancesToGroup} direction="advance" />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Separador com label da etapa atual */}
-            <GroupDivider label={groupLabel} />
-          </>
-        )}
-
         {/* Stages do grupo atual */}
         {list.map((s, i) => {
           const { variant, clickable } = classifyStage(s);
@@ -449,31 +422,32 @@ export function PipelineStepper({
           );
         })}
 
-        {/* Stages do PRÓXIMO grupo já liberadas (salto direto de fase) */}
-        {nextGroupAllowedStages.length > 0 && nextGroupLabel && (
-          <>
-            <GroupDivider label={nextGroupLabel} />
-            {nextGroupAllowedStages.map((s, i) => {
-              const variant: ChipVariant =
-                NEGATIVE_KEYS.has(s.key) || s.returnsToGroup ? "next-negative" : "next-positive";
-
-              return (
-                <div key={s.id} className="flex items-center gap-1.5">
-                  {i > 0 && <ArrowRightIcon />}
-                  <div className="flex flex-col items-start gap-1">
+        {/* Destinos liberados em outras Etapas, conforme o Fluxo */}
+        {otherGroups.map((g) => {
+          const isBack = groupOrder.indexOf(g.group) < currentGroupIndex;
+          return (
+            <div key={g.group} className="flex items-center gap-1.5">
+              <GroupDivider label={GROUP_LABEL(g.group)} />
+              {g.stages.map((s, i) => {
+                const variant: ChipVariant =
+                  isBack || NEGATIVE_KEYS.has(s.key) || s.returnsToGroup
+                    ? "next-negative"
+                    : "next-positive";
+                return (
+                  <div key={s.id} className="flex items-center gap-1.5">
+                    {i > 0 && <ArrowRightIcon />}
                     <StageChip
                       name={s.name}
                       variant={variant}
                       disabled={disabled}
                       onClick={() => onSelectStage?.(s)}
                     />
-                    <GroupTransitionBadge targetGroup={nextGroupKey!} direction="advance" />
                   </div>
-                </div>
-              );
-            })}
-          </>
-        )}
+                );
+              })}
+            </div>
+          );
+        })}
 
       </div>
     </div>
