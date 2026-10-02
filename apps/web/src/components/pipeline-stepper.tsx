@@ -292,6 +292,14 @@ export function PipelineStepper({
     }))
     .filter((g) => g.stages.length > 0);
 
+  // Voltas para outras Etapas ficam no INÍCIO da linha; avanços, no fim.
+  const otherBackGroups = otherGroups
+    .map((g) => ({ ...g, stages: g.stages.filter((s) => backSet.has(s.id)) }))
+    .filter((g) => g.stages.length > 0);
+  const otherForwardGroups = otherGroups
+    .map((g) => ({ ...g, stages: g.stages.filter((s) => !backSet.has(s.id)) }))
+    .filter((g) => g.stages.length > 0);
+
   function forwardVariant(s: PipelineStage): ChipVariant {
     return NEGATIVE_KEYS.has(s.key) || s.returnsToGroup ? "next-negative" : "next-positive";
   }
@@ -346,6 +354,25 @@ export function PipelineStepper({
 
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
 
+        {/* Voltas para outras Etapas (início da linha) */}
+        {otherBackGroups.map((g) => (
+          <div key={`back-${g.group}`} className="flex items-center gap-1.5">
+            <GroupDivider label={GROUP_LABEL(g.group)} />
+            {g.stages.map((s, i) => (
+              <div key={s.id} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-slate-300">·</span>}
+                <StageChip
+                  name={s.name}
+                  variant="prev-group"
+                  disabled={disabled}
+                  onClick={() => onSelectStage?.(s)}
+                />
+              </div>
+            ))}
+            <ArrowRightIcon />
+          </div>
+        ))}
+
         {/* Último status que ficou para trás / voltas permitidas */}
         {behindChips.map(({ stage, back }) => (
           <div key={stage.id} className="flex items-center gap-1.5">
@@ -376,7 +403,7 @@ export function PipelineStepper({
         ))}
 
         {/* Destinos liberados em outras Etapas, conforme o Fluxo */}
-        {otherGroups.map((g) => (
+        {otherForwardGroups.map((g) => (
           <div key={g.group} className="flex items-center gap-1.5">
             <GroupDivider label={GROUP_LABEL(g.group)} />
             {g.stages.map((s, i) => (
@@ -384,7 +411,7 @@ export function PipelineStepper({
                 {i > 0 && <ArrowRightIcon />}
                 <StageChip
                   name={s.name}
-                  variant={backSet.has(s.id) ? "prev-group" : forwardVariant(s)}
+                  variant={forwardVariant(s)}
                   disabled={disabled}
                   onClick={() => onSelectStage?.(s)}
                 />
