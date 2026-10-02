@@ -35,12 +35,19 @@ type GroupDTO = { id: string; key: string; name: string; color: string | null; s
 type TransitionDTO = { id: string; fromStageId: string; toStageId: string };
 type StructureDTO = { pipelineId: string; groups: GroupDTO[]; ungrouped: StageDTO[]; transitions: TransitionDTO[] };
 
-const COLUMN_WIDTH = 300;
-const ROW_HEIGHT = 88;
+// Layout padrão: cada Etapa é uma linha, os status vão da esquerda para a direita
+// e, passando de STAGES_PER_LINE, quebram para a linha de baixo.
+const COLUMN_WIDTH = 260;
+const LINE_HEIGHT = 110;
+const GROUP_GAP = 50;
+const STAGES_PER_LINE = 6;
 const NODE_WIDTH = 220;
 const SAVE_DEBOUNCE_MS = 800;
 
 const EDGE_COLOR = "#64748B";
+/** Bolinha/ponta de ENTRADA do status (verde) e de SAÍDA (laranja). */
+const IN_COLOR = "#16A34A";
+const OUT_COLOR = "#F97316";
 const EDGE_COLOR_SELECTED = "#1D9E75";
 const EDGE_WIDTH = 3;
 const EDGE_WIDTH_SELECTED = 5;
@@ -53,7 +60,7 @@ function edgeStyle(selected: boolean) {
       type: MarkerType.ArrowClosed,
       width: 20,
       height: 20,
-      color: selected ? EDGE_COLOR_SELECTED : EDGE_COLOR,
+      color: IN_COLOR,
     },
   };
 }
@@ -77,13 +84,13 @@ function StageNode({ data, selected }: NodeProps<Node<StageNodeData>>) {
         <Handle
           type="target"
           position={Position.Left}
-          style={{ width: 12, height: 12, background: "#fff", border: `3px solid ${data.color}` }}
+          style={{ width: 14, height: 14, background: IN_COLOR, border: "3px solid #fff", boxShadow: "0 0 0 1px #15803d" }}
         />
         {data.label}
         <Handle
           type="source"
           position={Position.Right}
-          style={{ width: 12, height: 12, background: "#fff", border: `3px solid ${data.color}` }}
+          style={{ width: 14, height: 14, background: OUT_COLOR, border: "3px solid #fff", boxShadow: "0 0 0 1px #c2410c" }}
         />
       </div>
     </div>
@@ -106,25 +113,29 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
   const { initialNodes, initialEdges } = useMemo(() => {
     const nodes: Node<StageNodeData>[] = [];
 
-    const push = (s: StageDTO, groupName: string, groupId: string | null, color: string, col: number, row: number) => {
+    const push = (s: StageDTO, groupName: string, groupId: string | null, color: string, index: number, yBase: number) => {
+      const col = index % STAGES_PER_LINE;
+      const line = Math.floor(index / STAGES_PER_LINE);
       nodes.push({
         id: s.id,
         type: "stageNode",
         position:
-          s.posX != null && s.posY != null ? { x: s.posX, y: s.posY } : { x: col * COLUMN_WIDTH, y: row * ROW_HEIGHT },
+          s.posX != null && s.posY != null
+            ? { x: s.posX, y: s.posY }
+            : { x: col * COLUMN_WIDTH, y: yBase + line * LINE_HEIGHT },
         data: { label: s.name, color, groupName, groupId },
       });
     };
 
-    groups.forEach((g, col) => {
-      const color = groupColor(g.color, col);
-      g.stages
-        .slice()
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-        .forEach((s, row) => push(s, g.name, g.id, color, col, row));
+    let yBase = 0;
+    groups.forEach((g, gi) => {
+      const color = groupColor(g.color, gi);
+      const sorted = g.stages.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+      sorted.forEach((s, i) => push(s, g.name, g.id, color, i, yBase));
+      yBase += Math.max(1, Math.ceil(sorted.length / STAGES_PER_LINE)) * LINE_HEIGHT + GROUP_GAP;
     });
 
-    data.ungrouped.forEach((s, row) => push(s, "Sem etapa", null, "#64748B", groups.length, row));
+    data.ungrouped.forEach((s, i) => push(s, "Sem etapa", null, "#64748B", i, yBase));
 
     const edges: Edge[] = data.transitions.map((t) => ({
       id: t.id,
@@ -442,20 +453,19 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
       </div>
 
       <p className="text-xs text-[var(--shell-subtext)]">
-        <strong>Setas:</strong> puxe da bolinha da direita até a bolinha da esquerda de outro status para criar.
+        <strong>Setas:</strong> puxe da bolinha <span style={{ color: OUT_COLOR }}>●</span> laranja (saída, à direita)
+        até a bolinha <span style={{ color: IN_COLOR }}>●</span> verde (entrada, à esquerda) de outro status para criar.
         Clique numa seta para selecioná-la — daí dá pra arrastar a ponta dela para outro status (religar) ou excluir.
         {" "}
         <strong>Vários de uma vez:</strong> segure <kbd>Shift</kbd> e arraste no fundo para selecionar em caixa, ou
         clique segurando <kbd>Ctrl</kbd>. Os selecionados arrastam juntos e podem ser movidos de Etapa ou excluídos em lote.
-        {" "}A posição das caixas fica salva. Status sem nenhuma seta saindo dele continua nas regras atuais do sistema.
+        {" "}A posição das caixas fica salva. Só as setas decidem para onde um lead pode ir: status sem nenhuma seta saindo não tem destino (o lead continua nele).
       </p>
 
       {edges.length === 0 && nodes.length > 0 && (
-        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          <strong>Este funil ainda não tem nenhuma seta desenhada — e isso não é erro.</strong> Hoje ele funciona
-          sem restrição de caminho: dá pra mover um lead de qualquer status para qualquer outro. No momento em que
-          você desenhar a primeira seta saindo de um status, esse status passa a aceitar <em>só</em> os caminhos
-          desenhados. Os demais continuam livres até ganharem seta.
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Este funil ainda não tem nenhuma seta desenhada.</strong> Sem setas, nenhum lead consegue mudar de
+          status — só as setas decidem os caminhos. Os leads continuam no status em que estão.
         </div>
       )}
 
