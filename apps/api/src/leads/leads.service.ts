@@ -2746,6 +2746,33 @@ async getById(user: any, id: string) {
       : [];
     const allowedStages = stages.map((s) => ({ ...s, direction: backIds.has(s.id) ? 'back' : 'forward' }));
 
+    // Último status de onde o lead REALMENTE veio (histórico). Só informativo: a tela
+    // mostra este único chip de "passado". Sem histórico = null (não chuta).
+    let lastStageId: string | null = null;
+    if (effectiveCurrentStageId) {
+      const cur = await this.prisma.pipelineStage.findFirst({
+        where: { id: effectiveCurrentStageId, tenantId: user.tenantId },
+        select: { name: true },
+      });
+      const lastLog = cur
+        ? await this.prisma.leadTransitionLog.findFirst({
+            where: { tenantId: user.tenantId, leadId, toStage: cur.name, fromStage: { not: null } },
+            orderBy: { createdAt: 'desc' },
+            select: { fromStage: true },
+          })
+        : null;
+      if (lastLog?.fromStage) {
+        const candidates = await this.prisma.pipelineStage.findMany({
+          where: { tenantId: user.tenantId, isActive: true, name: lastLog.fromStage },
+          select: { id: true },
+        });
+        // Nomes repetidos (ex.: "Suspensão" em várias Etapas): só aceita se der para
+        // distinguir pelas setas do status atual; senão não mostra (melhor que errar).
+        const linked = candidates.filter((c) => ids.includes(c.id));
+        lastStageId = candidates.length === 1 ? candidates[0].id : linked.length === 1 ? linked[0].id : null;
+      }
+    }
+
     return {
       leadId,
       currentStageId: effectiveCurrentStageId,
@@ -2755,6 +2782,7 @@ async getById(user: any, id: string) {
       currentRequiresPendencias,
       currentUnitAction,
       allowedStages,
+      lastStageId,
       backBlocked,
     };
   }

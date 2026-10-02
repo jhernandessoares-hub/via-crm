@@ -579,6 +579,11 @@ function parseIsoToMs(iso?: string | null) {
   return isFinite(t) ? t : null;
 }
 
+function isInboundWhatsappChannel(channel: unknown) {
+  const ch = String(channel || "").toLowerCase();
+  return ch.startsWith("whatsapp.in") || ch === "whatsapp.unofficial.in";
+}
+
 function isOutgoing(ev: LeadEvent) {
   const ch = String(ev.channel || "").toLowerCase();
   if (ch.startsWith("whatsapp.out") || ch === "whatsapp.unofficial.out") return true;
@@ -2291,6 +2296,7 @@ export default function LeadDetailChatPage() {
   // Confirmação antes de mover de status (não vale quando o status pede evidência/motivo/pendências)
   const [moveConfirm, setMoveConfirm] = useState<{ stage: PipelineStage; isBack: boolean } | null>(null);
   const [backBlocked, setBackBlocked] = useState(false);
+  const [lastStageId, setLastStageId] = useState<string | null>(null);
   const { groupName: stageGroupName } = usePipelineGroups();
   // Venda avulsa (imóvel sem unidade de empreendimento): captura valor + data
   const [vendaModal, setVendaModal] = useState<{ stage: PipelineStage } | null>(null);
@@ -2546,6 +2552,7 @@ export default function LeadDetailChatPage() {
       const list: PipelineStage[] = Array.isArray(data?.allowedStages) ? data.allowedStages : [];
       setAllowedStages(list);
       setBackBlocked(data?.backBlocked === true);
+      setLastStageId(data?.lastStageId ?? null);
       setCurrentStageRequiresEvidence(Boolean(data?.currentRequiresEvidence));
       setCurrentStageRequiresReason(Boolean(data?.currentRequiresReason));
       setCurrentStageRequiresPendencias(Boolean(data?.currentRequiresPendencias));
@@ -2553,6 +2560,8 @@ export default function LeadDetailChatPage() {
     } catch {
       setAllowedStages([]);
       setBackBlocked(false);
+      setLastStageId(null);
+      setLastStageId(null);
       setCurrentStageRequiresEvidence(false);
       setCurrentStageRequiresReason(false);
       setCurrentStageRequiresPendencias(false);
@@ -3610,7 +3619,7 @@ function discardAiSuggestion() {
   const lastInboundAt = useMemo(() => {
     const lastIn = [...activeEvents]
       .reverse()
-      .find((e) => String(e.channel || "").toLowerCase().startsWith("whatsapp.in"));
+      .find((e) => isInboundWhatsappChannel(e.channel));
     return lastIn?.criadoEm || null;
   }, [activeEvents]);
 
@@ -3642,7 +3651,7 @@ function discardAiSuggestion() {
     try {
       const lastInbound = [...orderedEvents]
         .reverse()
-        .find((e) => String(e.channel || "").toLowerCase().startsWith("whatsapp.in"));
+        .find((e) => isInboundWhatsappChannel(e.channel));
 
       if (!lastInbound?.id) return;
 
@@ -4342,6 +4351,7 @@ function discardAiSuggestion() {
                   allowedStageIds={allowedStages.map((s) => s.id)}
                   backStageIds={(allowedStages as any[]).filter((s) => s.direction === "back").map((s) => s.id)}
                   backBlocked={backBlocked}
+                  lastStageId={lastStageId}
                   previousStageName={(lead as any)?.stageKey === "BASE_FRIA" ? (lead as any)?.previousStageName : null}
                   disabled={movingStage || user?.role === "PARTNER"}
                   onSelectStage={handleSelectStage}
