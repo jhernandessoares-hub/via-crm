@@ -52,15 +52,21 @@ const EDGE_COLOR_SELECTED = "#1D9E75";
 const EDGE_WIDTH = 3;
 const EDGE_WIDTH_SELECTED = 5;
 
-/** Estilo base de uma seta. Grossura e ponta maiores pra dar pra clicar e enxergar. */
-function edgeStyle(selected: boolean) {
+type EdgeMode = "normal" | "selected" | "in" | "out" | "dim";
+
+/** Estilo de uma seta. Com um status selecionado: entra = verde, sai = laranja, resto apagado. */
+function edgeStyle(mode: EdgeMode) {
+  const color =
+    mode === "selected" ? EDGE_COLOR_SELECTED : mode === "in" ? IN_COLOR : mode === "out" ? OUT_COLOR : EDGE_COLOR;
+  const width = mode === "selected" ? EDGE_WIDTH_SELECTED : mode === "in" || mode === "out" ? 4 : EDGE_WIDTH;
+  const opacity = mode === "dim" ? 0.12 : 1;
   return {
-    style: { strokeWidth: selected ? EDGE_WIDTH_SELECTED : EDGE_WIDTH, stroke: selected ? EDGE_COLOR_SELECTED : EDGE_COLOR },
+    style: { strokeWidth: width, stroke: color, opacity },
     markerEnd: {
       type: MarkerType.ArrowClosed,
       width: 20,
       height: 20,
-      color: IN_COLOR,
+      color: mode === "out" ? OUT_COLOR : mode === "dim" ? EDGE_COLOR : IN_COLOR,
     },
   };
 }
@@ -141,7 +147,7 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
       id: t.id,
       source: t.fromStageId,
       target: t.toStageId,
-      ...edgeStyle(false),
+      ...edgeStyle("normal"),
     }));
 
     return { initialNodes: nodes, initialEdges: edges };
@@ -155,10 +161,21 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
     setEdges(initialEdges);
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
-  // repinta a seta selecionada (mais grossa e verde) sem perder o resto
+  // repinta: seta selecionada mais grossa; com status selecionado, entra = verde, sai = laranja
+  const selectedIds = useMemo(() => new Set(nodes.filter((n) => n.selected).map((n) => n.id)), [nodes]);
   const paintedEdges = useMemo(
-    () => edges.map((e) => ({ ...e, ...edgeStyle(!!e.selected) })),
-    [edges],
+    () =>
+      edges.map((e) => {
+        let mode: EdgeMode = "normal";
+        if (e.selected) mode = "selected";
+        else if (selectedIds.size > 0) {
+          const out = selectedIds.has(e.source);
+          const inn = selectedIds.has(e.target);
+          mode = out && !inn ? "out" : inn && !out ? "in" : out && inn ? "normal" : "dim";
+        }
+        return { ...e, ...edgeStyle(mode), zIndex: mode === "in" || mode === "out" || mode === "selected" ? 10 : 0 };
+      }),
+    [edges, selectedIds],
   );
 
   const selectedNodes = useMemo(() => nodes.filter((n) => n.selected), [nodes]);
@@ -214,7 +231,7 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
           method: "POST",
           body: JSON.stringify({ fromStageId: connection.source, toStageId: connection.target }),
         });
-        setEdges((eds) => addEdge({ ...connection, id: created.id, ...edgeStyle(false) }, eds));
+        setEdges((eds) => addEdge({ ...connection, id: created.id, ...edgeStyle("normal") }, eds));
       } catch (e: any) {
         setError(e?.message || "Não foi possível criar essa transição.");
       }
@@ -455,6 +472,8 @@ export default function PipelineFlow({ data, onChanged }: { data: StructureDTO; 
       <p className="text-xs text-[var(--shell-subtext)]">
         <strong>Setas:</strong> puxe da bolinha <span style={{ color: OUT_COLOR }}>●</span> laranja (saída, à direita)
         até a bolinha <span style={{ color: IN_COLOR }}>●</span> verde (entrada, à esquerda) de outro status para criar.
+        {" "}<strong>Clique num status</strong> para ver o que <span style={{ color: IN_COLOR }}>entra nele (verde)</span> e o que{" "}
+        <span style={{ color: OUT_COLOR }}>sai dele (laranja)</span>; o resto fica apagado.
         Clique numa seta para selecioná-la — daí dá pra arrastar a ponta dela para outro status (religar) ou excluir.
         {" "}
         <strong>Vários de uma vez:</strong> segure <kbd>Shift</kbd> e arraste no fundo para selecionar em caixa, ou
