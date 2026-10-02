@@ -276,7 +276,7 @@ export function PipelineStepper({
   const backInGroup = list.filter((s) => s.id !== currentStageId && backSet.has(s.id) && allowedSet.has(s.id));
   const forwardInGroup = list.filter((s) => s.id !== currentStageId && !backSet.has(s.id) && allowedSet.has(s.id));
   const behindChips = [
-    ...(prevNeighbor && !backSet.has(prevNeighbor.id) ? [{ stage: prevNeighbor, back: false }] : []),
+    ...(prevNeighbor && !allowedSet.has(prevNeighbor.id) ? [{ stage: prevNeighbor, back: false }] : []),
     ...backInGroup.map((stage) => ({ stage, back: true })),
   ];
 
@@ -355,71 +355,55 @@ export function PipelineStepper({
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
 
         {/* Voltas para outras Etapas (início da linha) — nome da Etapa pequeno embaixo */}
-        {otherBackGroups.map((g) => (
-          <div key={`back-${g.group}`} className="flex items-center gap-1.5">
-            {g.stages.map((s) => (
-              <div key={s.id} className="flex flex-col items-start gap-0.5">
-                <StageChip
-                  name={s.name}
-                  variant="prev-group"
-                  disabled={disabled}
-                  onClick={() => onSelectStage?.(s)}
-                />
-                <span className="px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                  {GROUP_LABEL(g.group)}
-                </span>
-              </div>
-            ))}
-            <ArrowRightIcon />
-          </div>
+        {otherBackGroups.flatMap((g) =>
+          g.stages.map((s) => (
+            <div key={`back-${s.id}`} className="flex flex-col items-start gap-0.5">
+              <StageChip name={s.name} variant="prev-group" disabled={disabled} onClick={() => onSelectStage?.(s)} />
+              <span className="px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                {GROUP_LABEL(g.group)}
+              </span>
+            </div>
+          )),
+        )}
+
+        {/* Último status que ficou para trás / voltas permitidas nesta Etapa */}
+        {behindChips.map(({ stage, back }) => (
+          <StageChip
+            key={stage.id}
+            name={stage.name}
+            variant={back ? "prev-group" : "past"}
+            disabled={disabled}
+            onClick={back ? () => onSelectStage?.(stage) : undefined}
+          />
         ))}
 
-        {/* Último status que ficou para trás / voltas permitidas */}
-        {behindChips.map(({ stage, back }) => (
-          <div key={stage.id} className="flex items-center gap-1.5">
-            <StageChip
-              name={stage.name}
-              variant={back ? "prev-group" : "past"}
-              disabled={disabled}
-              onClick={back ? () => onSelectStage?.(stage) : undefined}
-            />
-            <ArrowRightIcon />
-          </div>
-        ))}
+        {(otherBackGroups.length > 0 || behindChips.length > 0) && <ArrowRightIcon />}
 
         {/* Status atual */}
         {currentStage && <StageChip name={currentStage.name} variant="current" disabled />}
 
-        {/* Destinos possíveis nesta Etapa */}
+        {/* Destinos possíveis: são alternativas (escolhe um), por isso sem setas entre eles */}
+        {(forwardInGroup.length > 0 || otherForwardGroups.length > 0) && <ArrowRightIcon />}
         {forwardInGroup.map((s) => (
-          <div key={s.id} className="flex items-center gap-1.5">
-            <ArrowRightIcon />
-            <StageChip
-              name={s.name}
-              variant={forwardVariant(s)}
-              disabled={disabled}
-              onClick={() => onSelectStage?.(s)}
-            />
-          </div>
+          <StageChip
+            key={s.id}
+            name={s.name}
+            variant={forwardVariant(s)}
+            disabled={disabled}
+            onClick={() => onSelectStage?.(s)}
+          />
         ))}
 
-        {/* Destinos liberados em outras Etapas, conforme o Fluxo */}
-        {otherForwardGroups.map((g) => (
-          <div key={g.group} className="flex items-center gap-1.5">
-            <GroupDivider label={GROUP_LABEL(g.group)} />
-            {g.stages.map((s, i) => (
-              <div key={s.id} className="flex items-center gap-1.5">
-                {i > 0 && <ArrowRightIcon />}
-                <StageChip
-                  name={s.name}
-                  variant={forwardVariant(s)}
-                  disabled={disabled}
-                  onClick={() => onSelectStage?.(s)}
-                />
-              </div>
-            ))}
-          </div>
-        ))}
+        {otherForwardGroups.flatMap((g) =>
+          g.stages.map((s) => (
+            <div key={s.id} className="flex flex-col items-start gap-0.5">
+              <StageChip name={s.name} variant={forwardVariant(s)} disabled={disabled} onClick={() => onSelectStage?.(s)} />
+              <span className="px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                {GROUP_LABEL(g.group)}
+              </span>
+            </div>
+          )),
+        )}
 
       </div>
 
