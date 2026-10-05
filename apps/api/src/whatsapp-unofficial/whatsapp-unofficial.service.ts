@@ -54,21 +54,33 @@ interface HistoryImportCtx {
 
 // ── Extrator de texto/tipo de mensagens Baileys ───────────────────────────────
 
+// Desembrulha os tipos container do WhatsApp (visualização única, temporárias, documento com legenda).
+// Aninhados (ex.: ephemeral > viewOnceV2) são resolvidos em loop.
+function unwrapBaileysMessage(msgContent: any): any {
+  let cur = msgContent || {};
+  for (let i = 0; i < 5; i++) {
+    const next =
+      cur.viewOnceMessage?.message ||
+      cur.viewOnceMessageV2?.message ||
+      cur.viewOnceMessageV2Extension?.message ||
+      cur.ephemeralMessage?.message ||
+      cur.documentWithCaptionMessage?.message;
+    if (!next) break;
+    cur = next;
+  }
+  return cur;
+}
+
 function extractBaileysText(msgContent: any): { type: string; text: string } {
   if (!msgContent) return { type: 'unknown', text: '[MENSAGEM]' };
 
-  // Desembrulha tipos container
-  const inner =
-    msgContent.viewOnceMessage?.message ||
-    msgContent.viewOnceMessageV2?.message?.viewOnceMessage?.message ||
-    msgContent.ephemeralMessage?.message ||
-    msgContent.documentWithCaptionMessage?.message ||
-    msgContent;
+  const inner = unwrapBaileysMessage(msgContent);
 
   if (inner.conversation) return { type: 'text', text: inner.conversation };
   if (inner.extendedTextMessage?.text) return { type: 'text', text: inner.extendedTextMessage.text };
   if (inner.imageMessage) return { type: 'image', text: inner.imageMessage.caption || '[IMAGEM]' };
   if (inner.videoMessage) return { type: 'video', text: inner.videoMessage.caption || '[VÍDEO]' };
+  if (inner.ptvMessage) return { type: 'video', text: '[VÍDEO]' }; // vídeo-bolinha (recado em vídeo)
   if (inner.audioMessage) return { type: 'audio', text: '[ÁUDIO]' };
   if (inner.documentMessage) return { type: 'document', text: inner.documentMessage.fileName || '[DOCUMENTO]' };
   if (inner.stickerMessage) return { type: 'sticker', text: '[STICKER]' };
@@ -1011,22 +1023,30 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     }
   }
 
+  // Baixa a mídia de uma mensagem Baileys. Com `socket`, se o link do WhatsApp expirou o Baileys
+  // pede ao celular para reenviar o arquivo (reuploadRequest) — usado na recuperação de mídias antigas.
+  private async downloadBuffer(msg: any, socket?: WASocket): Promise<Buffer> {
+    if (!socket) return (await downloadMediaMessage(msg, 'buffer', {})) as Buffer;
+    return (await downloadMediaMessage(
+      msg,
+      'buffer',
+      {},
+      { reuploadRequest: socket.updateMediaMessage, logger: (socket as any).logger },
+    )) as Buffer;
+  }
+
   // ── Processamento de mídia inbound (image/video/document → Cloudinary) ──
 
   private async processMediaInbound(
     msg: any,
-    type: 'image' | 'video' | 'document',
+    type: 'image' | 'video' | 'document' | 'sticker',
+    socket?: WASocket,
   ): Promise<{ mediaUrl: string | null; mimeType: string | null; filename: string | null }> {
     try {
-      const buffer = await downloadMediaMessage(msg, 'buffer', {}) as Buffer;
+      const buffer = await this.downloadBuffer(msg, socket);
       if (!buffer || buffer.length === 0) return { mediaUrl: null, mimeType: null, filename: null };
 
-      const inner =
-        msg.message?.documentWithCaptionMessage?.message ||
-        msg.message?.viewOnceMessage?.message ||
-        msg.message?.viewOnceMessageV2?.message?.viewOnceMessage?.message ||
-        msg.message?.ephemeralMessage?.message ||
-        msg.message || {};
+      const inner = unwrapBaileysMessage(msg.message);
 
       let rawMime: string;
       let filename: string | null = null;
@@ -1035,8 +1055,11 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       if (type === 'image') {
         rawMime = inner.imageMessage?.mimetype ?? 'image/jpeg';
         resourceType = 'image';
+      } else if (type === 'sticker') {
+        rawMime = inner.stickerMessage?.mimetype ?? 'image/webp';
+        resourceType = 'image';
       } else if (type === 'video') {
-        rawMime = inner.videoMessage?.mimetype ?? 'video/mp4';
+        rawMime = inner.videoMessage?.mimetype ?? inner.ptvMessage?.mimetype ?? 'video/mp4';
         resourceType = 'video';
       } else {
         rawMime = inner.documentMessage?.mimetype ?? 'application/octet-stream';
@@ -1060,6 +1083,75 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       logger.warn(`⚠️ Erro ao processar mídia inbound (${type}): ${err?.message}`);
       return { mediaUrl: null, mimeType: null, filename: null };
     }
+  }
+
+  // ── Recuperação de mídias antigas sem arquivo (sticker/foto/vídeo/doc/áudio) ──
+  // Eventos Light antigos guardam o rawMsg do Baileys (mediaKey + directPath), então dá para
+  // baixar de novo enquanto o WhatsApp ainda tem o arquivo (ou o celular ainda o reenvia).
+  // Idempotente: só toca eventos sem media.url/mediaUrl; falhas ficam como estão.
+  async recoverLeadMedia(
+    leadId: string,
+    opts?: { since?: Date; limit?: number; delayMs?: number },
+  ): Promise<{ leadId: string; checked: number; recovered: number; failed: number }> {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { id: true, conversaSessionId: true },
+    });
+    if (!lead) throw new BadRequestException('Lead não encontrado');
+    if (!lead.conversaSessionId) throw new BadRequestException('Lead sem sessão WhatsApp Light vinculada (conversaSessionId)');
+    const socket = this.sockets.get(lead.conversaSessionId);
+    if (!socket) throw new BadRequestException(`Sessão Light ${lead.conversaSessionId} não está conectada`);
+
+    const MEDIA_TYPES = ['sticker', 'image', 'video', 'document', 'audio'];
+    const events = await this.prisma.leadEvent.findMany({
+      where: {
+        leadId,
+        channel: { in: WA_LIGHT_CHANNELS },
+        ...(opts?.since ? { criadoEm: { gte: opts.since } } : {}),
+      },
+      select: { id: true, payloadRaw: true },
+      orderBy: { criadoEm: 'desc' },
+    });
+
+    const delayMs = opts?.delayMs ?? 1500;
+    const limit = opts?.limit ?? 200;
+    let checked = 0;
+    let recovered = 0;
+    let failed = 0;
+
+    for (const ev of events) {
+      if (checked >= limit) break;
+      const p = (ev.payloadRaw as any) || {};
+      if (!MEDIA_TYPES.includes(p.type)) continue;
+      if (p.media?.url || p.mediaUrl) continue;
+      if (!p.rawMsg?.message || !p.rawMsg?.key) continue; // sem rawMsg não há como baixar
+      checked++;
+
+      let patch: Record<string, any> | null = null;
+      if (p.type === 'audio') {
+        const a = await this.processHistoryAudio(p.rawMsg, socket);
+        if (a.mediaUrl) patch = { mediaUrl: a.mediaUrl, ...(a.mimeType ? { mimeType: a.mimeType } : {}) };
+      } else {
+        const r = await this.processMediaInbound(p.rawMsg, p.type, socket);
+        if (r.mediaUrl) {
+          patch = { media: { url: r.mediaUrl, mimeType: r.mimeType ?? 'application/octet-stream', filename: r.filename, kind: p.type } };
+        }
+      }
+
+      if (patch) {
+        await this.prisma.leadEvent.update({
+          where: { id: ev.id },
+          data: { payloadRaw: { ...p, ...patch } },
+        });
+        recovered++;
+      } else {
+        failed++;
+      }
+      await sleep(delayMs);
+    }
+
+    logger.log(`🛟 Recuperação de mídia lead=${leadId}: verificadas=${checked} recuperadas=${recovered} falhas=${failed}`);
+    return { leadId, checked, recovered, failed };
   }
 
   // ── Importação de histórico antigo (backfill de mensagens) ─────────────────
@@ -1097,7 +1189,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     let audioMediaUrl: string | null = null;
     let audioMimeType: string | null = null;
     if (ctx.processMedia) {
-      if (type === 'image' || type === 'video' || type === 'document') {
+      if (type === 'image' || type === 'video' || type === 'document' || type === 'sticker') {
         const r = await this.processMediaInbound(msg, type);
         if (r.mediaUrl) {
           media = { url: r.mediaUrl, mimeType: r.mimeType ?? 'application/octet-stream', filename: r.filename, kind: type };
@@ -1140,14 +1232,11 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
   }
 
   // Upload de áudio histórico ao Cloudinary (sem transcrição Whisper — economiza custo/tempo).
-  private async processHistoryAudio(msg: any): Promise<{ mediaUrl: string | null; mimeType: string | null }> {
+  private async processHistoryAudio(msg: any, socket?: WASocket): Promise<{ mediaUrl: string | null; mimeType: string | null }> {
     try {
-      const buffer = (await downloadMediaMessage(msg, 'buffer', {})) as Buffer;
+      const buffer = await this.downloadBuffer(msg, socket);
       if (!buffer || buffer.length === 0) return { mediaUrl: null, mimeType: null };
-      const inner =
-        msg.message?.viewOnceMessage?.message ||
-        msg.message?.ephemeralMessage?.message ||
-        msg.message || {};
+      const inner = unwrapBaileysMessage(msg.message);
       const rawMime: string = inner?.audioMessage?.mimetype ?? 'audio/ogg; codecs=opus';
       const mimeType = rawMime.split(';')[0].trim();
       const ext = mimeType.includes('mp4') ? 'mp4' : 'ogg';
@@ -1515,9 +1604,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     let audioMimeType: string | null = null;
     let audioTranscription: string | null = null;
     if (type === 'audio') {
-      const inner = msg.message?.viewOnceMessage?.message ||
-                    msg.message?.ephemeralMessage?.message ||
-                    msg.message || {};
+      const inner = unwrapBaileysMessage(msg.message);
       const rawMime: string = inner?.audioMessage?.mimetype ?? 'audio/ogg; codecs=opus';
       const audioResult = await this.processAudioInbound(msg, rawMime);
       audioMediaUrl = audioResult.mediaUrl;
@@ -1527,7 +1614,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     // Processa imagem/vídeo/documento: baixa buffer via Baileys, sobe ao Cloudinary
     let inboundMedia: { url: string; mimeType: string; filename: string | null; kind: string } | null = null;
-    if (type === 'image' || type === 'video' || type === 'document') {
+    if (type === 'image' || type === 'video' || type === 'document' || type === 'sticker') {
       const result = await this.processMediaInbound(msg, type);
       if (result.mediaUrl) {
         inboundMedia = {
@@ -1827,7 +1914,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     let media: { url: string; mimeType: string; filename: string | null; kind: string } | null = null;
     let audioMediaUrl: string | null = null;
     let audioMimeType: string | null = null;
-    if (type === 'image' || type === 'video' || type === 'document') {
+    if (type === 'image' || type === 'video' || type === 'document' || type === 'sticker') {
       const r = await this.processMediaInbound(msg, type);
       if (r.mediaUrl) {
         media = { url: r.mediaUrl, mimeType: r.mimeType ?? 'application/octet-stream', filename: r.filename, kind: type };

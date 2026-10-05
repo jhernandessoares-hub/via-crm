@@ -322,6 +322,39 @@ export class AdminController {
     });
   }
 
+  // Recupera mídias antigas sem arquivo (figurinha/foto/vídeo/doc/áudio) de um lead Light.
+  // Ex.: POST /admin/tools/recover-light-media?leadId=<id>&since=2026-09-01T00:00:00.000Z&limit=200
+  @UseGuards(PlatformAdminGuard)
+  @Post('tools/recover-light-media')
+  recoverLightMedia(
+    @Query('leadId') leadId: string,
+    @Query('since') since?: string,
+    @Query('limit') limit?: string,
+    @Query('delayMs') delayMs?: string,
+  ) {
+    return this.adminService.recoverWhatsappLightMedia(leadId, {
+      since: since ? new Date(since) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      delayMs: delayMs ? Number(delayMs) : undefined,
+    });
+  }
+
+  // Mesma recuperação para todos os leads de uma sessão Light (lote).
+  @UseGuards(PlatformAdminGuard)
+  @Post('tools/recover-light-media-session')
+  recoverLightMediaSession(
+    @Query('sessionId') sessionId: string,
+    @Query('since') since?: string,
+    @Query('limit') limit?: string,
+    @Query('delayMs') delayMs?: string,
+  ) {
+    return this.adminService.recoverWhatsappLightMediaSession(sessionId, {
+      since: since ? new Date(since) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      delayMs: delayMs ? Number(delayMs) : undefined,
+    });
+  }
+
   // Backfill do histórico antigo de TODOS os leads de uma sessão WhatsApp Light (lote).
   // Ex. (histórico pré-CRM): POST /admin/tools/backfill-light-history-session?sessionId=<id>&maxPages=10
   // Ex. (gap recente 17/07): POST /admin/tools/backfill-light-history-session?sessionId=<id>&maxPages=25&since=2026-07-17T00:00:00.000Z&anchorStrategy=newest&processMedia=false
