@@ -3591,6 +3591,8 @@ function discardAiSuggestion() {
       // dizem nada ao atendimento. "Chamada perdida" e "Mensagem apagada" continuam visíveis.
       const pRaw = ev.payloadRaw as any;
       if (pRaw?.type === "system" && /^\[(Mensagens tempor|Sincroniza|Chave de criptografia|Protocolo de criptografia|Mensagem de sistema)/i.test(String(pRaw?.text || ""))) continue;
+      // Sinal interno que o CRM não soube interpretar (não aparece no celular do cliente).
+      if (pRaw?.type === "unknown" && /^\[Mensagem não reconhecida\]$/i.test(String(pRaw?.text || "").trim())) continue;
       normal.push(ev);
     }
 

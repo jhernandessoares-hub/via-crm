@@ -120,6 +120,23 @@ function extractBaileysText(msgContent: any): { type: string; text: string } {
     return { type: 'system', text: missed ? '[Chamada perdida]' : '[Chamada de voz]' };
   }
 
+  // Formatos mais novos/raros do WhatsApp
+  if (inner.liveLocationMessage) return { type: 'location', text: '[LOCALIZAÇÃO]' };
+  if (inner.contactsArrayMessage) return { type: 'contact', text: '[CONTATOS]' };
+  if (inner.lottieStickerMessage) return { type: 'unknown', text: '[Figurinha animada]' };
+  if (inner.eventMessage) return { type: 'unknown', text: `[EVENTO: ${inner.eventMessage.name || ''}]` };
+  if (inner.groupInviteMessage) return { type: 'text', text: '[Convite de grupo]' };
+  if (inner.productMessage) return { type: 'text', text: '[Produto compartilhado]' };
+  const rich = inner.interactiveMessage?.body?.text || inner.templateMessage?.hydratedTemplate?.hydratedContentText
+    || inner.buttonsMessage?.contentText || inner.listMessage?.description;
+  if (rich) return { type: 'text', text: rich };
+  // Fixar mensagem / manter no chat / mensagem vazia: só protocolo, sem conteúdo para o atendimento
+  if (inner.pinInChatMessage || inner.keepInChatMessage) return { type: 'system', text: '[Mensagem de sistema]' };
+  const keys = Object.keys(inner).filter((k) => k !== 'messageContextInfo');
+  if (keys.length === 0) return { type: 'system', text: '[Mensagem de sistema]' };
+
+  // Registra o tipo real para podermos tratá-lo da próxima vez
+  logger.warn(`Mensagem WhatsApp Light não reconhecida — tipos: ${keys.join(', ')}`);
   return { type: 'unknown', text: '[Mensagem não reconhecida]' };
 }
 
