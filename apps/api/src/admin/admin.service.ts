@@ -982,6 +982,40 @@ export class AdminService {
     return this.whatsappUnofficial.backfillLeadHistory(leadId, opts);
   }
 
+  // Recupera mídias antigas (figurinha/foto/vídeo/doc/áudio) sem arquivo guardado, de UM lead.
+  async recoverWhatsappLightMedia(leadId: string, opts?: { since?: Date; limit?: number; delayMs?: number }) {
+    if (!leadId) throw new BadRequestException('Parâmetro "leadId" é obrigatório.');
+    return this.whatsappUnofficial.recoverLeadMedia(leadId, opts);
+  }
+
+  // Mesma recuperação para todos os leads de uma sessão Light (sequencial; erro de um lead não para o lote).
+  async recoverWhatsappLightMediaSession(
+    sessionId: string,
+    opts?: { since?: Date; limit?: number; delayMs?: number },
+  ) {
+    if (!sessionId) throw new BadRequestException('Parâmetro "sessionId" é obrigatório.');
+    const leads = await this.prisma.lead.findMany({
+      where: { conversaSessionId: sessionId, deletedAt: null },
+      select: { id: true },
+      orderBy: { criadoEm: 'desc' },
+    });
+    let checked = 0;
+    let recovered = 0;
+    let failed = 0;
+    let errors = 0;
+    for (const l of leads) {
+      try {
+        const r = await this.whatsappUnofficial.recoverLeadMedia(l.id, opts);
+        checked += r.checked;
+        recovered += r.recovered;
+        failed += r.failed;
+      } catch {
+        errors++;
+      }
+    }
+    return { sessionId, leads: leads.length, checked, recovered, failed, errors };
+  }
+
   // Backfill do histórico antigo de TODOS os leads vinculados a uma sessão WhatsApp Light.
   // Wrapper em lote sobre `backfillLeadHistory` — roda sequencialmente (a própria sessão só
   // permite uma importação por vez) e nunca interrompe o loop por causa de um lead individual
