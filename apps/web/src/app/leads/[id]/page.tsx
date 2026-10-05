@@ -3587,6 +3587,10 @@ function discardAiSuggestion() {
       // Principal ele já apareceria fora de contexto (a pessoa nem está mais na tela).
       if (!abaAtiva && ch === "system" && (ev.payloadRaw as any)?.type === "chat_desagrupado") continue;
       if (isGhostEvent(ev)) continue;
+      // Avisos de protocolo do WhatsApp (mensagens temporárias, sincronização, criptografia) não
+      // dizem nada ao atendimento. "Chamada perdida" e "Mensagem apagada" continuam visíveis.
+      const pRaw = ev.payloadRaw as any;
+      if (pRaw?.type === "system" && /^\[(Mensagens tempor|Sincroniza|Chave de criptografia|Protocolo de criptografia|Mensagem de sistema)/i.test(String(pRaw?.text || ""))) continue;
       normal.push(ev);
     }
 
