@@ -3723,7 +3723,6 @@ function discardAiSuggestion() {
     const el = inputRef.current;
     if (!el) {
       setText((t) => String(t || "") + emoji);
-      setEmojiOpen(false);
       return;
     }
 
@@ -3741,7 +3740,6 @@ function discardAiSuggestion() {
       } catch {}
     });
 
-    setEmojiOpen(false);
   }
 
   useEffect(() => {
