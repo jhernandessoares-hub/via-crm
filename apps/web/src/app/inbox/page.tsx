@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo, type MutableRefObject, type UIEvent } from "react";
 import AppShell from "@/components/AppShell";
+import EmojiPicker from "@/components/EmojiPicker";
 import { apiFetch } from "@/lib/api";
 import { Send, MessageSquare, Search, X, UserPlus, ChevronRight, ArrowLeftRight } from "lucide-react";
 
@@ -531,6 +532,21 @@ export default function InboxPage() {
   const [isDark, setIsDark] = useState(false);
   const [showIncorporar, setShowIncorporar] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+
+  function inserirEmoji(emoji: string) {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? texto.length;
+    const end = el?.selectionEnd ?? texto.length;
+    setTexto(texto.slice(0, start) + emoji + texto.slice(end));
+    setEmojiOpen(false);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
   const pollingListRef = useRef<NodeJS.Timeout | null>(null);
   const pollingMsgRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -828,6 +844,20 @@ export default function InboxPage() {
             {/* Campo de envio */}
             <div className="px-3 py-2 flex items-end gap-2"
               style={{ background: isDark ? "#1f2c34" : "#f0f2f5", borderTop: "1px solid var(--card-border)" }}>
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  title="Emoji"
+                  onClick={() => setEmojiOpen((v) => !v)}
+                  className="flex items-center justify-center text-xl"
+                  style={{ width: 40, height: 40 }}
+                >
+                  😊
+                </button>
+                {emojiOpen && (
+                  <EmojiPicker onSelect={inserirEmoji} onClose={() => setEmojiOpen(false)} />
+                )}
+              </div>
               <textarea
                 ref={textareaRef}
                 rows={1}
