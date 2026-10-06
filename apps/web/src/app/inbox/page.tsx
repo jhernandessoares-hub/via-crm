@@ -539,7 +539,6 @@ export default function InboxPage() {
     const start = el?.selectionStart ?? texto.length;
     const end = el?.selectionEnd ?? texto.length;
     setTexto(texto.slice(0, start) + emoji + texto.slice(end));
-    setEmojiOpen(false);
     requestAnimationFrame(() => {
       if (!el) return;
       el.focus();
