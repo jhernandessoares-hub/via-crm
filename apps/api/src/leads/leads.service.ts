@@ -674,8 +674,21 @@ export class LeadsService {
 
     const bufferRaw = await this.getFileBuffer(file);
 
-    const { buffer: bufferFinal, mimeType: mimeFinal, ext: extFinal } =
-      await this.messaging.ensureMetaCompatibleAudio(bufferRaw, mimetypeRaw);
+    let converted: { buffer: Buffer; mimeType: string; ext: string };
+    try {
+      converted = await this.messaging.ensureMetaCompatibleAudio(bufferRaw, mimetypeRaw);
+    } catch (err: any) {
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.out.failed',
+          payloadRaw: { type: 'audio', error: `Falha ao converter áudio: ${err?.message || String(err)}` },
+        },
+      });
+      throw new BadRequestException('Não foi possível processar o áudio gravado. Tente gravar novamente.');
+    }
+    const { buffer: bufferFinal, mimeType: mimeFinal, ext: extFinal } = converted;
 
     const originalnameRaw =
       typeof file.originalname === 'string' && file.originalname.trim()
@@ -696,11 +709,59 @@ export class LeadsService {
       mimeType: mimeFinal,
     });
 
-    const upload = await this.messaging.uploadMetaMedia({
-      buffer: bufferFinal,
-      filename: originalname,
-      mimeType: mimeFinal,
-    }, user.tenantId);
+    // WhatsApp Light (Baileys): envia direto como mensagem de voz
+    if (lead.conversaCanal === 'WHATSAPP_LIGHT' && lead.conversaSessionId) {
+      const to = lead.telefone;
+      let sent: { id: string | null };
+      try {
+        sent = await this.unofficialService.sendAudio(lead.conversaSessionId, to, bufferFinal);
+      } catch (err: any) {
+        await this.prisma.leadEvent.create({
+          data: {
+            tenantId: user.tenantId,
+            leadId,
+            channel: 'whatsapp.out.failed',
+            payloadRaw: { type: 'audio', error: err?.message || String(err) },
+          },
+        });
+        throw new BadRequestException(err?.message || 'Falha ao enviar áudio via WhatsApp Light.');
+      }
+
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.unofficial.out',
+          sourceRef: sent?.id ?? null,
+          payloadRaw: {
+            to,
+            type: 'audio',
+            media: { kind: 'audio', mimeType: mimeFinal, filename: originalname, url: cloudUrl },
+          },
+        },
+      });
+
+      return { ok: true };
+    }
+
+    let upload: Awaited<ReturnType<MessagingService['uploadMetaMedia']>>;
+    try {
+      upload = await this.messaging.uploadMetaMedia({
+        buffer: bufferFinal,
+        filename: originalname,
+        mimeType: mimeFinal,
+      }, user.tenantId);
+    } catch (err: any) {
+      await this.prisma.leadEvent.create({
+        data: {
+          tenantId: user.tenantId,
+          leadId,
+          channel: 'whatsapp.out.failed',
+          payloadRaw: { type: 'audio', error: err?.message || String(err) },
+        },
+      });
+      throw new BadRequestException(err?.message || 'Falha ao enviar áudio (upload Meta).');
+    }
 
     let send: Awaited<ReturnType<MessagingService['sendMetaAudioMessage']>>;
     try {
