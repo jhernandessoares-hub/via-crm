@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { usePipelineGroups } from "@/lib/pipeline-groups";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
+import EmojiPicker from "@/components/EmojiPicker";
 import { PendenciasModal, type PendenciaDraft, type PendenciaPessoa } from "@/components/PendenciasModal";
 import { PendenciasPanel } from "@/components/PendenciasPanel";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -7357,32 +7358,7 @@ function discardAiSuggestion() {
                     </button>
 
                     {emojiOpen ? (
-                      <div className="absolute bottom-12 left-0 z-20 w-56 rounded-lg border bg-[var(--shell-card-bg)] shadow p-2">
-                        <div className="text-[11px] text-[var(--shell-subtext)] mb-2">Inserir emoji</div>
-                        <div className="flex flex-wrap gap-2">
-                          {["👍","❤️","😂","🙏","🔥","👏","😮","😢","😡","✅","📌","⭐"].map((em) => (
-                            <button
-                              key={em}
-                              type="button"
-                              className="h-9 w-9 rounded-md border bg-[var(--shell-card-bg)] hover:bg-[var(--shell-bg)] text-lg"
-                              onClick={() => insertEmoji(em)}
-                              title={em}
-                            >
-                              {em}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="mt-2 flex justify-end">
-                          <button
-                            type="button"
-                            className="rounded-md border bg-[var(--shell-card-bg)] px-2 py-1 text-xs hover:bg-[var(--shell-bg)]"
-                            onClick={() => setEmojiOpen(false)}
-                          >
-                            Fechar
-                          </button>
-                        </div>
-                      </div>
+                      <EmojiPicker onSelect={insertEmoji} onClose={() => setEmojiOpen(false)} />
                     ) : null}
                   </div>
                 </div>
