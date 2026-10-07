@@ -22,6 +22,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
+import { EncerrarConversaPreOcupacaoModal, type AtendimentoMensagem } from "@/app/pre-ocupacao/_lib/atendimento";
 import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search, Users, StickyNote, Pencil, Unlink, Lock } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
@@ -2477,6 +2478,13 @@ export default function LeadDetailChatPage() {
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showEndConvDialog, setShowEndConvDialog] = useState(false);
   const pendingNavRef = useRef<string | null>(null);
+  // Encerrar conversa de família ativa na Pré-Ocupação → quadro de registro de atendimento.
+  // `navegarDepois`: veio do aviso "Encerrou essa conversa?" ao sair do lead.
+  const [preOcEncerrar, setPreOcEncerrar] = useState<{
+    familiaNumero: number;
+    mensagens: AtendimentoMensagem[];
+    navegarDepois: boolean;
+  } | null>(null);
 
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -2611,6 +2619,32 @@ export default function LeadDetailChatPage() {
       setPreOcupacao(null);
     } finally {
       setPreOcupacaoLoading(false);
+    }
+  }
+
+  /**
+   * Se o lead é família ativa na Pré-Ocupação, abre o quadro de atendimento em vez
+   * do confirm simples e retorna true. Só consulta quando o painel já indicou família
+   * ativada (SP9) — demais tenants seguem o fluxo antigo sem request extra.
+   */
+  async function abrirEncerramentoPreOcupacao(navegarDepois: boolean): Promise<boolean> {
+    if (!id || !preOcupacao?.ativada) return false;
+    try {
+      const res = await apiFetch(`/pre-ocupacao/leads/${id}/atendimento-pendente`);
+      if (!res?.familia) return false;
+      setPreOcEncerrar({ familiaNumero: res.familia.numero, mensagens: res.mensagens ?? [], navegarDepois });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function concluirEncerramentoPreOcupacao() {
+    const navegar = preOcEncerrar?.navegarDepois;
+    setPreOcEncerrar(null);
+    setLead((prev) => (prev ? { ...prev, conversaAberta: false } : prev));
+    if (navegar && pendingNavRef.current) {
+      startTransition(() => router.push(pendingNavRef.current!));
     }
   }
 
@@ -7364,7 +7398,10 @@ function discardAiSuggestion() {
                 {(abaAtiva ? activeSubConversa?.aguardandoResposta : lead?.conversaAberta) && (
                   <div className="flex items-center justify-end pb-1">
                     <button
-                      onClick={() => setShowEndConvDialog(true)}
+                      onClick={async () => {
+                        if (!(abaAtiva && activeSubConversa) && (await abrirEncerramentoPreOcupacao(false))) return;
+                        setShowEndConvDialog(true);
+                      }}
                       className="text-xs text-amber-600 hover:text-amber-800 border border-amber-300 rounded-md px-2 py-1 bg-amber-50 hover:bg-amber-100 transition-colors"
                     >
                       {"🔒 Encerrar conversa" + (abaAtiva && activeSubConversa ? " com " + activeSubConversa.nome : "")}
@@ -7811,6 +7848,10 @@ function discardAiSuggestion() {
               </button>
               <button
                 onClick={async () => {
+                  if (await abrirEncerramentoPreOcupacao(true)) {
+                    setShowExitDialog(false);
+                    return;
+                  }
                   await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
                   setShowExitDialog(false);
                   if (pendingNavRef.current) {
@@ -7824,6 +7865,20 @@ function discardAiSuggestion() {
             </div>
           </div>
         </div>
+      )}
+
+      {preOcEncerrar && id && (
+        <EncerrarConversaPreOcupacaoModal
+          leadId={id}
+          familiaNumero={preOcEncerrar.familiaNumero}
+          mensagens={preOcEncerrar.mensagens}
+          onCancel={() => setPreOcEncerrar(null)}
+          onRegistrado={concluirEncerramentoPreOcupacao}
+          onEncerrarSemRegistro={async () => {
+            await apiFetch(`/leads/${id}/end-conversation`, { method: 'POST' });
+            concluirEncerramentoPreOcupacao();
+          }}
+        />
       )}
 
       {/* Modal: confirmação de encerrar conversa (pelo botão na área de mensagem) */}

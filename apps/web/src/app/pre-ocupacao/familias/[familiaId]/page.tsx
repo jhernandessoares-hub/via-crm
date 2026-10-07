@@ -17,7 +17,11 @@ import {
   FAMILIA_STATUS_LABEL,
   formatDate,
   formatDateTime,
+  ATENDIMENTO_ASSUNTO_LABEL,
+  ATENDIMENTO_MODALIDADE_LABEL,
+  ATENDIMENTO_MOTIVO_LABEL,
 } from "../../_lib/constants";
+import { Atendimento, AtendimentoDetalheModal, RegistrarAtendimentoModal } from "../../_lib/atendimento";
 
 type Participacao = {
   id: string;
@@ -73,6 +77,9 @@ export default function FamiliaDetalhePage() {
   const [data, setData] = useState<Detalhe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
+  const [atendimentoAberto, setAtendimentoAberto] = useState<string | null>(null);
+  const [registrarOpen, setRegistrarOpen] = useState(false);
 
   useEffect(() => {
     if (guard !== true || !familiaId) return;
@@ -84,8 +91,12 @@ export default function FamiliaDetalhePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/pre-ocupacao/familias/${familiaId}`);
+      const [res, lista] = await Promise.all([
+        apiFetch(`/pre-ocupacao/familias/${familiaId}`),
+        apiFetch(`/pre-ocupacao/familias/${familiaId}/atendimentos`),
+      ]);
       setData(res);
+      setAtendimentos(lista);
     } catch (e: any) {
       setError(e?.message ?? "Erro ao carregar família");
     } finally {
@@ -153,6 +164,50 @@ export default function FamiliaDetalhePage() {
                     →
                   </Link>
                 </div>
+              </CardBody>
+            </Card>
+
+            <Card className="mb-4">
+              <CardHeader className="flex items-center justify-between">
+                <CardTitle>Atendimentos ({atendimentos.length})</CardTitle>
+                <button
+                  onClick={() => setRegistrarOpen(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                >
+                  + Registrar atendimento
+                </button>
+              </CardHeader>
+              <CardBody className="space-y-2">
+                {atendimentos.length === 0 && (
+                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>
+                    Nenhum atendimento registrado para esta família.
+                  </p>
+                )}
+                {atendimentos.map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => setAtendimentoAberto(a.id)}
+                    className="w-full text-left flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-[var(--shell-hover)]"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium" style={{ color: "var(--shell-text)" }}>
+                        {ATENDIMENTO_MOTIVO_LABEL[a.motivo] ?? a.motivo} — {ATENDIMENTO_ASSUNTO_LABEL[a.assunto] ?? a.assunto}
+                      </p>
+                      <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                        {formatDateTime(a.inicioEm)}
+                        {a.atendidoPorNome ? ` · ${a.atendidoPorNome}` : ""}
+                      </p>
+                      {a.descricao && (
+                        <p className="text-xs mt-0.5 truncate" style={{ color: "var(--shell-subtext)" }}>
+                          {a.descricao}
+                        </p>
+                      )}
+                    </div>
+                    <Badge variant="default">{ATENDIMENTO_MODALIDADE_LABEL[a.modalidade] ?? a.modalidade}</Badge>
+                  </button>
+                ))}
               </CardBody>
             </Card>
 
@@ -238,6 +293,20 @@ export default function FamiliaDetalhePage() {
           </>
         )}
       </div>
+
+      {atendimentoAberto && (
+        <AtendimentoDetalheModal atendimentoId={atendimentoAberto} onClose={() => setAtendimentoAberto(null)} />
+      )}
+      {registrarOpen && data && (
+        <RegistrarAtendimentoModal
+          familiaId={data.familia.id}
+          onClose={() => setRegistrarOpen(false)}
+          onSalvo={() => {
+            setRegistrarOpen(false);
+            load();
+          }}
+        />
+      )}
     </AppShell>
   );
 }

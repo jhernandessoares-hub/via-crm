@@ -21,10 +21,16 @@ export class FamiliasController {
   }
 
   @Get('familias')
-  listar(@Request() req: any, @Query('take') take?: string, @Query('skip') skip?: string) {
+  listar(
+    @Request() req: any,
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+    @Query('de') de?: string,
+    @Query('ate') ate?: string,
+  ) {
     const t = take ? Number(take) : undefined;
     const s = skip ? Number(skip) : undefined;
-    return this.svc.listar(req.user.tenantId, t, s);
+    return this.svc.listar(req.user.tenantId, t, s, { de, ate });
   }
 
   @Get('familias/:familiaId')

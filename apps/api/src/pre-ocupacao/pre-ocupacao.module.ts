@@ -17,6 +17,8 @@ import { TemplatesController } from './templates.controller';
 import { TemplatesService } from './templates.service';
 import { AgendamentoConviteService } from './agendamento-convite.service';
 import { AgendamentoConviteWorker } from './agendamento-convite.worker';
+import { AtendimentosController } from './atendimentos.controller';
+import { AtendimentosService } from './atendimentos.service';
 
 @Module({
   imports: [PrismaModule, LeadsModule, MessagingModule],
@@ -27,6 +29,7 @@ import { AgendamentoConviteWorker } from './agendamento-convite.worker';
     DemandasController,
     ConteudoController,
     TemplatesController,
+    AtendimentosController,
   ],
   providers: [
     AddonGuard,
@@ -38,6 +41,7 @@ import { AgendamentoConviteWorker } from './agendamento-convite.worker';
     TemplatesService,
     AgendamentoConviteService,
     AgendamentoConviteWorker,
+    AtendimentosService,
   ],
   exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService],
 })

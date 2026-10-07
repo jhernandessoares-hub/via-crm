@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { getNextFamiliaNumber } from './pre-ocupacao-numbering.helper';
 import { computeStatusAcompanhamento, countFaltas } from './pre-ocupacao-status.util';
+import { AtendimentosService } from './atendimentos.service';
 
 @Injectable()
 export class FamiliasService {
@@ -12,6 +13,7 @@ export class FamiliasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly atendimentos: AtendimentosService,
   ) {}
 
   /**
@@ -101,8 +103,11 @@ export class FamiliasService {
     return unidadePorLead;
   }
 
-  /** Lista todas as famílias do tenant + dashboard agregado. */
-  async listar(tenantId: string, take?: number, skip?: number) {
+  /**
+   * Lista todas as famílias do tenant + dashboard agregado. `periodo` (YYYY-MM-DD)
+   * filtra só a contagem de atendimentos — a lista de famílias é sempre completa.
+   */
+  async listar(tenantId: string, take?: number, skip?: number, periodo?: { de?: string; ate?: string }) {
     const familias = await this.prisma.preOcupacaoFamilia.findMany({
       where: { tenantId },
       include: { lead: { select: { nome: true, nomeCorreto: true, cpf: true } } },
@@ -125,6 +130,7 @@ export class FamiliasService {
       : [];
 
     const unidadePorLead = await this.buscarUnidadesPorLead(tenantId, leadIds);
+    const atendimentosPorFamilia = await this.atendimentos.contarPorFamilia(tenantId, periodo?.de, periodo?.ate);
 
     const porFamilia = new Map<string, { status: string }[]>();
     for (const p of participantes) {
@@ -159,6 +165,7 @@ export class FamiliasService {
         demandasTotal: demandasFamilia.length,
         demandasAbertas: demandasFamilia.filter((d) => d.status === 'ABERTA').length,
         demandasEncerradas: demandasFamilia.filter((d) => d.status === 'ENCERRADA').length,
+        atendimentos: atendimentosPorFamilia.get(f.id) ?? 0,
       };
     });
 
@@ -166,6 +173,7 @@ export class FamiliasService {
       total: items.length,
       emDia: items.filter((i) => i.status === 'EM_DIA').length,
       comPendencia: items.filter((i) => i.status === 'COM_PENDENCIA').length,
+      atendimentos: items.reduce((acc, i) => acc + i.atendimentos, 0),
     };
 
     const paginated = typeof take === 'number' ? items.slice(skip ?? 0, (skip ?? 0) + take) : items;

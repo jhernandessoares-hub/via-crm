@@ -149,3 +149,41 @@ export function competenciaAtual(): string {
   const mes = String(now.getMonth() + 1).padStart(2, "0");
   return `${now.getFullYear()}-${mes}`;
 }
+
+export const ATENDIMENTO_MOTIVO_LABEL: Record<string, string> = {
+  DUVIDA: "Dúvida",
+  RECLAMACAO: "Reclamação",
+  SUGESTAO: "Sugestão",
+};
+
+export const ATENDIMENTO_ASSUNTO_LABEL: Record<string, string> = {
+  APARTAMENTO: "Sobre o apartamento",
+  ENERGIA_ELETRICA: "Energia elétrica",
+  AGUA_SANEAMENTO: "Água e saneamento",
+  VALORES_CONDOMINIO: "Valores do condomínio",
+  CONTRATO_FINANCIAMENTO: "Contrato de financiamento",
+  INSTALACOES_CONDOMINIO: "Instalações do condomínio",
+  OUTROS: "Outros",
+};
+
+export const ATENDIMENTO_MODALIDADE_LABEL: Record<string, string> = {
+  ONLINE: "Online",
+  PRESENCIAL: "Presencial",
+  TELEFONE: "Telefone",
+};
+
+export const ATENDIMENTO_ORIGEM_LABEL: Record<string, string> = {
+  ENCERRAMENTO: "Conversa no WhatsApp",
+  MANUAL: "Lançado na família",
+  RETROATIVO: "Lançamento retroativo",
+};
+
+/** Primeiro e último dia (YYYY-MM-DD) do mês com deslocamento `offset` (0 = mês atual, -1 = anterior). */
+export function intervaloDoMes(offset = 0): { de: string; ate: string } {
+  const now = new Date();
+  const inicio = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const fim = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { de: fmt(inicio), ate: fmt(fim) };
+}
