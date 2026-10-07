@@ -17,7 +17,6 @@ import {
   ATENDIMENTO_ASSUNTO_LABEL,
   ATENDIMENTO_MODALIDADE_LABEL,
   ATENDIMENTO_MOTIVO_LABEL,
-  ATENDIMENTO_ORIGEM_LABEL,
   formatDateTime,
 } from "./constants";
 
@@ -520,7 +519,6 @@ export function AtendimentoDetalheModal({ atendimentoId, onClose }: { atendiment
             <Info label="Motivo">{ATENDIMENTO_MOTIVO_LABEL[data.motivo] ?? data.motivo}</Info>
             <Info label="Assunto">{ATENDIMENTO_ASSUNTO_LABEL[data.assunto] ?? data.assunto}</Info>
             <Info label="Atendido por">{data.atendidoPorNome || "—"}</Info>
-            <Info label="Registro">{ATENDIMENTO_ORIGEM_LABEL[data.origem] ?? data.origem}</Info>
           </div>
           {data.descricao && <Info label="Descrição">{data.descricao}</Info>}
           {data.anexos.length > 0 && (
