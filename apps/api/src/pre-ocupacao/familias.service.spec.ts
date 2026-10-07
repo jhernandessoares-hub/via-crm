@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { FamiliasService } from './familias.service';
 
+
 function buildPrismaMock() {
   return {
     lead: { findFirst: jest.fn() },
@@ -11,6 +12,8 @@ function buildPrismaMock() {
     $transaction: jest.fn(),
   };
 }
+
+const atendimentosMock = { contarPorFamilia: jest.fn().mockResolvedValue(new Map()) };
 
 function buildAuditMock() {
   return { log: jest.fn().mockResolvedValue(undefined) };
@@ -24,7 +27,7 @@ describe('FamiliasService', () => {
     it('cria uma família nova quando o lead existe no tenant e ainda não foi ativado', async () => {
       const prisma: any = buildPrismaMock();
       const audit = buildAuditMock();
-      const svc = new FamiliasService(prisma, audit as any);
+      const svc = new FamiliasService(prisma, audit as any, atendimentosMock as any);
 
       prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
       prisma.preOcupacaoFamilia.findUnique.mockResolvedValue(null);
@@ -53,7 +56,7 @@ describe('FamiliasService', () => {
     it('é idempotente: chamar duas vezes para o mesmo lead retorna a família existente sem criar outra nem estourar erro', async () => {
       const prisma: any = buildPrismaMock();
       const audit = buildAuditMock();
-      const svc = new FamiliasService(prisma, audit as any);
+      const svc = new FamiliasService(prisma, audit as any, atendimentosMock as any);
 
       const existing = { id: 'fam-1', numero: 1, leadId: 'lead-1', tenantId: TENANT_A };
       prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
@@ -69,7 +72,7 @@ describe('FamiliasService', () => {
     it('lança NotFoundException quando o lead não existe no tenant informado (isolamento)', async () => {
       const prisma: any = buildPrismaMock();
       const audit = buildAuditMock();
-      const svc = new FamiliasService(prisma, audit as any);
+      const svc = new FamiliasService(prisma, audit as any, atendimentosMock as any);
 
       // Simula lead que pertence a outro tenant: findFirst filtrado por tenantId não encontra nada.
       prisma.lead.findFirst.mockResolvedValue(null);
@@ -82,7 +85,7 @@ describe('FamiliasService', () => {
     it('usa "desconhecido" como ativadoPor quando nada é informado', async () => {
       const prisma: any = buildPrismaMock();
       const audit = buildAuditMock();
-      const svc = new FamiliasService(prisma, audit as any);
+      const svc = new FamiliasService(prisma, audit as any, atendimentosMock as any);
 
       prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
       prisma.preOcupacaoFamilia.findUnique.mockResolvedValue(null);
@@ -103,7 +106,7 @@ describe('FamiliasService', () => {
   describe('detalhe / assertFamiliaAccess — isolamento multi-tenant', () => {
     it('detalhe() filtra por tenantId e lança NotFoundException se a família pertence a outro tenant', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new FamiliasService(prisma, buildAuditMock() as any);
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
 
       prisma.preOcupacaoFamilia.findFirst.mockResolvedValue(null);
 
@@ -115,7 +118,7 @@ describe('FamiliasService', () => {
 
     it('assertFamiliaAccess() lança NotFoundException se a família não pertence ao tenant', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new FamiliasService(prisma, buildAuditMock() as any);
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
 
       prisma.preOcupacaoFamilia.findFirst.mockResolvedValue(null);
 
@@ -127,7 +130,7 @@ describe('FamiliasService', () => {
 
     it('assertFamiliaAccess() retorna a família quando pertence ao tenant', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new FamiliasService(prisma, buildAuditMock() as any);
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
 
       const familia = { id: 'fam-1', tenantId: TENANT_A };
       prisma.preOcupacaoFamilia.findFirst.mockResolvedValue(familia);
@@ -140,7 +143,7 @@ describe('FamiliasService', () => {
   describe('listar — dashboard agregado', () => {
     it('soma emDia/comPendencia sobre TODAS as famílias do tenant, não só a página atual', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new FamiliasService(prisma, buildAuditMock() as any);
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
 
       // 3 famílias no tenant inteiro; só pedimos take=1 (paginação pequena)
       prisma.preOcupacaoFamilia.findMany.mockResolvedValue([
@@ -156,7 +159,7 @@ describe('FamiliasService', () => {
 
       const result = await svc.listar(TENANT_A, 1, 0);
 
-      expect(result.dashboard).toEqual({ total: 3, emDia: 2, comPendencia: 1 });
+      expect(result.dashboard).toEqual({ total: 3, emDia: 2, comPendencia: 1, atendimentos: 0 });
       expect(result.items).toHaveLength(1); // página respeitando take=1
       expect(prisma.preOcupacaoFamilia.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { tenantId: TENANT_A } }),
@@ -165,7 +168,7 @@ describe('FamiliasService', () => {
 
     it('sem paginação (take indefinido) retorna todos os itens', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new FamiliasService(prisma, buildAuditMock() as any);
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
 
       prisma.preOcupacaoFamilia.findMany.mockResolvedValue([
         { id: 'f1', numero: 1, leadId: 'l1', lead: { nome: 'A', nomeCorreto: null, cpf: null }, status: 'ATIVA' },
@@ -178,7 +181,7 @@ describe('FamiliasService', () => {
 
     it('prioriza nomeCorreto sobre nome quando presente', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new FamiliasService(prisma, buildAuditMock() as any);
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
 
       prisma.preOcupacaoFamilia.findMany.mockResolvedValue([
         { id: 'f1', numero: 1, leadId: 'l1', lead: { nome: 'Nome Cadastro', nomeCorreto: 'Nome Correto', cpf: null }, status: 'ATIVA' },
@@ -193,7 +196,7 @@ describe('FamiliasService', () => {
   describe('resumoPorLead', () => {
     it('retorna { ativada: false } quando o lead não tem família ativada no tenant', async () => {
       const prisma: any = buildPrismaMock();
-      const svc = new FamiliasService(prisma, buildAuditMock() as any);
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
 
       prisma.preOcupacaoFamilia.findFirst.mockResolvedValue(null);
 

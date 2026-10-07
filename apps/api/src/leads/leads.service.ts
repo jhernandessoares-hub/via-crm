@@ -3791,7 +3791,8 @@ const aiAssistanceLabel =
 
     await this.prisma.lead.update({
       where: { id: leadId, tenantId },
-      data: { conversaAberta: false, lastReadAt: new Date() },
+      // conversaEncerradaEm marca o início da próxima conversa (janela do atendimento Pré-Ocupação)
+      data: { conversaAberta: false, lastReadAt: new Date(), conversaEncerradaEm: new Date() },
     });
     return { ok: true };
   }

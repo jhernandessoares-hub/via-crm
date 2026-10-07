@@ -200,6 +200,7 @@ model Tenant {
   preOcupacaoFamiliaCounter     TenantPreOcupacaoFamiliaCounter?
   preOcupacaoDemandaCounter     TenantPreOcupacaoDemandaCounter?
   preOcupacaoConteudos          PreOcupacaoConteudo[]
+  preOcupacaoAtendimentos       PreOcupacaoAtendimento[]
   planejamentoTtsAtividades     PlanejamentoTtsAtividade[]
   planejamentoTtsParcelas       PlanejamentoTtsParcela[]
   planejamentoTtsIndicadores    PlanejamentoTtsIndicador[]
@@ -378,6 +379,7 @@ model Lead {
   avatarUrl                 String?
   lastReadAt                DateTime?
   conversaAberta            Boolean                    @default(false)
+  conversaEncerradaEm       DateTime? // último "Encerrar conversa" (aba principal) — início da próxima conversa (atendimento Pré-Ocupação)
   pendenciasObservacao      String?
   passouBaseFria            Boolean                    @default(false) // lead reativado a partir da Base Fria: SLA pula e rótulo "(Base Fria)"
   baseFriaDesde             DateTime? // quando o lead entrou na Base Fria (sort/idade na listagem dedicada)
@@ -2076,6 +2078,7 @@ model PreOcupacaoFamilia {
   participacoes PreOcupacaoAtividadeParticipante[]
   ocorrencias   PreOcupacaoOcorrencia[]
   sessions      PreOcupacaoFamiliaSession[]
+  atendimentos  PreOcupacaoAtendimento[]
 
   @@unique([tenantId, numero])
   @@index([tenantId, status])
@@ -2363,6 +2366,86 @@ model PreOcupacaoOcorrenciaAnexo {
   @@index([ocorrenciaId])
   @@index([andamentoId])
   @@map("pre_ocupacao_ocorrencia_anexos")
+}
+
+// Atendimento individual a uma família (evidência TTS para a Verificadora).
+// Origem ENCERRAMENTO: registrado ao encerrar a conversa de WhatsApp no lead —
+// as mensagens NÃO são copiadas: o atendimento guarda a janela inicioEm..fimEm
+// e as mensagens são lidas dos LeadEvents do lead nesse intervalo.
+// Origem MANUAL: presencial/telefone, lançado dentro da família (sem mensagens,
+// com anexos opcionais). RETROATIVO: lançado por script.
+model PreOcupacaoAtendimento {
+  id              String                           @id @default(uuid())
+  tenantId        String
+  familiaId       String
+  leadId          String
+  motivo          PreOcupacaoAtendimentoMotivo
+  assunto         PreOcupacaoAtendimentoAssunto
+  modalidade      PreOcupacaoAtendimentoModalidade @default(ONLINE)
+  descricao       String?
+  inicioEm        DateTime
+  fimEm           DateTime
+  origem          PreOcupacaoAtendimentoOrigem     @default(ENCERRAMENTO)
+  atendidoPorId   String?
+  atendidoPorNome String?
+  criadoEm        DateTime                         @default(now())
+
+  tenant  Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  familia PreOcupacaoFamilia            @relation(fields: [familiaId], references: [id], onDelete: Cascade)
+  anexos  PreOcupacaoAtendimentoAnexo[]
+
+  @@index([tenantId, inicioEm])
+  @@index([familiaId, inicioEm])
+  @@index([leadId])
+  @@map("pre_ocupacao_atendimentos")
+}
+
+model PreOcupacaoAtendimentoAnexo {
+  id            String   @id @default(uuid())
+  atendimentoId String
+  url           String
+  publicId      String
+  nome          String
+  mimeType      String?
+  criadoEm      DateTime @default(now())
+  criadoPor     String?
+
+  atendimento PreOcupacaoAtendimento @relation(fields: [atendimentoId], references: [id], onDelete: Cascade)
+
+  @@index([atendimentoId])
+  @@map("pre_ocupacao_atendimento_anexos")
+}
+
+enum PreOcupacaoAtendimentoMotivo {
+  DUVIDA
+  RECLAMACAO
+  SUGESTAO
+}
+
+enum PreOcupacaoAtendimentoAssunto {
+  APARTAMENTO
+  ENERGIA_ELETRICA
+  AGUA_SANEAMENTO
+  VALORES_CONDOMINIO
+  CONTRATO_FINANCIAMENTO
+  INSTALACOES_CONDOMINIO
+  ANDAMENTO_OBRA
+  ENTREGA_CHAVES_MUDANCA
+  REUNIOES_PRE_OCUPACAO
+  ATUALIZACAO_CADASTRO
+  OUTROS
+}
+
+enum PreOcupacaoAtendimentoModalidade {
+  ONLINE
+  PRESENCIAL
+  TELEFONE
+}
+
+enum PreOcupacaoAtendimentoOrigem {
+  ENCERRAMENTO
+  MANUAL
+  RETROATIVO
 }
 
 model TenantPreOcupacaoFamiliaCounter {
