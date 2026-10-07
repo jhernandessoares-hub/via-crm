@@ -12,7 +12,6 @@ import {
   ATENDIMENTO_ASSUNTO_LABEL,
   ATENDIMENTO_MODALIDADE_LABEL,
   ATENDIMENTO_MOTIVO_LABEL,
-  ATENDIMENTO_ORIGEM_LABEL,
   formatDate,
   intervaloDoMes,
 } from "../_lib/constants";
@@ -121,7 +120,7 @@ function baixarRelatorio(items: FamiliaItem[], periodo: Periodo) {
 /** Uma linha por atendimento do período — evidência detalhada para a Verificadora. */
 async function baixarAtendimentos(periodo: Periodo) {
   const lista: AtendimentoRelatorio[] = await apiFetch(`/pre-ocupacao/atendimentos${periodoQuery(periodo)}`);
-  const header = ["Data", "Hora", "Nº família", "Família", "CPF", "Modalidade", "Motivo", "Assunto", "Descrição", "Atendido por", "Registro"];
+  const header = ["Data", "Hora", "Nº família", "Família", "CPF", "Modalidade", "Motivo", "Assunto", "Descrição", "Atendido por"];
   const rows = lista.map((a) => {
     const d = new Date(a.inicioEm);
     return [
@@ -135,7 +134,6 @@ async function baixarAtendimentos(periodo: Periodo) {
       ATENDIMENTO_ASSUNTO_LABEL[a.assunto] ?? a.assunto,
       a.descricao || "",
       a.atendidoPorNome || "",
-      ATENDIMENTO_ORIGEM_LABEL[a.origem] ?? a.origem,
     ];
   });
   salvarCsv([header, ...rows], `atendimentos-pre-ocupacao-${periodoSufixo(periodo)}.csv`);
