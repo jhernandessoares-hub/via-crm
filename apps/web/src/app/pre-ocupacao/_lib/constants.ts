@@ -163,6 +163,10 @@ export const ATENDIMENTO_ASSUNTO_LABEL: Record<string, string> = {
   VALORES_CONDOMINIO: "Valores do condomínio",
   CONTRATO_FINANCIAMENTO: "Contrato de financiamento",
   INSTALACOES_CONDOMINIO: "Instalações do condomínio",
+  ANDAMENTO_OBRA: "Andamento da obra",
+  ENTREGA_CHAVES_MUDANCA: "Entrega das chaves e mudança",
+  REUNIOES_PRE_OCUPACAO: "Reuniões de pré-ocupação",
+  ATUALIZACAO_CADASTRO: "Atualização de cadastro",
   OUTROS: "Outros",
 };
 
