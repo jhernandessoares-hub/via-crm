@@ -2624,11 +2624,12 @@ export default function LeadDetailChatPage() {
 
   /**
    * Se o lead é família ativa na Pré-Ocupação, abre o quadro de atendimento em vez
-   * do confirm simples e retorna true. Só consulta quando o painel já indicou família
-   * ativada (SP9) — demais tenants seguem o fluxo antigo sem request extra.
+   * do confirm simples e retorna true. Sempre pergunta ao backend (não depende do
+   * painel Pré-Ocupação, que só carrega em algumas etapas); tenant sem o addon
+   * recebe 403 e segue o fluxo antigo.
    */
   async function abrirEncerramentoPreOcupacao(navegarDepois: boolean): Promise<boolean> {
-    if (!id || !preOcupacao?.ativada) return false;
+    if (!id) return false;
     try {
       const res = await apiFetch(`/pre-ocupacao/leads/${id}/atendimento-pendente`);
       if (!res?.familia) return false;
