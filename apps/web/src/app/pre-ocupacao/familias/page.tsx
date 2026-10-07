@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { apiFetch } from "@/lib/api";
+import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useSP9Guard } from "../_lib/useSP9Guard";
 import {
   ATENDIMENTO_ASSUNTO_LABEL,
@@ -140,6 +141,119 @@ async function baixarAtendimentos(periodo: Periodo) {
   salvarCsv([header, ...rows], `atendimentos-pre-ocupacao-${periodoSufixo(periodo)}.csv`);
 }
 
+type ComSem = "" | "com" | "sem";
+
+function passaComSem(filtro: ComSem, valor: number): boolean {
+  if (filtro === "com") return valor > 0;
+  if (filtro === "sem") return valor === 0;
+  return true;
+}
+
+/** Título de coluna com filtro Todos / Com / Sem. */
+function ColunaComSem({ titulo, value, onChange }: { titulo: string; value: ComSem; onChange: (v: ComSem) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span>{titulo}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as ComSem)}
+        onClick={(e) => e.stopPropagation()}
+        className="h-7 rounded-md border px-1 text-xs font-normal bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] outline-none"
+        style={{
+          borderColor: value ? "var(--via-teal, #1D9E75)" : "var(--shell-input-border)",
+          color: value ? "var(--via-teal, #1D9E75)" : undefined,
+        }}
+      >
+        <option value="">Todos</option>
+        <option value="com">Com</option>
+        <option value="sem">Sem</option>
+      </select>
+    </div>
+  );
+}
+
+function contarPor(lista: AtendimentoRelatorio[], campo: "motivo" | "assunto" | "modalidade") {
+  const m = new Map<string, number>();
+  for (const a of lista) m.set(a[campo], (m.get(a[campo]) ?? 0) + 1);
+  return m;
+}
+
+/** Gráfico/números dos atendimentos do período (assunto, motivo, modalidade). */
+function PainelAtendimentos({ lista, periodo, loading }: { lista: AtendimentoRelatorio[]; periodo: Periodo; loading: boolean }) {
+  const porAssunto = contarPor(lista, "assunto");
+  const dadosAssunto = Object.entries(ATENDIMENTO_ASSUNTO_LABEL)
+    .map(([k, label]) => ({ label, total: porAssunto.get(k) ?? 0 }))
+    .filter((d) => d.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const porMotivo = contarPor(lista, "motivo");
+  const porModalidade = contarPor(lista, "modalidade");
+  const familias = new Set(lista.map((a) => a.familia.numero)).size;
+
+  return (
+    <Card className="mb-6">
+      <CardBody>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+          <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>
+            Atendimentos — {periodoLabel(periodo)}
+          </p>
+          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+            {lista.length} atendimento(s) em {familias} família(s)
+          </p>
+        </div>
+
+        {loading ? (
+          <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Carregando...</p>
+        ) : lista.length === 0 ? (
+          <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhum atendimento no período.</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Por assunto</p>
+              <div style={{ width: "100%", height: Math.max(120, dadosAssunto.length * 34) }}>
+                <ResponsiveContainer>
+                  <BarChart data={dadosAssunto} layout="vertical" margin={{ top: 0, right: 32, bottom: 0, left: 0 }}>
+                    <XAxis type="number" hide allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="label"
+                      width={190}
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 12, fill: "var(--shell-subtext)" }}
+                    />
+                    <Tooltip cursor={{ fill: "var(--shell-hover)" }} formatter={(v) => [String(v), "Atendimentos"]} />
+                    <Bar dataKey="total" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={18}>
+                      <LabelList dataKey="total" position="right" style={{ fontSize: 12, fill: "var(--shell-text)" }} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {[
+                { titulo: "Por motivo", labels: ATENDIMENTO_MOTIVO_LABEL, mapa: porMotivo },
+                { titulo: "Por modalidade", labels: ATENDIMENTO_MODALIDADE_LABEL, mapa: porModalidade },
+              ].map((bloco) => (
+                <div key={bloco.titulo}>
+                  <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>{bloco.titulo}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.entries(bloco.labels).map(([k, label]) => (
+                      <div key={k} className="rounded-lg border px-2 py-2 text-center" style={{ borderColor: "var(--shell-card-border)" }}>
+                        <p className="text-lg font-bold" style={{ color: "var(--shell-text)" }}>{bloco.mapa.get(k) ?? 0}</p>
+                        <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 const PERIODO_ATALHOS: { label: string; value: () => Periodo }[] = [
   { label: "Este mês", value: () => intervaloDoMes(0) },
   { label: "Mês passado", value: () => intervaloDoMes(-1) },
@@ -155,7 +269,11 @@ export default function FamiliasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | "EM_DIA" | "COM_PENDENCIA" | "COM_ATENDIMENTO">("");
+  const [statusFilter, setStatusFilter] = useState<"" | "EM_DIA" | "COM_PENDENCIA">("");
+  const [filtroAtend, setFiltroAtend] = useState<ComSem>("");
+  const [filtroDemandas, setFiltroDemandas] = useState<ComSem>("");
+  const [filtroFaltas, setFiltroFaltas] = useState<ComSem>("");
+  const [atendimentosLista, setAtendimentosLista] = useState<AtendimentoRelatorio[]>([]);
   const [periodo, setPeriodo] = useState<Periodo>({ de: "", ate: "" });
   const [baixandoAtendimentos, setBaixandoAtendimentos] = useState(false);
 
@@ -169,9 +287,13 @@ export default function FamiliasPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/pre-ocupacao/familias${periodoQuery(periodo)}`);
+      const [res, lista] = await Promise.all([
+        apiFetch(`/pre-ocupacao/familias${periodoQuery(periodo)}`),
+        apiFetch(`/pre-ocupacao/atendimentos${periodoQuery(periodo)}`),
+      ]);
       setDashboard(res.dashboard);
       setItems(res.items);
+      setAtendimentosLista(lista);
     } catch (e: any) {
       setError(e?.message ?? "Erro ao carregar famílias");
     } finally {
@@ -191,11 +313,10 @@ export default function FamiliasPage() {
   }
 
   const filtered = items.filter((f) => {
-    if (statusFilter === "COM_ATENDIMENTO") {
-      if (f.atendimentos === 0) return false;
-    } else if (statusFilter && f.status !== statusFilter) {
-      return false;
-    }
+    if (statusFilter && f.status !== statusFilter) return false;
+    if (!passaComSem(filtroAtend, f.atendimentos)) return false;
+    if (!passaComSem(filtroDemandas, f.demandasTotal)) return false;
+    if (!passaComSem(filtroFaltas, f.faltas)) return false;
     if (!q.trim()) return true;
     const term = q.trim().toLowerCase();
     return (
@@ -204,6 +325,15 @@ export default function FamiliasPage() {
       String(f.numero).includes(term)
     );
   });
+
+  const temFiltro = !!(statusFilter || filtroAtend || filtroDemandas || filtroFaltas || q.trim());
+  function limparFiltros() {
+    setStatusFilter("");
+    setFiltroAtend("");
+    setFiltroDemandas("");
+    setFiltroFaltas("");
+    setQ("");
+  }
 
   if (guard === null) return null;
 
@@ -292,9 +422,9 @@ export default function FamiliasPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Card
             className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={() => setStatusFilter("")}
+            onClick={limparFiltros}
           >
-            <CardBody style={statusFilter === "" ? { boxShadow: "inset 0 0 0 2px var(--via-teal, #1D9E75)" } : undefined}>
+            <CardBody style={!temFiltro ? { boxShadow: "inset 0 0 0 2px var(--via-teal, #1D9E75)" } : undefined}>
               <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
                 Total no Pré-Ocupação
               </p>
@@ -331,9 +461,9 @@ export default function FamiliasPage() {
           </Card>
           <Card
             className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={() => setStatusFilter((s) => (s === "COM_ATENDIMENTO" ? "" : "COM_ATENDIMENTO"))}
+            onClick={() => setFiltroAtend((v) => (v === "com" ? "" : "com"))}
           >
-            <CardBody style={statusFilter === "COM_ATENDIMENTO" ? { boxShadow: "inset 0 0 0 2px #2563eb" } : undefined}>
+            <CardBody style={filtroAtend === "com" ? { boxShadow: "inset 0 0 0 2px #2563eb" } : undefined}>
               <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
                 Atendimentos
               </p>
@@ -347,8 +477,10 @@ export default function FamiliasPage() {
           </Card>
         </div>
 
+        <PainelAtendimentos lista={atendimentosLista} periodo={periodo} loading={loading} />
+
         {/* Search */}
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <input
             type="text"
             value={q}
@@ -356,6 +488,18 @@ export default function FamiliasPage() {
             placeholder="Buscar por nome, CPF ou número da família..."
             className="w-full max-w-md h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none"
           />
+          <span className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+            Mostrando {filtered.length} de {items.length} famílias
+          </span>
+          {temFiltro && (
+            <button
+              onClick={limparFiltros}
+              className="h-8 px-3 rounded-lg text-xs font-medium border"
+              style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
 
         {error && (
@@ -375,10 +519,16 @@ export default function FamiliasPage() {
                   <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Empreendimento</th>
                   <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Unidade</th>
                   <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Incluída em</th>
-                  <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Atendimentos</th>
-                  <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Demandas</th>
+                  <th className="text-left px-4 py-3 font-medium align-top" style={{ color: "var(--shell-subtext)" }}>
+                    <ColunaComSem titulo="Atendimentos" value={filtroAtend} onChange={setFiltroAtend} />
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium align-top" style={{ color: "var(--shell-subtext)" }}>
+                    <ColunaComSem titulo="Demandas" value={filtroDemandas} onChange={setFiltroDemandas} />
+                  </th>
                   <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Status</th>
-                  <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Faltas</th>
+                  <th className="text-left px-4 py-3 font-medium align-top" style={{ color: "var(--shell-subtext)" }}>
+                    <ColunaComSem titulo="Faltas" value={filtroFaltas} onChange={setFiltroFaltas} />
+                  </th>
                 </tr>
               </thead>
               <tbody>
