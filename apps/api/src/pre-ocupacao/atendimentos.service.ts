@@ -34,6 +34,10 @@ const MESSAGE_CHANNELS = [
   'whatsapp.out',
   'whatsapp.unofficial.in',
   'whatsapp.unofficial.out',
+  // Tentativas de envio que falharam: aparecem marcadas como "não enviada" para
+  // a equipe ver tudo que tentou responder (não somem do registro).
+  'whatsapp.out.failed',
+  'whatsapp.unofficial.out.failed',
 ];
 /** Tipos de payload que não são conteúdo de conversa (recibos, reações, sinais internos). */
 const IGNORED_PAYLOAD_TYPES = new Set([
@@ -56,6 +60,7 @@ export type AtendimentoMensagem = {
   texto: string | null;
   midia: { tipo: string; nome: string | null; mimeType: string | null } | null;
   autor: string | null;
+  falhou: boolean;
 };
 
 type AtendimentoBody = {
@@ -159,6 +164,7 @@ export class AtendimentosService {
       const midia = pickMedia(p);
       if (!texto && !midia) continue;
       const direcao = ev.channel.endsWith('.in') ? 'IN' : 'OUT';
+      const falhou = ev.channel.endsWith('.failed');
       const autor =
         direcao === 'IN'
           ? null
@@ -174,6 +180,7 @@ export class AtendimentosService {
         texto,
         midia,
         autor,
+        falhou,
       });
     }
     return out;
@@ -240,6 +247,21 @@ export class AtendimentosService {
     return { familia, mensagens };
   }
 
+  /**
+   * Família ativa com conversa aberta: ao sair do lead sem encerrar, a conversa
+   * volta a contar como não lida (abrir o lead marca como lida). Só encerra pelo
+   * quadro de atendimento.
+   */
+  async manterNaoLida(tenantId: string, leadId: string) {
+    const familia = await this.familiaDoLead(tenantId, leadId);
+    if (!familia || familia.status !== 'ATIVA') return { ok: false };
+    await this.prisma.lead.updateMany({
+      where: { id: leadId, tenantId, deletedAt: null, conversaAberta: true },
+      data: { lastReadAt: null },
+    });
+    return { ok: true };
+  }
+
   /** Registra o atendimento da conversa atual e encerra a conversa, numa só ação. */
   async registrarPorEncerramento(
     tenantId: string,
@@ -260,7 +282,7 @@ export class AtendimentosService {
       where: {
         tenantId,
         leadId,
-        channel: { in: MESSAGE_CHANNELS },
+        channel: { in: MESSAGE_CHANNELS.filter((c) => !c.endsWith('.failed')) },
         criadoEm: { gt: inicio, lte: fimEm },
       },
       orderBy: { criadoEm: 'asc' },

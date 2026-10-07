@@ -28,6 +28,7 @@ export type AtendimentoMensagem = {
   texto: string | null;
   midia: { tipo: string; nome: string | null; mimeType: string | null } | null;
   autor: string | null;
+  falhou?: boolean;
 };
 
 export type AtendimentoAnexo = { id: string; url: string; nome: string; mimeType: string | null };
@@ -201,6 +202,11 @@ export function MensagensAtendimento({ leadId, mensagens }: { leadId: string; me
             <p className="mt-1 text-[10px] opacity-70 text-right">
               {m.direcao === "IN" ? "Família" : m.autor ?? "Equipe"} · {formatDateTime(m.criadoEm)}
             </p>
+            {m.falhou && (
+              <p className="mt-0.5 text-[10px] font-semibold text-right" style={{ color: "#dc2626" }}>
+                ⚠ não enviada (falha no envio)
+              </p>
+            )}
           </div>
         </div>
       ))}

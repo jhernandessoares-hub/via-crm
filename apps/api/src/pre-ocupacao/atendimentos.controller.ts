@@ -31,6 +31,12 @@ export class AtendimentosController {
     return this.svc.pendentePorLead(req.user.tenantId, leadId);
   }
 
+  /** Saiu do lead sem encerrar: conversa da família continua aberta e não lida. */
+  @Post('leads/:leadId/manter-nao-lida')
+  manterNaoLida(@Request() req: any, @Param('leadId') leadId: string) {
+    return this.svc.manterNaoLida(req.user.tenantId, leadId);
+  }
+
   /** Registra o atendimento e encerra a conversa do lead. */
   @Post('leads/:leadId/atendimentos')
   registrarPorEncerramento(@Request() req: any, @Param('leadId') leadId: string, @Body() body: any) {

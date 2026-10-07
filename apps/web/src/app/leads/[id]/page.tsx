@@ -2998,11 +2998,37 @@ export default function LeadDetailChatPage() {
     apiFetch(`/leads/${id}/mark-read`, { method: "POST" }).catch(() => null);
   }, [id]);
 
+  // Família ativa na Pré-Ocupação com conversa aberta: só se encerra pelo quadro de
+  // atendimento. Sair do lead não pergunta nada e a conversa volta a ficar não lida.
+  const [familiaPreOcAtiva, setFamiliaPreOcAtiva] = useState(false);
+  useEffect(() => {
+    if (!id || !lead?.conversaAberta) {
+      setFamiliaPreOcAtiva(false);
+      return;
+    }
+    apiFetch(`/pre-ocupacao/leads/${id}/atendimento-pendente`)
+      .then((res) => setFamiliaPreOcAtiva(!!res?.familia))
+      .catch(() => setFamiliaPreOcAtiva(false));
+  }, [id, lead?.conversaAberta]);
+
+  const manterNaoLidaRef = useRef(false);
+  manterNaoLidaRef.current = familiaPreOcAtiva && !!lead?.conversaAberta && user?.role !== "PARTNER";
+  useEffect(() => {
+    if (!id) return;
+    // Ao sair da tela (qualquer navegação) — abrir o lead marcou como lida.
+    return () => {
+      if (manterNaoLidaRef.current) {
+        apiFetch(`/pre-ocupacao/leads/${id}/manter-nao-lida`, { method: "POST" }).catch(() => null);
+      }
+    };
+  }, [id]);
+
   // Interceptor de navegação: pergunta se quer encerrar conversa aberta.
   // Externo Consultivo (PARTNER) é só consulta — não conversa, não encerra; navega livre.
   useEffect(() => {
     if (!lead?.conversaAberta) return;
     if (user?.role === "PARTNER") return;
+    if (familiaPreOcAtiva) return;
 
     const handleClick = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest('a');
@@ -3021,7 +3047,7 @@ export default function LeadDetailChatPage() {
 
     document.addEventListener('click', handleClick, true);
     return () => document.removeEventListener('click', handleClick, true);
-  }, [lead?.conversaAberta, id, user?.role]);
+  }, [lead?.conversaAberta, id, user?.role, familiaPreOcAtiva]);
 
 const orderedEvents = useMemo(() => {
   return [...events].sort((a, b) => {
