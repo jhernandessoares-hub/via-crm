@@ -1323,16 +1323,11 @@ function Bubble({
               <span className="mr-auto text-[10px] font-mono text-[var(--shell-subtext)]">{channelDisplay}</span>
             )}
             <div className="flex items-center gap-1.5 shrink-0">
-              {!outgoing && !isAiSuggestion && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
-                  {ch === "form" ? "Formulário" : "Cliente"}
-                </span>
-              )}
               {outgoing && !isAiSuggestion && (
                 <span
                   className={[
-                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold text-white shadow-sm",
-                    isHumanLabel ? "bg-blue-600" : "bg-violet-600",
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                    isHumanLabel ? "bg-blue-100 text-blue-700" : "bg-violet-100 text-violet-700",
                   ].join(" ")}
                 >
                   {!isHumanLabel && "✦ "}
@@ -1343,7 +1338,7 @@ function Bubble({
                       : aiParticipationLabel}
                 </span>
               )}
-              <span className="text-xs font-medium text-[var(--shell-subtext)] flex items-center gap-1">
+              <span className="text-[11px] text-[var(--shell-subtext)] flex items-center gap-1">
                 {editedAt && !deletedForAll ? (
                   <span
                     className="italic"
@@ -1353,14 +1348,22 @@ function Bubble({
                   </span>
                 ) : null}
                 {formatTime(ev.criadoEm)}
-                {waLightStatus === "READ" ? (
-                  <CheckCheck className="h-4 w-4 shrink-0" style={{ color: "#53bdeb" }} />
-                ) : waLightStatus === "DELIVERED" ? (
-                  <CheckCheck className="h-4 w-4 shrink-0 opacity-70" />
-                ) : waLightStatus === "SENT" ? (
-                  <Check className="h-4 w-4 shrink-0 opacity-70" />
-                ) : null}
               </span>
+              {/* Status de entrega em destaque (padrão WhatsApp): ✓ enviada, ✓✓ entregue, ✓✓ azul lida */}
+              {waLightStatus ? (
+                <span
+                  className="inline-flex items-center gap-0.5 text-xs font-semibold"
+                  style={{ color: waLightStatus === "READ" ? "#0b93f6" : "#667781" }}
+                  title={waLightStatus === "READ" ? "Lida pelo cliente" : waLightStatus === "DELIVERED" ? "Entregue no celular do cliente" : "Enviada (ainda não entregue)"}
+                >
+                  {waLightStatus === "SENT" ? (
+                    <Check className="h-5 w-5 shrink-0" strokeWidth={2.5} />
+                  ) : (
+                    <CheckCheck className="h-5 w-5 shrink-0" strokeWidth={2.5} />
+                  )}
+                  {waLightStatus === "READ" ? "Lida" : waLightStatus === "DELIVERED" ? "Entregue" : "Enviada"}
+                </span>
+              ) : null}
               {showMsgMenu && (
                 <div className="relative">
                   <button
