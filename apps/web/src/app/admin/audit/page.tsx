@@ -44,6 +44,10 @@ const ACTION_LABELS: Record<string, string> = {
   TENANT_ADDON_REMOVED: "Removeu add-on",
   LEAD_MERGE: "Mesclou leads",
   ASSIGN_LEAD: "Atribuiu responsável",
+  EDIT_LEAD_COMMENT: "Editou comentário do lead",
+  DELETE_LEAD_COMMENT: "Apagou comentário do lead",
+  EDIT_WHATSAPP_MESSAGE: "Editou mensagem enviada",
+  DELETE_WHATSAPP_MESSAGE: "Apagou mensagem enviada",
   UNIT_STATUS_CHANGED: "Alterou status de unidade",
   UNLINK_UNIT: "Desvinculou unidade",
 };

@@ -645,6 +645,50 @@ export class LeadsController {
     return this.leadsService.deleteParticipante(req.user.tenantId, id, partId);
   }
 
+  // ─── Comentários internos do lead ────────────────────────────────────────────
+
+  @Get(':id/comments')
+  async listComments(@Req() req: any, @Param('id') id: string) {
+    return this.leadsService.listComments(req.user, id);
+  }
+
+  @Post(':id/comments')
+  async createComment(@Req() req: any, @Param('id') id: string, @Body() body: { texto: string }) {
+    return this.leadsService.createComment(req.user, id, body?.texto);
+  }
+
+  @Patch(':id/comments/:commentId')
+  async updateComment(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+    @Body() body: { texto: string },
+  ) {
+    return this.leadsService.updateComment(req.user, id, commentId, body?.texto);
+  }
+
+  @Delete(':id/comments/:commentId')
+  async deleteComment(@Req() req: any, @Param('id') id: string, @Param('commentId') commentId: string) {
+    return this.leadsService.deleteComment(req.user, id, commentId);
+  }
+
+  // ─── Editar / apagar mensagem enviada (WhatsApp Light) ───────────────────────
+
+  @Patch(':id/events/:eventId/message')
+  async editSentMessage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('eventId') eventId: string,
+    @Body() body: { text: string },
+  ) {
+    return this.leadsService.editSentMessage(req.user, id, eventId, body?.text);
+  }
+
+  @Delete(':id/events/:eventId/message')
+  async deleteSentMessage(@Req() req: any, @Param('id') id: string, @Param('eventId') eventId: string) {
+    return this.leadsService.deleteSentMessage(req.user, id, eventId);
+  }
+
   // ─── Pendências do lead ──────────────────────────────────────────────────────
 
   @Get(':id/pendencias')

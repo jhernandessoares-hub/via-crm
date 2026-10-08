@@ -310,6 +310,7 @@ export const FIELD_VISIBILITY_FIELDS: FieldVisibilityField[] = [
   { key: 'lead.origem',      label: 'Origem / Indicação',           group: 'lead' },
   { key: 'lead.resumo',      label: 'Resumo do lead',               group: 'lead' },
   { key: 'lead.observacao',  label: 'Observações',                  group: 'lead' },
+  { key: 'lead.comentarios', label: 'Comentários da equipe',        group: 'lead' },
   // Espelho / unidade
   { key: 'unit.identificacao', label: 'Empreendimento / Torre / Unidade',     group: 'espelho' },
   { key: 'unit.status',        label: 'Status da unidade',                    group: 'espelho' },

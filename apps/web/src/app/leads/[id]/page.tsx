@@ -11,6 +11,8 @@ import { PendenciasPanel } from "@/components/PendenciasPanel";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import QuickReplies from "@/components/leads/QuickReplies";
+import LeadCommentsCard from "@/components/leads/LeadCommentsCard";
+import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
 import {
   listCorrespondents, listCreditRequests, createCreditRequest, cancelCreditRequest,
@@ -23,7 +25,7 @@ import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from 
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
 import { EncerrarConversaPreOcupacaoModal, type AtendimentoMensagem } from "@/app/pre-ocupacao/_lib/atendimento";
-import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ArrowLeftRight, Search, Users, StickyNote, Pencil, Unlink, Lock } from "lucide-react";
+import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ChevronDown, ArrowLeftRight, Search, Users, StickyNote, Pencil, Unlink, Lock, Trash2 } from "lucide-react";
 
 type Role = "OWNER" | "MANAGER" | "AGENT" | "PARTNER";
 
@@ -173,8 +175,13 @@ type LeadEvent = {
   id: string;
   channel?: string;
   criadoEm?: string;
+  sourceRef?: string | null;
   payloadRaw?: any;
 };
+
+// Limites do WhatsApp para mensagens já enviadas (espelham o backend)
+const MSG_EDIT_WINDOW_MS = 15 * 60 * 1000;
+const MSG_DELETE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type SubConversa = {
   participanteId: string | null;
@@ -1241,13 +1248,18 @@ function Bubble({
   leadId,
   onOpenModal,
   debugOn,
+  onEditMessage,
+  onDeleteMessage,
 }: {
   ev: LeadEvent;
   reactions: string[];
   leadId: string;
   onOpenModal: (kind: string, title: string, src: string, mimeType?: string) => void;
   debugOn?: boolean;
+  onEditMessage?: (ev: LeadEvent) => void;
+  onDeleteMessage?: (ev: LeadEvent) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const outgoing = isOutgoing(ev);
   const ch = String(ev.channel || "event");
   const p = ev.payloadRaw || {};
@@ -1275,15 +1287,30 @@ function Bubble({
   const showText = rawText.trim().length > 0;
   const showMedia = hasRenderableMedia(ev);
 
+  // Editar / apagar: só WhatsApp Light (a API oficial da Meta não permite)
+  const deletedForAll = !!p?.deletedForAllAt;
+  const editedAt: string | null = typeof p?.editedAt === "string" ? p.editedAt : null;
+  const isLightOut = ch === "whatsapp.unofficial.out" && !!ev.sourceRef && !deletedForAll;
+  const sentAgeMs = Date.now() - new Date(p?.sentAt ?? ev.criadoEm ?? 0).getTime();
+  const isTextMsg = (type || "text") === "text" && showText;
+  const canEditMsg = isLightOut && isTextMsg && sentAgeMs <= MSG_EDIT_WINDOW_MS;
+  const canDeleteMsg = isLightOut && sentAgeMs <= MSG_DELETE_WINDOW_MS;
+  const showMsgMenu = isLightOut && (!!onEditMessage || !!onDeleteMessage);
+  // Envio que não chegou ao WhatsApp (canal desconectado, erro da API...) — destacar em vermelho
+  const isFailed = ch.endsWith(".failed");
+  const failedReason: string = typeof p?.error === "string" ? p.error : "";
+
   return (
     <div className={"w-full flex " + (isAiSuggestion ? "justify-start" : outgoing ? "justify-end" : "justify-start")}>
-      <div className="relative max-w-[80%] min-w-[140px]">
+      <div className="group/bubble relative max-w-[80%] min-w-[140px]">
         <div
           className={[
             "rounded-2xl px-3 py-2 text-sm border shadow-sm",
             outgoing && !isAiSuggestion ? "rounded-tr-sm" : "rounded-tl-sm",
             isAiSuggestion
               ? "bg-amber-100 border-amber-200 text-amber-900"
+              : isFailed
+                ? "bg-red-50 border-red-300 text-red-950"
               : outgoing
                 ? isHumanLabel
                   ? "bg-blue-100 border-blue-200 text-blue-950"
@@ -1296,11 +1323,16 @@ function Bubble({
               <span className="mr-auto text-[10px] font-mono text-[var(--shell-subtext)]">{channelDisplay}</span>
             )}
             <div className="flex items-center gap-1.5 shrink-0">
+              {!outgoing && !isAiSuggestion && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
+                  {ch === "form" ? "Formulário" : "Cliente"}
+                </span>
+              )}
               {outgoing && !isAiSuggestion && (
                 <span
                   className={[
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
-                    isHumanLabel ? "bg-blue-100 text-blue-700" : "bg-violet-100 text-violet-700",
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold text-white shadow-sm",
+                    isHumanLabel ? "bg-blue-600" : "bg-violet-600",
                   ].join(" ")}
                 >
                   {!isHumanLabel && "✦ "}
@@ -1311,16 +1343,71 @@ function Bubble({
                       : aiParticipationLabel}
                 </span>
               )}
-              <span className="text-[11px] text-[var(--shell-subtext)] flex items-center gap-1">
+              <span className="text-xs font-medium text-[var(--shell-subtext)] flex items-center gap-1">
+                {editedAt && !deletedForAll ? (
+                  <span
+                    className="italic"
+                    title={"Editada" + (p?.editedByNome ? " por " + p.editedByNome : "") + " em " + formatTime(editedAt)}
+                  >
+                    editada ·
+                  </span>
+                ) : null}
                 {formatTime(ev.criadoEm)}
                 {waLightStatus === "READ" ? (
-                  <CheckCheck className="h-3.5 w-3.5 shrink-0" style={{ color: "#53bdeb" }} />
+                  <CheckCheck className="h-4 w-4 shrink-0" style={{ color: "#53bdeb" }} />
                 ) : waLightStatus === "DELIVERED" ? (
-                  <CheckCheck className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                  <CheckCheck className="h-4 w-4 shrink-0 opacity-70" />
                 ) : waLightStatus === "SENT" ? (
-                  <Check className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                  <Check className="h-4 w-4 shrink-0 opacity-70" />
                 ) : null}
               </span>
+              {showMsgMenu && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    title="Opções da mensagem"
+                    onClick={() => setMenuOpen((v) => !v)}
+                    className={
+                      "flex h-6 w-6 items-center justify-center rounded-full text-[var(--shell-subtext)] hover:bg-black/10 transition-opacity " +
+                      (menuOpen ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100")
+                    }
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                  {menuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                      <div
+                        className="absolute right-0 top-7 z-20 w-48 overflow-hidden rounded-lg border shadow-lg"
+                        style={{ background: "var(--shell-card-bg)", borderColor: "var(--shell-card-border)" }}
+                      >
+                        {onEditMessage && (
+                          <button
+                            type="button"
+                            disabled={!canEditMsg}
+                            title={canEditMsg ? "" : isTextMsg ? "O WhatsApp só permite editar até 15 min após o envio" : "Só mensagens de texto podem ser editadas"}
+                            onClick={() => { setMenuOpen(false); onEditMessage(ev); }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--shell-text)] hover:bg-[var(--shell-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Editar
+                          </button>
+                        )}
+                        {onDeleteMessage && (
+                          <button
+                            type="button"
+                            disabled={!canDeleteMsg}
+                            title={canDeleteMsg ? "" : "O WhatsApp só permite apagar até 2 dias após o envio"}
+                            onClick={() => { setMenuOpen(false); onDeleteMessage(ev); }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Apagar para todos
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1330,7 +1417,29 @@ function Bubble({
             </div>
           ) : null}
 
-          {showText ? <div className="mt-2 whitespace-pre-wrap break-words">{rawText}</div> : null}
+          {isFailed ? (
+            <div
+              className="mt-2 inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold text-white"
+              title={failedReason || "Falha no envio"}
+            >
+              ⚠ Não enviada{/desconect|não está conectada/i.test(failedReason) ? " — canal desconectado" : ""}
+            </div>
+          ) : null}
+
+          {deletedForAll ? (
+            <div className="mt-2">
+              <div className="italic text-[var(--shell-subtext)]">
+                🚫 Mensagem apagada{p?.deletedByNome ? " por " + p.deletedByNome : ""}
+              </div>
+              {showText ? (
+                <div className="mt-1 whitespace-pre-wrap break-words text-xs text-[var(--shell-subtext)] line-through opacity-70" title="Texto original — visível só para a equipe">
+                  {rawText}
+                </div>
+              ) : null}
+            </div>
+          ) : showText ? (
+            <div className="mt-2 whitespace-pre-wrap break-words">{rawText}</div>
+          ) : null}
 
           {isVideoNote ? (
             <div className="mt-2 rounded-lg border bg-amber-50 p-2 text-xs text-amber-900">
@@ -3987,11 +4096,54 @@ function discardAiSuggestion() {
       setErr(e?.message || "Erro ao enviar");
     } finally {
       setSending(false);
+      // Igual WhatsApp Web: cursor continua no campo pra já digitar a próxima
+      textAreaRef.current?.focus();
     }
   }
 
   async function sendText() {
     await sendProvidedText(text);
+  }
+
+  // ─── Editar / apagar mensagem enviada (WhatsApp Light) ───
+  const [editMsg, setEditMsg] = useState<{ ev: LeadEvent; text: string } | null>(null);
+  const [deleteMsg, setDeleteMsg] = useState<LeadEvent | null>(null);
+  const [msgActionBusy, setMsgActionBusy] = useState(false);
+  const [msgActionErr, setMsgActionErr] = useState<string | null>(null);
+
+  async function confirmEditMsg() {
+    if (!editMsg) return;
+    const novo = editMsg.text.trim();
+    if (!novo) return;
+    setMsgActionBusy(true);
+    setMsgActionErr(null);
+    try {
+      await apiFetch(`/leads/${id}/events/${editMsg.ev.id}/message`, {
+        method: "PATCH",
+        body: JSON.stringify({ text: novo }),
+      });
+      setEditMsg(null);
+      await loadEvents({ silent: true });
+    } catch (e: any) {
+      setMsgActionErr(e?.message || "Erro ao editar mensagem");
+    } finally {
+      setMsgActionBusy(false);
+    }
+  }
+
+  async function confirmDeleteMsg() {
+    if (!deleteMsg) return;
+    setMsgActionBusy(true);
+    setMsgActionErr(null);
+    try {
+      await apiFetch(`/leads/${id}/events/${deleteMsg.id}/message`, { method: "DELETE" });
+      setDeleteMsg(null);
+      await loadEvents({ silent: true });
+    } catch (e: any) {
+      setMsgActionErr(e?.message || "Erro ao apagar mensagem");
+    } finally {
+      setMsgActionBusy(false);
+    }
   }
 
   async function sendRecordedAudio() {
@@ -4053,6 +4205,7 @@ function discardAiSuggestion() {
       setErr(e?.message || "Erro ao enviar áudio");
     } finally {
       setSending(false);
+      textAreaRef.current?.focus();
     }
   }
 
@@ -5269,6 +5422,9 @@ function discardAiSuggestion() {
                 </div>
               );
             })()}
+
+            {/* Comentários internos da equipe — antes dos Produtos Disponíveis */}
+            <LeadCommentsCard leadId={id} />
 
             {/* Produtos Disponíveis */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">
@@ -6914,7 +7070,19 @@ function discardAiSuggestion() {
                       </div>
                     );
                   }
-                  return <Bubble key={ev.id} ev={ev} reactions={reactions} leadId={id} onOpenModal={openMediaModal} debugOn={debugOn} />;
+                  const canActOnMsgs = !(lead as any)?.conversaRestricted && user?.role !== "PARTNER";
+                  return (
+                    <Bubble
+                      key={ev.id}
+                      ev={ev}
+                      reactions={reactions}
+                      leadId={id}
+                      onOpenModal={openMediaModal}
+                      debugOn={debugOn}
+                      onEditMessage={canActOnMsgs ? (e) => { setMsgActionErr(null); setEditMsg({ ev: e, text: pickText(e) }); } : undefined}
+                      onDeleteMessage={canActOnMsgs ? (e) => { setMsgActionErr(null); setDeleteMsg(e); } : undefined}
+                    />
+                  );
                 })
               )}
               <div ref={bottomRef} />
@@ -7446,10 +7614,11 @@ function discardAiSuggestion() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      sendText();
+                      if (!sending) sendText();
                     }
                   }}
-                  disabled={sending}
+                  // readOnly (não disabled): disabled tira o foco e obrigava a clicar de novo após cada envio
+                  readOnly={sending}
                   rows={1}
                 />
 
@@ -7471,6 +7640,86 @@ function discardAiSuggestion() {
               ) : null}
             </div>
             )}
+
+            {/* EDITAR / APAGAR MENSAGEM ENVIADA */}
+            <Modal
+              open={!!editMsg}
+              onClose={() => setEditMsg(null)}
+              title="Editar mensagem"
+              description="O cliente verá a mensagem com a marca “Editada” no WhatsApp."
+              footer={
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setEditMsg(null)}
+                    className="rounded-md border px-3 py-2 text-sm text-[var(--shell-text)]"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmEditMsg}
+                    disabled={msgActionBusy || !editMsg?.text.trim()}
+                    className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    style={{ background: "var(--brand-accent)" }}
+                  >
+                    {msgActionBusy ? "Salvando..." : "Salvar edição"}
+                  </button>
+                </>
+              }
+            >
+              <textarea
+                autoFocus
+                rows={4}
+                value={editMsg?.text ?? ""}
+                onChange={(e) => setEditMsg((prev) => (prev ? { ...prev, text: e.target.value } : prev))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    confirmEditMsg();
+                  }
+                }}
+                className="w-full resize-y rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm text-[var(--shell-text)]"
+                style={{ borderColor: "var(--shell-card-border)" }}
+              />
+              {msgActionErr && <div className="mt-2 text-xs text-red-600">{msgActionErr}</div>}
+            </Modal>
+
+            <Modal
+              open={!!deleteMsg}
+              onClose={() => setDeleteMsg(null)}
+              title="Apagar mensagem para todos?"
+              description="A mensagem some do WhatsApp do cliente. No CRM fica registrada como apagada."
+              footer={
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteMsg(null)}
+                    className="rounded-md border px-3 py-2 text-sm text-[var(--shell-text)]"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeleteMsg}
+                    disabled={msgActionBusy}
+                    className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {msgActionBusy ? "Apagando..." : "Apagar para todos"}
+                  </button>
+                </>
+              }
+            >
+              <div
+                className="whitespace-pre-wrap break-words rounded-md border p-2 text-sm text-[var(--shell-text)]"
+                style={{ borderColor: "var(--shell-card-border)" }}
+              >
+                {deleteMsg ? pickText(deleteMsg) || "(mídia)" : ""}
+              </div>
+              {msgActionErr && <div className="mt-2 text-xs text-red-600">{msgActionErr}</div>}
+            </Modal>
 
             {/* MODAL DE MÍDIA */}
             <MediaModal
