@@ -71,6 +71,25 @@ function unwrapBaileysMessage(msgContent: any): any {
   return cur;
 }
 
+// Edição (protocolMessage type 14) ou "apagar para todos" (type 0) apontando pra
+// mensagem original via `key.id`. Aceita também o formato envelopado `editedMessage.message`.
+function extractEditOrRevoke(
+  msgContent: any,
+): { kind: 'edit'; targetId: string; text: string } | { kind: 'revoke'; targetId: string } | null {
+  let inner = unwrapBaileysMessage(msgContent);
+  if (inner?.editedMessage?.message) inner = inner.editedMessage.message;
+  const pm = inner?.protocolMessage;
+  const targetId: string | undefined = pm?.key?.id;
+  if (!pm || !targetId) return null;
+  const pmType = Number(pm.type);
+  if (pmType === 0) return { kind: 'revoke', targetId };
+  if (pmType === 14 && pm.editedMessage) {
+    const { text } = extractBaileysText(pm.editedMessage);
+    return { kind: 'edit', targetId, text };
+  }
+  return null;
+}
+
 function extractBaileysText(msgContent: any): { type: string; text: string } {
   if (!msgContent) return { type: 'unknown', text: '[MENSAGEM]' };
 
@@ -941,7 +960,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
   // ── Envio de mensagens ────────────────────────────────────────────────────
 
-  async sendText(sessionId: string, to: string, text: string): Promise<{ id: string | null }> {
+  async sendText(sessionId: string, to: string, text: string): Promise<{ id: string | null; jid: string }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveSendJid(sessionId, socket, to);
@@ -949,7 +968,35 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     this.rememberSentByCrm(messageId);
     logger.log(`➡️ Enviando texto — sessão=${sessionId} para=${to} jid=${jid} msgId=${messageId}`);
     await socket.sendMessage(jid, { text }, { messageId });
-    return { id: messageId };
+    return { id: messageId, jid };
+  }
+
+  // Editar/apagar mensagem já enviada. A key precisa do MESMO remoteJid usado no envio
+  // (LID vs telefone) — por isso o envio grava `remoteJid` no payloadRaw; mensagens
+  // antigas sem isso caem no resolveSendJid. O eco do protocolMessage é marcado como
+  // enviado pelo CRM pra não virar evento "pelo celular".
+  async editMessage(sessionId: string, to: string, messageId: string, newText: string, remoteJid?: string | null) {
+    const socket = this.sockets.get(sessionId);
+    if (!socket) throw new BadRequestException('Canal WhatsApp Light desconectado');
+    const jid = remoteJid || (await this.resolveSendJid(sessionId, socket, to));
+    const echoId = generateMessageID();
+    this.rememberSentByCrm(echoId);
+    logger.log(`✏️ Editando mensagem — sessão=${sessionId} jid=${jid} msgId=${messageId}`);
+    await socket.sendMessage(
+      jid,
+      { text: newText, edit: { remoteJid: jid, fromMe: true, id: messageId } },
+      { messageId: echoId },
+    );
+  }
+
+  async deleteMessage(sessionId: string, to: string, messageId: string, remoteJid?: string | null) {
+    const socket = this.sockets.get(sessionId);
+    if (!socket) throw new BadRequestException('Canal WhatsApp Light desconectado');
+    const jid = remoteJid || (await this.resolveSendJid(sessionId, socket, to));
+    const echoId = generateMessageID();
+    this.rememberSentByCrm(echoId);
+    logger.log(`🗑️ Apagando mensagem p/ todos — sessão=${sessionId} jid=${jid} msgId=${messageId}`);
+    await socket.sendMessage(jid, { delete: { remoteJid: jid, fromMe: true, id: messageId } }, { messageId: echoId });
   }
 
   async sendImage(sessionId: string, to: string, content: string | Buffer, caption?: string): Promise<{ id: string | null }> {
@@ -1917,9 +1964,17 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
       return;
     }
 
+    // Edição / "apagar para todos" feita pelo celular: atualiza o balão original
+    // (localizado pelo sourceRef) em vez de criar evento novo.
+    const editOrRevoke = extractEditOrRevoke(msg.message);
+    if (editOrRevoke) {
+      await this.applyOutgoingEditOrRevoke(tenantId, editOrRevoke);
+      return;
+    }
+
     const { type, text } = extractBaileysText(msg.message);
     // Reações e mensagens de sistema não representam comunicação real do corretor
-    if (type === 'reaction' || type === 'system') return;
+    if (type === 'reaction' || type === 'system' || type === 'edited') return;
 
     const telefoneKey = telefoneKeyFrom(phone);
     if (!telefoneKey) return;
@@ -1967,6 +2022,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
           text,
           type,
           to: phone,
+          remoteJid: to,
           source: 'corretor_celular',
           sentAt: new Date().toISOString(),
           ...(audioMediaUrl ? { mediaUrl: audioMediaUrl } : {}),
@@ -1977,6 +2033,38 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     });
 
     logger.log(`📱 Mensagem enviada direto do celular do corretor registrada — leadId=${lead.id} sessão=${sessionId}`);
+  }
+
+  private async applyOutgoingEditOrRevoke(
+    tenantId: string,
+    op: { kind: 'edit'; targetId: string; text: string } | { kind: 'revoke'; targetId: string },
+  ) {
+    const ev = await this.prisma.leadEvent.findFirst({
+      where: { tenantId, channel: 'whatsapp.unofficial.out', sourceRef: op.targetId },
+      select: { id: true, payloadRaw: true },
+    });
+    if (!ev) return;
+    const p = (ev.payloadRaw as any) || {};
+    const now = new Date().toISOString();
+    let next: any;
+    if (op.kind === 'edit') {
+      // Eco da edição feita pelo próprio CRM chega com o mesmo texto — nada a fazer
+      if ((p.text ?? p.message) === op.text) return;
+      next = {
+        ...p,
+        originalText: p.originalText ?? p.text ?? p.message ?? null,
+        text: op.text,
+        message: op.text,
+        body: op.text,
+        editedAt: now,
+        editedByNome: '📱 Pelo celular',
+      };
+    } else {
+      if (p.deletedForAllAt) return;
+      next = { ...p, deletedForAllAt: now, deletedByNome: '📱 Pelo celular' };
+    }
+    await this.prisma.leadEvent.update({ where: { id: ev.id }, data: { payloadRaw: next } });
+    logger.log(`📱 ${op.kind === 'edit' ? 'Edição' : 'Exclusão'} vinda do celular aplicada — eventId=${ev.id}`);
   }
 
   // ── Confirmação de leitura (✓✓ azul) ────────────────────────────────────────

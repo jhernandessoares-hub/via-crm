@@ -391,6 +391,7 @@ model Lead {
   events                    LeadEvent[]
   participantes             LeadParticipante[]
   pendencias                LeadPendencia[]
+  comentarios               LeadComment[]
   leadSla                   LeadSla?
   leadTransitionLogs        LeadTransitionLog[]
   creditRequests            CreditRequest[]
@@ -418,6 +419,24 @@ model Lead {
   @@index([tenantId, cpf])
   @@index([incorporadoEmLeadId])
   @@map("leads")
+}
+
+// Comentários/anotações internas da equipe sobre o lead (nunca enviados ao cliente).
+// Soft delete — mantém rastreabilidade.
+model LeadComment {
+  id        String    @id @default(uuid())
+  tenantId  String
+  leadId    String
+  userId    String?
+  autorNome String?
+  texto     String
+  criadoEm  DateTime  @default(now())
+  editadoEm DateTime?
+  deletedAt DateTime?
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId])
+  @@map("lead_comments")
 }
 
 model LeadEvent {

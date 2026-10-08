@@ -3640,7 +3640,7 @@ const aiAssistanceLabel =
         throw new Error('Sessão WhatsApp Light não especificada');
       }
 
-      let sent: { id: string | null } | undefined;
+      let sent: { id: string | null; jid?: string } | undefined;
       try {
         sent = await this.unofficialService.sendText(activeSessionId, toPhone, text);
       } catch (sendErr: any) {
@@ -3674,6 +3674,7 @@ const aiAssistanceLabel =
           payloadRaw: {
             to: toPhone,
             sessionId: activeSessionId,
+            remoteJid: sent?.jid ?? null,
             type: 'text',
             text,
             message: text,
@@ -4114,6 +4115,196 @@ const aiAssistanceLabel =
     await this.prisma.lead.update({
       where: { id: leadId },
       data: { pendenciasObservacao: observacao ?? null } as any,
+    });
+    return { ok: true };
+  }
+
+  // ─── Editar / apagar mensagem enviada (só WhatsApp Light) ───────────────────
+  // Limites do próprio WhatsApp: edição até 15 min após o envio; "apagar para todos" ~2 dias.
+
+  private static readonly EDIT_WINDOW_MS = 15 * 60 * 1000;
+  private static readonly DELETE_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+  private async getOwnSentLightEvent(user: any, leadId: string, eventId: string) {
+    await this.assertLeadAccess(user.tenantId, leadId);
+    const ev = await this.prisma.leadEvent.findFirst({
+      where: { id: eventId, leadId, tenantId: user.tenantId },
+    });
+    if (!ev) throw new NotFoundException('Mensagem não encontrada');
+    if (ev.channel !== 'whatsapp.unofficial.out' || !ev.sourceRef) {
+      throw new BadRequestException('Só é possível editar/apagar mensagens enviadas pelo WhatsApp Light');
+    }
+    const p = (ev.payloadRaw as any) || {};
+    if (p.deletedForAllAt) throw new BadRequestException('Esta mensagem já foi apagada');
+    // Sessão: a gravada no envio; mensagens "pelo celular" não têm → usa a do lead
+    let sessionId: string | null = p.sessionId ?? null;
+    if (!sessionId) {
+      const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId: user.tenantId }, select: { conversaSessionId: true } });
+      sessionId = lead?.conversaSessionId ?? null;
+    }
+    if (!sessionId) throw new BadRequestException('Não foi possível identificar o canal desta mensagem');
+    const to: string | null = p.to ?? null;
+    if (!to && !p.remoteJid) throw new BadRequestException('Destino da mensagem desconhecido');
+    const sentAtMs = new Date(p.sentAt ?? ev.criadoEm).getTime();
+    return { ev, p, sessionId, to: to ?? '', ageMs: Date.now() - sentAtMs };
+  }
+
+  async editSentMessage(user: any, leadId: string, eventId: string, newText: string) {
+    const clean = String(newText ?? '').trim();
+    if (!clean) throw new BadRequestException('Mensagem vazia');
+    const { ev, p, sessionId, to, ageMs } = await this.getOwnSentLightEvent(user, leadId, eventId);
+    const tipo = String(p.type || 'text').toLowerCase();
+    if (tipo !== 'text') throw new BadRequestException('Só mensagens de texto podem ser editadas');
+    if (ageMs > LeadsService.EDIT_WINDOW_MS) {
+      throw new BadRequestException('O WhatsApp só permite editar até 15 minutos após o envio');
+    }
+    const atual = p.text ?? p.message ?? '';
+    if (atual === clean) return { ok: true };
+
+    await this.unofficialService.editMessage(sessionId, to, ev.sourceRef!, clean, p.remoteJid ?? null);
+
+    const autor = await this.prisma.user.findFirst({
+      where: { id: user?.id ?? user?.sub, tenantId: user.tenantId },
+      select: { apelido: true, nome: true },
+    });
+    await this.prisma.leadEvent.update({
+      where: { id: ev.id },
+      data: {
+        payloadRaw: {
+          ...p,
+          originalText: p.originalText ?? atual,
+          text: clean,
+          message: clean,
+          body: clean,
+          editedAt: new Date().toISOString(),
+          editedByNome: autor?.apelido || autor?.nome || null,
+        },
+      },
+    });
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user?.id ?? user?.sub,
+      action: 'EDIT_WHATSAPP_MESSAGE',
+      resourceType: 'lead',
+      resourceId: leadId,
+      metadata: { eventId, antes: atual, depois: clean },
+    });
+    return { ok: true };
+  }
+
+  async deleteSentMessage(user: any, leadId: string, eventId: string) {
+    const { ev, p, sessionId, to, ageMs } = await this.getOwnSentLightEvent(user, leadId, eventId);
+    if (ageMs > LeadsService.DELETE_WINDOW_MS) {
+      throw new BadRequestException('O WhatsApp só permite apagar para todos até 2 dias após o envio');
+    }
+
+    await this.unofficialService.deleteMessage(sessionId, to, ev.sourceRef!, p.remoteJid ?? null);
+
+    const autor = await this.prisma.user.findFirst({
+      where: { id: user?.id ?? user?.sub, tenantId: user.tenantId },
+      select: { apelido: true, nome: true },
+    });
+    await this.prisma.leadEvent.update({
+      where: { id: ev.id },
+      data: {
+        payloadRaw: {
+          ...p,
+          deletedForAllAt: new Date().toISOString(),
+          deletedByNome: autor?.apelido || autor?.nome || null,
+        },
+      },
+    });
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user?.id ?? user?.sub,
+      action: 'DELETE_WHATSAPP_MESSAGE',
+      resourceType: 'lead',
+      resourceId: leadId,
+      metadata: { eventId, texto: p.text ?? p.message ?? null },
+    });
+    return { ok: true };
+  }
+
+  // ─── Comentários internos do lead ────────────────────────────────────────────
+
+  async listComments(user: any, leadId: string) {
+    await this.assertLeadAccess(user.tenantId, leadId);
+    const fv = await this.getPartnerFieldVisibility(user.tenantId, user.role);
+    if (fv && fv['lead.comentarios'] === false) return { hidden: true, items: [] };
+    const items = await this.prisma.leadComment.findMany({
+      where: { tenantId: user.tenantId, leadId, deletedAt: null },
+      orderBy: { criadoEm: 'desc' },
+      select: { id: true, userId: true, autorNome: true, texto: true, criadoEm: true, editadoEm: true },
+    });
+    return { hidden: false, items };
+  }
+
+  async createComment(user: any, leadId: string, texto: string) {
+    await this.assertLeadAccess(user.tenantId, leadId);
+    const clean = String(texto ?? '').trim();
+    if (!clean) throw new BadRequestException('Comentário vazio');
+    if (clean.length > 5000) throw new BadRequestException('Comentário muito longo (máx. 5000 caracteres)');
+    const userId = user?.id ?? user?.sub ?? null;
+    const autor = userId
+      ? await this.prisma.user.findFirst({ where: { id: userId, tenantId: user.tenantId }, select: { apelido: true, nome: true } })
+      : null;
+    return this.prisma.leadComment.create({
+      data: {
+        tenantId: user.tenantId,
+        leadId,
+        userId,
+        autorNome: autor?.apelido || autor?.nome || null,
+        texto: clean,
+      },
+      select: { id: true, userId: true, autorNome: true, texto: true, criadoEm: true, editadoEm: true },
+    });
+  }
+
+  /** Autor do comentário ou OWNER/MANAGER podem editar/apagar. */
+  private async getEditableComment(user: any, leadId: string, commentId: string) {
+    const existing = await this.prisma.leadComment.findFirst({
+      where: { id: commentId, leadId, tenantId: user.tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Comentário não encontrado');
+    const userId = user?.id ?? user?.sub;
+    const isAuthor = !!existing.userId && existing.userId === userId;
+    if (!isAuthor && user.role !== 'OWNER' && user.role !== 'MANAGER') {
+      throw new ForbiddenException('Só o autor ou gestor pode alterar este comentário');
+    }
+    return existing;
+  }
+
+  async updateComment(user: any, leadId: string, commentId: string, texto: string) {
+    const existing = await this.getEditableComment(user, leadId, commentId);
+    const clean = String(texto ?? '').trim();
+    if (!clean) throw new BadRequestException('Comentário vazio');
+    if (clean.length > 5000) throw new BadRequestException('Comentário muito longo (máx. 5000 caracteres)');
+    const updated = await this.prisma.leadComment.update({
+      where: { id: commentId },
+      data: { texto: clean, editadoEm: new Date() },
+      select: { id: true, userId: true, autorNome: true, texto: true, criadoEm: true, editadoEm: true },
+    });
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user?.id ?? user?.sub,
+      action: 'EDIT_LEAD_COMMENT',
+      resourceType: 'lead',
+      resourceId: leadId,
+      metadata: { commentId, antes: existing.texto, depois: clean },
+    });
+    return updated;
+  }
+
+  async deleteComment(user: any, leadId: string, commentId: string) {
+    const existing = await this.getEditableComment(user, leadId, commentId);
+    await this.prisma.leadComment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    this.audit.log({
+      tenantId: user.tenantId,
+      userId: user?.id ?? user?.sub,
+      action: 'DELETE_LEAD_COMMENT',
+      resourceType: 'lead',
+      resourceId: leadId,
+      metadata: { commentId, texto: existing.texto },
     });
     return { ok: true };
   }
