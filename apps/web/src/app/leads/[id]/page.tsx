@@ -1296,6 +1296,9 @@ function Bubble({
   const canEditMsg = isLightOut && isTextMsg && sentAgeMs <= MSG_EDIT_WINDOW_MS;
   const canDeleteMsg = isLightOut && sentAgeMs <= MSG_DELETE_WINDOW_MS;
   const showMsgMenu = isLightOut && (!!onEditMessage || !!onDeleteMessage);
+  // Envio que não chegou ao WhatsApp (canal desconectado, erro da API...) — destacar em vermelho
+  const isFailed = ch.endsWith(".failed");
+  const failedReason: string = typeof p?.error === "string" ? p.error : "";
 
   return (
     <div className={"w-full flex " + (isAiSuggestion ? "justify-start" : outgoing ? "justify-end" : "justify-start")}>
@@ -1306,6 +1309,8 @@ function Bubble({
             outgoing && !isAiSuggestion ? "rounded-tr-sm" : "rounded-tl-sm",
             isAiSuggestion
               ? "bg-amber-100 border-amber-200 text-amber-900"
+              : isFailed
+                ? "bg-red-50 border-red-300 text-red-950"
               : outgoing
                 ? isHumanLabel
                   ? "bg-blue-100 border-blue-200 text-blue-950"
@@ -1409,6 +1414,15 @@ function Bubble({
           {isAiSuggestion ? (
             <div className="mt-2 inline-flex items-center rounded-md border border-amber-300 bg-[var(--shell-card-bg)] px-2 py-1 text-[11px] font-semibold text-amber-800">
               Sugestão da IA
+            </div>
+          ) : null}
+
+          {isFailed ? (
+            <div
+              className="mt-2 inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold text-white"
+              title={failedReason || "Falha no envio"}
+            >
+              ⚠ Não enviada{/desconect|não está conectada/i.test(failedReason) ? " — canal desconectado" : ""}
             </div>
           ) : null}
 
@@ -5192,9 +5206,6 @@ function discardAiSuggestion() {
             </div>
             )}
 
-            {/* Comentários internos da equipe — fixo acima das abas */}
-            <LeadCommentsCard leadId={id} />
-
             {/* Abas: Qualificação / Documentos / Agenda / Histórico */}
             <div className="flex gap-1 rounded-xl border p-1" style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-card-bg)" }}>
               {([
@@ -5411,6 +5422,9 @@ function discardAiSuggestion() {
                 </div>
               );
             })()}
+
+            {/* Comentários internos da equipe — antes dos Produtos Disponíveis */}
+            <LeadCommentsCard leadId={id} />
 
             {/* Produtos Disponíveis */}
             <div className="rounded-xl border bg-[var(--shell-card-bg)] p-4">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Trash2, Plus, ChevronDown, ChevronUp, MessageSquareText } from "lucide-react";
+import { Pencil, Trash2, Save, ChevronDown, ChevronUp, MessageSquareText } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import MaskedValue from "@/components/MaskedValue";
@@ -123,8 +123,8 @@ export default function LeadCommentsCard({ leadId }: { leadId: string }) {
     }
   }
 
-  const canChange = (c: LeadComment) =>
-    me.role === "OWNER" || me.role === "MANAGER" || (!!c.userId && c.userId === me.id);
+  // Comentário cadastrado é definitivo — só o OWNER edita/apaga (backend valida igual)
+  const canChange = (_c: LeadComment) => me.role === "OWNER";
 
   const visible = expanded ? items : items.slice(0, 1);
 
@@ -233,7 +233,7 @@ export default function LeadCommentsCard({ leadId }: { leadId: string }) {
                 }
               }}
               readOnly={saving}
-              placeholder="Escreva um comentário... (Enter salva)"
+              placeholder="Escreva um comentário..."
               className="flex-1 resize-none rounded-md border bg-[var(--shell-card-bg)] p-2 text-sm text-[var(--shell-text)]"
               style={{ borderColor: "var(--shell-card-border)" }}
             />
@@ -241,11 +241,12 @@ export default function LeadCommentsCard({ leadId }: { leadId: string }) {
               type="button"
               onClick={add}
               disabled={saving || !draft.trim()}
-              title="Adicionar comentário"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              title="Salvar comentário"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{ background: "var(--brand-accent)" }}
             >
-              <Plus className="h-4 w-4" />
+              <Save className="h-4 w-4" />
+              {saving ? "Salvando..." : "Salvar"}
             </button>
           </div>
           {err && <div className="mt-1.5 text-xs text-red-600">{err}</div>}

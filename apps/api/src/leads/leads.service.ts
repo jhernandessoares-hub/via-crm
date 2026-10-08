@@ -4260,17 +4260,15 @@ const aiAssistanceLabel =
     });
   }
 
-  /** Autor do comentário ou OWNER/MANAGER podem editar/apagar. */
+  /** Comentário cadastrado é definitivo — só o OWNER pode editar/apagar. */
   private async getEditableComment(user: any, leadId: string, commentId: string) {
+    if (user.role !== 'OWNER') {
+      throw new ForbiddenException('Só o proprietário pode alterar ou apagar comentários');
+    }
     const existing = await this.prisma.leadComment.findFirst({
       where: { id: commentId, leadId, tenantId: user.tenantId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Comentário não encontrado');
-    const userId = user?.id ?? user?.sub;
-    const isAuthor = !!existing.userId && existing.userId === userId;
-    if (!isAuthor && user.role !== 'OWNER' && user.role !== 'MANAGER') {
-      throw new ForbiddenException('Só o autor ou gestor pode alterar este comentário');
-    }
     return existing;
   }
 
