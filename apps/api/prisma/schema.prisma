@@ -2098,6 +2098,7 @@ model PreOcupacaoFamilia {
   ocorrencias   PreOcupacaoOcorrencia[]
   sessions      PreOcupacaoFamiliaSession[]
   atendimentos  PreOcupacaoAtendimento[]
+  questionarios PreOcupacaoQuestionarioEnvio[]
 
   @@unique([tenantId, numero])
   @@index([tenantId, status])
@@ -2180,6 +2181,117 @@ model PreOcupacaoMensagemTemplate {
 
   @@index([tenantId])
   @@map("pre_ocupacao_mensagem_templates")
+}
+
+// Questionário enviado às famílias por link no WhatsApp (sem login), no mesmo
+// padrão do convite de atividade (token com hash HMAC). Perguntas ficam travadas
+// depois do primeiro envio, pra o relatório não misturar versões.
+enum PreOcupacaoQuestionarioStatus {
+  RASCUNHO
+  PUBLICADO
+  ENCERRADO
+}
+
+enum PreOcupacaoPerguntaTipo {
+  ESCOLHA_UNICA
+  ESCOLHA_MULTIPLA
+  TEXTO_CURTO
+  TEXTO_LONGO
+  ESCALA
+  NUMERO
+  DATA
+}
+
+enum PreOcupacaoQuestionarioEnvioStatus {
+  PENDENTE
+  ENVIADO
+  FALHA
+}
+
+model PreOcupacaoQuestionario {
+  id            String                        @id @default(uuid())
+  tenantId      String
+  titulo        String
+  descricao     String?
+  status        PreOcupacaoQuestionarioStatus @default(RASCUNHO)
+  mensagemEnvio String
+  validadeDias  Int                           @default(15)
+  criadoPor     String
+  criadoEm      DateTime                      @default(now())
+  atualizadoEm  DateTime                      @updatedAt
+  publicadoEm   DateTime?
+  encerradoEm   DateTime?
+
+  perguntas PreOcupacaoQuestionarioPergunta[]
+  envios    PreOcupacaoQuestionarioEnvio[]
+
+  @@index([tenantId, status])
+  @@map("pre_ocupacao_questionarios")
+}
+
+model PreOcupacaoQuestionarioPergunta {
+  id             String                  @id @default(uuid())
+  questionarioId String
+  ordem          Int
+  enunciado      String
+  tipo           PreOcupacaoPerguntaTipo
+  opcoes         Json?
+  escalaMin      Int?
+  escalaMax      Int?
+  obrigatoria    Boolean                 @default(true)
+
+  questionario PreOcupacaoQuestionario           @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
+  respostas    PreOcupacaoQuestionarioResposta[]
+
+  @@index([questionarioId, ordem])
+  @@map("pre_ocupacao_questionario_perguntas")
+}
+
+model PreOcupacaoQuestionarioEnvio {
+  id              String                             @id @default(uuid())
+  tenantId        String
+  questionarioId  String
+  familiaId       String
+  statusEnvio     PreOcupacaoQuestionarioEnvioStatus @default(PENDENTE)
+  agendadoPara    DateTime?
+  tokenHash       String?
+  tokenExpiraEm   DateTime?
+  enviadoEm       DateTime?
+  enviosCount     Int                                @default(0)
+  ultimoEnvioErro String?
+  linkAbertoEm    DateTime?
+  respondidoEm    DateTime?
+  enviadoPor      String
+  criadoEm        DateTime                           @default(now())
+  atualizadoEm    DateTime                           @updatedAt
+
+  questionario PreOcupacaoQuestionario           @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
+  familia      PreOcupacaoFamilia                @relation(fields: [familiaId], references: [id], onDelete: Cascade)
+  respostas    PreOcupacaoQuestionarioResposta[]
+
+  @@unique([questionarioId, familiaId])
+  @@index([questionarioId, statusEnvio])
+  @@index([familiaId])
+  @@index([tokenHash])
+  @@map("pre_ocupacao_questionario_envios")
+}
+
+model PreOcupacaoQuestionarioResposta {
+  id          String    @id @default(uuid())
+  envioId     String
+  perguntaId  String
+  valorTexto  String?
+  valorNumero Float?
+  valorData   DateTime?
+  valorOpcoes String[]
+  criadoEm    DateTime  @default(now())
+
+  envio    PreOcupacaoQuestionarioEnvio    @relation(fields: [envioId], references: [id], onDelete: Cascade)
+  pergunta PreOcupacaoQuestionarioPergunta @relation(fields: [perguntaId], references: [id], onDelete: Cascade)
+
+  @@unique([envioId, perguntaId])
+  @@index([perguntaId])
+  @@map("pre_ocupacao_questionario_respostas")
 }
 
 enum PreOcupacaoAgendamentoStatus {

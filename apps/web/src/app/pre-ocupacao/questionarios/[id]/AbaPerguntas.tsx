@@ -1,0 +1,317 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { Card, CardBody } from "@/components/ui/Card";
+import { apiFetch } from "@/lib/api";
+import { PERGUNTA_TIPO_LABEL, Pergunta, PerguntaTipo, Questionario } from "../../_lib/questionario";
+
+const inputCls =
+  "block w-full mt-1 rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none";
+
+const TIPOS_COM_OPCOES: PerguntaTipo[] = ["ESCOLHA_UNICA", "ESCOLHA_MULTIPLA"];
+
+function novaPergunta(): Pergunta {
+  return { enunciado: "", tipo: "ESCOLHA_UNICA", opcoes: ["", ""], obrigatoria: true, escalaMin: 1, escalaMax: 5 };
+}
+
+export default function AbaPerguntas({
+  questionario,
+  onSalvo,
+}: {
+  questionario: Questionario;
+  onSalvo: (q: Questionario) => void;
+}) {
+  const travado = questionario.status !== "RASCUNHO";
+  const encerrado = questionario.status === "ENCERRADO";
+
+  const [titulo, setTitulo] = useState(questionario.titulo);
+  const [descricao, setDescricao] = useState(questionario.descricao ?? "");
+  const [mensagem, setMensagem] = useState(questionario.mensagemEnvio);
+  const [validade, setValidade] = useState(questionario.validadeDias);
+  const [perguntas, setPerguntas] = useState<Pergunta[]>(
+    questionario.perguntas.length ? questionario.perguntas : [novaPergunta()],
+  );
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTitulo(questionario.titulo);
+    setDescricao(questionario.descricao ?? "");
+    setMensagem(questionario.mensagemEnvio);
+    setValidade(questionario.validadeDias);
+    setPerguntas(questionario.perguntas.length ? questionario.perguntas : [novaPergunta()]);
+  }, [questionario]);
+
+  function alterar(idx: number, patch: Partial<Pergunta>) {
+    setPerguntas((ps) => ps.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }
+
+  function mover(idx: number, dir: -1 | 1) {
+    setPerguntas((ps) => {
+      const alvo = idx + dir;
+      if (alvo < 0 || alvo >= ps.length) return ps;
+      const copia = [...ps];
+      [copia[idx], copia[alvo]] = [copia[alvo], copia[idx]];
+      return copia;
+    });
+  }
+
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    setOkMsg(null);
+    try {
+      let q: Questionario = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ titulo, descricao, mensagemEnvio: mensagem, validadeDias: Number(validade) }),
+      });
+      if (!travado) {
+        q = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/perguntas`, {
+          method: "PUT",
+          body: JSON.stringify({ perguntas }),
+        });
+      }
+      onSalvo(q);
+      setOkMsg("Alterações salvas.");
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao salvar");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const previa = mensagem
+    .replace(/\{\{nome\}\}/gi, "Maria da Silva")
+    .replace(/\{\{link\}\}/gi, "https://…/portal/questionario/abc123");
+  const previaFinal = /\{\{link\}\}/i.test(mensagem) ? previa : `${previa}\n\nResponda aqui: https://…/portal/questionario/abc123`;
+
+  return (
+    <div className="space-y-6">
+      {travado && (
+        <div
+          className="rounded-lg border px-4 py-3 text-sm"
+          style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)" }}
+        >
+          {encerrado
+            ? "Questionário encerrado — nada mais pode ser alterado."
+            : "Questionário publicado — as perguntas estão travadas para o relatório não misturar versões. Para mudar perguntas, use \"Duplicar\". Título, descrição e mensagem ainda podem ser ajustados."}
+        </div>
+      )}
+
+      <Card>
+        <CardBody className="space-y-4">
+          <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+            Título
+            <input value={titulo} disabled={encerrado} onChange={(e) => setTitulo(e.target.value)} className={inputCls} />
+          </label>
+          <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+            Descrição (aparece para a família no topo do questionário)
+            <textarea
+              value={descricao}
+              disabled={encerrado}
+              onChange={(e) => setDescricao(e.target.value)}
+              rows={2}
+              className={inputCls}
+            />
+          </label>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+              Mensagem do WhatsApp — use {"{{nome}}"} e {"{{link}}"}
+              <textarea
+                value={mensagem}
+                disabled={encerrado}
+                onChange={(e) => setMensagem(e.target.value)}
+                rows={5}
+                className={inputCls}
+              />
+            </label>
+            <div>
+              <p className="text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Prévia</p>
+              <div
+                className="rounded-lg px-3 py-2 text-sm whitespace-pre-wrap"
+                style={{ background: "#dcf8c6", color: "#111" }}
+              >
+                {previaFinal}
+              </div>
+            </div>
+          </div>
+          <label className="block text-xs font-medium w-48" style={{ color: "var(--shell-subtext)" }}>
+            Validade do link (dias)
+            <input
+              type="number"
+              min={1}
+              max={180}
+              value={validade}
+              disabled={encerrado}
+              onChange={(e) => setValidade(Number(e.target.value))}
+              className={inputCls}
+            />
+          </label>
+        </CardBody>
+      </Card>
+
+      <div className="space-y-3">
+        {perguntas.map((p, idx) => (
+          <Card key={idx}>
+            <CardBody className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>Pergunta {idx + 1}</p>
+                {!travado && (
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => mover(idx, -1)} disabled={idx === 0} title="Subir" className="p-1.5 rounded disabled:opacity-30" style={{ color: "var(--shell-subtext)" }}>
+                      <ArrowUp className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => mover(idx, 1)} disabled={idx === perguntas.length - 1} title="Descer" className="p-1.5 rounded disabled:opacity-30" style={{ color: "var(--shell-subtext)" }}>
+                      <ArrowDown className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setPerguntas((ps) => ps.filter((_, i) => i !== idx))}
+                      title="Remover"
+                      className="p-1.5 rounded text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-3">
+                <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+                  Enunciado
+                  <input
+                    value={p.enunciado}
+                    disabled={travado}
+                    onChange={(e) => alterar(idx, { enunciado: e.target.value })}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+                  Tipo
+                  <select
+                    value={p.tipo}
+                    disabled={travado}
+                    onChange={(e) => {
+                      const tipo = e.target.value as PerguntaTipo;
+                      alterar(idx, {
+                        tipo,
+                        opcoes: TIPOS_COM_OPCOES.includes(tipo) ? (p.opcoes?.length ? p.opcoes : ["", ""]) : null,
+                      });
+                    }}
+                    className={inputCls}
+                  >
+                    {Object.entries(PERGUNTA_TIPO_LABEL).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {TIPOS_COM_OPCOES.includes(p.tipo) && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>Opções</p>
+                  {(p.opcoes ?? []).map((o, oi) => (
+                    <div key={oi} className="flex items-center gap-2">
+                      <input
+                        value={o}
+                        disabled={travado}
+                        placeholder={`Opção ${oi + 1}`}
+                        onChange={(e) =>
+                          alterar(idx, { opcoes: (p.opcoes ?? []).map((x, xi) => (xi === oi ? e.target.value : x)) })
+                        }
+                        className={inputCls.replace("mt-1", "")}
+                      />
+                      {!travado && (p.opcoes?.length ?? 0) > 2 && (
+                        <button
+                          onClick={() => alterar(idx, { opcoes: (p.opcoes ?? []).filter((_, xi) => xi !== oi) })}
+                          className="p-1.5 text-red-600"
+                          title="Remover opção"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {!travado && (
+                    <button
+                      onClick={() => alterar(idx, { opcoes: [...(p.opcoes ?? []), ""] })}
+                      className="text-xs font-medium"
+                      style={{ color: "var(--via-teal, #1D9E75)" }}
+                    >
+                      + Adicionar opção
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {p.tipo === "ESCALA" && (
+                <div className="flex items-end gap-3">
+                  <label className="block text-xs font-medium w-28" style={{ color: "var(--shell-subtext)" }}>
+                    Nota mínima
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={p.escalaMin ?? 1}
+                      disabled={travado}
+                      onChange={(e) => alterar(idx, { escalaMin: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </label>
+                  <label className="block text-xs font-medium w-28" style={{ color: "var(--shell-subtext)" }}>
+                    Nota máxima
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={p.escalaMax ?? 5}
+                      disabled={travado}
+                      onChange={(e) => alterar(idx, { escalaMax: Number(e.target.value) })}
+                      className={inputCls}
+                    />
+                  </label>
+                </div>
+              )}
+
+              <label className="flex items-center gap-2 text-sm" style={{ color: "var(--shell-text)" }}>
+                <input
+                  type="checkbox"
+                  checked={p.obrigatoria}
+                  disabled={travado}
+                  onChange={(e) => alterar(idx, { obrigatoria: e.target.checked })}
+                />
+                Resposta obrigatória
+              </label>
+            </CardBody>
+          </Card>
+        ))}
+
+        {!travado && (
+          <button
+            onClick={() => setPerguntas((ps) => [...ps, novaPergunta()])}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm font-medium"
+            style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+          >
+            <Plus className="h-4 w-4" /> Adicionar pergunta
+          </button>
+        )}
+      </div>
+
+      {!encerrado && (
+        <div className="flex items-center justify-end gap-3">
+          {erro && <p className="text-sm text-red-600">{erro}</p>}
+          {okMsg && <p className="text-sm" style={{ color: "var(--via-teal, #1D9E75)" }}>{okMsg}</p>}
+          <button
+            onClick={salvar}
+            disabled={salvando}
+            className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: "var(--via-teal, #1D9E75)" }}
+          >
+            {salvando ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

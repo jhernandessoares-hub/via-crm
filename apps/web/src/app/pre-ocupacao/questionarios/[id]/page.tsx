@@ -1,0 +1,253 @@
+"use client";
+
+import { useEffect, useState, startTransition } from "react";
+import { useParams, useRouter } from "next/navigation";
+import AppShell from "@/components/AppShell";
+import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
+import { apiFetch } from "@/lib/api";
+import { useSP9Guard } from "../../_lib/useSP9Guard";
+import { formatDateTime } from "../../_lib/constants";
+import { QUESTIONARIO_STATUS_LABEL, QUESTIONARIO_STATUS_VARIANT, Questionario } from "../../_lib/questionario";
+import AbaPerguntas from "./AbaPerguntas";
+import AbaEnvio from "./AbaEnvio";
+import AbaAcompanhamento from "./AbaAcompanhamento";
+import AbaRelatorio from "./AbaRelatorio";
+
+type Aba = "perguntas" | "envio" | "acompanhamento" | "relatorio";
+
+const ABAS: { key: Aba; label: string }[] = [
+  { key: "perguntas", label: "Perguntas" },
+  { key: "envio", label: "Envio" },
+  { key: "acompanhamento", label: "Acompanhamento" },
+  { key: "relatorio", label: "Relatório" },
+];
+
+type Acao = "publicar" | "encerrar" | "duplicar" | "excluir";
+
+const ACAO_TEXTO: Record<Acao, { titulo: string; texto: string; botao: string }> = {
+  publicar: {
+    titulo: "Publicar questionário",
+    texto: "Confira se você clicou em Salvar na aba Perguntas. Depois de publicado, as perguntas ficam travadas (para o relatório não misturar versões) e o questionário pode ser enviado às famílias.",
+    botao: "Publicar",
+  },
+  encerrar: {
+    titulo: "Encerrar questionário",
+    texto: "Os links enviados deixam de aceitar respostas e não será possível enviar de novo. As respostas já recebidas continuam no relatório.",
+    botao: "Encerrar",
+  },
+  duplicar: {
+    titulo: "Duplicar questionário",
+    texto: "Cria um novo questionário em rascunho com as mesmas perguntas, para você ajustar e enviar de novo.",
+    botao: "Duplicar",
+  },
+  excluir: {
+    titulo: "Excluir questionário",
+    texto: "O rascunho e suas perguntas serão excluídos. Essa ação não pode ser desfeita.",
+    botao: "Excluir",
+  },
+};
+
+type RespostasEnvio = {
+  questionario: { titulo: string };
+  familia: { numero: number; nome: string };
+  respondidoEm: string | null;
+  respostas: { perguntaId: string; ordem: number; enunciado: string; valor: string }[];
+};
+
+export default function QuestionarioDetalhePage() {
+  const guard = useSP9Guard();
+  const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const id = params.id as string;
+
+  const [q, setQ] = useState<Questionario | null>(null);
+  const [aba, setAba] = useState<Aba>("perguntas");
+  const [erro, setErro] = useState<string | null>(null);
+  const [acao, setAcao] = useState<Acao | null>(null);
+  const [executando, setExecutando] = useState(false);
+  const [respostas, setRespostas] = useState<RespostasEnvio | null>(null);
+
+  useEffect(() => {
+    if (guard !== true) return;
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guard, id]);
+
+  async function carregar() {
+    try {
+      const dados: Questionario = await apiFetch(`/pre-ocupacao/questionarios/${id}`);
+      setQ(dados);
+      if (dados.status !== "RASCUNHO") setAba((a) => (a === "perguntas" && dados.totalEnvios > 0 ? "acompanhamento" : a));
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao carregar questionário");
+    }
+  }
+
+  async function executar() {
+    if (!acao) return;
+    setExecutando(true);
+    setErro(null);
+    try {
+      if (acao === "excluir") {
+        await apiFetch(`/pre-ocupacao/questionarios/${id}`, { method: "DELETE" });
+        startTransition(() => router.push("/pre-ocupacao/questionarios"));
+        return;
+      }
+      const res = await apiFetch(`/pre-ocupacao/questionarios/${id}/${acao}`, { method: "POST" });
+      if (acao === "duplicar") {
+        setAcao(null);
+        startTransition(() => router.push(`/pre-ocupacao/questionarios/${res.id}`));
+        return;
+      }
+      setQ(res);
+      if (acao === "publicar") setAba("envio");
+      setAcao(null);
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao executar ação");
+      setAcao(null);
+    } finally {
+      setExecutando(false);
+    }
+  }
+
+  async function verRespostas(envioId: string) {
+    try {
+      setRespostas(await apiFetch(`/pre-ocupacao/questionarios/${id}/envios/${envioId}`));
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao carregar respostas");
+    }
+  }
+
+  if (guard === null) return null;
+
+  const btn = "px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]";
+
+  return (
+    <AppShell title="Pré-Ocupação — Questionário">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <button
+          onClick={() => startTransition(() => router.push("/pre-ocupacao/questionarios"))}
+          className="text-sm mb-4"
+          style={{ color: "var(--shell-subtext)" }}
+        >
+          ← Questionários
+        </button>
+
+        {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
+
+        {!q ? (
+          !erro && <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Carregando...</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold" style={{ color: "var(--shell-text)" }}>{q.titulo}</h1>
+                  <Badge variant={QUESTIONARIO_STATUS_VARIANT[q.status]}>{QUESTIONARIO_STATUS_LABEL[q.status]}</Badge>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--shell-subtext)" }}>
+                  Criado por {q.criadoPor} em {formatDateTime(q.criadoEm)}
+                  {q.publicadoEm && ` · publicado em ${formatDateTime(q.publicadoEm)}`}
+                  {q.encerradoEm && ` · encerrado em ${formatDateTime(q.encerradoEm)}`}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {q.status === "RASCUNHO" && q.totalEnvios === 0 && (
+                  <button onClick={() => setAcao("excluir")} className={`${btn} text-red-600`}>Excluir</button>
+                )}
+                <button onClick={() => setAcao("duplicar")} className={btn} style={{ color: "var(--shell-text)" }}>
+                  Duplicar
+                </button>
+                {q.status === "PUBLICADO" && (
+                  <button onClick={() => setAcao("encerrar")} className={btn} style={{ color: "var(--shell-text)" }}>
+                    Encerrar
+                  </button>
+                )}
+                {q.status === "RASCUNHO" && (
+                  <button
+                    onClick={() => setAcao("publicar")}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                    style={{ background: "var(--via-teal, #1D9E75)" }}
+                  >
+                    Publicar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-1 border-b mb-6 overflow-x-auto" style={{ borderColor: "var(--shell-card-border)" }}>
+              {ABAS.map((a) => (
+                <button
+                  key={a.key}
+                  onClick={() => setAba(a.key)}
+                  className="px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap"
+                  style={{
+                    borderColor: aba === a.key ? "var(--via-teal, #1D9E75)" : "transparent",
+                    color: aba === a.key ? "var(--via-teal, #1D9E75)" : "var(--shell-subtext)",
+                  }}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+
+            {aba === "perguntas" && <AbaPerguntas questionario={q} onSalvo={setQ} />}
+            {aba === "envio" && <AbaEnvio questionario={q} onEnviado={carregar} />}
+            {aba === "acompanhamento" && <AbaAcompanhamento questionario={q} onVerRespostas={verRespostas} />}
+            {aba === "relatorio" && <AbaRelatorio questionario={q} onVerRespostas={verRespostas} />}
+          </>
+        )}
+      </div>
+
+      <Modal
+        open={!!acao}
+        onClose={() => setAcao(null)}
+        title={acao ? ACAO_TEXTO[acao].titulo : ""}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setAcao(null)} className={btn} style={{ color: "var(--shell-text)" }}>
+              Cancelar
+            </button>
+            <button
+              onClick={executar}
+              disabled={executando}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: acao === "excluir" ? "#dc2626" : "var(--via-teal, #1D9E75)" }}
+            >
+              {executando ? "Aguarde..." : acao ? ACAO_TEXTO[acao].botao : ""}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm" style={{ color: "var(--shell-text)" }}>{acao ? ACAO_TEXTO[acao].texto : ""}</p>
+      </Modal>
+
+      <Modal
+        open={!!respostas}
+        onClose={() => setRespostas(null)}
+        title={respostas ? `${respostas.familia.numero} · ${respostas.familia.nome}` : ""}
+        description={respostas?.respondidoEm ? `Respondeu em ${formatDateTime(respostas.respondidoEm)}` : undefined}
+        size="lg"
+        footer={
+          <div className="flex justify-end">
+            <button onClick={() => setRespostas(null)} className={btn} style={{ color: "var(--shell-text)" }}>
+              Fechar
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {respostas?.respostas.map((r) => (
+            <div key={r.perguntaId}>
+              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+                {r.ordem}. {r.enunciado}
+              </p>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--shell-text)" }}>{r.valor || "—"}</p>
+            </div>
+          ))}
+        </div>
+      </Modal>
+    </AppShell>
+  );
+}

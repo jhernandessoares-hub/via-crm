@@ -22,6 +22,16 @@ import {
   ATENDIMENTO_MOTIVO_LABEL,
 } from "../../_lib/constants";
 import { Atendimento, AtendimentoDetalheModal, RegistrarAtendimentoModal } from "../../_lib/atendimento";
+import { SITUACAO_LABEL, SITUACAO_VARIANT, Situacao } from "../../_lib/questionario";
+
+type QuestionarioFamilia = {
+  envioId: string;
+  questionario: { id: string; titulo: string; status: string };
+  situacao: Situacao;
+  agendadoPara: string | null;
+  enviadoEm: string | null;
+  respondidoEm: string | null;
+};
 
 type Participacao = {
   id: string;
@@ -80,6 +90,7 @@ export default function FamiliaDetalhePage() {
   const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
   const [atendimentoAberto, setAtendimentoAberto] = useState<string | null>(null);
   const [registrarOpen, setRegistrarOpen] = useState(false);
+  const [questionarios, setQuestionarios] = useState<QuestionarioFamilia[]>([]);
 
   useEffect(() => {
     if (guard !== true || !familiaId) return;
@@ -97,6 +108,10 @@ export default function FamiliaDetalhePage() {
       ]);
       setData(res);
       setAtendimentos(lista);
+      // Seção secundária — falha aqui não derruba a página da família
+      apiFetch(`/pre-ocupacao/questionarios/familias/${familiaId}`)
+        .then(setQuestionarios)
+        .catch(() => setQuestionarios([]));
     } catch (e: any) {
       setError(e?.message ?? "Erro ao carregar família");
     } finally {
@@ -286,6 +301,41 @@ export default function FamiliaDetalhePage() {
                     <Badge variant={o.status === "ABERTA" ? "warning" : "default"}>
                       {OCORRENCIA_STATUS_LABEL[o.status] ?? o.status}
                     </Badge>
+                  </Link>
+                ))}
+              </CardBody>
+            </Card>
+
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle>Questionários ({questionarios.length})</CardTitle>
+              </CardHeader>
+              <CardBody className="space-y-2">
+                {questionarios.length === 0 && (
+                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>
+                    Nenhum questionário enviado para esta família.
+                  </p>
+                )}
+                {questionarios.map((q) => (
+                  <Link
+                    key={q.envioId}
+                    href={`/pre-ocupacao/questionarios/${q.questionario.id}`}
+                    className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-[var(--shell-hover)]"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    <div>
+                      <p className="font-medium" style={{ color: "var(--shell-text)" }}>{q.questionario.titulo}</p>
+                      <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                        {q.respondidoEm
+                          ? `Respondeu em ${formatDateTime(q.respondidoEm)}`
+                          : q.enviadoEm
+                            ? `Enviado em ${formatDateTime(q.enviadoEm)}`
+                            : q.agendadoPara
+                              ? `Agendado para ${formatDateTime(q.agendadoPara)}`
+                              : "Ainda não enviado"}
+                      </p>
+                    </div>
+                    <Badge variant={SITUACAO_VARIANT[q.situacao]}>{SITUACAO_LABEL[q.situacao]}</Badge>
                   </Link>
                 ))}
               </CardBody>
