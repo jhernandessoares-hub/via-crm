@@ -1027,8 +1027,13 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     return { id: messageId };
   }
 
-  /** Mensagem de voz (ptt). O buffer deve estar em ogg/opus. */
-  async sendAudio(sessionId: string, to: string, content: Buffer): Promise<{ id: string | null }> {
+  /** Áudio. ptt=true: mensagem de voz (ogg/opus). ptt=false: arquivo de áudio comum (ex.: m4a, audio/mp4). */
+  async sendAudio(
+    sessionId: string,
+    to: string,
+    content: Buffer,
+    opts: { ptt: boolean; mimetype: string } = { ptt: true, mimetype: 'audio/ogg; codecs=opus' },
+  ): Promise<{ id: string | null }> {
     const socket = this.sockets.get(sessionId);
     if (!socket) throw new BadRequestException(`Sessão ${sessionId} não está conectada`);
     const jid = await this.resolveSendJid(sessionId, socket, to);
@@ -1036,8 +1041,8 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     this.rememberSentByCrm(messageId);
     await socket.sendMessage(jid, {
       audio: content,
-      ptt: true,
-      mimetype: 'audio/ogg; codecs=opus',
+      ptt: opts.ptt,
+      mimetype: opts.mimetype,
     }, { messageId });
     return { id: messageId };
   }

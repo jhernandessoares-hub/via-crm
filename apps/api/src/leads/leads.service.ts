@@ -714,7 +714,12 @@ export class LeadsService {
       const to = lead.telefone;
       let sent: { id: string | null };
       try {
-        sent = await this.unofficialService.sendAudio(lead.conversaSessionId, to, bufferFinal);
+        // Mensagem de voz (ogg/opus) não baixava no destinatário; envia como arquivo de áudio AAC.
+        const m4a = await this.messaging.convertToAacM4a(bufferRaw);
+        sent = await this.unofficialService.sendAudio(lead.conversaSessionId, to, m4a, {
+          ptt: false,
+          mimetype: 'audio/mp4',
+        });
       } catch (err: any) {
         await this.prisma.leadEvent.create({
           data: {
