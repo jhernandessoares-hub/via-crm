@@ -451,6 +451,51 @@ export class MessagingService {
     });
   }
 
+  /** Converte qualquer áudio para AAC em .m4a (audio/mp4) — toca nativamente em iPhone e desktop. */
+  async convertToAacM4a(input: Buffer): Promise<Buffer> {
+    const tmpDir = os.tmpdir();
+    const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const inPath = path.join(tmpDir, `via-aac-in-${stamp}.bin`);
+    const outPath = path.join(tmpDir, `via-aac-out-${stamp}.m4a`);
+    const cleanup = () => {
+      fs.promises.unlink(inPath).catch(() => null);
+      fs.promises.unlink(outPath).catch(() => null);
+    };
+
+    await fs.promises.writeFile(inPath, input);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      try {
+        ffmpeg.setFfmpegPath(ffmpegPath as unknown as string);
+        ffmpeg(inPath)
+          .noVideo()
+          .audioCodec('aac')
+          .audioChannels(1)
+          .audioFrequency(44100)
+          .audioBitrate('64k')
+          .outputOptions(['-movflags +faststart'])
+          .format('ipod')
+          .on('end', async () => {
+            try {
+              resolve(await fs.promises.readFile(outPath));
+            } catch (e) {
+              reject(e);
+            } finally {
+              cleanup();
+            }
+          })
+          .on('error', (err) => {
+            cleanup();
+            reject(err);
+          })
+          .save(outPath);
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
+    });
+  }
+
   // =========================================
   // HELPERS PRIVADOS
   // =========================================
