@@ -6,6 +6,7 @@ import PipelineStepper, { PipelineStage } from "@/components/pipeline-stepper";
 import { usePipelineGroups } from "@/lib/pipeline-groups";
 import { EvidenceUploadModal } from "@/components/EvidenceUploadModal";
 import EmojiPicker from "@/components/EmojiPicker";
+import RecordingIndicator from "@/components/RecordingIndicator";
 import { PendenciasModal, type PendenciaDraft, type PendenciaPessoa } from "@/components/PendenciasModal";
 import { PendenciasPanel } from "@/components/PendenciasPanel";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -2482,6 +2483,7 @@ export default function LeadDetailChatPage() {
 
   const [audioSupported, setAudioSupported] = useState(true);
   const [recording, setRecording] = useState(false);
+  const [recStream, setRecStream] = useState<MediaStream | null>(null);
   const [recordErr, setRecordErr] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -3940,6 +3942,7 @@ function discardAiSuggestion() {
       for (const t of s.getTracks()) t.stop();
       mediaStreamRef.current = null;
     }
+    setRecStream(null);
   }
 
   async function startRecording() {
@@ -3962,6 +3965,7 @@ function discardAiSuggestion() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
+      setRecStream(stream);
       audioChunksRef.current = [];
 
       const anyWin = window as any;
@@ -7515,6 +7519,8 @@ function discardAiSuggestion() {
                   </div>
                 </div>
               ) : null}
+
+              {recording ? <RecordingIndicator stream={recStream} /> : null}
 
               {recordErr ? (
                 <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{recordErr}</div>
