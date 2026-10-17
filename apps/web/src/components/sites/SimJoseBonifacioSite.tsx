@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { CookieConsentBanner } from "./CookieConsentBanner";
+import { PlantasGallery } from "./PlantasGallery";
 
 /**
  * Site institucional do Condomínio Residencial SIM José Bonifácio (SP9) —
@@ -260,13 +261,7 @@ export default function SimJoseBonifacioSite({ slug }: { slug: string }) {
           </div>
 
           <p className="mb-4 mt-12 text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Plantas</p>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {PLANTAS.map((src, i) => (
-              <div key={src} className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <Image src={src} alt={`Planta ${i + 1}`} fill unoptimized className="object-contain p-1" />
-              </div>
-            ))}
-          </div>
+          <PlantasGallery images={PLANTAS} />
         </div>
       </section>
 
