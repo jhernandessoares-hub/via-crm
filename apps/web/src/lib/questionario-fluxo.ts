@@ -11,7 +11,10 @@ export type Condicao =
   | { chave: string; em: string[] } // opção marcada (escolha única ou múltipla)
   | { chave: string; naoEm: string[] } // respondida e nenhuma dessas opções marcada
   | { chave: string; maiorQue: number } // valor numérico (contador, escolha com número, soma de sub-campos)
-  | { instanciaMaiorQue: number }; // dentro de grupo: só a partir da pessoa N+1
+  | { instanciaMaiorQue: number } // dentro de grupo: só a partir da pessoa N+1
+  | { qualquer: Condicao[] } // basta UMA das condições ("ou")
+  // alguma pessoa do grupo tem o valor na faixa (ex.: algum morador com menos de 18 anos)
+  | { chave: string; algumaPessoa: { menorQue?: number; maiorQue?: number } };
 
 export interface OpcaoConfig {
   label: string;
@@ -48,6 +51,8 @@ export interface PerguntaConfig {
   min?: number;
   max?: number;
   unidade?: string;
+  /** Contador: texto mostrado quando o valor é 0 (ex.: "Menos de 1 ano") */
+  rotuloZero?: string;
   escalaLegenda?: { min: string; max: string };
   /** Opções montadas com as pessoas de um grupo (ex.: nomes dos moradores) */
   opcoesDinamicas?: { grupo: string };
@@ -162,6 +167,19 @@ function contexto(perguntas: PerguntaFluxo[], questionarioConfig: unknown, respo
 
   const condicaoOk = (c: Condicao, grupoAtual: string | undefined, instancia: number): boolean => {
     if ('instanciaMaiorQue' in c) return instancia > c.instanciaMaiorQue;
+    if ('qualquer' in c) return c.qualquer.some((x) => condicaoOk(x, grupoAtual, instancia));
+    if ('algumaPessoa' in c) {
+      const p = porChave.get(c.chave);
+      if (!p) return false;
+      const { menorQue, maiorQue } = c.algumaPessoa;
+      return respostas.some(
+        (r) =>
+          r.perguntaId === p.id &&
+          r.valorNumero !== null &&
+          (menorQue === undefined || r.valorNumero < menorQue) &&
+          (maiorQue === undefined || r.valorNumero > maiorQue),
+      );
+    }
     const { p, r } = respostaDe(c.chave, grupoAtual, instancia);
     if (!p || !r) return false;
     if ('em' in c) return r.valorOpcoes.some((o) => c.em.includes(o));

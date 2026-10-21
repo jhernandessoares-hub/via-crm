@@ -123,6 +123,8 @@ add('qtd_total', 'CONTADOR', 'Você marcou 5 ou mais pessoas. Quantas pessoas v�
 bloco(2, 'Trabalho, renda e escolaridade', 'Agora vamos falar de cada pessoa que vai morar com você, uma de cada vez, começando por você.');
 const M = (c: PerguntaConfig = {}): PerguntaConfig => ({ grupo: 'morador', ...c });
 const naoTitular: Condicao = { instanciaMaiorQue: 0 };
+// Perguntas que não fazem sentido para crianças: dependem da idade informada da pessoa
+const aPartirDe = (anos: number): Condicao => ({ chave: 'm_idade', maiorQue: anos - 1 });
 add('m_nome', 'TEXTO_CURTO', 'Qual é o nome completo da {{ordem}} pessoa que vai morar com você?', {
   cfg: M({ ajuda: 'Pode ser cônjuge, filho(a), parente ou outra pessoa que vai morar no apartamento.', mostrarSe: [naoTitular] }),
 });
@@ -130,7 +132,7 @@ add('m_parentesco', 'ESCOLHA_UNICA', 'Parentesco com o titular', { opcoes: PAREN
 add('m_idade', 'CONTADOR', 'Idade', { cfg: M({ min: 0, max: 120, unidade: 'anos' }) });
 // Sexo e estado civil do titular já foram perguntados no Bloco 1
 add('m_sexo', 'ESCOLHA_UNICA', 'Sexo', { opcoes: SEXO, cfg: M({ mostrarSe: [naoTitular] }) });
-add('m_estado_civil', 'ESCOLHA_UNICA', 'Estado civil', { opcoes: ESTADO_CIVIL, cfg: M({ mostrarSe: [naoTitular] }) });
+add('m_estado_civil', 'ESCOLHA_UNICA', 'Estado civil', { opcoes: ESTADO_CIVIL, cfg: M({ mostrarSe: [naoTitular, aPartirDe(16)] }) });
 add('m_escolaridade', 'ESCOLHA_UNICA', 'Escolaridade', {
   opcoes: [
     'Ensino Fundamental I (1º ao 5º ano)',
@@ -142,7 +144,7 @@ add('m_escolaridade', 'ESCOLHA_UNICA', 'Escolaridade', {
     'Não alfabetizado(a)',
     'Ainda não estuda (criança pequena)',
   ],
-  cfg: M(),
+  cfg: M({ mostrarSe: [aPartirDe(4)] }),
 });
 add('m_vinculo', 'ESCOLHA_UNICA', 'Qual é a situação de trabalho HOJE?', {
   opcoes: [
@@ -152,28 +154,28 @@ add('m_vinculo', 'ESCOLHA_UNICA', 'Qual é a situação de trabalho HOJE?', {
     'Aposentado ou Pensionista do INSS',
     'Não trabalha / Desempregado',
   ],
-  cfg: M(),
+  cfg: M({ mostrarSe: [aPartirDe(14)] }),
 });
 add('m_profissao', 'TEXTO_CURTO', 'Profissão / Ocupação atual', {
   obrigatoria: false,
-  cfg: M({ mostrarSe: [{ chave: 'm_vinculo', naoEm: ['Não trabalha / Desempregado'] }] }),
+  cfg: M({ mostrarSe: [aPartirDe(14), { chave: 'm_vinculo', naoEm: ['Não trabalha / Desempregado'] }] }),
 });
 add('m_renda', 'MOEDA', 'Quanto {{pessoa}} ganha HOJE, por mês, com trabalho ou aposentadoria?', {
   cfg: M({
     ajuda: 'Se não souber o valor exato, coloque um valor aproximado.',
-    mostrarSe: [{ chave: 'm_vinculo', naoEm: ['Não trabalha / Desempregado'] }],
+    mostrarSe: [aPartirDe(14), { chave: 'm_vinculo', naoEm: ['Não trabalha / Desempregado'] }],
   }),
 });
-add('m_beneficios', 'ESCOLHA_MULTIPLA', '{{pessoa}} recebe HOJE algum benefício social do governo?', {
+add('beneficios', 'ESCOLHA_MULTIPLA', 'Alguém da família recebe HOJE algum benefício social do governo?', {
   opcoes: [
     valor('Bolsa Família'),
     valor('BPC (Idoso ou PcD)'),
     valor('Auxílio-Gás'),
     valor('Seguro-Desemprego'),
     qual('Outro benefício', 'Qual benefício e qual valor?'),
-    nenhuma('Não recebe benefício'),
+    nenhuma('Ninguém da família recebe benefício'),
   ],
-  cfg: M({ ajuda: 'Toque em todos que recebe e informe o valor de cada um.' }),
+  cfg: { ajuda: 'Pense na família toda. Toque em cada benefício que a família recebe e informe o valor por mês.' },
 });
 
 // ─── Bloco 3: PCD ────────────────────────────────────────────────────────
@@ -224,14 +226,14 @@ add('pcd_assistiva_itens', 'ESCOLHA_MULTIPLA', 'Quais equipamentos {{pessoa}} us
   cfg: D({ mostrarSe: [se('pcd_assistiva', 'Sim')] }),
 });
 add('pcd_adaptacoes', 'ESCOLHA_MULTIPLA', 'Quais adaptações o apartamento novo precisa ter para {{pessoa}}?', {
-  obrigatoria: false,
   opcoes: [
     'Portas mais largas para cadeira de rodas',
     'Banheiro acessível (barras de apoio, box plano, assento elevado, torneira de alavanca)',
     'Rampas de acesso ou ausência de degraus',
     'Sinalização visual/luminosa ou em Braille',
+    nenhuma('Nenhuma adaptação é necessária'),
   ],
-  cfg: D({ ...FUTURO, ajuda: 'Pode marcar mais de uma. Se nenhuma for necessária, toque em Próximo.' }),
+  cfg: D({ ...FUTURO, ajuda: 'Pode marcar mais de uma.' }),
 });
 add('pcd_tratamento', 'ESCOLHA_UNICA', '{{pessoa}} faz algum tratamento contínuo de saúde ou reabilitação fora de casa?', {
   opcoes: ['Não', qual('Sim', 'Onde faz o tratamento? (ex: CAPS, CER, UBS, APAE)')],
@@ -243,30 +245,20 @@ add('pcd_tratamento_freq', 'CONTADOR', 'Quantas vezes por semana?', {
 
 // ─── Bloco 4: Escola ─────────────────────────────────────────────────────
 bloco(4, 'Escola', 'Perguntas sobre as crianças e os jovens da casa que estão em idade escolar.');
-add('escola_niveis', 'CAMPOS', 'Quantas crianças ou jovens que vão morar com você estão em idade escolar?', {
-  cfg: {
-    ajuda: 'Indique a quantidade em cada nível. Se não houver crianças ou jovens em idade escolar, deixe tudo em 0.',
-    mostrarTotal: 'Total de crianças e jovens em idade escolar',
-    compararComIdades: { chave: 'm_idade', menorQue: 18 },
-    campos: [
-      { chave: 'creche', label: 'Creche (0 a 3 anos)', tipo: 'CONTADOR' },
-      { chave: 'pre', label: 'Pré-Escola (4 a 5 anos)', tipo: 'CONTADOR' },
-      { chave: 'fund1', label: 'Fundamental I (1º ao 5º ano, 6 a 10 anos)', tipo: 'CONTADOR' },
-      { chave: 'fund2', label: 'Fundamental II (6º ao 9º ano, 11 a 14 anos)', tipo: 'CONTADOR' },
-      { chave: 'medio', label: 'Ensino Médio (15 a 17 anos)', tipo: 'CONTADOR' },
-    ],
-  },
+add('escola_tem', 'ESCOLHA_UNICA', 'Algum morador está em idade escolar (da creche até o ensino médio)?', { opcoes: ['Não', 'Sim'] });
+const temEstudante: Condicao = se('escola_tem', 'Sim');
+add('est_quem', 'ESCOLHA_MULTIPLA', 'Quais moradores estão em idade escolar?', {
+  cfg: { ...MORADORES, ajuda: 'Toque no nome de cada criança ou jovem. Depois vamos perguntar sobre cada um.', mostrarSe: [temEstudante] },
 });
-const temEstudante: Condicao = { chave: 'escola_niveis', maiorQue: 0 };
 add('escola_frequentam', 'CONTADOR', 'Quantos deles estudam HOJE em escola ou creche perto de onde moram agora?', {
   cfg: { min: 0, max: 15, unidade: 'estudantes', mostrarSe: [temEstudante] },
 });
 const E = (c: PerguntaConfig = {}): PerguntaConfig => ({ grupo: 'estudante', ...c });
-add('est_nome', 'TEXTO_CURTO', 'Nome completo do estudante', { cfg: E() });
-add('est_idade', 'CONTADOR', 'Qual a idade de {{pessoa}}?', { cfg: E({ min: 0, max: 25, unidade: 'anos' }) });
-add('est_escola', 'TEXTO_CURTO', 'Nome da escola ou creche onde {{pessoa}} estuda HOJE', { obrigatoria: false, cfg: E() });
-add('est_bairro', 'TEXTO_CURTO', 'Bairro / região dessa escola', { obrigatoria: false, cfg: E() });
-add('est_etapa', 'ESCOLHA_UNICA', 'Em qual etapa {{pessoa}} está?', { opcoes: ETAPA, cfg: E() });
+const NAO_MATRICULADO = 'Ainda não está matriculado(a)';
+add('est_etapa', 'ESCOLHA_UNICA', 'Em qual etapa {{pessoa}} está?', { opcoes: [...ETAPA, NAO_MATRICULADO], cfg: E() });
+const matriculado: Condicao = { chave: 'est_etapa', naoEm: [NAO_MATRICULADO] };
+add('est_escola', 'TEXTO_CURTO', 'Nome da escola ou creche onde {{pessoa}} estuda HOJE', { obrigatoria: false, cfg: E({ mostrarSe: [matriculado] }) });
+add('est_bairro', 'TEXTO_CURTO', 'Bairro / região dessa escola', { obrigatoria: false, cfg: E({ mostrarSe: [matriculado] }) });
 add('est_vaga', 'ESCOLHA_UNICA', '{{pessoa}} vai precisar de vaga ou transferência para uma escola perto do Condomínio José Bonifácio?', {
   opcoes: ['Sim', qual('Não', 'Por qual motivo?')],
   cfg: E(FUTURO),
@@ -293,8 +285,9 @@ add('saude_servicos', 'ESCOLHA_MULTIPLA', 'Quais serviços de saúde vocês mais
   opcoes: SERVICOS_SAUDE,
   cfg: { ...HOJE, mostrarSe: [se('saude_usa', 'Sim')] },
 });
-add('saude_cronica', 'ESCOLHA_UNICA', 'Alguém da casa tem doença crônica, deficiência, transtorno mental ou condição que exija tratamento permanente?', {
+add('saude_cronica', 'ESCOLHA_UNICA', 'Alguém da casa tem doença crônica, transtorno mental ou outra condição de saúde que exija tratamento permanente?', {
   opcoes: ['Não', 'Sim'],
+  cfg: { ajuda: 'Por exemplo: diabetes, pressão alta, asma, câncer, depressão. Deficiência e dificuldade de locomoção já foram perguntadas no Bloco 3.' },
 });
 add('saude_cronica_quem', 'ESCOLHA_MULTIPLA', 'Quais moradores têm alguma dessas condições?', {
   cfg: { ...MORADORES, ajuda: 'Toque no nome de cada um, inclusive crianças. Depois vamos perguntar sobre cada pessoa.', mostrarSe: [se('saude_cronica', 'Sim')] },
@@ -306,7 +299,6 @@ add('saude_cronica_quais', 'ESCOLHA_MULTIPLA', 'Quais condições de saúde {{pe
     'Doença respiratória crônica (asma, bronquite, DPOC)',
     'Câncer ou tratamento oncológico atual',
     'Transtorno mental grave ou persistente (ansiedade severa, depressão, esquizofrenia)',
-    'Deficiência física, intelectual, visual ou auditiva',
     qual('Outra condição de saúde de longo prazo'),
   ],
   cfg: { grupo: 'cronico', ajuda: 'Toque em todas que se aplicam.' },
@@ -451,7 +443,18 @@ add('apoio_local', 'ESCOLHA_UNICA', 'Onde moram as pessoas que ajudam a sua fam�
 });
 add('apoio_cuidados', 'ESCOLHA_UNICA', 'Alguma criança, idoso ou pessoa com deficiência da casa depende da ajuda de parentes ou vizinhos que não vão morar no condomínio?', {
   opcoes: ['Não', qual('Sim', 'Como a mudança vai afetar esses cuidados?')],
-  cfg: FUTURO,
+  cfg: {
+    ...FUTURO,
+    mostrarSe: [
+      {
+        qualquer: [
+          { chave: 'm_idade', algumaPessoa: { menorQue: 18 } },
+          { chave: 'm_idade', algumaPessoa: { maiorQue: 59 } },
+          se('pcd', 'Sim'),
+        ],
+      },
+    ],
+  },
 });
 
 // ─── Bloco 9: Moradia de origem ──────────────────────────────────────────
@@ -459,7 +462,9 @@ bloco(9, 'Moradia atual', 'Perguntas sobre onde a família mora HOJE, antes da m
 add('origem_municipio', 'ESCOLHA_UNICA', 'Em qual cidade a família mora HOJE?', { opcoes: ['São Paulo', qual('Outra cidade', 'Qual?')], cfg: HOJE });
 add('origem_bairro', 'TEXTO_CURTO', 'Bairro onde mora HOJE', { cfg: HOJE });
 add('origem_zona', 'ESCOLHA_UNICA', 'Zona', { opcoes: ['Norte', 'Sul', 'Leste', 'Oeste', 'Centro'], cfg: { ...HOJE, mostrarSe: [se('origem_municipio', 'São Paulo')] } });
-add('origem_tempo', 'CONTADOR', 'Há quanto tempo a família mora na moradia atual?', { cfg: { ...HOJE, min: 0, max: 100, unidade: 'anos' } });
+add('origem_tempo', 'CONTADOR', 'Há quanto tempo a família mora na moradia atual?', {
+  cfg: { ...HOJE, min: 0, max: 100, unidade: 'anos', rotuloZero: 'Menos de 1 ano', ajuda: 'Se mora lá há menos de 1 ano, deixe em 0.' },
+});
 add('origem_motivos', 'ESCOLHA_MULTIPLA', 'Alguma destas situações descreve a moradia de HOJE?', {
   obrigatoria: false,
   opcoes: [
@@ -578,7 +583,7 @@ const config: QuestionarioConfig = {
       nomeDe: { primeiro: 'nome', demais: 'm_nome' },
     },
     pcd: { rotulo: 'Pessoa com deficiência', contagem: { de: ['pcd_quem'], modo: 'selecao' } },
-    estudante: { rotulo: 'Estudante', contagem: { de: ['escola_niveis'], modo: 'soma' }, nomeDe: { demais: 'est_nome' } },
+    estudante: { rotulo: 'Estudante', contagem: { de: ['est_quem'], modo: 'selecao' } },
     cronico: { rotulo: 'Saúde', contagem: { de: ['saude_cronica_quem'], modo: 'selecao' } },
     gratuidade: { rotulo: 'Gratuidade', contagem: { de: ['mob_gratuidade_quem'], modo: 'selecao' } },
   },

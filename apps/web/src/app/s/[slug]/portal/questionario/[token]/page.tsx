@@ -209,6 +209,7 @@ function Contador({
   max = 999,
   unidade,
   rotulo,
+  rotuloZero,
 }: {
   valor: string;
   onChange: (v: string) => void;
@@ -216,6 +217,7 @@ function Contador({
   max?: number;
   unidade?: string;
   rotulo?: string;
+  rotuloZero?: string;
 }) {
   const n = valor === "" ? null : Number(valor);
   const mudar = (delta: number) => {
@@ -254,7 +256,11 @@ function Contador({
           +
         </button>
       </div>
-      {unidade && <p className="mt-1 text-center text-base text-slate-500">{unidade}</p>}
+      {valor === "0" && rotuloZero ? (
+        <p className="mt-1 text-center text-base font-semibold text-slate-700">{rotuloZero}</p>
+      ) : (
+        unidade && <p className="mt-1 text-center text-base text-slate-500">{unidade}</p>
+      )}
     </div>
   );
 }
@@ -720,6 +726,7 @@ export default function QuestionarioPublicoPage() {
             min={cfg.min ?? 0}
             max={cfg.max ?? 999}
             unidade={cfg.unidade}
+            rotuloZero={cfg.rotuloZero}
           />
         );
       case "MOEDA":

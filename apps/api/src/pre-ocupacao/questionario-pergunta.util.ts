@@ -374,7 +374,9 @@ export function respostaParaTexto(
     case 'NUMERO':
     case 'CONTADOR': {
       if (r.valorNumero === null) return '';
-      return comUnidade(r.valorNumero, ((p.config ?? {}) as PerguntaConfig).unidade);
+      const cfgN = (p.config ?? {}) as PerguntaConfig;
+      if (r.valorNumero === 0 && cfgN.rotuloZero) return cfgN.rotuloZero;
+      return comUnidade(r.valorNumero, cfgN.unidade);
     }
     case 'CPF':
       return r.valorTexto ? formatarCpf(r.valorTexto) : '';
