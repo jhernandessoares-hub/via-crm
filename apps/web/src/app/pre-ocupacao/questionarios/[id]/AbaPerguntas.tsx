@@ -21,6 +21,15 @@ function curto(t: string, n = 45) {
 /** Descreve a condição em português: "Só aparece se “Quantas pessoas…” for “5 ou mais”". */
 function descreverCondicao(c: any, todas: Pergunta[]): string {
   if ("instanciaMaiorQue" in c) return "Não aparece para o titular (só do 2º morador em diante)";
+  if (Array.isArray(c.qualquer)) {
+    return c.qualquer.map((x: any) => descreverCondicao(x, todas).replace(/^Só aparece se /, "")).join(" OU ").replace(/^/, "Só aparece se ");
+  }
+  if (c.algumaPessoa) {
+    const ref = todas.find((x) => x.chave === c.chave);
+    const nome = ref ? `“${curto(ref.enunciado)}”` : c.chave;
+    const faixa = c.algumaPessoa.menorQue !== undefined ? `menor que ${c.algumaPessoa.menorQue}` : `maior que ${c.algumaPessoa.maiorQue}`;
+    return `Só aparece se algum morador tiver ${nome} ${faixa}`;
+  }
   const ref = todas.find((x) => x.chave === c.chave);
   const nome = ref ? `“${curto(ref.enunciado)}”` : c.chave;
   if (Array.isArray(c.em)) return `Só aparece se ${nome} for ${c.em.map((v: string) => `“${curto(v, 35)}”`).join(" ou ")}`;
