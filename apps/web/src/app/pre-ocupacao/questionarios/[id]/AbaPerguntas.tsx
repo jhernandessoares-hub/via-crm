@@ -4,12 +4,56 @@ import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { apiFetch } from "@/lib/api";
-import { PERGUNTA_TIPO_LABEL, Pergunta, PerguntaTipo, Questionario } from "../../_lib/questionario";
+import { PERGUNTA_TIPO_LABEL, Pergunta, PerguntaTipo, Questionario, TIPOS_AVANCADOS, opcaoLabel } from "../../_lib/questionario";
 
 const inputCls =
   "block w-full mt-1 rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none";
 
-const TIPOS_COM_OPCOES: PerguntaTipo[] = ["ESCOLHA_UNICA", "ESCOLHA_MULTIPLA"];
+const TIPOS_COM_OPCOES: PerguntaTipo[] = ["ESCOLHA_UNICA", "ESCOLHA_MULTIPLA", "ACEITE"];
+
+/** Resumo do que a carga configurou e o editor simples não mostra. */
+const ROTULO_GRUPO: Record<string, string> = { morador: "cada morador", pcd: "cada pessoa com deficiência", estudante: "cada estudante" };
+
+function curto(t: string, n = 45) {
+  return t.length > n ? `${t.slice(0, n)}…` : t;
+}
+
+/** Descreve a condição em português: "Só aparece se “Quantas pessoas…” for “5 ou mais”". */
+function descreverCondicao(c: any, todas: Pergunta[]): string {
+  if ("instanciaMaiorQue" in c) return "Não aparece para o titular (só do 2º morador em diante)";
+  const ref = todas.find((x) => x.chave === c.chave);
+  const nome = ref ? `“${curto(ref.enunciado)}”` : c.chave;
+  if (Array.isArray(c.em)) return `Só aparece se ${nome} for ${c.em.map((v: string) => `“${curto(v, 35)}”`).join(" ou ")}`;
+  if (Array.isArray(c.naoEm)) return `Só aparece se ${nome} não for ${c.naoEm.map((v: string) => `“${curto(v, 35)}”`).join(" nem ")}`;
+  if (typeof c.maiorQue === "number") return `Só aparece se ${nome} for maior que ${c.maiorQue}`;
+  return "Só aparece conforme resposta anterior";
+}
+
+function detalhesAvancados(p: Pergunta, todas: Pergunta[]): string[] {
+  const c = p.config ?? {};
+  const out: string[] = [];
+  if (c.secao) out.push(c.secao);
+  if (c.grupo) out.push(`Repete para ${ROTULO_GRUPO[c.grupo] ?? c.grupo}`);
+  if (Array.isArray(c.mostrarSe)) for (const cond of c.mostrarSe) out.push(descreverCondicao(cond, todas));
+  if (c.prefill) out.push("Já vem preenchido do CRM");
+  if (c.opcoesDinamicas) out.push("Opções: nomes dos moradores");
+  if (c.tempo === "HOJE") out.push("📍 Sobre HOJE");
+  if (c.tempo === "FUTURO") out.push("🏠 Sobre o José Bonifácio");
+  if (c.mostrarTotal) out.push(`Mostra total: ${c.mostrarTotal}`);
+  if (Array.isArray(c.campos)) out.push(`Campos: ${c.campos.map((x: any) => x.label).join(", ")}`);
+  if (c.unidade) out.push(`Unidade: ${c.unidade}`);
+  return out;
+}
+
+function sufixoOpcao(o: string | { complemento?: string; rotuloComplemento?: string; exclusiva?: boolean; alerta?: string }): string {
+  if (typeof o === "string") return "";
+  const partes: string[] = [];
+  if (o.complemento === "TEXTO") partes.push(`abre "${o.rotuloComplemento ?? "Qual?"}"`);
+  if (o.complemento === "VALOR") partes.push("abre valor em R$");
+  if (o.exclusiva) partes.push("desmarca as outras");
+  if (o.alerta) partes.push(`alerta: ${o.alerta}`);
+  return partes.join(" · ");
+}
 
 function novaPergunta(): Pergunta {
   return { enunciado: "", tipo: "ESCOLHA_UNICA", opcoes: ["", ""], obrigatoria: true, escalaMin: 1, escalaMax: 5 };
@@ -157,7 +201,18 @@ export default function AbaPerguntas({
           <Card key={idx}>
             <CardBody className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>Pergunta {idx + 1}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>Pergunta {idx + 1}</p>
+                  {detalhesAvancados(p, perguntas).map((d) => (
+                    <span
+                      key={d}
+                      className="rounded-full px-2 py-0.5 text-[11px]"
+                      style={{ background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+                    >
+                      {d}
+                    </span>
+                  ))}
+                </div>
                 {!travado && (
                   <div className="flex items-center gap-1">
                     <button onClick={() => mover(idx, -1)} disabled={idx === 0} title="Subir" className="p-1.5 rounded disabled:opacity-30" style={{ color: "var(--shell-subtext)" }}>
@@ -191,7 +246,7 @@ export default function AbaPerguntas({
                   Tipo
                   <select
                     value={p.tipo}
-                    disabled={travado}
+                    disabled={travado || TIPOS_AVANCADOS.includes(p.tipo)}
                     onChange={(e) => {
                       const tipo = e.target.value as PerguntaTipo;
                       alterar(idx, {
@@ -201,27 +256,39 @@ export default function AbaPerguntas({
                     }}
                     className={inputCls}
                   >
-                    {Object.entries(PERGUNTA_TIPO_LABEL).map(([v, l]) => (
-                      <option key={v} value={v}>{l}</option>
-                    ))}
+                    {Object.entries(PERGUNTA_TIPO_LABEL)
+                      .filter(([v]) => v === p.tipo || !TIPOS_AVANCADOS.includes(v as PerguntaTipo))
+                      .map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
                   </select>
                 </label>
               </div>
 
-              {TIPOS_COM_OPCOES.includes(p.tipo) && (
+              {TIPOS_COM_OPCOES.includes(p.tipo) && !p.config?.opcoesDinamicas && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>Opções</p>
                   {(p.opcoes ?? []).map((o, oi) => (
                     <div key={oi} className="flex items-center gap-2">
                       <input
-                        value={o}
+                        value={opcaoLabel(o)}
+                        title={sufixoOpcao(o)}
                         disabled={travado}
                         placeholder={`Opção ${oi + 1}`}
                         onChange={(e) =>
-                          alterar(idx, { opcoes: (p.opcoes ?? []).map((x, xi) => (xi === oi ? e.target.value : x)) })
+                          alterar(idx, {
+                            opcoes: (p.opcoes ?? []).map((x, xi) =>
+                              xi === oi ? (typeof x === "string" ? e.target.value : { ...x, label: e.target.value }) : x,
+                            ),
+                          })
                         }
                         className={inputCls.replace("mt-1", "")}
                       />
+                      {sufixoOpcao(o) && (
+                        <span className="shrink-0 max-w-[40%] text-[11px]" style={{ color: "var(--shell-subtext)" }}>
+                          {sufixoOpcao(o)}
+                        </span>
+                      )}
                       {!travado && (p.opcoes?.length ?? 0) > 2 && (
                         <button
                           onClick={() => alterar(idx, { opcoes: (p.opcoes ?? []).filter((_, xi) => xi !== oi) })}

@@ -2193,6 +2193,13 @@ enum PreOcupacaoQuestionarioStatus {
 }
 
 enum PreOcupacaoPerguntaTipo {
+  INFO
+  ACEITE
+  CPF
+  CONTADOR
+  MOEDA
+  TELEFONE
+  CAMPOS
   ESCOLHA_UNICA
   ESCOLHA_MULTIPLA
   TEXTO_CURTO
@@ -2216,6 +2223,8 @@ model PreOcupacaoQuestionario {
   status        PreOcupacaoQuestionarioStatus @default(RASCUNHO)
   mensagemEnvio String
   validadeDias  Int                           @default(15)
+  // Grupos que repetem por pessoa (ex.: { grupos: { morador: { rotulo, contagem } } }) e textos de abertura/encerramento
+  config        Json?
   criadoPor     String
   criadoEm      DateTime                      @default(now())
   atualizadoEm  DateTime                      @updatedAt
@@ -2239,6 +2248,10 @@ model PreOcupacaoQuestionarioPergunta {
   escalaMin      Int?
   escalaMax      Int?
   obrigatoria    Boolean                 @default(true)
+  // Identificador estável usado nas condições ("só mostra se...") e nas contagens de repetição
+  chave          String?
+  // Opções ricas, condição de exibição, grupo de repetição, sub-campos, pré-preenchimento etc.
+  config         Json?
 
   questionario PreOcupacaoQuestionario           @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
   respostas    PreOcupacaoQuestionarioResposta[]
@@ -2262,6 +2275,8 @@ model PreOcupacaoQuestionarioEnvio {
   linkAbertoEm    DateTime?
   respondidoEm    DateTime?
   enviadoPor      String
+  // Primeira resposta salva (família começou e ainda pode não ter terminado)
+  iniciadoEm      DateTime?
   criadoEm        DateTime                           @default(now())
   atualizadoEm    DateTime                           @updatedAt
 
@@ -2284,12 +2299,17 @@ model PreOcupacaoQuestionarioResposta {
   valorNumero Float?
   valorData   DateTime?
   valorOpcoes String[]
+  // Complementos por opção ({ "Outro": "texto", "Bolsa Família": 600 }) ou sub-campos ({ bloco: "3", apto: "12" })
+  extras      Json?
+  // Repetição do grupo (0 = Morador 1, 1 = Morador 2...); 0 para perguntas fora de grupo
+  instancia   Int       @default(0)
   criadoEm    DateTime  @default(now())
+  atualizadoEm DateTime @default(now()) @updatedAt
 
   envio    PreOcupacaoQuestionarioEnvio    @relation(fields: [envioId], references: [id], onDelete: Cascade)
   pergunta PreOcupacaoQuestionarioPergunta @relation(fields: [perguntaId], references: [id], onDelete: Cascade)
 
-  @@unique([envioId, perguntaId])
+  @@unique([envioId, perguntaId, instancia])
   @@index([perguntaId])
   @@map("pre_ocupacao_questionario_respostas")
 }
@@ -2641,6 +2661,7 @@ enum PreOcupacaoOcorrenciaOrigem {
   WHATSAPP
   SITE
   PORTAL_FAMILIA
+  QUESTIONARIO
 }
 
 enum PreOcupacaoOcorrenciaStatus {

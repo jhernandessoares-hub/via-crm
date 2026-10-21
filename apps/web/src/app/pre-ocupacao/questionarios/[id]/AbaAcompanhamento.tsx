@@ -17,14 +17,17 @@ type Linha = {
   agendadoPara: string | null;
   enviadoEm: string | null;
   linkAbertoEm: string | null;
+  iniciadoEm: string | null;
   respondidoEm: string | null;
+  respostasSalvas: number;
+  alertas: string[];
   enviosCount: number;
   ultimoEnvioErro: string | null;
   tokenExpiraEm: string | null;
 };
 
 type Dados = {
-  totais: { total: number; agendado: number; aguardandoEnvio: number; falha: number; recebeu: number; abriu: number; respondeu: number };
+  totais: { total: number; agendado: number; aguardandoEnvio: number; falha: number; recebeu: number; abriu: number; respondendo: number; respondeu: number; alertas: number };
   linhas: Linha[];
 };
 
@@ -34,7 +37,8 @@ const CARDS: { key: keyof Dados["totais"]; situacao: Situacao | ""; label: strin
   { key: "aguardandoEnvio", situacao: "AGUARDANDO_ENVIO", label: "Na fila" },
   { key: "falha", situacao: "FALHA", label: "Envio falhou" },
   { key: "recebeu", situacao: "RECEBEU", label: "Recebeu, não abriu" },
-  { key: "abriu", situacao: "ABRIU", label: "Abriu, não respondeu" },
+  { key: "abriu", situacao: "ABRIU", label: "Abriu, não começou" },
+  { key: "respondendo", situacao: "RESPONDENDO", label: "Começou, não terminou" },
   { key: "respondeu", situacao: "RESPONDEU", label: "Respondeu" },
 ];
 
@@ -48,6 +52,7 @@ export default function AbaAcompanhamento({
   const [dados, setDados] = useState<Dados | null>(null);
   const [filtro, setFiltro] = useState<Situacao | "">("");
   const [busca, setBusca] = useState("");
+  const [soAlertas, setSoAlertas] = useState(false);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [reenviando, setReenviando] = useState<string | null>(null);
@@ -131,7 +136,7 @@ export default function AbaAcompanhamento({
   function exportar() {
     if (!dados) return;
     baixarCsv(`acompanhamento-${slugArquivo(questionario.titulo)}.csv`, [
-      ["Nº", "Família", "Telefone", "Situação", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio"],
+      ["Nº", "Família", "Telefone", "Situação", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
       ...dados.linhas.map((l) => [
         String(l.numero),
         l.nome,
@@ -143,12 +148,14 @@ export default function AbaAcompanhamento({
         l.respondidoEm ? formatDateTime(l.respondidoEm) : "",
         String(l.enviosCount),
         l.ultimoEnvioErro ?? "",
+        l.alertas.join("; "),
       ]),
     ]);
   }
 
   const linhas = (dados?.linhas ?? []).filter((l) => {
     if (filtro && l.situacao !== filtro) return false;
+    if (soAlertas && l.alertas.length === 0) return false;
     const t = busca.trim().toLowerCase();
     return !t || l.nome.toLowerCase().includes(t) || String(l.numero).includes(t);
   });
@@ -159,7 +166,7 @@ export default function AbaAcompanhamento({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {CARDS.map((c) => {
           const ativo = filtro === c.situacao;
           return (
@@ -178,6 +185,15 @@ export default function AbaAcompanhamento({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
+        {(dados?.totais.alertas ?? 0) > 0 && (
+          <button
+            onClick={() => setSoAlertas((v) => !v)}
+            className="px-4 py-2 rounded-lg text-sm font-semibold border text-red-600"
+            style={{ borderColor: soAlertas ? "#dc2626" : "var(--shell-card-border)", background: soAlertas ? "#fef2f2" : "transparent" }}
+          >
+            ⚠ {dados?.totais.alertas} família(s) pediram sigilo ou atendimento reservado
+          </button>
+        )}
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
@@ -252,6 +268,14 @@ export default function AbaAcompanhamento({
                   <td className="px-4 py-2">{l.nome}</td>
                   <td className="px-4 py-2">
                     <Badge variant={SITUACAO_VARIANT[l.situacao]}>{SITUACAO_LABEL[l.situacao]}</Badge>
+                    {l.situacao === "RESPONDENDO" && (
+                      <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
+                        {l.respostasSalvas} resposta(s) salva(s)
+                      </p>
+                    )}
+                    {l.alertas.map((a) => (
+                      <p key={a} className="text-[11px] mt-1 font-semibold text-red-600">⚠ {a}</p>
+                    ))}
                     {l.situacao === "FALHA" && l.ultimoEnvioErro && (
                       <p className="text-[11px] mt-1 text-red-600 max-w-xs truncate" title={l.ultimoEnvioErro}>
                         {l.ultimoEnvioErro}
@@ -264,7 +288,7 @@ export default function AbaAcompanhamento({
                   </td>
                   <td className="px-4 py-2 text-xs" style={{ color: "var(--shell-subtext)" }}>{formatDateTime(l.respondidoEm)}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">
-                    {l.situacao === "RESPONDEU" ? (
+                    {l.situacao === "RESPONDEU" || l.situacao === "RESPONDENDO" ? (
                       <button
                         onClick={() => onVerRespostas(l.envioId)}
                         className="text-xs font-medium"

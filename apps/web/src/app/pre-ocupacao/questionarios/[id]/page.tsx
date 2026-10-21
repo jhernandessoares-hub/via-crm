@@ -13,6 +13,7 @@ import AbaPerguntas from "./AbaPerguntas";
 import AbaEnvio from "./AbaEnvio";
 import AbaAcompanhamento from "./AbaAcompanhamento";
 import AbaRelatorio from "./AbaRelatorio";
+import RespostasFamilia, { RespostasEnvio } from "./RespostasFamilia";
 
 type Aba = "perguntas" | "envio" | "acompanhamento" | "relatorio";
 
@@ -46,13 +47,6 @@ const ACAO_TEXTO: Record<Acao, { titulo: string; texto: string; botao: string }>
     texto: "O rascunho e suas perguntas serão excluídos. Essa ação não pode ser desfeita.",
     botao: "Excluir",
   },
-};
-
-type RespostasEnvio = {
-  questionario: { titulo: string };
-  familia: { numero: number; nome: string };
-  respondidoEm: string | null;
-  respostas: { perguntaId: string; ordem: number; enunciado: string; valor: string }[];
 };
 
 export default function QuestionarioDetalhePage() {
@@ -223,31 +217,7 @@ export default function QuestionarioDetalhePage() {
         <p className="text-sm" style={{ color: "var(--shell-text)" }}>{acao ? ACAO_TEXTO[acao].texto : ""}</p>
       </Modal>
 
-      <Modal
-        open={!!respostas}
-        onClose={() => setRespostas(null)}
-        title={respostas ? `${respostas.familia.numero} · ${respostas.familia.nome}` : ""}
-        description={respostas?.respondidoEm ? `Respondeu em ${formatDateTime(respostas.respondidoEm)}` : undefined}
-        size="lg"
-        footer={
-          <div className="flex justify-end">
-            <button onClick={() => setRespostas(null)} className={btn} style={{ color: "var(--shell-text)" }}>
-              Fechar
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          {respostas?.respostas.map((r) => (
-            <div key={r.perguntaId}>
-              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-                {r.ordem}. {r.enunciado}
-              </p>
-              <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--shell-text)" }}>{r.valor || "—"}</p>
-            </div>
-          ))}
-        </div>
-      </Modal>
+      {respostas && <RespostasFamilia dados={respostas} onClose={() => setRespostas(null)} />}
     </AppShell>
   );
 }

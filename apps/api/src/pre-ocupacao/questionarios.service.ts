@@ -8,9 +8,11 @@ import { QuestionarioEnvioWorker } from './questionario-envio.worker';
 import {
   PerguntaInput,
   normalizarPerguntas,
+  preencherTexto,
   respostaParaTexto,
   situacaoEnvio,
 } from './questionario-pergunta.util';
+import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe } from './questionario-fluxo';
 
 const MENSAGEM_PADRAO =
   'Olá, {{nome}}! A equipe do Trabalho Técnico Social preparou um questionário rápido para você. ' +
@@ -200,6 +202,7 @@ export class QuestionariosService {
         descricao: q.descricao,
         mensagemEnvio: q.mensagemEnvio,
         validadeDias: q.validadeDias,
+        config: (q.config ?? undefined) as any,
         criadoPor: criadoPor || 'desconhecido',
         perguntas: {
           create: q.perguntas.map((p) => ({
@@ -210,6 +213,8 @@ export class QuestionariosService {
             escalaMin: p.escalaMin,
             escalaMax: p.escalaMax,
             obrigatoria: p.obrigatoria,
+            chave: p.chave,
+            config: (p.config ?? undefined) as any,
           })),
         },
       },
@@ -232,6 +237,21 @@ export class QuestionariosService {
    * tem telefone. Reaproveita `FamiliasService.listar()` pra não divergir da
    * tela de famílias.
    */
+  /** O questionário pede CPF? Então só pode ir para família com CPF no cadastro. */
+  private async exigeCpf(questionarioId: string) {
+    return (await this.prisma.preOcupacaoQuestionarioPergunta.count({ where: { questionarioId, tipo: 'CPF' } })) > 0;
+  }
+
+  /** Leads (dos ids informados) que têm CPF no titular ou em algum participante. */
+  private async leadsComCpf(tenantId: string, leadIds: string[]) {
+    const leads = await this.prisma.lead.findMany({
+      where: { tenantId, id: { in: leadIds } },
+      select: { id: true, cpf: true, participantes: { select: { cpf: true } } },
+    });
+    const temCpf = (v: string | null | undefined) => String(v ?? '').replace(/\D/g, '').length > 0;
+    return new Set(leads.filter((l) => temCpf(l.cpf) || l.participantes.some((p) => temCpf(p.cpf))).map((l) => l.id));
+  }
+
   async previewPublico(tenantId: string, id: string, filtro: PublicoFiltro) {
     await this.getOrThrow(tenantId, id);
     const { items } = await this.familias.listar(tenantId);
@@ -247,7 +267,7 @@ export class QuestionariosService {
         (!empreendimento || f.empreendimento === empreendimento),
     );
 
-    const [envios, leads] = await Promise.all([
+    const [envios, leads, exigeCpf, comCpf] = await Promise.all([
       this.prisma.preOcupacaoQuestionarioEnvio.findMany({
         where: { questionarioId: id },
         select: { familiaId: true, statusEnvio: true, agendadoPara: true, linkAbertoEm: true, respondidoEm: true },
@@ -256,6 +276,8 @@ export class QuestionariosService {
         where: { tenantId, id: { in: filtradas.map((f) => f.leadId) } },
         select: { id: true, telefone: true },
       }),
+      this.exigeCpf(id),
+      this.leadsComCpf(tenantId, filtradas.map((f) => f.leadId)),
     ]);
     const envioPorFamilia = new Map(envios.map((e) => [e.familiaId, e]));
     const telefonePorLead = new Map(leads.map((l) => [l.id, l.telefone]));
@@ -271,6 +293,8 @@ export class QuestionariosService {
         statusFamilia: f.statusFamilia,
         acompanhamento: f.status,
         semTelefone: !telefonePorLead.get(f.leadId),
+        // Sem CPF no cadastro a família não passa da tela do CPF — não deixa enviar
+        semCpf: exigeCpf && !comCpf.has(f.leadId),
         situacao: envio ? situacaoEnvio(envio) : null,
       };
     });
@@ -284,7 +308,8 @@ export class QuestionariosService {
       empreendimentos,
       total: familias.length,
       jaReceberam: familias.filter((f) => f.situacao).length,
-      vaoReceber: familias.filter((f) => !f.situacao && !f.semTelefone).length,
+      vaoReceber: familias.filter((f) => !f.situacao && !f.semTelefone && !f.semCpf).length,
+      semCpf: familias.filter((f) => f.semCpf).length,
     };
   }
 
@@ -322,10 +347,16 @@ export class QuestionariosService {
     }
     const agendadoPara = this.validarAgendamento(agendadoParaIso);
 
-    const familias = await this.prisma.preOcupacaoFamilia.findMany({
+    let familias = await this.prisma.preOcupacaoFamilia.findMany({
       where: { tenantId, id: { in: familiaIds } },
-      select: { id: true },
+      select: { id: true, leadId: true },
     });
+    let semCpf = 0;
+    if (await this.exigeCpf(id)) {
+      const comCpf = await this.leadsComCpf(tenantId, familias.map((f) => f.leadId));
+      semCpf = familias.filter((f) => !comCpf.has(f.leadId)).length;
+      familias = familias.filter((f) => comCpf.has(f.leadId));
+    }
     const existentes = await this.prisma.preOcupacaoQuestionarioEnvio.findMany({
       where: { questionarioId: id, familiaId: { in: familias.map((f) => f.id) } },
       select: { familiaId: true },
@@ -358,7 +389,7 @@ export class QuestionariosService {
       resourceId: id,
       metadata: { enfileirados: novas.length, jaRecebidos: jaTem.size, enviadoPor, agendadoPara },
     });
-    return { enfileirados: novas.length, jaRecebidos: jaTem.size, agendadoPara };
+    return { enfileirados: novas.length, jaRecebidos: jaTem.size, semCpf, agendadoPara };
   }
 
   /**
@@ -421,13 +452,52 @@ export class QuestionariosService {
 
   // ─── Acompanhamento ─────────────────────────────────────────────────────
 
+  /** Opções marcadas com `alerta` (ex.: pedido de sigilo) que a família escolheu. */
+  private alertasPorEnvio(
+    perguntas: { id: string; opcoes: unknown }[],
+    respostas: { envioId: string; perguntaId: string; valorOpcoes: string[] }[],
+  ) {
+    const alertaPorPergunta = new Map<string, Map<string, string>>();
+    for (const p of perguntas) {
+      const m = new Map(opcoesDe(p).filter((o) => o.alerta).map((o) => [o.label, o.alerta as string]));
+      if (m.size) alertaPorPergunta.set(p.id, m);
+    }
+    const porEnvio = new Map<string, string[]>();
+    for (const r of respostas) {
+      const m = alertaPorPergunta.get(r.perguntaId);
+      if (!m) continue;
+      for (const o of r.valorOpcoes) {
+        const alerta = m.get(o);
+        if (!alerta) continue;
+        const lista = porEnvio.get(r.envioId) ?? [];
+        if (!lista.includes(alerta)) lista.push(alerta);
+        porEnvio.set(r.envioId, lista);
+      }
+    }
+    return porEnvio;
+  }
+
   async acompanhamento(tenantId: string, id: string) {
     await this.getOrThrow(tenantId, id);
-    const envios = await this.prisma.preOcupacaoQuestionarioEnvio.findMany({
-      where: { questionarioId: id, tenantId },
-      include: { familia: { include: { lead: { select: { nome: true, nomeCorreto: true, telefone: true } } } } },
-      orderBy: { familia: { numero: 'asc' } },
-    });
+    const [envios, perguntas] = await Promise.all([
+      this.prisma.preOcupacaoQuestionarioEnvio.findMany({
+        where: { questionarioId: id, tenantId },
+        include: {
+          familia: { include: { lead: { select: { nome: true, nomeCorreto: true, telefone: true } } } },
+          _count: { select: { respostas: true } },
+        },
+        orderBy: { familia: { numero: 'asc' } },
+      }),
+      this.prisma.preOcupacaoQuestionarioPergunta.findMany({ where: { questionarioId: id }, select: { id: true, opcoes: true } }),
+    ]);
+    const comAlerta = perguntas.filter((p) => opcoesDe(p).some((o) => o.alerta)).map((p) => p.id);
+    const respostasAlerta = comAlerta.length
+      ? await this.prisma.preOcupacaoQuestionarioResposta.findMany({
+          where: { perguntaId: { in: comAlerta }, envio: { questionarioId: id } },
+          select: { envioId: true, perguntaId: true, valorOpcoes: true },
+        })
+      : [];
+    const alertas = this.alertasPorEnvio(perguntas, respostasAlerta);
 
     const linhas = envios.map((e) => ({
       envioId: e.id,
@@ -439,10 +509,13 @@ export class QuestionariosService {
       agendadoPara: e.agendadoPara,
       enviadoEm: e.enviadoEm,
       linkAbertoEm: e.linkAbertoEm,
+      iniciadoEm: e.iniciadoEm,
       respondidoEm: e.respondidoEm,
+      respostasSalvas: e._count.respostas,
       enviosCount: e.enviosCount,
       ultimoEnvioErro: e.ultimoEnvioErro,
       tokenExpiraEm: e.tokenExpiraEm,
+      alertas: alertas.get(e.id) ?? [],
     }));
 
     const contar = (s: string) => linhas.filter((l) => l.situacao === s).length;
@@ -454,13 +527,23 @@ export class QuestionariosService {
         falha: contar('FALHA'),
         recebeu: contar('RECEBEU'),
         abriu: contar('ABRIU'),
+        respondendo: contar('RESPONDENDO'),
         respondeu: contar('RESPONDEU'),
+        alertas: linhas.filter((l) => l.alertas.length).length,
       },
       linhas,
     };
   }
 
   // ─── Relatórios ─────────────────────────────────────────────────────────
+
+  /** "Morador 2" para respostas de grupos que repetem; null fora de grupo. */
+  private rotuloInstancia(qConfig: unknown, p: { config: unknown }, instancia: number): string | null {
+    const grupo = (p.config as PerguntaConfig | null)?.grupo;
+    if (!grupo) return null;
+    const g = ((qConfig ?? {}) as QuestionarioConfig).grupos?.[grupo];
+    return `${g?.rotulo ?? 'Item'} ${instancia + 1}`;
+  }
 
   async relatorio(tenantId: string, id: string) {
     const q = await this.detalhe(tenantId, id);
@@ -473,73 +556,154 @@ export class QuestionariosService {
       orderBy: { familia: { numero: 'asc' } },
     });
     const respondidos = envios.filter((e) => e.respondidoEm);
-
-    const perguntas = q.perguntas.map((p) => {
-      const respostas = respondidos.flatMap((e) =>
-        e.respostas
-          .filter((r) => r.perguntaId === p.id)
-          .map((r) => ({ ...r, familiaNumero: e.familia.numero, familiaNome: e.familia.lead.nomeCorreto ?? e.familia.lead.nome })),
-      );
-      const base = {
-        id: p.id,
-        ordem: p.ordem,
-        enunciado: p.enunciado,
-        tipo: p.tipo,
-        obrigatoria: p.obrigatoria,
-        totalRespostas: respostas.length,
-        emBranco: respondidos.length - respostas.length,
-      };
-
-      if (p.tipo === 'ESCOLHA_UNICA' || p.tipo === 'ESCOLHA_MULTIPLA') {
-        const opcoes = Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [];
-        return {
-          ...base,
-          opcoes: opcoes.map((opcao) => {
-            const total = respostas.filter((r) => r.valorOpcoes.includes(opcao)).length;
-            return { opcao, total, percentual: respostas.length ? Math.round((total / respostas.length) * 1000) / 10 : 0 };
-          }),
-        };
+    // Rótulo de cada resposta repetida, com o nome da pessoa ("Morador 2 de 3 · João")
+    const rotulos = new Map<string, string | null>();
+    for (const e of respondidos) {
+      for (const s of montarPassos(q.perguntas, q.config, e.respostas)) {
+        rotulos.set(`${e.id}#${s.perguntaId}#${s.instancia}`, s.rotuloGrupo);
       }
-      if (p.tipo === 'ESCALA' || p.tipo === 'NUMERO') {
-        const nums = respostas.map((r) => r.valorNumero).filter((n): n is number => n !== null);
-        const media = nums.length ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 100) / 100 : null;
-        const extra =
-          p.tipo === 'ESCALA'
-            ? {
-                distribuicao: Array.from({ length: (p.escalaMax ?? 5) - (p.escalaMin ?? 1) + 1 }, (_, i) => {
-                  const nota = (p.escalaMin ?? 1) + i;
-                  return { nota, total: nums.filter((n) => n === nota).length };
-                }),
-              }
-            : {};
-        return {
-          ...base,
-          media,
-          minimo: nums.length ? Math.min(...nums) : null,
-          maximo: nums.length ? Math.max(...nums) : null,
-          ...extra,
-        };
-      }
-      return {
-        ...base,
-        respostas: respostas.map((r) => ({
-          familiaNumero: r.familiaNumero,
-          familiaNome: r.familiaNome,
-          valor: respostaParaTexto(p.tipo, r),
-        })),
-      };
+    }
+    const rotuloDe = (envioId: string, perguntaId: string, instancia: number, p: { config: unknown }) =>
+      rotulos.get(`${envioId}#${perguntaId}#${instancia}`) ?? this.rotuloInstancia(q.config, p, instancia);
+    const arred = (n: number) => Math.round(n * 100) / 100;
+    const pct = (parte: number, todo: number) => (todo ? Math.round((parte / todo) * 1000) / 10 : 0);
+    const estat = (nums: number[]) => ({
+      media: nums.length ? arred(nums.reduce((a, b) => a + b, 0) / nums.length) : null,
+      soma: arred(nums.reduce((a, b) => a + b, 0)),
+      minimo: nums.length ? Math.min(...nums) : null,
+      maximo: nums.length ? Math.max(...nums) : null,
     });
 
-    // Uma linha por família que respondeu, uma coluna por pergunta (para CSV/tabela)
+    const perguntas = q.perguntas
+      .filter((p) => p.tipo !== 'INFO')
+      .map((p) => {
+        const cfg = (p.config ?? {}) as PerguntaConfig;
+        const respostas = respondidos.flatMap((e) =>
+          e.respostas
+            .filter((r) => r.perguntaId === p.id)
+            .map((r) => ({
+              ...r,
+              familiaNumero: e.familia.numero,
+              familiaNome: e.familia.lead.nomeCorreto ?? e.familia.lead.nome,
+              rotulo: rotuloDe(e.id, p.id, r.instancia, p),
+            })),
+        );
+        const familias = new Set(respostas.map((r) => r.envioId)).size;
+        const base = {
+          id: p.id,
+          ordem: p.ordem,
+          enunciado: preencherTexto(p.enunciado),
+          tipo: p.tipo,
+          secao: cfg.secao ?? null,
+          porPessoa: !!cfg.grupo,
+          obrigatoria: p.obrigatoria,
+          totalRespostas: respostas.length,
+          familias,
+        };
+        const lista = (valor: (r: (typeof respostas)[number]) => string) =>
+          respostas
+            .map((r) => ({ familiaNumero: r.familiaNumero, familiaNome: r.familiaNome, rotulo: r.rotulo, valor: valor(r) }))
+            .filter((x) => x.valor);
+
+        // "Quais moradores...": conta famílias com pelo menos 1 pessoa e o total de pessoas
+        if (cfg.opcoesDinamicas) {
+          const comAlguem = respostas.filter((r) => r.valorOpcoes.length > 0);
+          return {
+            ...base,
+            pessoasTotal: comAlguem.reduce((acc, r) => acc + r.valorOpcoes.length, 0),
+            familiasComAlguem: new Set(comAlguem.map((r) => r.envioId)).size,
+            respostas: lista((r) => r.valorOpcoes.join(', ')),
+          };
+        }
+        if (['ESCOLHA_UNICA', 'ESCOLHA_MULTIPLA', 'ACEITE'].includes(p.tipo)) {
+          return {
+            ...base,
+            opcoes: opcoesDe(p).map((o) => {
+              const marcaram = respostas.filter((r) => r.valorOpcoes.includes(o.label));
+              const comp = marcaram
+                .map((r) => ({ r, v: ((r.extras ?? {}) as Record<string, string | number>)[o.label] }))
+                .filter((x) => x.v !== undefined && x.v !== '');
+              return {
+                opcao: o.label,
+                total: marcaram.length,
+                percentual: pct(marcaram.length, respostas.length),
+                ...(o.complemento === 'VALOR'
+                  ? { valores: estat(comp.map((x) => Number(x.v))) }
+                  : o.complemento === 'TEXTO'
+                    ? {
+                        textos: comp.map((x) => ({
+                          familiaNumero: x.r.familiaNumero,
+                          familiaNome: x.r.familiaNome,
+                          rotulo: x.r.rotulo,
+                          valor: String(x.v),
+                        })),
+                      }
+                    : {}),
+              };
+            }),
+          };
+        }
+        if (['ESCALA', 'NUMERO', 'CONTADOR', 'MOEDA'].includes(p.tipo)) {
+          const nums = respostas.map((r) => r.valorNumero).filter((n): n is number => n !== null);
+          return {
+            ...base,
+            unidade: p.tipo === 'MOEDA' ? 'R$' : (cfg.unidade ?? null),
+            ...estat(nums),
+            ...(p.tipo === 'ESCALA'
+              ? {
+                  distribuicao: Array.from({ length: (p.escalaMax ?? 5) - (p.escalaMin ?? 1) + 1 }, (_, i) => {
+                    const nota = (p.escalaMin ?? 1) + i;
+                    return { nota, total: nums.filter((n) => n === nota).length };
+                  }),
+                }
+              : {}),
+          };
+        }
+        if (p.tipo === 'CAMPOS') {
+          return {
+            ...base,
+            campos: (cfg.campos ?? []).map((c) => {
+              const valores = respostas
+                .map((r) => ({ r, v: ((r.extras ?? {}) as Record<string, string | number>)[c.chave] }))
+                .filter((x) => x.v !== undefined && x.v !== '');
+              return c.tipo === 'CONTADOR'
+                ? { chave: c.chave, label: c.label, tipo: c.tipo, ...estat(valores.map((x) => Number(x.v))) }
+                : {
+                    chave: c.chave,
+                    label: c.label,
+                    tipo: c.tipo,
+                    respostas: valores.map((x) => ({
+                      familiaNumero: x.r.familiaNumero,
+                      familiaNome: x.r.familiaNome,
+                      rotulo: x.r.rotulo,
+                      valor: String(x.v),
+                    })),
+                  };
+            }),
+          };
+        }
+        return { ...base, respostas: lista((r) => respostaParaTexto(p, r)) };
+      });
+
+    // Uma linha por família que respondeu, uma coluna por pergunta (para CSV/tabela).
+    // Perguntas por pessoa juntam as respostas: "Morador 1: x | Morador 2: y".
     const porFamilia = respondidos.map((e) => ({
       envioId: e.id,
       numero: e.familia.numero,
       nome: e.familia.lead.nomeCorreto ?? e.familia.lead.nome,
       respondidoEm: e.respondidoEm,
       respostas: Object.fromEntries(
-        q.perguntas.map((p) => {
-          const r = e.respostas.find((x) => x.perguntaId === p.id);
-          return [p.id, r ? respostaParaTexto(p.tipo, r) : ''];
+        perguntas.map((pr) => {
+          const p = q.perguntas.find((x) => x.id === pr.id)!;
+          const rs = e.respostas.filter((x) => x.perguntaId === p.id).sort((a, b) => a.instancia - b.instancia);
+          const textos = rs
+            .map((r) => {
+              const t = respostaParaTexto(p, r);
+              const rot = rotuloDe(e.id, p.id, r.instancia, p);
+              return rot && t ? `${rot}: ${t}` : t;
+            })
+            .filter(Boolean);
+          return [p.id, textos.join(' | ')];
         }),
       ),
     }));
@@ -557,17 +721,36 @@ export class QuestionariosService {
     const q = await this.detalhe(tenantId, id);
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
       where: { id: envioId, questionarioId: id, tenantId },
-      include: { familia: { include: { lead: { select: { nome: true, nomeCorreto: true } } } }, respostas: true },
+      include: { familia: { include: { lead: { select: { nome: true, nomeCorreto: true, telefone: true } } } }, respostas: true },
     });
     if (!envio) throw new NotFoundException('Envio não encontrado.');
+    const porId = new Map(q.perguntas.map((p) => [p.id, p]));
+    const idx = indexarRespostas(envio.respostas);
+    const passos = montarPassos(q.perguntas, q.config, envio.respostas).filter((s) => porId.get(s.perguntaId)!.tipo !== 'INFO');
+    const alertas = this.alertasPorEnvio(q.perguntas, envio.respostas.map((r) => ({ ...r, envioId: envio.id })));
     return {
       questionario: { id: q.id, titulo: q.titulo },
       familia: { id: envio.familiaId, numero: envio.familia.numero, nome: envio.familia.lead.nomeCorreto ?? envio.familia.lead.nome },
       situacao: situacaoEnvio(envio),
       respondidoEm: envio.respondidoEm,
-      respostas: q.perguntas.map((p) => {
-        const r = envio.respostas.find((x) => x.perguntaId === p.id);
-        return { perguntaId: p.id, ordem: p.ordem, enunciado: p.enunciado, valor: r ? respostaParaTexto(p.tipo, r) : '' };
+      alertas: alertas.get(envio.id) ?? [],
+      respostas: passos.map((s) => {
+        const p = porId.get(s.perguntaId)!;
+        const r = idx.get(`${s.perguntaId}#${s.instancia}`) as (typeof envio.respostas)[number] | undefined;
+        return {
+          perguntaId: p.id,
+          instancia: s.instancia,
+          ordem: p.ordem,
+          secao: ((p.config ?? {}) as PerguntaConfig).secao ?? null,
+          rotuloGrupo: s.rotuloGrupo,
+          enunciado: preencherTexto(p.enunciado, {
+            pessoa: s.pessoa,
+            instancia: s.instancia,
+            nome: envio.familia.lead.nomeCorreto ?? envio.familia.lead.nome,
+            telefone: envio.familia.lead.telefone,
+          }),
+          valor: r ? respostaParaTexto(p, r) : '',
+        };
       }),
     };
   }

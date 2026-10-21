@@ -17,6 +17,7 @@ type FamiliaPreview = {
   statusFamilia: string;
   acompanhamento: "EM_DIA" | "COM_PENDENCIA";
   semTelefone: boolean;
+  semCpf?: boolean;
   situacao: Situacao | null;
 };
 
@@ -26,6 +27,7 @@ type Preview = {
   total: number;
   jaReceberam: number;
   vaoReceber: number;
+  semCpf?: number;
 };
 
 const ACOMPANHAMENTO_LABEL: Record<string, string> = { EM_DIA: "Em dia", COM_PENDENCIA: "Com pendência" };
@@ -82,7 +84,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
       });
       setPreview(res);
       // Pré-seleciona quem ainda não recebeu e tem telefone
-      setSelecionadas(new Set(res.familias.filter((f) => !f.situacao && !f.semTelefone).map((f) => f.familiaId)));
+      setSelecionadas(new Set(res.familias.filter((f) => !f.situacao && !f.semTelefone && !f.semCpf).map((f) => f.familiaId)));
     } catch (e: any) {
       setErro(e?.message ?? "Erro ao carregar famílias");
     } finally {
@@ -91,7 +93,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
   }
 
   const elegiveis = useMemo(
-    () => (preview?.familias ?? []).filter((f) => !f.situacao && !f.semTelefone),
+    () => (preview?.familias ?? []).filter((f) => !f.situacao && !f.semTelefone && !f.semCpf),
     [preview],
   );
   const todasMarcadas = elegiveis.length > 0 && elegiveis.every((f) => selecionadas.has(f.familiaId));
@@ -224,6 +226,11 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
           ) : (
             <>
               <strong>{preview.total}</strong> família(s) no filtro · <strong>{preview.jaReceberam}</strong> já receberam ·{" "}
+              {!!preview.semCpf && (
+                <>
+                  <strong className="text-amber-600">{preview.semCpf}</strong> sem CPF no cadastro ·{" "}
+                </>
+              )}
               <strong>{selecionadas.size}</strong> selecionada(s) para receber agora
             </>
           )}
@@ -263,7 +270,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
               </thead>
               <tbody>
                 {preview.familias.map((f) => {
-                  const bloqueada = !!f.situacao || f.semTelefone;
+                  const bloqueada = !!f.situacao || f.semTelefone || !!f.semCpf;
                   return (
                     <tr key={f.familiaId} className="border-t" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>
                       <td className="px-4 py-2">
@@ -294,6 +301,8 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
                           <Badge variant={SITUACAO_VARIANT[f.situacao]}>{SITUACAO_LABEL[f.situacao]}</Badge>
                         ) : f.semTelefone ? (
                           <Badge variant="warning">Sem telefone</Badge>
+                        ) : f.semCpf ? (
+                          <Badge variant="warning">Sem CPF no cadastro</Badge>
                         ) : (
                           <span className="text-xs" style={{ color: "var(--shell-subtext)" }}>Ainda não recebeu</span>
                         )}

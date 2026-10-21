@@ -1,6 +1,13 @@
 /** Rótulos e tipos do módulo de Questionários (espelho do backend). */
 
 export type PerguntaTipo =
+  | "INFO"
+  | "ACEITE"
+  | "CPF"
+  | "CONTADOR"
+  | "MOEDA"
+  | "TELEFONE"
+  | "CAMPOS"
   | "ESCOLHA_UNICA"
   | "ESCOLHA_MULTIPLA"
   | "TEXTO_CURTO"
@@ -17,7 +24,23 @@ export const PERGUNTA_TIPO_LABEL: Record<PerguntaTipo, string> = {
   ESCALA: "Nota / escala",
   NUMERO: "Número",
   DATA: "Data",
+  INFO: "Tela de leitura",
+  ACEITE: "Concordância (LGPD)",
+  CPF: "CPF (confere com o cadastro)",
+  CONTADOR: "Contador (− / +)",
+  MOEDA: "Valor em R$",
+  TELEFONE: "Telefone",
+  CAMPOS: "Vários campos",
 };
+
+/** Tipos que o editor simples não configura (vêm da carga do questionário). */
+export const TIPOS_AVANCADOS: PerguntaTipo[] = ["INFO", "ACEITE", "CPF", "CONTADOR", "MOEDA", "TELEFONE", "CAMPOS"];
+
+export type OpcaoRica = { label: string; complemento?: "TEXTO" | "VALOR"; rotuloComplemento?: string; exclusiva?: boolean; numero?: number; alerta?: string };
+
+export function opcaoLabel(o: string | OpcaoRica): string {
+  return typeof o === "string" ? o : o.label;
+}
 
 export const QUESTIONARIO_STATUS_LABEL: Record<string, string> = {
   RASCUNHO: "Rascunho",
@@ -31,7 +54,7 @@ export const QUESTIONARIO_STATUS_VARIANT: Record<string, "neutral" | "success" |
   ENCERRADO: "neutral",
 };
 
-export type Situacao = "AGENDADO" | "AGUARDANDO_ENVIO" | "FALHA" | "RECEBEU" | "ABRIU" | "RESPONDEU";
+export type Situacao = "AGENDADO" | "AGUARDANDO_ENVIO" | "FALHA" | "RECEBEU" | "ABRIU" | "RESPONDENDO" | "RESPONDEU";
 
 export const SITUACAO_LABEL: Record<Situacao, string> = {
   AGENDADO: "Agendado",
@@ -39,6 +62,7 @@ export const SITUACAO_LABEL: Record<Situacao, string> = {
   FALHA: "Envio falhou",
   RECEBEU: "Recebeu",
   ABRIU: "Abriu o link",
+  RESPONDENDO: "Respondendo",
   RESPONDEU: "Respondeu",
 };
 
@@ -48,6 +72,7 @@ export const SITUACAO_VARIANT: Record<Situacao, "neutral" | "error" | "info" | "
   FALHA: "error",
   RECEBEU: "info",
   ABRIU: "indigo",
+  RESPONDENDO: "warning",
   RESPONDEU: "success",
 };
 
@@ -55,7 +80,9 @@ export type Pergunta = {
   id?: string;
   enunciado: string;
   tipo: PerguntaTipo;
-  opcoes?: string[] | null;
+  opcoes?: (string | OpcaoRica)[] | null;
+  chave?: string | null;
+  config?: Record<string, any> | null;
   escalaMin?: number | null;
   escalaMax?: number | null;
   obrigatoria: boolean;
