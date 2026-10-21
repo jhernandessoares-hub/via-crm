@@ -1,0 +1,43 @@
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { QuestionarioPublicoService } from './questionario-publico.service';
+
+/**
+ * Rotas públicas (sem login) — link mágico do questionário enviado por
+ * WhatsApp. Token verificado por hash no service, mesmo padrão do
+ * `ConviteController`. `salvar` é chamado uma vez por tela (questionários
+ * longos passam de 100 telas), por isso o limite é bem maior.
+ */
+@Controller('pre-ocupacao-questionario')
+export class QuestionarioPublicoController {
+  constructor(private readonly svc: QuestionarioPublicoService) {}
+
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ auth: { ttl: 900_000, limit: 60 } })
+  @Get(':token')
+  buscar(@Param('token') token: string) {
+    return this.svc.buscar(token);
+  }
+
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ auth: { ttl: 900_000, limit: 600 } })
+  @Post(':token/salvar')
+  salvar(@Param('token') token: string, @Body() body: any) {
+    return this.svc.salvar(token, body ?? {});
+  }
+
+  // Limite baixo: evita tentativa e erro de CPF
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ auth: { ttl: 900_000, limit: 15 } })
+  @Post(':token/verificar-cpf')
+  verificarCpf(@Param('token') token: string, @Body('cpf') cpf: string) {
+    return this.svc.verificarCpf(token, cpf);
+  }
+
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ auth: { ttl: 900_000, limit: 20 } })
+  @Post(':token/concluir')
+  concluir(@Param('token') token: string) {
+    return this.svc.concluir(token);
+  }
+}

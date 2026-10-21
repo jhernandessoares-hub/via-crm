@@ -9,6 +9,7 @@ import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-
 import { PRE_OCUPACAO_CATEGORIA_LABEL } from './pre-ocupacao-status.util';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
 import { CONVITE_TOKEN_VALIDADE_MS, gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
+import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
 
 const DURACAO_PADRAO_MS = 2 * 60 * 60 * 1000; // 2h — não há horário de término no desenho da sessão
 
@@ -95,14 +96,7 @@ export class AtividadesService {
 
   /** Resolve a URL pública base do site do tenant, pra montar o link de convite. */
   private async resolvePortalBaseUrl(tenantId: string): Promise<string> {
-    const site = await this.prisma.tenantSite.findFirst({ where: { tenantId } });
-    if (site?.customDomain && site.status === 'PUBLISHED') {
-      return `https://${site.customDomain}`;
-    }
-    if (site?.slug) {
-      return `${process.env.APP_URL || ''}/s/${site.slug}`;
-    }
-    return process.env.APP_URL || '';
+    return resolvePortalBaseUrl(this.prisma, tenantId);
   }
 
   /**

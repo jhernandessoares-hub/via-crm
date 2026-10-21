@@ -52,6 +52,8 @@ export const OCORRENCIA_ORIGEM_LABEL: Record<string, string> = {
   MANUAL: "Manual",
   WHATSAPP: "WhatsApp",
   SITE: "Site",
+  PORTAL_FAMILIA: "Portal da Família",
+  QUESTIONARIO: "Questionário",
 };
 
 export const OCORRENCIA_TIPO_LABEL: Record<string, string> = {

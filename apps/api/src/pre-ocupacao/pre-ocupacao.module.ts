@@ -19,6 +19,10 @@ import { AgendamentoConviteService } from './agendamento-convite.service';
 import { AgendamentoConviteWorker } from './agendamento-convite.worker';
 import { AtendimentosController } from './atendimentos.controller';
 import { AtendimentosService } from './atendimentos.service';
+import { QuestionariosController } from './questionarios.controller';
+import { QuestionariosService } from './questionarios.service';
+import { QuestionarioEnvioService } from './questionario-envio.service';
+import { QuestionarioEnvioWorker } from './questionario-envio.worker';
 
 @Module({
   imports: [PrismaModule, LeadsModule, MessagingModule],
@@ -30,6 +34,7 @@ import { AtendimentosService } from './atendimentos.service';
     ConteudoController,
     TemplatesController,
     AtendimentosController,
+    QuestionariosController,
   ],
   providers: [
     AddonGuard,
@@ -42,6 +47,9 @@ import { AtendimentosService } from './atendimentos.service';
     AgendamentoConviteService,
     AgendamentoConviteWorker,
     AtendimentosService,
+    QuestionariosService,
+    QuestionarioEnvioService,
+    QuestionarioEnvioWorker,
   ],
   exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService],
 })
