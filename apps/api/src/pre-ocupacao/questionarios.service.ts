@@ -7,6 +7,7 @@ import { QuestionarioEnvioService } from './questionario-envio.service';
 import { QuestionarioEnvioWorker } from './questionario-envio.worker';
 import {
   PerguntaInput,
+  cpfValido,
   normalizarPerguntas,
   preencherTexto,
   respostaParaTexto,
@@ -80,7 +81,7 @@ export class QuestionariosService {
       orderBy: { criadoEm: 'desc' },
       include: {
         _count: { select: { perguntas: true } },
-        envios: { select: { statusEnvio: true, linkAbertoEm: true, respondidoEm: true } },
+        envios: { where: { teste: false }, select: { statusEnvio: true, linkAbertoEm: true, respondidoEm: true } },
       },
     });
     return lista.map(({ envios, _count, ...q }) => ({
@@ -127,7 +128,7 @@ export class QuestionariosService {
 
   async excluir(tenantId: string, id: string) {
     const q = await this.getOrThrow(tenantId, id);
-    const envios = await this.prisma.preOcupacaoQuestionarioEnvio.count({ where: { questionarioId: id } });
+    const envios = await this.prisma.preOcupacaoQuestionarioEnvio.count({ where: { questionarioId: id, teste: false } });
     if (envios > 0) {
       throw new ConflictException('Este questionário já foi enviado e não pode ser excluído. Use "Encerrar".');
     }
@@ -149,6 +150,8 @@ export class QuestionariosService {
     }
     const normalizadas = normalizarPerguntas(perguntas);
     await this.prisma.$transaction([
+      // Pergunta mudou: o teste aprovado deixa de valer, precisa testar de novo
+      this.prisma.preOcupacaoQuestionario.update({ where: { id }, data: { testeAprovadoEm: null, testeAprovadoPor: null } }),
       this.prisma.preOcupacaoQuestionarioPergunta.deleteMany({ where: { questionarioId: id } }),
       this.prisma.preOcupacaoQuestionarioPergunta.createMany({
         data: normalizadas.map((p) => ({ ...p, questionarioId: id })) as any,
@@ -162,6 +165,7 @@ export class QuestionariosService {
     if (q.status !== 'RASCUNHO') throw new ConflictException('Só é possível publicar um questionário em rascunho.');
     const total = await this.prisma.preOcupacaoQuestionarioPergunta.count({ where: { questionarioId: id } });
     if (total === 0) throw new BadRequestException('Adicione pelo menos uma pergunta antes de publicar.');
+    if (!q.testeAprovadoEm) throw new ConflictException('Faça um teste e aprove antes de publicar.');
     await this.prisma.preOcupacaoQuestionario.update({
       where: { id },
       data: { status: 'PUBLICADO', publicadoEm: new Date() },
@@ -269,7 +273,7 @@ export class QuestionariosService {
 
     const [envios, leads, exigeCpf, comCpf] = await Promise.all([
       this.prisma.preOcupacaoQuestionarioEnvio.findMany({
-        where: { questionarioId: id },
+        where: { questionarioId: id, teste: false },
         select: { familiaId: true, statusEnvio: true, agendadoPara: true, linkAbertoEm: true, respondidoEm: true },
       }),
       this.prisma.lead.findMany({
@@ -404,6 +408,7 @@ export class QuestionariosService {
         tenantId,
         questionarioId: id,
         ...(envioId ? { id: envioId } : {}),
+        teste: false,
         statusEnvio: 'PENDENTE',
         enviosCount: 0,
         agendadoPara: { gt: new Date() },
@@ -427,7 +432,7 @@ export class QuestionariosService {
     const q = await this.getOrThrow(tenantId, id);
     if (q.status !== 'PUBLICADO') throw new ConflictException('Só é possível reenviar um questionário publicado.');
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
-      where: { id: envioId, questionarioId: id, tenantId },
+      where: { id: envioId, questionarioId: id, tenantId, teste: false },
     });
     if (!envio) throw new NotFoundException('Envio não encontrado.');
     if (envio.respondidoEm) throw new ConflictException('Esta família já respondeu.');
@@ -443,11 +448,106 @@ export class QuestionariosService {
     if (q.status !== 'PUBLICADO') throw new ConflictException('Só é possível reenviar um questionário publicado.');
     const { count } = await this.prisma.preOcupacaoQuestionarioEnvio.updateMany({
       // PENDENTE fica de fora: já está na fila ou agendado (agendamento não é antecipado)
-      where: { questionarioId: id, tenantId, respondidoEm: null, statusEnvio: { not: 'PENDENTE' } },
+      where: { questionarioId: id, tenantId, teste: false, respondidoEm: null, statusEnvio: { not: 'PENDENTE' } },
       data: { statusEnvio: 'PENDENTE', agendadoPara: null },
     });
     if (count > 0) await this.envioWorker.enfileirar();
     return { enfileirados: count };
+  }
+
+  // ─── Testes (obrigatórios antes de publicar) ──────────────────────────────
+
+  /**
+   * Envia o questionário para uma pessoa de fora do cadastro (nome, telefone e
+   * CPF informados pela equipe), para conferir mensagem, link e telas. Pode
+   * repetir à vontade. Não conta em acompanhamento/relatório e não abre demanda.
+   */
+  async enviarTeste(tenantId: string, id: string, dados: { nome?: string; telefone?: string; cpf?: string }, enviadoPor: string) {
+    const q = await this.getOrThrow(tenantId, id);
+    if (q.status === 'ENCERRADO') throw new ConflictException('Questionário encerrado não pode ser testado.');
+    const nome = String(dados.nome ?? '').trim();
+    if (!nome) throw new BadRequestException('Informe o nome de quem vai receber o teste.');
+    let telefone = String(dados.telefone ?? '').replace(/\D/g, '');
+    if (telefone.length === 10 || telefone.length === 11) telefone = `55${telefone}`;
+    if (!/^55\d{10,11}$/.test(telefone)) throw new BadRequestException('Telefone inválido. Use DDD + número.');
+    const cpf = String(dados.cpf ?? '').replace(/\D/g, '');
+    if (!cpfValido(cpf)) throw new BadRequestException('CPF inválido.');
+    const total = await this.prisma.preOcupacaoQuestionarioPergunta.count({ where: { questionarioId: id } });
+    if (total === 0) throw new BadRequestException('Adicione as perguntas antes de testar.');
+
+    const envio = await this.prisma.preOcupacaoQuestionarioEnvio.create({
+      data: {
+        tenantId,
+        questionarioId: id,
+        teste: true,
+        testeNome: nome.slice(0, 120),
+        testeTelefone: telefone,
+        testeCpf: cpf,
+        enviadoPor: enviadoPor || 'desconhecido',
+      },
+    });
+    const r = await this.envioService.enviarUm(envio.id);
+    await this.audit.log({
+      tenantId,
+      action: 'PRE_OCUPACAO_QUESTIONARIO_TESTE_ENVIADO',
+      resourceType: 'PreOcupacaoQuestionario',
+      resourceId: id,
+      metadata: { envioId: envio.id, enviadoPor, ok: r.ok },
+    });
+    return { envioId: envio.id, ok: r.ok, erro: r.erro ?? null, link: r.link ?? null };
+  }
+
+  async listarTestes(tenantId: string, id: string) {
+    await this.getOrThrow(tenantId, id);
+    const testes = await this.prisma.preOcupacaoQuestionarioEnvio.findMany({
+      where: { questionarioId: id, tenantId, teste: true },
+      orderBy: { criadoEm: 'desc' },
+      include: { _count: { select: { respostas: true } } },
+    });
+    return testes.map((t) => ({
+      envioId: t.id,
+      nome: t.testeNome,
+      telefone: t.testeTelefone,
+      situacao: situacaoEnvio(t),
+      enviadoPor: t.enviadoPor,
+      criadoEm: t.criadoEm,
+      enviadoEm: t.enviadoEm,
+      linkAbertoEm: t.linkAbertoEm,
+      respondidoEm: t.respondidoEm,
+      respostasSalvas: t._count.respostas,
+      ultimoEnvioErro: t.ultimoEnvioErro,
+    }));
+  }
+
+  async excluirTeste(tenantId: string, id: string, envioId: string) {
+    await this.getOrThrow(tenantId, id);
+    const { count } = await this.prisma.preOcupacaoQuestionarioEnvio.deleteMany({
+      where: { id: envioId, questionarioId: id, tenantId, teste: true },
+    });
+    if (count === 0) throw new NotFoundException('Teste não encontrado.');
+    return { ok: true };
+  }
+
+  /** "Ok" da equipe depois de conferir um teste respondido; libera o Publicar. */
+  async aprovarTeste(tenantId: string, id: string, aprovadoPor: string) {
+    const q = await this.getOrThrow(tenantId, id);
+    if (q.status !== 'RASCUNHO') throw new ConflictException('Só é possível aprovar o teste de um questionário em rascunho.');
+    const respondidos = await this.prisma.preOcupacaoQuestionarioEnvio.count({
+      where: { questionarioId: id, tenantId, teste: true, respondidoEm: { not: null } },
+    });
+    if (respondidos === 0) throw new ConflictException('Responda pelo menos um teste até o fim antes de aprovar.');
+    await this.prisma.preOcupacaoQuestionario.update({
+      where: { id },
+      data: { testeAprovadoEm: new Date(), testeAprovadoPor: aprovadoPor || 'desconhecido' },
+    });
+    await this.audit.log({
+      tenantId,
+      action: 'PRE_OCUPACAO_QUESTIONARIO_TESTE_APROVADO',
+      resourceType: 'PreOcupacaoQuestionario',
+      resourceId: id,
+      metadata: { titulo: q.titulo, aprovadoPor, testesRespondidos: respondidos },
+    });
+    return this.detalhe(tenantId, id);
   }
 
   // ─── Acompanhamento ─────────────────────────────────────────────────────
@@ -481,7 +581,7 @@ export class QuestionariosService {
     await this.getOrThrow(tenantId, id);
     const [envios, perguntas] = await Promise.all([
       this.prisma.preOcupacaoQuestionarioEnvio.findMany({
-        where: { questionarioId: id, tenantId },
+        where: { questionarioId: id, tenantId, teste: false },
         include: {
           familia: { include: { lead: { select: { nome: true, nomeCorreto: true, telefone: true } } } },
           _count: { select: { respostas: true } },
@@ -493,7 +593,7 @@ export class QuestionariosService {
     const comAlerta = perguntas.filter((p) => opcoesDe(p).some((o) => o.alerta)).map((p) => p.id);
     const respostasAlerta = comAlerta.length
       ? await this.prisma.preOcupacaoQuestionarioResposta.findMany({
-          where: { perguntaId: { in: comAlerta }, envio: { questionarioId: id } },
+          where: { perguntaId: { in: comAlerta }, envio: { questionarioId: id, teste: false } },
           select: { envioId: true, perguntaId: true, valorOpcoes: true },
         })
       : [];
@@ -502,9 +602,9 @@ export class QuestionariosService {
     const linhas = envios.map((e) => ({
       envioId: e.id,
       familiaId: e.familiaId,
-      numero: e.familia.numero,
-      nome: e.familia.lead.nomeCorreto ?? e.familia.lead.nome,
-      telefone: e.familia.lead.telefone,
+      numero: e.familia!.numero,
+      nome: e.familia!.lead.nomeCorreto ?? e.familia!.lead.nome,
+      telefone: e.familia!.lead.telefone,
       situacao: situacaoEnvio(e),
       agendadoPara: e.agendadoPara,
       enviadoEm: e.enviadoEm,
@@ -548,7 +648,7 @@ export class QuestionariosService {
   async relatorio(tenantId: string, id: string) {
     const q = await this.detalhe(tenantId, id);
     const envios = await this.prisma.preOcupacaoQuestionarioEnvio.findMany({
-      where: { questionarioId: id, tenantId },
+      where: { questionarioId: id, tenantId, teste: false },
       include: {
         familia: { include: { lead: { select: { nome: true, nomeCorreto: true } } } },
         respostas: true,
@@ -583,8 +683,8 @@ export class QuestionariosService {
             .filter((r) => r.perguntaId === p.id)
             .map((r) => ({
               ...r,
-              familiaNumero: e.familia.numero,
-              familiaNome: e.familia.lead.nomeCorreto ?? e.familia.lead.nome,
+              familiaNumero: e.familia!.numero,
+              familiaNome: e.familia!.lead.nomeCorreto ?? e.familia!.lead.nome,
               rotulo: rotuloDe(e.id, p.id, r.instancia, p),
             })),
         );
@@ -689,8 +789,8 @@ export class QuestionariosService {
     // Perguntas por pessoa juntam as respostas: "Morador 1: x | Morador 2: y".
     const porFamilia = respondidos.map((e) => ({
       envioId: e.id,
-      numero: e.familia.numero,
-      nome: e.familia.lead.nomeCorreto ?? e.familia.lead.nome,
+      numero: e.familia!.numero,
+      nome: e.familia!.lead.nomeCorreto ?? e.familia!.lead.nome,
       respondidoEm: e.respondidoEm,
       respostas: Object.fromEntries(
         perguntas.map((pr) => {
@@ -730,7 +830,10 @@ export class QuestionariosService {
     const alertas = this.alertasPorEnvio(q.perguntas, envio.respostas.map((r) => ({ ...r, envioId: envio.id })));
     return {
       questionario: { id: q.id, titulo: q.titulo },
-      familia: { id: envio.familiaId, numero: envio.familia.numero, nome: envio.familia.lead.nomeCorreto ?? envio.familia.lead.nome },
+      familia: envio.teste
+        ? { id: null, numero: 0, nome: `Teste · ${envio.testeNome ?? ''}`.trim() }
+        : { id: envio.familiaId, numero: envio.familia!.numero, nome: envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome },
+      teste: envio.teste,
       situacao: situacaoEnvio(envio),
       respondidoEm: envio.respondidoEm,
       alertas: alertas.get(envio.id) ?? [],
@@ -746,8 +849,8 @@ export class QuestionariosService {
           enunciado: preencherTexto(p.enunciado, {
             pessoa: s.pessoa,
             instancia: s.instancia,
-            nome: envio.familia.lead.nomeCorreto ?? envio.familia.lead.nome,
-            telefone: envio.familia.lead.telefone,
+            nome: envio.teste ? envio.testeNome : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome,
+            telefone: envio.teste ? envio.testeTelefone : envio.familia!.lead.telefone,
           }),
           valor: r ? respostaParaTexto(p, r) : '',
         };

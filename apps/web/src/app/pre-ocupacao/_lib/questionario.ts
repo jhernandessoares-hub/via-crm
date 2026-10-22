@@ -101,6 +101,8 @@ export type Questionario = {
   encerradoEm: string | null;
   perguntas: Pergunta[];
   totalEnvios: number;
+  testeAprovadoEm: string | null;
+  testeAprovadoPor: string | null;
 };
 
 export function csvEscape(v: string): string {

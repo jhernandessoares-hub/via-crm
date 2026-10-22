@@ -611,7 +611,11 @@ async function main() {
       return;
     }
     const q = existente
-      ? await prisma.preOcupacaoQuestionario.update({ where: { id: existente.id }, data: { config: config as any, mensagemEnvio: MENSAGEM, validadeDias: 30 } })
+      ? await prisma.preOcupacaoQuestionario.update({
+          where: { id: existente.id },
+          // Perguntas podem ter mudado: o teste aprovado deixa de valer
+          data: { config: config as any, mensagemEnvio: MENSAGEM, validadeDias: 30, testeAprovadoEm: null, testeAprovadoPor: null },
+        })
       : await prisma.preOcupacaoQuestionario.create({
           data: {
             tenantId,
