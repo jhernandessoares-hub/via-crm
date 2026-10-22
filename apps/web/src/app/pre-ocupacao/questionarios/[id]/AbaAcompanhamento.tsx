@@ -5,6 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "../../_lib/constants";
+import BotaoHistorico from "./HistoricoEnvio";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao, baixarCsv, slugArquivo } from "../../_lib/questionario";
 
 type Linha = {
@@ -283,6 +284,7 @@ export default function AbaAcompanhamento({
                   <td className="px-4 py-2">{l.nome}</td>
                   <td className="px-4 py-2">
                     <Badge variant={SITUACAO_VARIANT[l.situacao]}>{SITUACAO_LABEL[l.situacao]}</Badge>
+                    <BotaoHistorico questionarioId={questionario.id} envioId={l.envioId} />
                     {l.situacao === "RESPONDENDO" && (
                       <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
                         {l.respostasSalvas} resposta(s) salva(s)

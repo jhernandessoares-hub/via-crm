@@ -2291,6 +2291,7 @@ model PreOcupacaoQuestionarioEnvio {
   questionario PreOcupacaoQuestionario           @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
   familia      PreOcupacaoFamilia?               @relation(fields: [familiaId], references: [id], onDelete: Cascade)
   respostas    PreOcupacaoQuestionarioResposta[]
+  eventos      PreOcupacaoQuestionarioEnvioEvento[]
 
   @@unique([questionarioId, familiaId])
   @@index([questionarioId, teste])
@@ -2298,6 +2299,22 @@ model PreOcupacaoQuestionarioEnvio {
   @@index([familiaId])
   @@index([tokenHash])
   @@map("pre_ocupacao_questionario_envios")
+}
+
+/// Histórico de cada envio (selecionado, enviado, abriu, CPF, começou, respondeu...)
+/// para a equipe ver data e hora de cada etapa. Só cresce; nunca é editado.
+model PreOcupacaoQuestionarioEnvioEvento {
+  id      String   @id @default(uuid())
+  envioId String
+  tipo    String
+  em      DateTime @default(now())
+  detalhe String?
+  por     String?
+
+  envio PreOcupacaoQuestionarioEnvio @relation(fields: [envioId], references: [id], onDelete: Cascade)
+
+  @@index([envioId, em])
+  @@map("pre_ocupacao_questionario_envio_eventos")
 }
 
 model PreOcupacaoQuestionarioResposta {

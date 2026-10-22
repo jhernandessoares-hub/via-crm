@@ -4,6 +4,7 @@ import { Logger } from '../../logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { LeadsService } from '../../leads/leads.service';
 import { chaveAcessoQuestionarioValida, gerarChaveAcessoQuestionario, hashConviteToken } from '../pre-ocupacao-convite-token.util';
+import { INTERVALO_NOVA_ABERTURA_MS, registrarEventoEnvio } from '../questionario-evento.util';
 import { validarValor } from '../questionario-pergunta.util';
 import { PerguntaConfig, indexarRespostas, montarPassos, opcoesDe, opcoesDinamicas, respostaPreenchida } from '../questionario-fluxo';
 import { DemandasService } from '../demandas.service';
@@ -146,6 +147,15 @@ export class QuestionarioPublicoService {
     return !!envio.tokenHash && chaveAcessoQuestionarioValida(chave, envio.id, envio.tokenHash);
   }
 
+  /** Abertura entra no histórico; recarregar a página em menos de 30 min não conta de novo. */
+  private async registrarAbertura(envioId: string, jaAbriuAntes: boolean) {
+    const ultima = await this.prisma.preOcupacaoQuestionarioEnvioEvento
+      .findFirst({ where: { envioId, tipo: 'ABRIU' }, orderBy: { em: 'desc' }, select: { em: true } })
+      .catch(() => null);
+    if (ultima && Date.now() - ultima.em.getTime() < INTERVALO_NOVA_ABERTURA_MS) return;
+    await registrarEventoEnvio(this.prisma, envioId, 'ABRIU', jaAbriuAntes ? 'Abriu de novo' : null);
+  }
+
   async buscar(token: string, chave?: string) {
     const envio = await this.buscarEnvio(token);
     const cpfOrdem = ordemDoCpf(envio.questionario.perguntas);
@@ -173,6 +183,7 @@ export class QuestionarioPublicoService {
         .update({ where: { id: envio.id }, data: { linkAbertoEm: new Date() } })
         .catch((e: any) => this.logger.warn(`Falha ao registrar abertura do link: envio=${envio.id} erro=${e?.message}`));
     }
+    await this.registrarAbertura(envio.id, !!envio.linkAbertoEm);
 
     return {
       nome,
@@ -268,8 +279,10 @@ export class QuestionarioPublicoService {
         update: { ...dados, extras: (r.extras ?? null) as any },
       });
     }
+    if (cadastro) await registrarEventoEnvio(this.prisma, envio.id, 'CPF_CONFIRMADO');
     if (!envio.iniciadoEm) {
       await this.prisma.preOcupacaoQuestionarioEnvio.update({ where: { id: envio.id }, data: { iniciadoEm: new Date() } });
+      await registrarEventoEnvio(this.prisma, envio.id, 'COMECOU');
     }
     // CPF conferido: devolve a chave de acesso ao resto do questionário
     const acesso = cadastro && envio.tokenHash && envio.tokenExpiraEm
@@ -316,6 +329,7 @@ export class QuestionarioPublicoService {
       if (count === 0) throw new ConflictException('Você já respondeu este questionário. Obrigado!');
       if (orfas.length) await tx.preOcupacaoQuestionarioResposta.deleteMany({ where: { id: { in: orfas } } });
     });
+    await registrarEventoEnvio(this.prisma, envio.id, 'RESPONDEU');
     this.logger.log(`Questionário respondido: envio=${envio.id} questionario=${envio.questionarioId} descartadas=${orfas.length}`);
 
     // Pedido de sigilo / atendimento reservado: abre demanda para um analista avaliar

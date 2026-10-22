@@ -524,6 +524,11 @@ export default function QuestionarioPublicoPage() {
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        // A equipe mudou o questionário enquanto a pessoa respondia: recarrega e segue
+        if (err.message === "Pergunta inválida.") {
+          carregar();
+          return false;
+        }
         throw new Error(err.message ?? "Não foi possível salvar.");
       }
       const body = await res.json().catch(() => ({}));

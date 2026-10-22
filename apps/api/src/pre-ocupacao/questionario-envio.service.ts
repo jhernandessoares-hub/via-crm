@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { LeadsService } from '../leads/leads.service';
 import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
+import { registrarEventoEnvio } from './questionario-evento.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -96,7 +97,7 @@ export class QuestionarioEnvioService {
    * Envio de TESTE vai para o telefone informado (sem lead) e devolve o link,
    * para a equipe poder abrir/copiar mesmo se o WhatsApp falhar.
    */
-  async enviarUm(envioId: string): Promise<{ ok: boolean; erro?: string; link?: string }> {
+  async enviarUm(envioId: string, por?: string): Promise<{ ok: boolean; erro?: string; link?: string }> {
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findUnique({
       where: { id: envioId },
       include: {
@@ -155,6 +156,7 @@ export class QuestionarioEnvioService {
           ultimoEnvioErro: null,
         },
       });
+      await registrarEventoEnvio(this.prisma, envio.id, 'ENVIADO', `${envio.enviosCount + 1}º envio`, por ?? null);
       this.logger.log(`Questionário enviado: envio=${envio.id} questionario=${envio.questionarioId} teste=${envio.teste}`);
       return { ok: true, link: envio.teste ? link : undefined };
     } catch (e: any) {
@@ -163,6 +165,7 @@ export class QuestionarioEnvioService {
       await this.prisma.preOcupacaoQuestionarioEnvio
         .update({ where: { id: envio.id }, data: { statusEnvio: 'FALHA', ultimoEnvioErro: erro } })
         .catch((err: any) => this.logger.error(`Falha ao registrar erro de envio: envio=${envio.id}`, { error: err?.message }));
+      await registrarEventoEnvio(this.prisma, envio.id, 'FALHA', erro, por ?? null);
       return { ok: false, erro, link: envio.teste ? link : undefined };
     }
   }

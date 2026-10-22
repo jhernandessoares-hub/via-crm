@@ -120,7 +120,12 @@ export class QuestionariosController {
 
   @Post(':id/envios/:envioId/reenviar')
   reenviar(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
-    return this.svc.reenviar(req.user.tenantId, id, envioId);
+    return this.svc.reenviar(req.user.tenantId, id, envioId, this.quem(req));
+  }
+
+  @Get(':id/envios/:envioId/historico')
+  historico(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
+    return this.svc.historicoDoEnvio(req.user.tenantId, id, envioId);
   }
 
   @Get(':id/envios/:envioId')

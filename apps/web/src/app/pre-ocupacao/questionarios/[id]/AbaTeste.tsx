@@ -5,6 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "../../_lib/constants";
+import BotaoHistorico from "./HistoricoEnvio";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao } from "../../_lib/questionario";
 
 type Teste = {
@@ -255,6 +256,7 @@ export default function AbaTeste({
                   </td>
                   <td className="px-4 py-2">
                     <Badge variant={SITUACAO_VARIANT[t.situacao]}>{SITUACAO_LABEL[t.situacao]}</Badge>
+                    <BotaoHistorico questionarioId={questionario.id} envioId={t.envioId} />
                     {t.situacao === "FALHA" && t.ultimoEnvioErro && (
                       <p className="text-[11px] mt-1 text-red-600 max-w-xs">{t.ultimoEnvioErro}</p>
                     )}
