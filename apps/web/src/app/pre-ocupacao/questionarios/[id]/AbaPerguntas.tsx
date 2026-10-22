@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { apiFetch } from "@/lib/api";
-import { PERGUNTA_TIPO_LABEL, Pergunta, PerguntaTipo, Questionario, TIPOS_AVANCADOS, opcaoLabel } from "../../_lib/questionario";
+import { opcoesFaltandoNasCondicoes } from "@/lib/questionario-fluxo";
+import { OpcaoRica, PERGUNTA_TIPO_LABEL, Pergunta, PerguntaTipo, Questionario, TIPOS_AVANCADOS, opcaoLabel } from "../../_lib/questionario";
 
 const inputCls =
   "block w-full mt-1 rounded-lg border px-3 py-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none";
@@ -64,6 +65,31 @@ function sufixoOpcao(o: string | { complemento?: string; rotuloComplemento?: str
   return partes.join(" · ");
 }
 
+type AcaoOpcao = "NADA" | "VALOR" | "TEXTO" | "EXCLUSIVA";
+
+/** O que acontece quando a família marca a opção (menu "Ao marcar"). */
+function acaoDaOpcao(o: OpcaoRica): AcaoOpcao {
+  if (o.complemento === "VALOR") return "VALOR";
+  if (o.complemento === "TEXTO") return "TEXTO";
+  if (o.exclusiva) return "EXCLUSIVA";
+  return "NADA";
+}
+
+function patchDaAcao(a: AcaoOpcao): Partial<OpcaoRica> {
+  const limpo: Partial<OpcaoRica> = { complemento: undefined, rotuloComplemento: undefined, complementoOpcional: undefined, exclusiva: undefined };
+  if (a === "VALOR") return { ...limpo, complemento: "VALOR" };
+  if (a === "TEXTO") return { ...limpo, complemento: "TEXTO", rotuloComplemento: "Qual?" };
+  if (a === "EXCLUSIVA") return { ...limpo, exclusiva: true };
+  return limpo;
+}
+
+function trocar<T>(lista: T[], a: number, b: number): T[] {
+  if (b < 0 || b >= lista.length) return lista;
+  const copia = [...lista];
+  [copia[a], copia[b]] = [copia[b], copia[a]];
+  return copia;
+}
+
 function novaPergunta(): Pergunta {
   return { enunciado: "", tipo: "ESCOLHA_UNICA", opcoes: ["", ""], obrigatoria: true, escalaMin: 1, escalaMax: 5 };
 }
@@ -112,9 +138,24 @@ export default function AbaPerguntas({
   }
 
   async function salvar() {
-    setSalvando(true);
     setErro(null);
     setOkMsg(null);
+    if (!travado) {
+      // Opção renomeada/apagada que faz outra pergunta aparecer: avisa antes de salvar
+      const limpas = perguntas.map((p) => ({
+        ...p,
+        opcoes: p.opcoes?.map((o) => (typeof o === "string" ? o.trim() : { ...o, label: o.label.trim() })),
+      }));
+      const f = opcoesFaltandoNasCondicoes(limpas)[0];
+      if (f) {
+        setErro(
+          `A opção "${f.opcao}" da pergunta "${f.perguntaOrigem}" é usada para mostrar a pergunta "${f.usadaEm}". ` +
+            "Volte o nome da opção como estava ou fale com o suporte para ajustar essa regra.",
+        );
+        return;
+      }
+    }
+    setSalvando(true);
     try {
       let q: Questionario = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}`, {
         method: "PATCH",
@@ -280,38 +321,115 @@ export default function AbaPerguntas({
               {TIPOS_COM_OPCOES.includes(p.tipo) && !p.config?.opcoesDinamicas && (
                 <div className="space-y-2">
                   <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>Opções</p>
-                  {(p.opcoes ?? []).map((o, oi) => (
-                    <div key={oi} className="flex items-center gap-2">
-                      <input
-                        value={opcaoLabel(o)}
-                        title={sufixoOpcao(o)}
-                        disabled={travado}
-                        placeholder={`Opção ${oi + 1}`}
-                        onChange={(e) =>
-                          alterar(idx, {
-                            opcoes: (p.opcoes ?? []).map((x, xi) =>
-                              xi === oi ? (typeof x === "string" ? e.target.value : { ...x, label: e.target.value }) : x,
-                            ),
-                          })
-                        }
-                        className={inputCls.replace("mt-1", "")}
-                      />
-                      {sufixoOpcao(o) && (
-                        <span className="shrink-0 max-w-[40%] text-[11px]" style={{ color: "var(--shell-subtext)" }}>
-                          {sufixoOpcao(o)}
-                        </span>
-                      )}
-                      {!travado && (p.opcoes?.length ?? 0) > 2 && (
-                        <button
-                          onClick={() => alterar(idx, { opcoes: (p.opcoes ?? []).filter((_, xi) => xi !== oi) })}
-                          className="p-1.5 text-red-600"
-                          title="Remover opção"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  {(p.opcoes ?? []).map((o, oi) => {
+                    const ops = p.opcoes ?? [];
+                    const rica: OpcaoRica = typeof o === "string" ? { label: o } : o;
+                    const ajustavel = !travado && p.tipo !== "ACEITE";
+                    const setOps = (novas: (string | OpcaoRica)[]) => alterar(idx, { opcoes: novas });
+                    const setOpcao = (patch: Partial<OpcaoRica>) =>
+                      setOps(ops.map((x, xi) => (xi === oi ? { ...(typeof x === "string" ? { label: x } : x), ...patch } : x)));
+                    return (
+                      <div
+                        key={oi}
+                        className="rounded-lg border p-2 space-y-2"
+                        style={{ borderColor: "var(--shell-card-border)" }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={opcaoLabel(o)}
+                            disabled={travado}
+                            placeholder={`Opção ${oi + 1}`}
+                            onChange={(e) => setOpcao({ label: e.target.value })}
+                            className={inputCls.replace("mt-1", "")}
+                          />
+                          {!travado && (
+                            <div className="flex shrink-0 items-center">
+                              <button
+                                onClick={() => setOps(trocar(ops, oi, oi - 1))}
+                                disabled={oi === 0}
+                                title="Subir opção"
+                                className="p-1.5 rounded disabled:opacity-30"
+                                style={{ color: "var(--shell-subtext)" }}
+                              >
+                                <ArrowUp className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => setOps(trocar(ops, oi, oi + 1))}
+                                disabled={oi === ops.length - 1}
+                                title="Descer opção"
+                                className="p-1.5 rounded disabled:opacity-30"
+                                style={{ color: "var(--shell-subtext)" }}
+                              >
+                                <ArrowDown className="h-4 w-4" />
+                              </button>
+                              {ops.length > 2 && (
+                                <button
+                                  onClick={() => setOps(ops.filter((_, xi) => xi !== oi))}
+                                  className="p-1.5 text-red-600"
+                                  title="Remover opção"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {ajustavel ? (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs" style={{ color: "var(--shell-subtext)" }}>
+                            <label className="flex items-center gap-1.5">
+                              Ao marcar:
+                              <select
+                                value={acaoDaOpcao(rica)}
+                                onChange={(e) => setOpcao(patchDaAcao(e.target.value as AcaoOpcao))}
+                                className="rounded-md border px-2 py-1 text-xs bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+                              >
+                                <option value="NADA">Nada</option>
+                                <option value="VALOR">Pede valor (R$)</option>
+                                <option value="TEXTO">Pede texto</option>
+                                <option value="EXCLUSIVA">Desmarca as outras (ex.: “Nenhuma”)</option>
+                              </select>
+                            </label>
+                            {rica.complemento === "TEXTO" && (
+                              <input
+                                value={rica.rotuloComplemento ?? ""}
+                                onChange={(e) => setOpcao({ rotuloComplemento: e.target.value })}
+                                placeholder="Pergunta do campo (ex.: Qual?)"
+                                className="w-56 rounded-md border px-2 py-1 text-xs bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+                              />
+                            )}
+                            {rica.complemento && (
+                              <label className="flex items-center gap-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={!!rica.complementoOpcional}
+                                  onChange={(e) => setOpcao({ complementoOpcional: e.target.checked || undefined })}
+                                />
+                                {rica.complemento === "VALOR" ? "Valor" : "Texto"} opcional
+                              </label>
+                            )}
+                            {rica.alerta && <span className="text-red-600">Abre demanda: {rica.alerta}</span>}
+                            {rica.exclusiva && oi < ops.length - 1 && (
+                              <span className="text-amber-600">Costuma ficar por último</span>
+                            )}
+                            <button
+                              onClick={() => setOps([...ops.slice(0, oi + 1), "", ...ops.slice(oi + 1)])}
+                              className="ml-auto font-medium"
+                              style={{ color: "var(--via-teal, #1D9E75)" }}
+                            >
+                              + Inserir abaixo
+                            </button>
+                          </div>
+                        ) : (
+                          sufixoOpcao(o) && (
+                            <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>
+                              {sufixoOpcao(o)}
+                            </p>
+                          )
+                        )}
+                      </div>
+                    );
+                  })}
                   {!travado && (
                     <button
                       onClick={() => alterar(idx, { opcoes: [...(p.opcoes ?? []), ""] })}

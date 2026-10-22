@@ -36,7 +36,15 @@ export const PERGUNTA_TIPO_LABEL: Record<PerguntaTipo, string> = {
 /** Tipos que o editor simples não configura (vêm da carga do questionário). */
 export const TIPOS_AVANCADOS: PerguntaTipo[] = ["INFO", "ACEITE", "CPF", "CONTADOR", "MOEDA", "TELEFONE", "CAMPOS"];
 
-export type OpcaoRica = { label: string; complemento?: "TEXTO" | "VALOR"; rotuloComplemento?: string; exclusiva?: boolean; numero?: number; alerta?: string };
+export type OpcaoRica = {
+  label: string;
+  complemento?: "TEXTO" | "VALOR";
+  rotuloComplemento?: string;
+  complementoOpcional?: boolean;
+  exclusiva?: boolean;
+  numero?: number;
+  alerta?: string;
+};
 
 export function opcaoLabel(o: string | OpcaoRica): string {
   return typeof o === "string" ? o : o.label;

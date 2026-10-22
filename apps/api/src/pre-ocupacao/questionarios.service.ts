@@ -13,7 +13,7 @@ import {
   respostaParaTexto,
   situacaoEnvio,
 } from './questionario-pergunta.util';
-import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe } from './questionario-fluxo';
+import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe, opcoesFaltandoNasCondicoes } from './questionario-fluxo';
 
 const MENSAGEM_PADRAO =
   'Olá, {{nome}}! A equipe do Trabalho Técnico Social preparou um questionário rápido para você. ' +
@@ -184,6 +184,15 @@ export class QuestionariosService {
       throw new ConflictException('As perguntas só podem ser alteradas em rascunho. Use "Duplicar" para criar outra versão.');
     }
     const normalizadas = normalizarPerguntas(perguntas);
+    // Opção renomeada/apagada que outra pergunta usa para aparecer quebraria o fluxo
+    const faltando = opcoesFaltandoNasCondicoes(normalizadas as any);
+    if (faltando.length) {
+      const f = faltando[0];
+      throw new BadRequestException(
+        `A opção "${f.opcao}" da pergunta "${f.perguntaOrigem}" é usada para mostrar a pergunta "${f.usadaEm}". ` +
+          'Volte o nome da opção como estava ou fale com o suporte para ajustar essa regra.',
+      );
+    }
     await this.prisma.$transaction([
       // Pergunta mudou: o teste aprovado deixa de valer, precisa testar de novo
       this.prisma.preOcupacaoQuestionario.update({ where: { id }, data: { testeAprovadoEm: null, testeAprovadoPor: null } }),
