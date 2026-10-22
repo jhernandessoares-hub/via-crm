@@ -100,6 +100,21 @@ export default function AbaAcompanhamento({
     }
   }
 
+  async function cancelarLink(envioId: string) {
+    if (!confirm("Cancelar o link desta família? Ele para de funcionar na hora. As respostas já salvas ficam guardadas e você pode reenviar um link novo depois.")) return;
+    setReenviando(envioId);
+    setMsg(null);
+    try {
+      await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/envios/${envioId}/cancelar-link`, { method: "POST" });
+      setMsg("Link cancelado. Para a família responder, use Reenviar (vai um link novo).");
+      await carregar(true);
+    } catch (e: any) {
+      setMsg(e?.message ?? "Erro ao cancelar o link");
+    } finally {
+      setReenviando(null);
+    }
+  }
+
   async function cancelarAgendamento(envioId?: string) {
     setReenviando(envioId ?? "cancelar-todos");
     setMsg(null);
@@ -276,6 +291,16 @@ export default function AbaAcompanhamento({
                     {l.alertas.map((a) => (
                       <p key={a} className="text-[11px] mt-1 font-semibold text-red-600">⚠ {a}</p>
                     ))}
+                    {!["RESPONDEU", "AGENDADO", "AGUARDANDO_ENVIO"].includes(l.situacao) &&
+                      (!l.tokenExpiraEm ? (
+                        <p className="text-[11px] mt-1 text-red-600">Link cancelado</p>
+                      ) : new Date(l.tokenExpiraEm) < new Date() ? (
+                        <p className="text-[11px] mt-1 text-red-600">Link vencido</p>
+                      ) : (
+                        <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
+                          Link vale até {formatDateTime(l.tokenExpiraEm)}
+                        </p>
+                      ))}
                     {l.situacao === "FALHA" && l.ultimoEnvioErro && (
                       <p className="text-[11px] mt-1 text-red-600 max-w-xs truncate" title={l.ultimoEnvioErro}>
                         {l.ultimoEnvioErro}
@@ -288,6 +313,16 @@ export default function AbaAcompanhamento({
                   </td>
                   <td className="px-4 py-2 text-xs" style={{ color: "var(--shell-subtext)" }}>{formatDateTime(l.respondidoEm)}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">
+                    {l.situacao !== "RESPONDEU" && l.tokenExpiraEm && new Date(l.tokenExpiraEm) > new Date() && (
+                      <button
+                        onClick={() => cancelarLink(l.envioId)}
+                        disabled={!!reenviando}
+                        title="Use se o link foi parar em mãos erradas"
+                        className="mr-3 text-xs font-medium text-red-600 disabled:opacity-50"
+                      >
+                        Cancelar link
+                      </button>
+                    )}
                     {l.situacao === "RESPONDEU" || l.situacao === "RESPONDENDO" ? (
                       <button
                         onClick={() => onVerRespostas(l.envioId)}

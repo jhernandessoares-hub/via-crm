@@ -614,7 +614,7 @@ async function main() {
       ? await prisma.preOcupacaoQuestionario.update({
           where: { id: existente.id },
           // Perguntas podem ter mudado: o teste aprovado deixa de valer
-          data: { config: config as any, mensagemEnvio: MENSAGEM, validadeDias: 30, testeAprovadoEm: null, testeAprovadoPor: null },
+          data: { config: config as any, mensagemEnvio: MENSAGEM, validadeDias: 7, testeAprovadoEm: null, testeAprovadoPor: null },
         })
       : await prisma.preOcupacaoQuestionario.create({
           data: {
@@ -622,7 +622,7 @@ async function main() {
             titulo: TITULO,
             descricao: 'Questionário de acompanhamento do Trabalho Técnico Social para conhecer a realidade, as necessidades e as expectativas da sua família.',
             mensagemEnvio: MENSAGEM,
-            validadeDias: 30,
+            validadeDias: 7,
             config: config as any,
             criadoPor: 'Carga do Questionário V3',
           },

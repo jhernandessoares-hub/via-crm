@@ -201,6 +201,9 @@ export default function AbaPerguntas({
               onChange={(e) => setValidade(Number(e.target.value))}
               className={inputCls}
             />
+            <span className="block mt-1 font-normal">
+              Vale também para os links já enviados e ainda não respondidos.
+            </span>
           </label>
         </CardBody>
       </Card>

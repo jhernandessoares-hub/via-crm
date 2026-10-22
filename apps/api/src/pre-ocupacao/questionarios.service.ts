@@ -122,8 +122,43 @@ export class QuestionariosService {
     const q = await this.getOrThrow(tenantId, id);
     if (q.status === 'ENCERRADO') throw new ConflictException('Questionário encerrado não pode ser alterado.');
     const data = this.validarDados(dados, false);
-    await this.prisma.preOcupacaoQuestionario.update({ where: { id }, data });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.preOcupacaoQuestionario.update({ where: { id }, data });
+      // Validade mudou: vale também para os links já enviados e ainda não
+      // respondidos (desloca o vencimento pela diferença de dias). Link que
+      // passar a estar vencido é reenviado pela equipe com a validade nova.
+      const diff = data.validadeDias !== undefined ? data.validadeDias - q.validadeDias : 0;
+      if (diff !== 0) {
+        await tx.$executeRaw`
+          UPDATE "pre_ocupacao_questionario_envios"
+          SET "tokenExpiraEm" = "tokenExpiraEm" + make_interval(days => ${diff}::int)
+          WHERE "questionarioId" = ${id} AND "teste" = false
+            AND "respondidoEm" IS NULL AND "tokenExpiraEm" IS NOT NULL`;
+      }
+    });
     return this.detalhe(tenantId, id);
+  }
+
+  /**
+   * Cancela o link de uma família na hora (ex.: a família avisou que a mensagem
+   * foi parar em mãos erradas). O link e a chave de acesso do CPF deixam de
+   * valer; as respostas já salvas ficam. "Reenviar" gera um link novo.
+   */
+  async cancelarLink(tenantId: string, id: string, envioId: string, canceladoPor: string) {
+    await this.getOrThrow(tenantId, id);
+    const { count } = await this.prisma.preOcupacaoQuestionarioEnvio.updateMany({
+      where: { id: envioId, questionarioId: id, tenantId, teste: false, respondidoEm: null, tokenHash: { not: null } },
+      data: { tokenHash: null, tokenExpiraEm: null },
+    });
+    if (count === 0) throw new ConflictException('Este link já respondeu, já foi cancelado ou ainda não foi enviado.');
+    await this.audit.log({
+      tenantId,
+      action: 'PRE_OCUPACAO_QUESTIONARIO_LINK_CANCELADO',
+      resourceType: 'PreOcupacaoQuestionario',
+      resourceId: id,
+      metadata: { envioId, canceladoPor },
+    });
+    return { ok: true };
   }
 
   async excluir(tenantId: string, id: string) {
