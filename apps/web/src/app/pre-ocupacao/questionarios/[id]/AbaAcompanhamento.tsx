@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "../../_lib/constants";
 import BotaoHistorico from "./HistoricoEnvio";
+import RitmoEnvio from "./RitmoEnvio";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao, baixarCsv, slugArquivo } from "../../_lib/questionario";
 
 type Linha = {
@@ -182,6 +183,7 @@ export default function AbaAcompanhamento({
 
   return (
     <div className="space-y-4">
+      {questionario.status === "PUBLICADO" && <RitmoEnvio questionario={questionario} />}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {CARDS.map((c) => {
           const ativo = filtro === c.situacao;

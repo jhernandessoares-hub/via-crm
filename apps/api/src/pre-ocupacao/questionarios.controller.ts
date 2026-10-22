@@ -93,6 +93,16 @@ export class QuestionariosController {
     return this.svc.cancelarLink(req.user.tenantId, id, envioId, this.quem(req));
   }
 
+  @Post(':id/pausar-envios')
+  pausarEnvios(@Request() req: any, @Param('id') id: string) {
+    return this.svc.pausarEnvios(req.user.tenantId, id, this.quem(req));
+  }
+
+  @Post(':id/retomar-envios')
+  retomarEnvios(@Request() req: any, @Param('id') id: string) {
+    return this.svc.retomarEnvios(req.user.tenantId, id, this.quem(req));
+  }
+
   @Post(':id/testes')
   enviarTeste(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.svc.enviarTeste(req.user.tenantId, id, body ?? {}, this.quem(req));

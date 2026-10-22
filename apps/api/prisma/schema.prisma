@@ -2226,6 +2226,9 @@ model PreOcupacaoQuestionario {
   // Publicar exige um teste respondido até o fim + ok da equipe; mudar perguntas zera o ok
   testeAprovadoEm  DateTime?
   testeAprovadoPor String?
+  // Envios pausados (pela equipe ou automaticamente após falhas seguidas no WhatsApp)
+  envioPausadoEm   DateTime?
+  envioPausaMotivo String?
   // Grupos que repetem por pessoa (ex.: { grupos: { morador: { rotulo, contagem } } }) e textos de abertura/encerramento
   config        Json?
   criadoPor     String

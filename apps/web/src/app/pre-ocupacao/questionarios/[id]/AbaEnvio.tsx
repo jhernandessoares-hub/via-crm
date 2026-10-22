@@ -5,6 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
+import RitmoEnvio from "./RitmoEnvio";
 import { FAMILIA_STATUS_LABEL } from "../../_lib/constants";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao } from "../../_lib/questionario";
 
@@ -132,20 +133,23 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
 
   if (!publicado) {
     return (
-      <Card>
-        <CardBody>
-          <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>
-            {questionario.status === "RASCUNHO"
-              ? "Publique o questionário (botão no topo) para poder enviar às famílias."
-              : "Questionário encerrado — não é possível enviar."}
-          </p>
-        </CardBody>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardBody>
+            <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>
+              {questionario.status === "RASCUNHO"
+                ? "Publique o questionário (botão no topo) para poder enviar às famílias."
+                : "Questionário encerrado — não é possível enviar."}
+            </p>
+          </CardBody>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <RitmoEnvio questionario={questionario} />
       <Card>
         <CardBody className="space-y-4">
           <div>

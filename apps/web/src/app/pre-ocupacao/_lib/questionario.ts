@@ -110,6 +110,12 @@ export type Questionario = {
   perguntas: Pergunta[];
   totalEnvios: number;
   testeAprovadoEm: string | null;
+  envioPausadoEm: string | null;
+  envioPausaMotivo: string | null;
+  /** Mensagens que já saíram hoje (inclui reenvios e falhas), só para acompanhar */
+  enviadosHoje: number;
+  /** Envios na fila (inclui agendados) */
+  aguardandoEnvio: number;
   testeAprovadoPor: string | null;
 };
 
