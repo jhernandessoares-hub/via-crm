@@ -425,6 +425,8 @@ export class QuestionariosService {
         unidade: f.unidade,
         statusFamilia: f.statusFamilia,
         acompanhamento: f.status,
+        // Mostrado na tela de Envio para a equipe conferir o número antes de disparar
+        telefone: telefonePorLead.get(f.leadId) ?? null,
         semTelefone: !telefonePorLead.get(f.leadId),
         // Sem CPF no cadastro a família não passa da tela do CPF — não deixa enviar
         semCpf: exigeCpf && !comCpf.has(f.leadId),
