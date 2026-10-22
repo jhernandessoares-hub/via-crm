@@ -1,9 +1,9 @@
-import { BadRequestException, ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Logger } from '../../logger';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { LeadsService } from '../../leads/leads.service';
-import { hashConviteToken } from '../pre-ocupacao-convite-token.util';
+import { chaveAcessoQuestionarioValida, gerarChaveAcessoQuestionario, hashConviteToken } from '../pre-ocupacao-convite-token.util';
 import { validarValor } from '../questionario-pergunta.util';
 import { PerguntaConfig, indexarRespostas, montarPassos, opcoesDe, opcoesDinamicas, respostaPreenchida } from '../questionario-fluxo';
 import { DemandasService } from '../demandas.service';
@@ -13,6 +13,19 @@ import { QuestionarioEnvioService } from '../questionario-envio.service';
 const CPF_NAO_CONFIRMADO =
   'Não conseguimos confirmar este CPF no cadastro da sua família. ' +
   'Por favor, fale com a nossa equipe para verificarmos o seu cadastro: é só responder a mensagem do WhatsApp em que você recebeu este link.';
+
+/** Chamada sem chave de acesso (outro aparelho, chave vencida): a tela volta para o CPF. */
+const CPF_NECESSARIO = 'Para continuar, digite o CPF do titular de novo.';
+
+/**
+ * Ordem da primeira pergunta de CPF, ou null se o questionário não pede CPF.
+ * Antes do CPF ficam só as telas de abertura (boas-vindas, LGPD): são as
+ * únicas liberadas sem a chave de acesso.
+ */
+function ordemDoCpf(perguntas: { tipo: string; ordem: number }[]): number | null {
+  const cpf = perguntas.filter((p) => p.tipo === 'CPF').sort((a, b) => a.ordem - b.ordem)[0];
+  return cpf ? cpf.ordem : null;
+}
 
 /**
  * Resposta pública do questionário (link mágico enviado por WhatsApp, sem
@@ -123,15 +136,37 @@ export class QuestionarioPublicoService {
     return this.conferirCpf(token, cpf);
   }
 
-  async buscar(token: string) {
+  /**
+   * Com pergunta de CPF, o link sozinho não basta: precisa da chave de acesso
+   * que o servidor devolve quando o CPF confere. Protege o questionário de quem
+   * recebeu o link encaminhado e tenta chamar a API direto, sem passar pela tela.
+   */
+  private autorizado(envio: { id: string; tokenHash: string | null }, cpfOrdem: number | null, chave: unknown): boolean {
+    if (cpfOrdem === null) return true;
+    return !!envio.tokenHash && chaveAcessoQuestionarioValida(chave, envio.id, envio.tokenHash);
+  }
+
+  async buscar(token: string, chave?: string) {
     const envio = await this.buscarEnvio(token);
-    const nome = envio.teste ? envio.testeNome ?? 'Teste' : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
-    const telefone = envio.teste ? envio.testeTelefone : envio.familia!.lead.telefone;
+    const cpfOrdem = ordemDoCpf(envio.questionario.perguntas);
+    const liberado = this.autorizado(envio, cpfOrdem, chave);
+    const nome = !liberado
+      ? ''
+      : envio.teste
+        ? envio.testeNome ?? 'Teste'
+        : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
+    const telefone = !liberado ? null : envio.teste ? envio.testeTelefone : envio.familia!.lead.telefone;
     // Quem já respondeu vê o aviso de "já respondido", mesmo com link vencido.
     if (envio.respondidoEm) {
       return { nome, titulo: envio.questionario.titulo, jaRespondido: true as const, respondidoEm: envio.respondidoEm };
     }
     this.checarValidade(envio);
+
+    // Antes do CPF: só as telas de abertura, sem nome, telefone nem respostas
+    // (a concordância já marcada volta; o CPF digitado não volta).
+    const perguntas = liberado ? envio.questionario.perguntas : envio.questionario.perguntas.filter((p) => p.ordem <= cpfOrdem!);
+    const visiveis = new Set(perguntas.filter((p) => liberado || p.tipo !== 'CPF').map((p) => p.id));
+    const respostas = envio.respostas.filter((r) => visiveis.has(r.perguntaId));
 
     if (!envio.linkAbertoEm) {
       await this.prisma.preOcupacaoQuestionarioEnvio
@@ -146,8 +181,9 @@ export class QuestionarioPublicoService {
       config: envio.questionario.config ?? null,
       jaRespondido: false as const,
       teste: envio.teste,
-      prefill: { NOME: nome, TELEFONE: telefone ?? null },
-      perguntas: envio.questionario.perguntas.map((p) => ({
+      precisaCpf: !liberado,
+      prefill: { NOME: nome || null, TELEFONE: telefone ?? null },
+      perguntas: perguntas.map((p) => ({
         id: p.id,
         chave: p.chave,
         enunciado: p.enunciado,
@@ -158,12 +194,12 @@ export class QuestionarioPublicoService {
         obrigatoria: p.obrigatoria,
         config: p.config ?? null,
       })),
-      respostas: envio.respostas.map((r) => this.respostaPublica(r)),
+      respostas: respostas.map((r) => this.respostaPublica(r)),
     };
   }
 
   /** Salva (ou apaga, se veio em branco) a resposta de uma tela. */
-  async salvar(token: string, body: { perguntaId?: string; instancia?: number; valor?: unknown; extras?: unknown }) {
+  async salvar(token: string, body: { perguntaId?: string; instancia?: number; valor?: unknown; extras?: unknown }, chave?: string) {
     // Consulta enxuta (chamada a cada tela): só o envio e a pergunta da vez
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
       where: { tokenHash: hashConviteToken(token) },
@@ -172,9 +208,10 @@ export class QuestionarioPublicoService {
         respondidoEm: true,
         iniciadoEm: true,
         tokenExpiraEm: true,
+        tokenHash: true,
         teste: true,
         questionarioId: true,
-        questionario: { select: { status: true } },
+        questionario: { select: { status: true, perguntas: { where: { tipo: 'CPF' }, select: { tipo: true, ordem: true } } } },
       },
     });
     if (!envio) throw new NotFoundException('Questionário não encontrado.');
@@ -188,6 +225,11 @@ export class QuestionarioPublicoService {
           })
         : null;
     if (!pergunta) throw new BadRequestException('Pergunta inválida.');
+    // Sem a chave do CPF só dá para salvar as telas de abertura e o próprio CPF
+    const cpfOrdem = ordemDoCpf(envio.questionario.perguntas);
+    if (cpfOrdem !== null && pergunta.ordem > cpfOrdem && !this.autorizado(envio, cpfOrdem, chave)) {
+      throw new ForbiddenException(CPF_NECESSARIO);
+    }
     const idx = pergunta.ordem - 1;
     const instancia = Number.isInteger(body.instancia) ? (body.instancia as number) : 0;
     if (instancia < 0 || instancia > 30) throw new BadRequestException('Pergunta inválida.');
@@ -229,13 +271,18 @@ export class QuestionarioPublicoService {
     if (!envio.iniciadoEm) {
       await this.prisma.preOcupacaoQuestionarioEnvio.update({ where: { id: envio.id }, data: { iniciadoEm: new Date() } });
     }
-    return { ok: true, ...(cadastro ? { cadastro } : {}) };
+    // CPF conferido: devolve a chave de acesso ao resto do questionário
+    const acesso = cadastro && envio.tokenHash && envio.tokenExpiraEm
+      ? gerarChaveAcessoQuestionario(envio.id, envio.tokenHash, envio.tokenExpiraEm)
+      : undefined;
+    return { ok: true, ...(cadastro ? { cadastro, acesso } : {}) };
   }
 
-  async concluir(token: string) {
+  async concluir(token: string, chave?: string) {
     const envio = await this.buscarEnvio(token);
     if (envio.respondidoEm) throw new ConflictException('Você já respondeu este questionário. Obrigado!');
     this.checarValidade(envio);
+    if (!this.autorizado(envio, ordemDoCpf(envio.questionario.perguntas), chave)) throw new ForbiddenException(CPF_NECESSARIO);
 
     const perguntas = envio.questionario.perguntas;
     const passos = montarPassos(perguntas, envio.questionario.config, envio.respostas);

@@ -88,6 +88,11 @@ export class QuestionariosController {
     return this.svc.cancelarAgendamento(req.user.tenantId, id, envioId || undefined, this.quem(req));
   }
 
+  @Post(':id/envios/:envioId/cancelar-link')
+  cancelarLink(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
+    return this.svc.cancelarLink(req.user.tenantId, id, envioId, this.quem(req));
+  }
+
   @Post(':id/testes')
   enviarTeste(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.svc.enviarTeste(req.user.tenantId, id, body ?? {}, this.quem(req));

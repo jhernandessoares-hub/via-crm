@@ -51,7 +51,9 @@ type AtendimentoRelatorio = {
 };
 
 function csvEscape(v: string): string {
-  return `"${v.replace(/"/g, '""')}"`;
+  // Célula que começa com =, +, -, @ (ou tab/retorno) vira fórmula no Excel: prefixa apóstrofo
+  const t = /^[=+\-@\t\r]/.test(v ?? "") ? `'${v}` : v ?? "";
+  return `"${t.replace(/"/g, '""')}"`;
 }
 
 function periodoLabel(p: Periodo): string {

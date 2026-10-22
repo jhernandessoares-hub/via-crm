@@ -23,7 +23,9 @@ import {
 import { type Ocorrencia, localDisplay, diasEmAberto } from "./_shared";
 
 function csvEscape(v: string): string {
-  return `"${v.replace(/"/g, '""')}"`;
+  // Célula que começa com =, +, -, @ (ou tab/retorno) vira fórmula no Excel: prefixa apóstrofo
+  const t = /^[=+\-@\t\r]/.test(v ?? "") ? `'${v}` : v ?? "";
+  return `"${t.replace(/"/g, '""')}"`;
 }
 
 function baixarRelatorio(items: Ocorrencia[]) {

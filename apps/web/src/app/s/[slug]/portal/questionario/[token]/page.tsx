@@ -43,7 +43,9 @@ type Dados =
       config: QuestionarioConfig | null;
       jaRespondido: false;
       teste?: boolean;
-      prefill: { NOME: string; TELEFONE: string | null };
+      /** Ainda falta o CPF: o servidor só mandou as telas de abertura. */
+      precisaCpf?: boolean;
+      prefill: { NOME: string | null; TELEFONE: string | null };
       perguntas: Pergunta[];
       respostas: RespostaSalva[];
     };
@@ -52,6 +54,27 @@ type Dados =
 type Rascunho = { opcoes: string[]; extras: Record<string, string>; texto: string };
 
 const chave = (perguntaId: string, instancia: number) => `${perguntaId}#${instancia}`;
+
+/**
+ * Chave de acesso que o servidor devolve quando o CPF confere. Fica só neste
+ * aparelho: em outro celular/computador a pessoa digita o CPF de novo.
+ */
+const chaveAcessoLs = (token: string) => `questionario-acesso:${token}`;
+function lerAcesso(token: string): string | null {
+  try {
+    return localStorage.getItem(chaveAcessoLs(token));
+  } catch {
+    return null;
+  }
+}
+function gravarAcesso(token: string, valor: string | null) {
+  try {
+    if (valor) localStorage.setItem(chaveAcessoLs(token), valor);
+    else localStorage.removeItem(chaveAcessoLs(token));
+  } catch {
+    /* navegador sem armazenamento: segue sem lembrar o CPF */
+  }
+}
 
 function mascaraTelefone(v: string): string {
   let d = v.replace(/\D/g, "");
@@ -332,9 +355,20 @@ export default function QuestionarioPublicoPage() {
     setVozDisponivel(typeof window !== "undefined" && "speechSynthesis" in window);
   }, []);
 
-  useEffect(() => {
+  // Chave de acesso em memória (localStorage só é lido em efeito, nunca no render)
+  const acessoRef = useRef<string | null>(null);
+  const cabecalhos = (json = false): Record<string, string> => ({
+    ...(json ? { "Content-Type": "application/json" } : {}),
+    ...(acessoRef.current ? { "X-Questionario-Acesso": acessoRef.current } : {}),
+  });
+
+  const carregar = useCallback(() => {
     if (!token) return;
-    fetch(`${API}/pre-ocupacao-questionario/${token}`)
+    acessoRef.current = lerAcesso(token);
+    setCarregando(true);
+    fetch(`${API}/pre-ocupacao-questionario/${token}`, {
+      headers: acessoRef.current ? { "X-Questionario-Acesso": acessoRef.current } : {},
+    })
       .then(async (res) => {
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -345,6 +379,11 @@ export default function QuestionarioPublicoPage() {
       .then((d: Dados) => {
         setDados(d);
         if (d.jaRespondido) return;
+        // Chave guardada que o servidor não aceitou mais (link reenviado/cancelado)
+        if (d.precisaCpf && acessoRef.current) {
+          gravarAcesso(token, null);
+          acessoRef.current = null;
+        }
         const prefill = d.prefill as unknown as Record<string, string | null>;
         const r: Record<string, Rascunho> = {};
         const s: Record<string, true> = {};
@@ -373,6 +412,18 @@ export default function QuestionarioPublicoPage() {
       .catch((e: any) => setErroFatal(e?.message ?? "Este link não é mais válido. Fale com a equipe."))
       .finally(() => setCarregando(false));
   }, [token]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  /** Servidor pediu o CPF de novo (chave vencida/inválida): volta para a tela do CPF. */
+  function exigirCpfDeNovo() {
+    gravarAcesso(token, null);
+    acessoRef.current = null;
+    setRevisao(false);
+    carregar();
+  }
 
   const passo = passos[Math.min(pos, Math.max(passos.length - 1, 0))];
   const pergunta = passo ? porId.get(passo.perguntaId) : undefined;
@@ -464,15 +515,29 @@ export default function QuestionarioPublicoPage() {
     try {
       const res = await fetch(`${API}/pre-ocupacao-questionario/${token}/salvar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: cabecalhos(true),
         body: JSON.stringify({ perguntaId: pergunta.id, instancia: passo.instancia, ...payloadDe(pergunta, atual) }),
       });
+      if (res.status === 403) {
+        exigirCpfDeNovo();
+        return false;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message ?? "Não foi possível salvar.");
       }
+      const body = await res.json().catch(() => ({}));
       setRascunhos((rs) => ({ ...rs, [k]: atual }));
       setSalvas((s) => ({ ...s, [k]: true }));
+      // CPF conferido: guarda a chave e busca o questionário completo
+      if (typeof body.acesso === "string") {
+        gravarAcesso(token, body.acesso);
+        acessoRef.current = body.acesso;
+        if (dados && !dados.jaRespondido && dados.precisaCpf) {
+          carregar();
+          return false;
+        }
+      }
       return true;
     } catch (e: any) {
       setAviso(
@@ -540,7 +605,11 @@ export default function QuestionarioPublicoPage() {
     setSalvando(true);
     setAviso(null);
     try {
-      const res = await fetch(`${API}/pre-ocupacao-questionario/${token}/concluir`, { method: "POST" });
+      const res = await fetch(`${API}/pre-ocupacao-questionario/${token}/concluir`, { method: "POST", headers: cabecalhos() });
+      if (res.status === 403) {
+        exigirCpfDeNovo();
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         if (Array.isArray(err.faltando) && err.faltando.length) {
@@ -825,7 +894,8 @@ export default function QuestionarioPublicoPage() {
   const cartao = "rounded-3xl border border-slate-200 bg-white p-6 shadow-sm";
   const config = dados && !dados.jaRespondido ? dados.config : null;
   const totalPassos = passos.length;
-  const progresso = revisao ? 100 : totalPassos ? Math.round((pos / totalPassos) * 100) : 0;
+  // Antes do CPF o servidor só mandou as telas de abertura: a barra fica no começo
+  const progresso = revisao ? 100 : totalPassos && !dados?.jaRespondido && !dados?.precisaCpf ? Math.round((pos / totalPassos) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-slate-50" ref={topoRef}>

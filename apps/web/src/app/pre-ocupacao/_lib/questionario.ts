@@ -106,7 +106,9 @@ export type Questionario = {
 };
 
 export function csvEscape(v: string): string {
-  return `"${(v ?? "").replace(/"/g, '""')}"`;
+  // Célula que começa com =, +, -, @ (ou tab/retorno) vira fórmula no Excel: prefixa apóstrofo
+  const t = /^[=+\-@\t\r]/.test(v ?? "") ? `'${v}` : v ?? "";
+  return `"${t.replace(/"/g, '""')}"`;
 }
 
 /** Baixa um CSV (separador ";", BOM UTF-8 pro Excel abrir com acento). */
