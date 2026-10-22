@@ -22,6 +22,8 @@ export type PerguntaTipo = (typeof PERGUNTA_TIPOS)[number];
 export const TIPOS_COM_OPCOES: PerguntaTipo[] = ['ESCOLHA_UNICA', 'ESCOLHA_MULTIPLA'];
 
 export interface PerguntaInput {
+  /** Pergunta já existente (editor): atualiza no lugar em vez de recriar */
+  id?: string;
   enunciado: string;
   tipo: PerguntaTipo;
   opcoes?: (string | OpcaoConfig)[] | null;
@@ -52,7 +54,8 @@ function limparOpcao(o: any): OpcaoConfig {
   const out: OpcaoConfig = { label: String(o?.label ?? '') };
   if (o?.complemento === 'TEXTO' || o?.complemento === 'VALOR') {
     out.complemento = o.complemento;
-    if (o.complemento === 'TEXTO' && String(o.rotuloComplemento ?? '').trim()) {
+    // Texto acima do campo ("Qual?", "Quanto recebe por mês (R$)")
+    if (String(o.rotuloComplemento ?? '').trim()) {
       out.rotuloComplemento = String(o.rotuloComplemento).trim().slice(0, 120);
     }
     if (o.complementoOpcional === true) out.complementoOpcional = true;

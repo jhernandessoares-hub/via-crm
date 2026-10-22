@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Logger } from '../logger';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { FamiliasService } from './familias.service';
@@ -13,6 +14,7 @@ import {
   respostaParaTexto,
   situacaoEnvio,
 } from './questionario-pergunta.util';
+import { registrarEventoEnvio, montarHistorico } from './questionario-evento.util';
 import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe, opcoesFaltandoNasCondicoes } from './questionario-fluxo';
 
 const MENSAGEM_PADRAO =
@@ -30,6 +32,15 @@ export interface PublicoFiltro {
   statusFamilia?: string[];
   acompanhamento?: string[];
   empreendimento?: string | null;
+}
+
+/** JSON com as chaves em ordem (o Postgres reordena as chaves de colunas Json). */
+function jsonEstavel(v: unknown): string {
+  return JSON.stringify(v ?? null, (_k, x) =>
+    x && typeof x === 'object' && !Array.isArray(x)
+      ? Object.fromEntries(Object.keys(x).sort().filter((k) => x[k] !== undefined).map((k) => [k, x[k]]))
+      : x,
+  );
 }
 
 @Injectable()
@@ -129,6 +140,20 @@ export class QuestionariosService {
       // passar a estar vencido é reenviado pela equipe com a validade nova.
       const diff = data.validadeDias !== undefined ? data.validadeDias - q.validadeDias : 0;
       if (diff !== 0) {
+        const afetados = await tx.preOcupacaoQuestionarioEnvio.findMany({
+          where: { questionarioId: id, teste: false, respondidoEm: null, tokenExpiraEm: { not: null } },
+          select: { id: true },
+        });
+        if (afetados.length) {
+          await tx.preOcupacaoQuestionarioEnvioEvento.createMany({
+            data: afetados.map((e) => ({
+              envioId: e.id,
+              tipo: 'VALIDADE_ALTERADA',
+              em: new Date(),
+              detalhe: `De ${q.validadeDias} para ${data.validadeDias} dias`,
+            })),
+          });
+        }
         await tx.$executeRaw`
           UPDATE "pre_ocupacao_questionario_envios"
           SET "tokenExpiraEm" = "tokenExpiraEm" + make_interval(days => ${diff}::int)
@@ -151,6 +176,7 @@ export class QuestionariosService {
       data: { tokenHash: null, tokenExpiraEm: null },
     });
     if (count === 0) throw new ConflictException('Este link já respondeu, já foi cancelado ou ainda não foi enviado.');
+    await registrarEventoEnvio(this.prisma, envioId, 'LINK_CANCELADO', null, canceladoPor);
     await this.audit.log({
       tenantId,
       action: 'PRE_OCUPACAO_QUESTIONARIO_LINK_CANCELADO',
@@ -193,14 +219,44 @@ export class QuestionariosService {
           'Volte o nome da opção como estava ou fale com o suporte para ajustar essa regra.',
       );
     }
-    await this.prisma.$transaction([
+    // Atualiza cada pergunta no lugar (mesmo id): teste que está sendo respondido
+    // não perde as respostas e a tela aberta continua funcionando. Pergunta nova
+    // é criada; pergunta que saiu da lista é apagada (com as respostas dela).
+    const existentes = await this.prisma.preOcupacaoQuestionarioPergunta.findMany({
+      where: { questionarioId: id },
+    });
+    const livres = new Map(existentes.map((e) => [e.id, e]));
+    const alvo = normalizadas.map((n, i) => {
+      const porId = perguntas[i]?.id ? livres.get(perguntas[i].id as string) : undefined;
+      const atual = porId ?? (n.chave ? [...livres.values()].find((e) => e.chave === n.chave) : undefined);
+      if (atual) livres.delete(atual.id);
+      return { dados: n, atual };
+    });
+    await this.prisma.$transaction(async (tx) => {
       // Pergunta mudou: o teste aprovado deixa de valer, precisa testar de novo
-      this.prisma.preOcupacaoQuestionario.update({ where: { id }, data: { testeAprovadoEm: null, testeAprovadoPor: null } }),
-      this.prisma.preOcupacaoQuestionarioPergunta.deleteMany({ where: { questionarioId: id } }),
-      this.prisma.preOcupacaoQuestionarioPergunta.createMany({
-        data: normalizadas.map((p) => ({ ...p, questionarioId: id })) as any,
-      }),
-    ]);
+      await tx.preOcupacaoQuestionario.update({ where: { id }, data: { testeAprovadoEm: null, testeAprovadoPor: null } });
+      if (livres.size) await tx.preOcupacaoQuestionarioPergunta.deleteMany({ where: { id: { in: [...livres.keys()] } } });
+      for (const { dados, atual } of alvo) {
+        const data = {
+          ...dados,
+          opcoes: (dados.opcoes ?? Prisma.DbNull) as any,
+          config: (dados.config ?? Prisma.DbNull) as any,
+        };
+        if (!atual) {
+          await tx.preOcupacaoQuestionarioPergunta.create({ data: { ...data, questionarioId: id } });
+          continue;
+        }
+        // Pergunta igual à que já está gravada: não precisa tocar (salvar fica rápido)
+        const igual = (['ordem', 'enunciado', 'tipo', 'opcoes', 'escalaMin', 'escalaMax', 'obrigatoria', 'chave', 'config'] as const).every(
+          (c) => jsonEstavel((atual as any)[c]) === jsonEstavel((dados as any)[c]),
+        );
+        if (igual) continue;
+        // Mudou o tipo da resposta: as respostas antigas não servem mais
+        if (atual.tipo !== dados.tipo) await tx.preOcupacaoQuestionarioResposta.deleteMany({ where: { perguntaId: atual.id } });
+        await tx.preOcupacaoQuestionarioPergunta.update({ where: { id: atual.id }, data });
+      }
+      // Questionários longos (100+ perguntas) passam do limite padrão de 5s
+    }, { maxWait: 15_000, timeout: 60_000 });
     return this.detalhe(tenantId, id);
   }
 
@@ -472,7 +528,7 @@ export class QuestionariosService {
   }
 
   /** Reenvia na hora (gera token novo, o anterior deixa de valer). */
-  async reenviar(tenantId: string, id: string, envioId: string) {
+  async reenviar(tenantId: string, id: string, envioId: string, por?: string) {
     const q = await this.getOrThrow(tenantId, id);
     if (q.status !== 'PUBLICADO') throw new ConflictException('Só é possível reenviar um questionário publicado.');
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
@@ -483,7 +539,7 @@ export class QuestionariosService {
     if (envio.statusEnvio === 'PENDENTE' && envio.agendadoPara && envio.agendadoPara > new Date()) {
       throw new ConflictException('Este envio está agendado. Cancele o agendamento para enviar agora.');
     }
-    return this.envioService.enviarUm(envio.id);
+    return this.envioService.enviarUm(envio.id, por);
   }
 
   /** Coloca de volta na fila todos que ainda não responderam. */
@@ -858,6 +914,34 @@ export class QuestionariosService {
       totalRespondidos: respondidos.length,
       perguntas,
       porFamilia,
+    };
+  }
+
+  /** Linha do tempo do envio (botão 🕒 do Acompanhamento e da aba Teste). */
+  async historicoDoEnvio(tenantId: string, id: string, envioId: string) {
+    await this.getOrThrow(tenantId, id);
+    const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
+      where: { id: envioId, questionarioId: id, tenantId },
+      include: {
+        familia: { include: { lead: { select: { nome: true, nomeCorreto: true } } } },
+        eventos: { orderBy: { em: 'asc' } },
+      },
+    });
+    if (!envio) throw new NotFoundException('Envio não encontrado.');
+    const respostas = await this.prisma.preOcupacaoQuestionarioResposta.aggregate({
+      where: { envioId },
+      _count: { _all: true },
+      _max: { atualizadoEm: true },
+    });
+    return {
+      nome: envio.teste
+        ? `Teste · ${envio.testeNome ?? ''}`.trim()
+        : `Família ${envio.familia!.numero} · ${envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome}`,
+      situacao: situacaoEnvio(envio),
+      respostasSalvas: respostas._count._all,
+      ultimaAtividade: respostas._max.atualizadoEm,
+      tokenExpiraEm: envio.tokenExpiraEm,
+      eventos: montarHistorico(envio, envio.eventos),
     };
   }
 

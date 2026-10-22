@@ -77,7 +77,7 @@ function acaoDaOpcao(o: OpcaoRica): AcaoOpcao {
 
 function patchDaAcao(a: AcaoOpcao): Partial<OpcaoRica> {
   const limpo: Partial<OpcaoRica> = { complemento: undefined, rotuloComplemento: undefined, complementoOpcional: undefined, exclusiva: undefined };
-  if (a === "VALOR") return { ...limpo, complemento: "VALOR" };
+  if (a === "VALOR") return { ...limpo, complemento: "VALOR", rotuloComplemento: "Quanto recebe por mês (R$)" };
   if (a === "TEXTO") return { ...limpo, complemento: "TEXTO", rotuloComplemento: "Qual?" };
   if (a === "EXCLUSIVA") return { ...limpo, exclusiva: true };
   return limpo;
@@ -390,11 +390,12 @@ export default function AbaPerguntas({
                                 <option value="EXCLUSIVA">Desmarca as outras (ex.: “Nenhuma”)</option>
                               </select>
                             </label>
-                            {rica.complemento === "TEXTO" && (
+                            {rica.complemento && (
                               <input
                                 value={rica.rotuloComplemento ?? ""}
                                 onChange={(e) => setOpcao({ rotuloComplemento: e.target.value })}
-                                placeholder="Pergunta do campo (ex.: Qual?)"
+                                title="Texto que aparece em cima do campo"
+                                placeholder={rica.complemento === "VALOR" ? "Texto do campo (ex.: Quanto recebe por mês)" : "Pergunta do campo (ex.: Qual?)"}
                                 className="w-56 rounded-md border px-2 py-1 text-xs bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
                               />
                             )}
