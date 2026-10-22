@@ -126,7 +126,36 @@ export class QuestionariosService {
     });
     if (!q) throw new NotFoundException('Questionário não encontrado.');
     const { _count, ...rest } = q;
-    return { ...rest, totalEnvios: _count.envios };
+    const [enviadosHoje, aguardandoEnvio] = await Promise.all([
+      this.envioService.enviadosHoje(id),
+      this.prisma.preOcupacaoQuestionarioEnvio.count({ where: { questionarioId: id, teste: false, statusEnvio: 'PENDENTE' } }),
+    ]);
+    return { ...rest, totalEnvios: _count.envios, enviadosHoje, aguardandoEnvio };
+  }
+
+  /** Pausa o disparo: o que ainda não saiu fica na fila até "Retomar". */
+  async pausarEnvios(tenantId: string, id: string, por: string) {
+    await this.getOrThrow(tenantId, id);
+    await this.prisma.preOcupacaoQuestionario.update({
+      where: { id },
+      data: { envioPausadoEm: new Date(), envioPausaMotivo: `Pausado por ${por || 'equipe'}` },
+    });
+    await this.audit.log({ tenantId, action: 'PRE_OCUPACAO_QUESTIONARIO_ENVIO_PAUSADO', resourceType: 'PreOcupacaoQuestionario', resourceId: id, metadata: { por } });
+    return this.detalhe(tenantId, id);
+  }
+
+  async retomarEnvios(tenantId: string, id: string, por: string) {
+    const q = await this.getOrThrow(tenantId, id);
+    await this.prisma.preOcupacaoQuestionario.update({ where: { id }, data: { envioPausadoEm: null, envioPausaMotivo: null } });
+    await this.audit.log({
+      tenantId,
+      action: 'PRE_OCUPACAO_QUESTIONARIO_ENVIO_RETOMADO',
+      resourceType: 'PreOcupacaoQuestionario',
+      resourceId: id,
+      metadata: { por, motivoDaPausa: q.envioPausaMotivo },
+    });
+    await this.envioWorker.enfileirar();
+    return this.detalhe(tenantId, id);
   }
 
   async atualizar(tenantId: string, id: string, dados: QuestionarioDadosInput) {

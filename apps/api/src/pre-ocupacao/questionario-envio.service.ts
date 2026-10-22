@@ -7,6 +7,7 @@ import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-
 import { gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { registrarEventoEnvio } from './questionario-evento.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
+import { FALHAS_SEGUIDAS_PARA_PAUSAR, falhaDoNumero, inicioDoDiaSP } from './questionario-ritmo.util';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const VALIDADE_TESTE_DIAS = 7;
@@ -26,6 +27,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class QuestionarioEnvioService {
   private readonly logger = new Logger('PreOcupacaoQuestionarioEnvioService');
   private processando = false;
+  private readonly falhasSeguidas = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -62,9 +64,25 @@ export class QuestionarioEnvioService {
   }
 
   /**
-   * Processa todos os envios PENDENTE (de questionários publicados) cujo
-   * agendamento já chegou (ou que não têm agendamento), até a fila esvaziar. Reentrância protegida por flag — um segundo disparo enquanto o
-   * primeiro roda só faz o laço atual pegar os novos pendentes.
+   * Mensagens que já saíram hoje (fuso de São Paulo) para as famílias deste
+   * questionário — inclui reenvios e tentativas que falharam, porque todas
+   * passam pelo WhatsApp e contam para o risco de restrição do número.
+   */
+  async enviadosHoje(questionarioId: string, agora = new Date()): Promise<number> {
+    return this.prisma.preOcupacaoQuestionarioEnvioEvento.count({
+      where: {
+        tipo: { in: ['ENVIADO', 'FALHA'] },
+        em: { gte: inicioDoDiaSP(agora) },
+        envio: { questionarioId, teste: false },
+      },
+    });
+  }
+
+  /**
+   * Processa os envios PENDENTE (de questionários publicados e não pausados)
+   * cujo agendamento já chegou, um por vez, com intervalo aleatório entre as
+   * mensagens. Questionário pausado fica com os envios na fila até "Retomar".
+   * Reentrância protegida por flag.
    */
   async processarPendentes() {
     if (this.processando) return;
@@ -76,20 +94,40 @@ export class QuestionarioEnvioService {
           where: {
             statusEnvio: 'PENDENTE',
             teste: false,
-            questionario: { status: 'PUBLICADO' },
+            questionario: { status: 'PUBLICADO', envioPausadoEm: null },
             OR: [{ agendadoPara: null }, { agendadoPara: { lte: new Date() } }],
           },
           orderBy: { criadoEm: 'asc' },
-          select: { id: true },
+          select: { id: true, questionarioId: true },
         });
         if (!envio) break;
         if (!primeiro) await sleep(DELAY_MIN_MS + Math.floor(Math.random() * (DELAY_MAX_MS - DELAY_MIN_MS)));
         primeiro = false;
-        await this.enviarUm(envio.id);
+        const r = await this.enviarUm(envio.id);
+        await this.contarFalha(envio.questionarioId, r);
       }
     } finally {
       this.processando = false;
     }
+  }
+
+  /**
+   * Falhas seguidas no envio costumam ser o primeiro sinal de problema no
+   * número (WhatsApp desconectado, restrição). Na 3ª seguida o disparo pausa e
+   * a equipe decide quando retomar. "Número sem WhatsApp" é da família, não conta.
+   */
+  private async contarFalha(questionarioId: string, r: { ok: boolean; erro?: string }) {
+    if (r.ok) return void this.falhasSeguidas.delete(questionarioId);
+    if (falhaDoNumero(r.erro)) return;
+    const n = (this.falhasSeguidas.get(questionarioId) ?? 0) + 1;
+    this.falhasSeguidas.set(questionarioId, n);
+    if (n < FALHAS_SEGUIDAS_PARA_PAUSAR) return;
+    this.falhasSeguidas.delete(questionarioId);
+    const motivo = `Pausado automaticamente: ${n} falhas seguidas no envio. Último erro: ${(r.erro ?? '').slice(0, 200)}`;
+    await this.prisma.preOcupacaoQuestionario
+      .update({ where: { id: questionarioId }, data: { envioPausadoEm: new Date(), envioPausaMotivo: motivo } })
+      .catch((e: any) => this.logger.error(`Falha ao pausar envios: questionario=${questionarioId} erro=${e?.message}`));
+    this.logger.warn(`Envios do questionário pausados: questionario=${questionarioId} — ${motivo}`);
   }
 
   /**
