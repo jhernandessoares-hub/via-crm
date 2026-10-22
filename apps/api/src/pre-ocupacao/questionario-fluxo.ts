@@ -309,3 +309,35 @@ export function respostaPreenchida(p: PerguntaFluxo, r: RespostaFluxo | undefine
   }
   return true;
 }
+
+/**
+ * Opções citadas nas condições ("mostrar se marcou X") que não existem mais na
+ * pergunta de origem — acontece quando alguém renomeia ou apaga uma opção no
+ * editor. Sem a opção, a pergunta dependente nunca mais aparece (ou aparece
+ * sempre), então o editor e a API recusam salvar e dizem o que ajustar.
+ */
+export function opcoesFaltandoNasCondicoes(
+  perguntas: { chave?: string | null; enunciado?: string; tipo?: string; opcoes?: unknown; config?: unknown }[],
+): { opcao: string; chave: string; perguntaOrigem: string; usadaEm: string }[] {
+  const porChave = new Map(perguntas.filter((p) => p.chave).map((p) => [p.chave as string, p]));
+  const faltando: { opcao: string; chave: string; perguntaOrigem: string; usadaEm: string }[] = [];
+  const visitar = (c: Condicao, usadaEm: string) => {
+    if ('qualquer' in c) return c.qualquer.forEach((x) => visitar(x, usadaEm));
+    if (!('em' in c) && !('naoEm' in c)) return;
+    const labels = 'em' in c ? c.em : c.naoEm;
+    const origem = porChave.get(c.chave);
+    // Pergunta com nomes dos moradores não tem lista fixa de opções
+    if (!origem || cfgPergunta(origem as PerguntaFluxo).opcoesDinamicas) return;
+    const existentes = new Set(opcoesDe({ opcoes: origem.opcoes }).map((o) => o.label));
+    for (const l of labels) {
+      if (!existentes.has(l) && !faltando.some((f) => f.chave === c.chave && f.opcao === l && f.usadaEm === usadaEm)) {
+        faltando.push({ opcao: l, chave: c.chave, perguntaOrigem: origem.enunciado ?? c.chave, usadaEm });
+      }
+    }
+  };
+  for (const p of perguntas) {
+    const cfg = cfgPergunta(p as PerguntaFluxo);
+    for (const c of cfg.mostrarSe ?? []) visitar(c, p.enunciado ?? p.chave ?? '');
+  }
+  return faltando;
+}

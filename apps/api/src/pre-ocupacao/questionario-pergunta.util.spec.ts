@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { opcoesFaltandoNasCondicoes } from './questionario-fluxo';
 import {
   PerguntaDef,
   cpfValido,
@@ -260,5 +261,45 @@ describe('situacaoEnvio / respostaParaTexto', () => {
         { ...vazio, extras: { b: '3', a: '12' } },
       ),
     ).toBe('Bloco: 3 · Apto: 12');
+  });
+});
+
+describe('editor de opções', () => {
+  it('grava só os ajustes conhecidos e volta a texto quando a opção não tem ajuste', () => {
+    const [p] = normalizarPerguntas([
+      {
+        enunciado: 'Benefícios',
+        tipo: 'ESCOLHA_MULTIPLA',
+        opcoes: [
+          { label: 'Bolsa Família', complemento: 'VALOR', complementoOpcional: false, exclusiva: false, lixo: 1 } as any,
+          { label: 'Auxílio Moradia', complemento: 'VALOR' },
+          { label: 'Outro', complemento: 'TEXTO', rotuloComplemento: '  Qual?  ' },
+          { label: 'Nenhum', exclusiva: true },
+        ],
+      },
+    ]);
+    expect(p.opcoes).toEqual([
+      { label: 'Bolsa Família', complemento: 'VALOR' },
+      { label: 'Auxílio Moradia', complemento: 'VALOR' },
+      { label: 'Outro', complemento: 'TEXTO', rotuloComplemento: 'Qual?' },
+      { label: 'Nenhum', exclusiva: true },
+    ]);
+    const [s] = normalizarPerguntas([{ enunciado: 'X', tipo: 'ESCOLHA_UNICA', opcoes: [{ label: 'A', exclusiva: false } as any, 'B'] }]);
+    expect(s.opcoes).toEqual(['A', 'B']);
+  });
+
+  it('acha opção renomeada que outra pergunta usa para aparecer', () => {
+    const perguntas = [
+      { chave: 'pcd', enunciado: 'Tem PCD?', opcoes: ['Não', 'Sim'] },
+      { chave: 'pcd_quem', enunciado: 'Quem?', config: { mostrarSe: [{ qualquer: [{ chave: 'pcd', em: ['Sim'] }] }] } },
+      { chave: 'outra', enunciado: 'Outra', config: { mostrarSe: [{ chave: 'pcd', naoEm: ['Não'] }, { instanciaMaiorQue: 0 }] } },
+    ];
+    expect(opcoesFaltandoNasCondicoes(perguntas)).toEqual([]);
+    const renomeada = [{ ...perguntas[0], opcoes: ['Não', 'Sim, tem'] }, perguntas[1], perguntas[2]];
+    expect(opcoesFaltandoNasCondicoes(renomeada)).toEqual([
+      { opcao: 'Sim', chave: 'pcd', perguntaOrigem: 'Tem PCD?', usadaEm: 'Quem?' },
+    ]);
+    const semUso = [{ ...perguntas[0], opcoes: ['Não', 'Sim', 'Talvez'] }, perguntas[1], perguntas[2]];
+    expect(opcoesFaltandoNasCondicoes(semUso)).toEqual([]);
   });
 });

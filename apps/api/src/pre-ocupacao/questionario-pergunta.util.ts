@@ -44,6 +44,25 @@ export interface PerguntaDef {
 }
 
 /** Normaliza e valida a lista de perguntas (editor ou script de carga). */
+/**
+ * Opção vinda do editor: só os ajustes conhecidos, sem campos vazios (opção sem
+ * ajuste volta a ser só texto). `alerta` e `numero` vêm da carga e são mantidos.
+ */
+function limparOpcao(o: any): OpcaoConfig {
+  const out: OpcaoConfig = { label: String(o?.label ?? '') };
+  if (o?.complemento === 'TEXTO' || o?.complemento === 'VALOR') {
+    out.complemento = o.complemento;
+    if (o.complemento === 'TEXTO' && String(o.rotuloComplemento ?? '').trim()) {
+      out.rotuloComplemento = String(o.rotuloComplemento).trim().slice(0, 120);
+    }
+    if (o.complementoOpcional === true) out.complementoOpcional = true;
+  }
+  if (o?.exclusiva === true) out.exclusiva = true;
+  if (typeof o?.numero === 'number' && Number.isFinite(o.numero)) out.numero = o.numero;
+  if (typeof o?.alerta === 'string' && o.alerta.trim()) out.alerta = o.alerta.trim().slice(0, 200);
+  return out;
+}
+
 export function normalizarPerguntas(perguntas: PerguntaInput[]) {
   if (!Array.isArray(perguntas)) throw new BadRequestException('Lista de perguntas inválida.');
   const chaves = new Set<string>();
@@ -65,7 +84,7 @@ export function normalizarPerguntas(perguntas: PerguntaInput[]) {
     if ((TIPOS_COM_OPCOES.includes(p.tipo) || p.tipo === 'ACEITE') && !dinamica) {
       const vistos = new Set<string>();
       opcoes = (Array.isArray(p.opcoes) ? p.opcoes : [])
-        .map((o) => (typeof o === 'string' ? { label: o } : { ...o, label: String(o?.label ?? '') }))
+        .map((o) => (typeof o === 'string' ? { label: o } : limparOpcao(o)))
         .map((o) => ({ ...o, label: o.label.trim() }))
         .filter((o) => o.label && !vistos.has(o.label) && vistos.add(o.label));
       const minimo = p.tipo === 'ACEITE' ? 1 : 2;

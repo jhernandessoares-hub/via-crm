@@ -169,6 +169,7 @@ add('m_renda', 'MOEDA', 'Quanto {{pessoa}} ganha HOJE, por mês, com trabalho ou
 add('beneficios', 'ESCOLHA_MULTIPLA', 'Alguém da família recebe HOJE algum benefício social do governo?', {
   opcoes: [
     valor('Bolsa Família'),
+    valor('Auxílio Moradia'),
     valor('BPC (Idoso ou PcD)'),
     valor('Auxílio-Gás'),
     valor('Seguro-Desemprego'),
