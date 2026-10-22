@@ -9,6 +9,7 @@ export type RespostasEnvio = {
   familia: { numero: number; nome: string };
   respondidoEm: string | null;
   situacao: string;
+  teste?: boolean;
   alertas: string[];
   respostas: {
     perguntaId: string;
@@ -97,7 +98,7 @@ export default function RespostasFamilia({ dados, onClose }: { dados: RespostasE
             {dados.questionario.titulo}
           </p>
           <h2 className="mt-1 text-xl font-bold" style={{ color: "var(--shell-text)" }}>
-            Família {dados.familia.numero} · {dados.familia.nome}
+            {dados.teste ? dados.familia.nome : `Família ${dados.familia.numero} · ${dados.familia.nome}`}
           </h2>
           <p className="mt-1 text-sm" style={{ color: "var(--shell-subtext)" }}>
             {dados.respondidoEm

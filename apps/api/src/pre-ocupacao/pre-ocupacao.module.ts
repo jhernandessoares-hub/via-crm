@@ -51,6 +51,6 @@ import { QuestionarioEnvioWorker } from './questionario-envio.worker';
     QuestionarioEnvioService,
     QuestionarioEnvioWorker,
   ],
-  exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService],
+  exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService, QuestionarioEnvioService],
 })
 export class PreOcupacaoModule {}

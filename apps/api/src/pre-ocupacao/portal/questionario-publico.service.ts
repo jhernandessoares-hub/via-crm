@@ -7,6 +7,7 @@ import { hashConviteToken } from '../pre-ocupacao-convite-token.util';
 import { validarValor } from '../questionario-pergunta.util';
 import { PerguntaConfig, indexarRespostas, montarPassos, opcoesDe, opcoesDinamicas, respostaPreenchida } from '../questionario-fluxo';
 import { DemandasService } from '../demandas.service';
+import { QuestionarioEnvioService } from '../questionario-envio.service';
 
 /** CPF que não confere: a família precisa falar com a equipe para verificar o cadastro. */
 const CPF_NAO_CONFIRMADO =
@@ -27,6 +28,7 @@ export class QuestionarioPublicoService {
     private readonly prisma: PrismaService,
     private readonly moduleRef: ModuleRef,
     private readonly demandas: DemandasService,
+    private readonly envios: QuestionarioEnvioService,
   ) {}
 
   /** Mesmo motivo do `ConviteService`: evita puxar o Baileys (ESM) no Jest. */
@@ -49,8 +51,10 @@ export class QuestionarioPublicoService {
   }
 
   /** Link vencido ou questionário encerrado não aceita mais resposta. */
-  private checarValidade(envio: { questionario: { status: string }; tokenExpiraEm: Date | null }) {
-    if (envio.questionario.status !== 'PUBLICADO') {
+  private checarValidade(envio: { questionario: { status: string }; tokenExpiraEm: Date | null; teste?: boolean }) {
+    // Teste vale em rascunho (é para conferir antes de publicar); envio real só publicado
+    const aberto = envio.questionario.status === 'PUBLICADO' || (envio.teste && envio.questionario.status === 'RASCUNHO');
+    if (!aberto) {
       throw new GoneException('Este questionário foi encerrado. Fale com a equipe.');
     }
     if (!envio.tokenExpiraEm || envio.tokenExpiraEm < new Date()) {
@@ -86,6 +90,9 @@ export class QuestionarioPublicoService {
       select: {
         respondidoEm: true,
         tokenExpiraEm: true,
+        teste: true,
+        testeCpf: true,
+        testeNome: true,
         questionario: { select: { status: true } },
         familia: {
           select: {
@@ -98,8 +105,12 @@ export class QuestionarioPublicoService {
     if (envio.respondidoEm) throw new ConflictException('Você já respondeu este questionário. Obrigado!');
     this.checarValidade(envio);
 
-    const lead = envio.familia.lead;
     const so = (v: string | null | undefined) => String(v ?? '').replace(/\D/g, '');
+    if (envio.teste) {
+      if (so(envio.testeCpf) === cpf) return { encontrado: true as const, nome: envio.testeNome ?? 'Teste' };
+      throw new BadRequestException(CPF_NAO_CONFIRMADO);
+    }
+    const lead = envio.familia!.lead;
     const cadastrados = [so(lead.cpf), ...(lead.participantes ?? []).map((p) => so(p.cpf))].filter(Boolean);
     if (cadastrados.includes(cpf)) return { encontrado: true as const, nome: lead.nomeCorreto ?? lead.nome };
 
@@ -114,8 +125,8 @@ export class QuestionarioPublicoService {
 
   async buscar(token: string) {
     const envio = await this.buscarEnvio(token);
-    const lead = envio.familia.lead;
-    const nome = lead.nomeCorreto ?? lead.nome;
+    const nome = envio.teste ? envio.testeNome ?? 'Teste' : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
+    const telefone = envio.teste ? envio.testeTelefone : envio.familia!.lead.telefone;
     // Quem já respondeu vê o aviso de "já respondido", mesmo com link vencido.
     if (envio.respondidoEm) {
       return { nome, titulo: envio.questionario.titulo, jaRespondido: true as const, respondidoEm: envio.respondidoEm };
@@ -134,7 +145,8 @@ export class QuestionarioPublicoService {
       descricao: envio.questionario.descricao,
       config: envio.questionario.config ?? null,
       jaRespondido: false as const,
-      prefill: { NOME: nome, TELEFONE: lead.telefone ?? null },
+      teste: envio.teste,
+      prefill: { NOME: nome, TELEFONE: telefone ?? null },
       perguntas: envio.questionario.perguntas.map((p) => ({
         id: p.id,
         chave: p.chave,
@@ -160,6 +172,7 @@ export class QuestionarioPublicoService {
         respondidoEm: true,
         iniciadoEm: true,
         tokenExpiraEm: true,
+        teste: true,
         questionarioId: true,
         questionario: { select: { status: true } },
       },
@@ -266,12 +279,14 @@ export class QuestionarioPublicoService {
       if (!p) continue;
       for (const o of opcoesDe(p)) if (o.alerta && r.valorOpcoes.includes(o.label) && !alertas.includes(o.alerta)) alertas.push(o.alerta);
     }
-    if (alertas.length) {
+    if (alertas.length && envio.teste) {
+      this.logger.log(`Teste do questionário: abriria demanda (${alertas.join('; ')}) — não aberta por ser teste. envio=${envio.id}`);
+    } else if (alertas.length) {
       try {
         const d = await this.demandas.criar(
           envio.tenantId,
           {
-            familiaId: envio.familiaId,
+            familiaId: envio.familiaId ?? undefined,
             tipo: 'OUTRO',
             tituloPersonalizado: `Questionário: ${alertas.join(' e ')}`,
             origem: 'QUESTIONARIO',
@@ -291,14 +306,19 @@ export class QuestionarioPublicoService {
     }
 
     // Agradecimento por WhatsApp. Falha aqui não desfaz a resposta já gravada.
-    const nome = envio.familia.lead.nomeCorreto ?? envio.familia.lead.nome;
+    const nome = envio.teste ? envio.testeNome ?? 'Teste' : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
+    const agradecimento = `Obrigado, ${nome}! Recebemos suas respostas do questionário "${envio.questionario.titulo}".`;
     try {
-      const leadsService = await this.getLeadsService();
-      await leadsService.sendWhatsappMessage(
-        { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
-        envio.familia.leadId,
-        { message: `Obrigado, ${nome}! Recebemos suas respostas do questionário "${envio.questionario.titulo}".` },
-      );
+      if (envio.teste) {
+        await this.envios.enviarTextoParaNumero(envio.tenantId, envio.testeTelefone ?? '', `[TESTE] ${agradecimento}`);
+      } else {
+        const leadsService = await this.getLeadsService();
+        await leadsService.sendWhatsappMessage(
+          { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
+          envio.familia!.leadId,
+          { message: agradecimento },
+        );
+      }
     } catch (e: any) {
       this.logger.warn(`Falha ao enviar agradecimento do questionário: envio=${envio.id} erro=${e?.message || e}`);
     }

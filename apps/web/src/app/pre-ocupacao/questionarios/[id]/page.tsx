@@ -14,11 +14,13 @@ import AbaEnvio from "./AbaEnvio";
 import AbaAcompanhamento from "./AbaAcompanhamento";
 import AbaRelatorio from "./AbaRelatorio";
 import RespostasFamilia, { RespostasEnvio } from "./RespostasFamilia";
+import AbaTeste from "./AbaTeste";
 
-type Aba = "perguntas" | "envio" | "acompanhamento" | "relatorio";
+type Aba = "perguntas" | "teste" | "envio" | "acompanhamento" | "relatorio";
 
 const ABAS: { key: Aba; label: string }[] = [
   { key: "perguntas", label: "Perguntas" },
+  { key: "teste", label: "Teste" },
   { key: "envio", label: "Envio" },
   { key: "acompanhamento", label: "Acompanhamento" },
   { key: "relatorio", label: "Relatório" },
@@ -158,15 +160,26 @@ export default function QuestionarioDetalhePage() {
                     Encerrar
                   </button>
                 )}
-                {q.status === "RASCUNHO" && (
-                  <button
-                    onClick={() => setAcao("publicar")}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                    style={{ background: "var(--via-teal, #1D9E75)" }}
-                  >
-                    Publicar
-                  </button>
-                )}
+                {q.status === "RASCUNHO" &&
+                  (q.testeAprovadoEm ? (
+                    <button
+                      onClick={() => setAcao("publicar")}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                      style={{ background: "var(--via-teal, #1D9E75)" }}
+                    >
+                      Publicar
+                    </button>
+                  ) : (
+                    // Publicar só depois de um teste respondido + ok da equipe
+                    <button
+                      onClick={() => setAba("teste")}
+                      title="Faça um teste e aprove antes de publicar"
+                      className="px-4 py-2 rounded-lg text-sm font-semibold border border-dashed"
+                      style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)" }}
+                    >
+                      🔒 Publicar (faça o teste antes)
+                    </button>
+                  ))}
               </div>
             </div>
 
@@ -187,6 +200,7 @@ export default function QuestionarioDetalhePage() {
             </div>
 
             {aba === "perguntas" && <AbaPerguntas questionario={q} onSalvo={setQ} />}
+            {aba === "teste" && <AbaTeste questionario={q} onAtualizado={setQ} onVerRespostas={verRespostas} />}
             {aba === "envio" && <AbaEnvio questionario={q} onEnviado={carregar} />}
             {aba === "acompanhamento" && <AbaAcompanhamento questionario={q} onVerRespostas={verRespostas} />}
             {aba === "relatorio" && <AbaRelatorio questionario={q} onVerRespostas={verRespostas} />}

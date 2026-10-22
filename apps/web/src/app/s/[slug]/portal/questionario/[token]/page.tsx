@@ -42,6 +42,7 @@ type Dados =
       descricao: string | null;
       config: QuestionarioConfig | null;
       jaRespondido: false;
+      teste?: boolean;
       prefill: { NOME: string; TELEFONE: string | null };
       perguntas: Pergunta[];
       respostas: RespostaSalva[];
@@ -860,6 +861,11 @@ export default function QuestionarioPublicoPage() {
 
         {!carregando && dados && !dados.jaRespondido && !concluido && (
           <>
+            {dados.teste && (
+              <p className="mb-3 rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-2 text-center text-base font-semibold text-amber-900">
+                Modo teste: estas respostas não contam no relatório
+              </p>
+            )}
             {/* Progresso */}
             <div className="mb-4">
               <div className="mb-1 flex items-baseline justify-between gap-3 text-sm text-slate-600">

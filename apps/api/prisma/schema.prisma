@@ -2223,6 +2223,9 @@ model PreOcupacaoQuestionario {
   status        PreOcupacaoQuestionarioStatus @default(RASCUNHO)
   mensagemEnvio String
   validadeDias  Int                           @default(15)
+  // Publicar exige um teste respondido até o fim + ok da equipe; mudar perguntas zera o ok
+  testeAprovadoEm  DateTime?
+  testeAprovadoPor String?
   // Grupos que repetem por pessoa (ex.: { grupos: { morador: { rotulo, contagem } } }) e textos de abertura/encerramento
   config        Json?
   criadoPor     String
@@ -2264,7 +2267,12 @@ model PreOcupacaoQuestionarioEnvio {
   id              String                             @id @default(uuid())
   tenantId        String
   questionarioId  String
-  familiaId       String
+  // Nulo nos envios de TESTE (vão para uma pessoa de fora do cadastro)
+  familiaId       String?
+  teste           Boolean                            @default(false)
+  testeNome       String?
+  testeTelefone   String?
+  testeCpf        String?
   statusEnvio     PreOcupacaoQuestionarioEnvioStatus @default(PENDENTE)
   agendadoPara    DateTime?
   tokenHash       String?
@@ -2281,10 +2289,11 @@ model PreOcupacaoQuestionarioEnvio {
   atualizadoEm    DateTime                           @updatedAt
 
   questionario PreOcupacaoQuestionario           @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
-  familia      PreOcupacaoFamilia                @relation(fields: [familiaId], references: [id], onDelete: Cascade)
+  familia      PreOcupacaoFamilia?               @relation(fields: [familiaId], references: [id], onDelete: Cascade)
   respostas    PreOcupacaoQuestionarioResposta[]
 
   @@unique([questionarioId, familiaId])
+  @@index([questionarioId, teste])
   @@index([questionarioId, statusEnvio])
   @@index([familiaId])
   @@index([tokenHash])

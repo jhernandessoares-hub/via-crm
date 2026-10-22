@@ -88,6 +88,26 @@ export class QuestionariosController {
     return this.svc.cancelarAgendamento(req.user.tenantId, id, envioId || undefined, this.quem(req));
   }
 
+  @Post(':id/testes')
+  enviarTeste(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.svc.enviarTeste(req.user.tenantId, id, body ?? {}, this.quem(req));
+  }
+
+  @Get(':id/testes')
+  listarTestes(@Request() req: any, @Param('id') id: string) {
+    return this.svc.listarTestes(req.user.tenantId, id);
+  }
+
+  @Delete(':id/testes/:envioId')
+  excluirTeste(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
+    return this.svc.excluirTeste(req.user.tenantId, id, envioId);
+  }
+
+  @Post(':id/aprovar-teste')
+  aprovarTeste(@Request() req: any, @Param('id') id: string) {
+    return this.svc.aprovarTeste(req.user.tenantId, id, this.quem(req));
+  }
+
   @Post(':id/reenviar-nao-respondidos')
   reenviarNaoRespondidos(@Request() req: any, @Param('id') id: string) {
     return this.svc.reenviarNaoRespondidos(req.user.tenantId, id);
