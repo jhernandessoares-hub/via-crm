@@ -5,6 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
+import { maskPhone } from "@/lib/format";
 import RitmoEnvio from "./RitmoEnvio";
 import { FAMILIA_STATUS_LABEL } from "../../_lib/constants";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao } from "../../_lib/questionario";
@@ -17,6 +18,7 @@ type FamiliaPreview = {
   unidade: string | null;
   statusFamilia: string;
   acompanhamento: "EM_DIA" | "COM_PENDENCIA";
+  telefone?: string | null;
   semTelefone: boolean;
   semCpf?: boolean;
   situacao: Situacao | null;
@@ -267,6 +269,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
                   </th>
                   <th className="px-4 py-3">Nº</th>
                   <th className="px-4 py-3">Família</th>
+                  <th className="px-4 py-3">Telefone</th>
                   <th className="px-4 py-3">Empreendimento / Unidade</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Situação neste questionário</th>
@@ -294,6 +297,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
                       </td>
                       <td className="px-4 py-2">{f.numero}</td>
                       <td className="px-4 py-2">{f.nome}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">{f.telefone ? maskPhone(f.telefone) : "—"}</td>
                       <td className="px-4 py-2" style={{ color: "var(--shell-subtext)" }}>
                         {f.empreendimento ? `${f.empreendimento}${f.unidade ? ` · ${f.unidade}` : ""}` : "—"}
                       </td>
