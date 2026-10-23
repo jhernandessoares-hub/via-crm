@@ -14,11 +14,11 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
 }
 
 const btn =
-  "pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity shadow-sm";
+  "pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center opacity-90 hover:opacity-100 transition-opacity shadow-md";
 const btnStyle = {
-  background: "var(--shell-card-bg)",
-  border: "1px solid var(--shell-card-border)",
-  color: "var(--shell-subtext)",
+  background: "var(--via-navy, #0D1B3E)",
+  border: "1px solid var(--via-teal, #1D9E75)",
+  color: "#FFFFFF",
 } as const;
 
 /** Botões discretos no canto direito: um no alto (vai ao topo) e um embaixo (vai ao fim). */
