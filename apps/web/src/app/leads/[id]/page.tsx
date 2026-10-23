@@ -6966,7 +6966,18 @@ function discardAiSuggestion() {
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
                     <div className="min-w-0 leading-tight">
-                      <div className="text-[9.5px] text-[var(--shell-subtext)]">Canal</div>
+                      {/* Sem canal gravado o seletor mostra só uma sugestão: deixa claro, senão parece cadastrado */}
+                      {!pendingCanalChange && !lead?.conversaCanal ? (
+                        <div className="text-[9.5px] font-semibold text-amber-600" title="Este lead ainda não tem canal gravado. O canal é gravado na primeira mensagem enviada ou ao escolher aqui.">
+                          Canal sugerido · não gravado
+                        </div>
+                      ) : !pendingCanalChange && lead?.conversaCanal === "WHATSAPP_OFICIAL" && !waOficialConfigured ? (
+                        <div className="text-[9.5px] font-semibold text-amber-600" title="O lead está no WhatsApp Oficial, mas a imobiliária não tem número Oficial configurado.">
+                          Canal gravado: Oficial (não configurado)
+                        </div>
+                      ) : (
+                        <div className="text-[9.5px] text-[var(--shell-subtext)]">Canal</div>
+                      )}
                     <select
                       value={(() => {
                         // Mudança pendente tem prioridade sempre

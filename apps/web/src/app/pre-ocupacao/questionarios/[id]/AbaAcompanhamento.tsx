@@ -326,7 +326,8 @@ export default function AbaAcompanhamento({
                     ))}
                     {!["RESPONDEU", "AGENDADO", "AGUARDANDO_ENVIO"].includes(l.situacao) &&
                       (!l.tokenExpiraEm ? (
-                        <p className="text-[11px] mt-1 text-red-600">Link cancelado</p>
+                        // Sem link e sem nenhum envio que saiu: o link nem chegou a ser criado
+                        l.enviosCount > 0 ? <p className="text-[11px] mt-1 text-red-600">Link cancelado</p> : null
                       ) : new Date(l.tokenExpiraEm) < new Date() ? (
                         <p className="text-[11px] mt-1 text-red-600">Link vencido</p>
                       ) : (

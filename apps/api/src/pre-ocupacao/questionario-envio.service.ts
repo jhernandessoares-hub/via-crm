@@ -7,6 +7,7 @@ import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-
 import { gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { registrarEventoEnvio } from './questionario-evento.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
+import { decidirCanalQuestionario } from './questionario-canal.util';
 import { FALHAS_SEGUIDAS_PARA_PAUSAR, falhaDoNumero, inicioDoDiaSP } from './questionario-ritmo.util';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -23,10 +24,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * `QuestionarioEnvioWorker` (fila) — ou direto, em background, quando o Redis
  * não está disponível.
  */
-export const SEM_CANAL = 'Lead sem canal de WhatsApp definido. Defina o canal no lead e reenvie.';
-export const OFICIAL_SEM_NUMERO =
-  'Lead no WhatsApp Oficial, mas a imobiliária não tem número Oficial (sairia pelo número da plataforma). Troque o canal do lead para o WhatsApp Light e reenvie.';
-
 @Injectable()
 export class QuestionarioEnvioService {
   private readonly logger = new Logger('PreOcupacaoQuestionarioEnvioService');
@@ -155,22 +152,25 @@ export class QuestionarioEnvioService {
     const nome = envio.teste ? envio.testeNome ?? 'Teste' : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
     let link: string | undefined;
     try {
-      // Sem canal definido no lead a mensagem cairia no WhatsApp Oficial (às vezes no
-      // número da plataforma), que diz "ok" mesmo sem entregar — e ainda trava o canal
-      // do lead em Oficial. Melhor não enviar e a equipe definir o canal no lead.
+      // Canal do envio: o do lead; lead sem canal útil sai pelo WhatsApp Light conectado
+      // da imobiliária e passa a ficar nele (nunca pelo número Oficial da plataforma).
       if (!envio.teste) {
         const lead = envio.familia!.lead;
-        if (!lead.conversaCanal || (lead.conversaCanal === 'WHATSAPP_LIGHT' && !lead.conversaSessionId)) {
-          throw new Error(SEM_CANAL);
-        }
-        // Oficial sem número próprio cai no número da plataforma (whatsapp-creds.ts):
-        // a família não conhece e a mensagem costuma não chegar.
-        if (lead.conversaCanal === 'WHATSAPP_OFICIAL') {
-          const tenant = await this.prisma.tenant.findUnique({
-            where: { id: envio.tenantId },
-            select: { whatsappToken: true, whatsappPhoneNumberId: true },
+        const [tenant, sessao] = await Promise.all([
+          this.prisma.tenant.findUnique({ where: { id: envio.tenantId }, select: { whatsappToken: true, whatsappPhoneNumberId: true } }),
+          this.prisma.whatsappUnofficialSession.findFirst({
+            where: { tenantId: envio.tenantId, status: 'CONNECTED' },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true },
+          }),
+        ]);
+        const decisao = decidirCanalQuestionario(lead, !!(tenant?.whatsappToken && tenant?.whatsappPhoneNumberId), sessao?.id ?? null);
+        if (decisao.acao === 'ERRO') throw new Error(decisao.erro);
+        if (decisao.acao === 'GRAVAR_LIGHT') {
+          await this.prisma.lead.update({
+            where: { id: lead.id },
+            data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: decisao.sessionId },
           });
-          if (!tenant?.whatsappToken || !tenant?.whatsappPhoneNumberId) throw new Error(OFICIAL_SEM_NUMERO);
         }
       }
 
