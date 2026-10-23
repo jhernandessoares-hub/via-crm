@@ -83,6 +83,7 @@ describe('mensagem do envio na conversa do lead', () => {
   const ev = (over: any = {}) => ({
     id: 'ev1',
     leadId: 'L1',
+    channel: 'whatsapp.unofficial.out',
     sourceRef: 'MSG9',
     criadoEm: new Date(),
     payloadRaw: { text: `Olá! Responda aqui: https://x/portal/questionario/${token}` },
@@ -102,5 +103,11 @@ describe('mensagem do envio na conversa do lead', () => {
   it('com id da mensagem guardado, usa o id; mensagem de outro lead não conta', () => {
     expect(acharMensagemDoEnvio({ leadId: 'L1', tokenHash: null, waMessageId: 'MSG9' }, [ev()], hash)?.id).toBe('ev1');
     expect(acharMensagemDoEnvio({ leadId: 'L2', tokenHash: `h:${token}`, waMessageId: null }, [ev()], hash)).toBeNull();
+  });
+
+  it('acha também a mensagem que saiu pelo WhatsApp Oficial (id fica no payload)', () => {
+    const oficial = ev({ id: 'ev2', channel: 'whatsapp.out', sourceRef: null, payloadRaw: { text: { body: `link /portal/questionario/${token}` }, messageId: 'wamid.X' } });
+    expect(acharMensagemDoEnvio({ leadId: 'L1', tokenHash: `h:${token}`, waMessageId: null }, [oficial], hash)?.channel).toBe('whatsapp.out');
+    expect(acharMensagemDoEnvio({ leadId: 'L1', tokenHash: null, waMessageId: 'wamid.X' }, [oficial], hash)?.id).toBe('ev2');
   });
 });

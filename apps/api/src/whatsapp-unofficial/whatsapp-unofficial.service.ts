@@ -1988,7 +1988,7 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
     // NUNCA cria lead a partir dessa mensagem — só anexa a um lead já existente
     const lead = await this.prisma.lead.findFirst({
       where: { tenantId, telefoneKey, deletedAt: null },
-      select: { id: true },
+      select: { id: true, conversaCanal: true },
       orderBy: { criadoEm: 'desc' },
     });
     if (!lead) return;
@@ -2037,6 +2037,14 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
         },
       },
     });
+
+    // Lead ainda sem canal: a conversa está acontecendo neste WhatsApp Light, então ele
+    // passa a ser o canal do lead (senão o CRM — e o questionário — não sabem por onde mandar).
+    if (!lead.conversaCanal) {
+      await this.prisma.lead
+        .update({ where: { id: lead.id }, data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: sessionId } })
+        .catch((e: any) => logger.warn(`Falha ao gravar canal do lead ${lead.id} (msg pelo celular): ${e?.message}`));
+    }
 
     logger.log(`📱 Mensagem enviada direto do celular do corretor registrada — leadId=${lead.id} sessão=${sessionId}`);
   }
