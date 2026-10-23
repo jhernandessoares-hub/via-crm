@@ -55,7 +55,7 @@ export async function registrarAvisoEntregaQuestionario(
 
 const LINK_QUESTIONARIO_RE = /\/portal\/questionario\/([0-9a-f]{64})/i;
 
-type EventoSaida = { id: string; leadId: string; sourceRef: string | null; criadoEm: Date; payloadRaw: unknown };
+type EventoSaida = { id: string; leadId: string; channel: string; sourceRef: string | null; criadoEm: Date; payloadRaw: unknown };
 
 function textoDoEvento(payload: any): string {
   const t = payload?.text;
@@ -63,9 +63,9 @@ function textoDoEvento(payload: any): string {
 }
 
 /**
- * Acha, na conversa do lead (WhatsApp Light), a mensagem que levou o link deste
- * envio: pelo id da mensagem quando o envio já guardou, senão pelo token do link
- * (o hash tem que bater com o tokenHash atual — reenvio troca o token).
+ * Acha, na conversa do lead (WhatsApp Light ou Oficial), a mensagem que levou o
+ * link deste envio: pelo id da mensagem quando o envio já guardou, senão pelo
+ * token do link (o hash tem que bater com o tokenHash atual — reenvio troca o token).
  */
 export function acharMensagemDoEnvio(
   envio: { leadId: string; tokenHash: string | null; waMessageId: string | null },
@@ -73,7 +73,10 @@ export function acharMensagemDoEnvio(
   hash: (token: string) => string,
 ): EventoSaida | null {
   const doLead = eventos.filter((e) => e.leadId === envio.leadId);
-  if (envio.waMessageId) return doLead.find((e) => e.sourceRef === envio.waMessageId) ?? null;
+  if (envio.waMessageId) {
+    const id = envio.waMessageId;
+    return doLead.find((e) => e.sourceRef === id || (e.payloadRaw as any)?.messageId === id) ?? null;
+  }
   if (!envio.tokenHash) return null;
   return (
     doLead.find((e) => {
@@ -116,17 +119,27 @@ export async function conferirEntregaPelaConversa(
     const eventos = await prisma.leadEvent.findMany({
       where: {
         tenantId,
-        channel: 'whatsapp.unofficial.out',
+        channel: { in: ['whatsapp.unofficial.out', 'whatsapp.out'] },
         leadId: { in: Array.from(new Set(comLead.map((p) => p.familia!.leadId))) },
         criadoEm: { gte: desde },
       },
-      select: { id: true, leadId: true, sourceRef: true, criadoEm: true, payloadRaw: true },
+      select: { id: true, leadId: true, channel: true, sourceRef: true, criadoEm: true, payloadRaw: true },
     });
 
     for (const p of comLead) {
       const ev = acharMensagemDoEnvio({ leadId: p.familia!.leadId, tokenHash: p.tokenHash, waMessageId: p.waMessageId }, eventos, hash);
       if (!ev) continue;
       const payload = ev.payloadRaw as any;
+      // Saiu pelo WhatsApp Oficial: o aviso de entrega dele nunca foi guardado na
+      // conversa. Só registra o canal, para a tela mostrar e a equipe reenviar pelo Light.
+      if (ev.channel === 'whatsapp.out') {
+        if (p.canalEnvio === 'WHATSAPP_OFICIAL') continue;
+        await prisma.preOcupacaoQuestionarioEnvio.update({
+          where: { id: p.id },
+          data: { canalEnvio: 'WHATSAPP_OFICIAL', ...(!p.waMessageId && payload?.messageId ? { waMessageId: String(payload.messageId) } : {}) },
+        });
+        continue;
+      }
       const entregue = payload?.waMessageStatus === 'DELIVERED' || payload?.waMessageStatus === 'READ';
       if (!entregue && p.waMessageId) continue; // já ligado e sem ✓✓ ainda: nada a fazer
       const entregueEm = entregue ? (payload?.waMessageStatusAt ? new Date(payload.waMessageStatusAt) : ev.criadoEm) : null;

@@ -24,6 +24,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * não está disponível.
  */
 export const SEM_CANAL = 'Lead sem canal de WhatsApp definido. Defina o canal no lead e reenvie.';
+export const OFICIAL_SEM_NUMERO =
+  'Lead no WhatsApp Oficial, mas a imobiliária não tem número Oficial (sairia pelo número da plataforma). Troque o canal do lead para o WhatsApp Light e reenvie.';
 
 @Injectable()
 export class QuestionarioEnvioService {
@@ -160,6 +162,15 @@ export class QuestionarioEnvioService {
         const lead = envio.familia!.lead;
         if (!lead.conversaCanal || (lead.conversaCanal === 'WHATSAPP_LIGHT' && !lead.conversaSessionId)) {
           throw new Error(SEM_CANAL);
+        }
+        // Oficial sem número próprio cai no número da plataforma (whatsapp-creds.ts):
+        // a família não conhece e a mensagem costuma não chegar.
+        if (lead.conversaCanal === 'WHATSAPP_OFICIAL') {
+          const tenant = await this.prisma.tenant.findUnique({
+            where: { id: envio.tenantId },
+            select: { whatsappToken: true, whatsappPhoneNumberId: true },
+          });
+          if (!tenant?.whatsappToken || !tenant?.whatsappPhoneNumberId) throw new Error(OFICIAL_SEM_NUMERO);
         }
       }
 

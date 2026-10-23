@@ -751,6 +751,7 @@ export class QuestionariosService {
       enviosCount: e.enviosCount,
       ultimoEnvioErro: e.ultimoEnvioErro,
       tokenExpiraEm: e.tokenExpiraEm,
+      canalEnvio: e.canalEnvio,
       alertas: alertas.get(e.id) ?? [],
     }));
 

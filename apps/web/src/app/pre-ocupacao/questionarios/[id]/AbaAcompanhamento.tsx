@@ -29,6 +29,7 @@ type Linha = {
   enviosCount: number;
   ultimoEnvioErro: string | null;
   tokenExpiraEm: string | null;
+  canalEnvio: string | null;
 };
 
 type Dados = {
@@ -171,12 +172,13 @@ export default function AbaAcompanhamento({
   function exportar() {
     if (!dados) return;
     baixarCsv(`acompanhamento-${slugArquivo(questionario.titulo)}.csv`, [
-      ["Nº", "Família", "Telefone", "Situação", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
+      ["Nº", "Família", "Telefone", "Situação", "Canal", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
       ...dados.linhas.map((l) => [
         String(l.numero),
         l.nome,
         l.telefone ?? "",
         SITUACAO_LABEL[l.situacao],
+        l.canalEnvio === "WHATSAPP_OFICIAL" ? "WhatsApp Oficial" : l.canalEnvio === "WHATSAPP_LIGHT" ? "WhatsApp Light" : "",
         l.agendadoPara ? formatDateTime(l.agendadoPara) : "",
         l.enviadoEm ? formatDateTime(l.enviadoEm) : "",
         l.linkAbertoEm ? formatDateTime(l.linkAbertoEm) : "",
@@ -332,6 +334,12 @@ export default function AbaAcompanhamento({
                           Link vale até {formatDateTime(l.tokenExpiraEm)}
                         </p>
                       ))}
+                    {l.situacao === "ENVIADO" && l.canalEnvio === "WHATSAPP_OFICIAL" && (
+                      <p className="text-[11px] mt-1 font-semibold text-amber-600 max-w-xs">
+                        Saiu pelo WhatsApp Oficial (número da plataforma) e pode não ter chegado. Troque o canal do lead para o
+                        WhatsApp Light e reenvie.
+                      </p>
+                    )}
                     {l.situacao === "FALHA" && l.ultimoEnvioErro && (
                       <p className="text-[11px] mt-1 text-red-600 max-w-xs truncate" title={l.ultimoEnvioErro}>
                         {l.ultimoEnvioErro}
