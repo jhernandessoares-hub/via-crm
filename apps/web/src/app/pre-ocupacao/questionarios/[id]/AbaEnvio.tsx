@@ -357,8 +357,8 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
               <tbody>
                 {visiveis.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center" style={{ color: "var(--shell-subtext)" }}>
-                      Nenhuma família com esses filtros.
+                    <td colSpan={7} className="px-4 py-24 text-center" style={{ color: "var(--shell-subtext)" }}>
+                      Nenhuma família com esses filtros. Ajuste os filtros dos títulos ou clique em "Limpar filtros das colunas".
                     </td>
                   </tr>
                 )}

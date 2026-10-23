@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Filtro no estilo Excel para o título de uma coluna: lista os valores que
@@ -20,22 +21,40 @@ export default function FiltroColuna({
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
-  // Posição fixa na tela: a tabela fica dentro de um overflow-x-auto, que cortaria um popup absoluto
+  // O popup vai direto no <body> (portal): dentro da tabela ele era cortado quando o
+  // filtro deixava a tabela vazia/baixa. Posição calculada a partir do botão ▾.
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const botaoRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   function posicionar() {
     const r = botaoRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 272) });
+    if (!r) return;
+    const margem = 8;
+    const largura = popupRef.current?.offsetWidth ?? 256;
+    const altura = popupRef.current?.offsetHeight ?? 340;
+    // Perto da borda direita abre para a esquerda; sem espaço embaixo abre para cima
+    const left = Math.max(margem, Math.min(r.left, window.innerWidth - largura - margem));
+    const cabeEmbaixo = r.bottom + 4 + altura <= window.innerHeight - margem;
+    const top = cabeEmbaixo ? r.bottom + 4 : Math.max(margem, r.top - 4 - altura);
+    setPos({ top, left });
   }
+
+  // Depois de abrir (e quando a lista muda de tamanho) recalcula com a medida real do popup
+  useLayoutEffect(() => {
+    if (aberto) posicionar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, busca, valores.length]);
 
   // Fecha só com clique fora ou Esc. Marcar uma opção muda o tamanho da tabela e
   // faz a página rolar; por isso a rolagem só reposiciona o popup, não fecha.
   useEffect(() => {
     if (!aberto) return;
     const fechar = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+      const alvo = e.target as Node;
+      if (ref.current?.contains(alvo) || popupRef.current?.contains(alvo)) return;
+      setAberto(false);
     };
     const tecla = (e: KeyboardEvent) => {
       if (e.key === "Escape") setAberto(false);
@@ -94,8 +113,9 @@ export default function FiltroColuna({
       >
         ▾
       </button>
-      {aberto && pos && (
+      {aberto && pos && typeof document !== "undefined" && createPortal(
         <div
+          ref={popupRef}
           className="fixed z-50 w-64 rounded-lg border shadow-lg p-2 font-normal normal-case"
           style={{ top: pos.top, left: pos.left, background: "var(--shell-card-bg)", borderColor: "var(--shell-card-border)" }}
         >
@@ -133,7 +153,8 @@ export default function FiltroColuna({
               Limpar filtro
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
