@@ -389,7 +389,7 @@ export default function AbaRelatorio({
                   <th className="px-4 py-3">Nº</th>
                   <th className="px-4 py-3">Família</th>
                   {rel.perguntas.map((p) => (
-                    <th key={p.id} className="px-4 py-3 min-w-[180px]" title={p.enunciado}>
+                    <th key={p.id} className="px-4 py-3 min-w-[180px] max-w-[220px] truncate whitespace-nowrap" title={p.enunciado}>
                       {p.enunciado.length > 40 ? `${p.enunciado.slice(0, 40)}…` : p.enunciado}
                     </th>
                   ))}
@@ -413,7 +413,10 @@ export default function AbaRelatorio({
                     <td className="px-4 py-2">{f.numero}</td>
                     <td className="px-4 py-2 whitespace-nowrap">{f.nome}</td>
                     {rel.perguntas.map((p) => (
-                      <td key={p.id} className="px-4 py-2 text-xs">{f.respostas[p.id] || "—"}</td>
+                      // Uma linha só por família: texto longo é cortado; a resposta inteira abre no clique da linha
+                      <td key={p.id} className="px-4 py-2 text-xs max-w-[220px] truncate whitespace-nowrap" title={f.respostas[p.id] || undefined}>
+                        {f.respostas[p.id] || "—"}
+                      </td>
                     ))}
                   </tr>
                 ))}
