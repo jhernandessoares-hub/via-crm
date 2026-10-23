@@ -52,3 +52,95 @@ export async function registrarAvisoEntregaQuestionario(
     logger.warn(`Falha ao registrar aviso de entrega: msg=${waMessageId} aviso=${aviso} erro=${e?.message || e}`);
   }
 }
+
+const LINK_QUESTIONARIO_RE = /\/portal\/questionario\/([0-9a-f]{64})/i;
+
+type EventoSaida = { id: string; leadId: string; sourceRef: string | null; criadoEm: Date; payloadRaw: unknown };
+
+function textoDoEvento(payload: any): string {
+  const t = payload?.text;
+  return [typeof t === 'string' ? t : t?.body, payload?.message, payload?.body].filter((x) => typeof x === 'string').join('\n');
+}
+
+/**
+ * Acha, na conversa do lead (WhatsApp Light), a mensagem que levou o link deste
+ * envio: pelo id da mensagem quando o envio já guardou, senão pelo token do link
+ * (o hash tem que bater com o tokenHash atual — reenvio troca o token).
+ */
+export function acharMensagemDoEnvio(
+  envio: { leadId: string; tokenHash: string | null; waMessageId: string | null },
+  eventos: EventoSaida[],
+  hash: (token: string) => string,
+): EventoSaida | null {
+  const doLead = eventos.filter((e) => e.leadId === envio.leadId);
+  if (envio.waMessageId) return doLead.find((e) => e.sourceRef === envio.waMessageId) ?? null;
+  if (!envio.tokenHash) return null;
+  return (
+    doLead.find((e) => {
+      const token = LINK_QUESTIONARIO_RE.exec(textoDoEvento(e.payloadRaw))?.[1];
+      return !!token && hash(token) === envio.tokenHash;
+    }) ?? null
+  );
+}
+
+/**
+ * "Recebeu" = a família recebeu a mensagem. Envios que ainda esperam a entrega
+ * olham a conversa do lead: se a mensagem do link já tem ✓✓ (entregue/lida),
+ * grava a entrega. Corrige os envios feitos antes do aviso de entrega existir e
+ * qualquer aviso que se perdeu. Idempotente e nunca lança.
+ */
+export async function conferirEntregaPelaConversa(
+  prisma: PrismaService,
+  tenantId: string,
+  questionarioId: string,
+  hash: (token: string) => string,
+) {
+  try {
+    const pendentes = await prisma.preOcupacaoQuestionarioEnvio.findMany({
+      where: {
+        questionarioId,
+        tenantId,
+        teste: false,
+        statusEnvio: 'ENVIADO',
+        entregueEm: null,
+        linkAbertoEm: null,
+        respondidoEm: null,
+        enviadoEm: { not: null },
+      },
+      select: { id: true, tokenHash: true, waMessageId: true, canalEnvio: true, enviadoEm: true, familia: { select: { leadId: true } } },
+    });
+    const comLead = pendentes.filter((p) => p.familia && p.enviadoEm);
+    if (!comLead.length) return;
+
+    const desde = new Date(Math.min(...comLead.map((p) => p.enviadoEm!.getTime())) - 5 * 60 * 1000);
+    const eventos = await prisma.leadEvent.findMany({
+      where: {
+        tenantId,
+        channel: 'whatsapp.unofficial.out',
+        leadId: { in: Array.from(new Set(comLead.map((p) => p.familia!.leadId))) },
+        criadoEm: { gte: desde },
+      },
+      select: { id: true, leadId: true, sourceRef: true, criadoEm: true, payloadRaw: true },
+    });
+
+    for (const p of comLead) {
+      const ev = acharMensagemDoEnvio({ leadId: p.familia!.leadId, tokenHash: p.tokenHash, waMessageId: p.waMessageId }, eventos, hash);
+      if (!ev) continue;
+      const payload = ev.payloadRaw as any;
+      const entregue = payload?.waMessageStatus === 'DELIVERED' || payload?.waMessageStatus === 'READ';
+      if (!entregue && p.waMessageId) continue; // já ligado e sem ✓✓ ainda: nada a fazer
+      const entregueEm = entregue ? (payload?.waMessageStatusAt ? new Date(payload.waMessageStatusAt) : ev.criadoEm) : null;
+      await prisma.preOcupacaoQuestionarioEnvio.update({
+        where: { id: p.id },
+        data: {
+          ...(!p.waMessageId && ev.sourceRef ? { waMessageId: ev.sourceRef } : {}),
+          ...(!p.canalEnvio ? { canalEnvio: 'WHATSAPP_LIGHT' } : {}),
+          ...(entregueEm ? { entregueEm } : {}),
+        },
+      });
+      if (entregueEm) await registrarEventoEnvio(prisma, p.id, 'ENTREGUE', 'Confirmação lida da conversa do lead');
+    }
+  } catch (e: any) {
+    logger.warn(`Falha ao conferir entrega pela conversa: questionario=${questionarioId} erro=${e?.message || e}`);
+  }
+}
