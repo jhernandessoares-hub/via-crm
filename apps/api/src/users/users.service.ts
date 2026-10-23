@@ -260,7 +260,11 @@ export class UsersService {
     if (data.nome !== undefined) updateData.nome = data.nome.trim();
     if (data.email !== undefined) updateData.email = data.email.trim().toLowerCase();
     if (data.apelido !== undefined) updateData.apelido = data.apelido?.trim() || null;
-    if (data.preferences !== undefined) updateData.preferences = data.preferences;
+    if (data.preferences !== undefined) {
+      // merge: trocar o tema não pode apagar lgpdAccepted/welcomeSeen
+      const current = (user.preferences && typeof user.preferences === 'object' ? user.preferences : {}) as Record<string, unknown>;
+      updateData.preferences = { ...current, ...data.preferences };
+    }
     if (data.novaSenha) updateData.senhaHash = await bcrypt.hash(data.novaSenha, 10);
     if (data.whatsappNumber !== undefined) {
       const raw = data.whatsappNumber?.trim() || '';

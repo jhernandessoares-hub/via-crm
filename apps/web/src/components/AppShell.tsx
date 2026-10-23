@@ -212,7 +212,7 @@ function AppShellInner({
         method: "PATCH",
         body: JSON.stringify({ preferences: { theme: next } }),
       });
-      setProfile((p) => (p ? { ...p, preferences: { theme: next } } : p));
+      setProfile((p) => (p ? { ...p, preferences: { ...p.preferences, theme: next } } : p));
     } catch {
       /* falha silenciosa — UI já refletiu */
     }
