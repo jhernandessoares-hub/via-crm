@@ -53,86 +53,88 @@ const CORES = ["#2563eb", "#1D9E75", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4",
 
 type ItemGrafico = { label: string; total: number; percentual: number; extra?: string };
 
-function Legenda({ itens, cores }: { itens: ItemGrafico[]; cores?: boolean }) {
+/** Lista com barrinhas (a visão de sempre): texto completo, quantidade e %. */
+function Barras({ itens, cores }: { itens: ItemGrafico[]; cores?: boolean }) {
+  const max = Math.max(1, ...itens.map((i) => i.total));
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       {itens.map((i, idx) => (
-        <div key={i.label} className="flex items-start gap-2 text-xs" style={{ color: "var(--shell-text)" }}>
-          {cores && <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: CORES[idx % CORES.length] }} />}
-          <span className="flex-1">{i.label}</span>
-          <span className="shrink-0 whitespace-nowrap" style={{ color: "var(--shell-subtext)" }}>
-            {i.total} · {fmtNum(i.percentual)}%{i.extra ? ` · ${i.extra}` : ""}
-          </span>
+        <div key={i.label}>
+          <div className="flex justify-between gap-3 text-xs mb-0.5" style={{ color: "var(--shell-text)" }}>
+            <span className="flex items-start gap-2">
+              {cores && <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: CORES[idx % CORES.length] }} />}
+              {i.label}
+            </span>
+            <span className="shrink-0" style={{ color: "var(--shell-subtext)" }}>
+              {i.total} · {fmtNum(i.percentual)}%{i.extra ? ` · ${i.extra}` : ""}
+            </span>
+          </div>
+          <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--shell-hover)" }}>
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${(i.total / max) * 100}%`, background: cores ? CORES[idx % CORES.length] : "#2563eb" }}
+            />
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-/** Escolha única / aceite: pizza com legenda ao lado. */
+/** Pizza (só para escolha única, onde as fatias somam 100%). */
 function GraficoPizza({ itens }: { itens: ItemGrafico[] }) {
-  const comResposta = itens.filter((i) => i.total > 0);
+  if (!itens.some((i) => i.total > 0)) return null;
   return (
-    <div className="flex flex-col md:flex-row md:items-center gap-4">
-      <div className="h-48 w-full md:w-56 shrink-0">
-        {comResposta.length === 0 ? (
-          <p className="text-sm pt-16 text-center" style={{ color: "var(--shell-subtext)" }}>Sem respostas ainda.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={itens} dataKey="total" nameKey="label" innerRadius={40} outerRadius={80} paddingAngle={1} isAnimationActive={false}>
-                {itens.map((i, idx) => (
-                  <Cell key={i.label} fill={CORES[idx % CORES.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v, _n, item) => [`${v} · ${fmtNum((item?.payload as ItemGrafico)?.percentual)}%`, (item?.payload as ItemGrafico)?.label]} />
-            </PieChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <Legenda itens={itens} cores />
-      </div>
+    <div className="h-52 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie data={itens} dataKey="total" nameKey="label" innerRadius={45} outerRadius={90} paddingAngle={1} isAnimationActive={false}>
+            {itens.map((i, idx) => (
+              <Cell key={i.label} fill={CORES[idx % CORES.length]} />
+            ))}
+          </Pie>
+          <Tooltip formatter={(v, _n, item) => [`${v} · ${fmtNum((item?.payload as ItemGrafico)?.percentual)}%`, (item?.payload as ItemGrafico)?.label]} />
+        </PieChart>
+      </ResponsiveContainer>
     </div>
   );
 }
 
-/** Escolha múltipla / nota: barras deitadas com quantidade e %. */
-function GraficoBarras({ itens }: { itens: ItemGrafico[] }) {
-  const comExtra = itens.filter((i) => i.extra);
+/** Barras em pé para múltipla escolha, aceite e notas (cada opção conta por si). */
+function GraficoColunas({ itens, numerar }: { itens: ItemGrafico[]; numerar: boolean }) {
+  if (!itens.some((i) => i.total > 0)) return null;
+  // Rótulo curto no eixo: o texto completo fica na lista ao lado e no tooltip
+  const dados = itens.map((i, idx) => ({ ...i, curto: numerar ? String(idx + 1) : i.label }));
   return (
-    <div>
-      <div style={{ height: Math.max(80, itens.length * 34) }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={itens} layout="vertical" margin={{ top: 0, right: 72, bottom: 0, left: 0 }}>
-            <XAxis type="number" hide allowDecimals={false} />
-            <YAxis
-              type="category"
-              dataKey="label"
-              width={220}
-              tick={{ fontSize: 11, fill: "var(--shell-text)" }}
-              tickFormatter={(v: string) => (v.length > 34 ? `${v.slice(0, 34)}…` : v)}
-            />
-            <Tooltip formatter={(v, _n, item) => [`${v} · ${fmtNum((item?.payload as ItemGrafico)?.percentual)}%`, "Respostas"]} />
-            <Bar dataKey="total" fill="#2563eb" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-              <LabelList
-                dataKey="total"
-                position="right"
-                style={{ fontSize: 11, fill: "var(--shell-subtext)" }}
-                formatter={(v) => {
-                  const i = itens.find((x) => x.total === v);
-                  return i ? `${v} · ${fmtNum(i.percentual)}%` : String(v);
-                }}
-              />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      {comExtra.length > 0 && (
-        <div className="mt-2">
-          <Legenda itens={comExtra} />
-        </div>
-      )}
+    <div className="h-52 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={dados} margin={{ top: 20, right: 8, bottom: 0, left: 8 }}>
+          <XAxis dataKey="curto" tick={{ fontSize: 11, fill: "var(--shell-text)" }} interval={0} />
+          <YAxis hide allowDecimals={false} />
+          <Tooltip
+            formatter={(v, _n, item) => [`${v} · ${fmtNum((item?.payload as ItemGrafico)?.percentual)}%`, "Respostas"]}
+            labelFormatter={(_l, payload) => (payload?.[0]?.payload as ItemGrafico | undefined)?.label ?? ""}
+          />
+          <Bar dataKey="total" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+            {dados.map((d, idx) => (
+              <Cell key={d.label} fill={CORES[idx % CORES.length]} />
+            ))}
+            <LabelList dataKey="percentual" position="top" style={{ fontSize: 11, fill: "var(--shell-subtext)" }} formatter={(v) => `${fmtNum(Number(v))}%`} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** As duas visões juntas: lista (como sempre foi) e gráfico ao lado; em tela estreita, o gráfico vai para baixo. */
+function ListaEGrafico({ itens, pizza }: { itens: ItemGrafico[]; pizza: boolean }) {
+  const numerar = !pizza && (itens.length > 6 || itens.some((i) => i.label.length > 14));
+  const lista = numerar ? itens.map((i, idx) => ({ ...i, label: `${idx + 1}. ${i.label}` })) : itens;
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-center">
+      <Barras itens={lista} cores />
+      {pizza ? <GraficoPizza itens={itens} /> : <GraficoColunas itens={itens} numerar={numerar} />}
     </div>
   );
 }
@@ -187,7 +189,7 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
                 percentual: o.percentual,
                 extra: o.valores && o.valores.media !== null ? `média ${fmtValor(o.valores.media, "R$")}` : undefined,
               }));
-              return p.tipo === "ESCOLHA_MULTIPLA" ? <GraficoBarras itens={itens} /> : <GraficoPizza itens={itens} />;
+              return <ListaEGrafico itens={itens} pizza={p.tipo === "ESCOLHA_UNICA"} />;
             })()}
             {p.opcoes
               .filter((o) => o.textos && o.textos.length)
@@ -203,7 +205,8 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
         )}
 
         {p.distribuicao && (
-          <GraficoBarras
+          <ListaEGrafico
+            pizza={false}
             itens={p.distribuicao.map((d) => ({
               label: `Nota ${d.nota}`,
               total: d.total,
