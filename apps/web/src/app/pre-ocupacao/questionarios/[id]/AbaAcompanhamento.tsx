@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
+import { maskPhone } from "@/lib/format";
 import { formatDateTime } from "../../_lib/constants";
 import BotaoHistorico from "./HistoricoEnvio";
 import RitmoEnvio from "./RitmoEnvio";
+import PainelQuestionario from "./PainelQuestionario";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao, baixarCsv, slugArquivo } from "../../_lib/questionario";
 
 type Linha = {
@@ -59,6 +62,8 @@ export default function AbaAcompanhamento({
   const [erro, setErro] = useState<string | null>(null);
   const [reenviando, setReenviando] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // Cancelar link pede duas confirmações; reenviar pede uma
+  const [confirmacao, setConfirmacao] = useState<{ tipo: "cancelar1" | "cancelar2" | "reenviar"; linha: Linha } | null>(null);
 
   const publicado = questionario.status === "PUBLICADO";
   const naFilaRef = useRef(0);
@@ -103,7 +108,6 @@ export default function AbaAcompanhamento({
   }
 
   async function cancelarLink(envioId: string) {
-    if (!confirm("Cancelar o link desta família? Ele para de funcionar na hora. As respostas já salvas ficam guardadas e você pode reenviar um link novo depois.")) return;
     setReenviando(envioId);
     setMsg(null);
     try {
@@ -150,6 +154,19 @@ export default function AbaAcompanhamento({
     }
   }
 
+  function abrirFamilia(familiaId: string) {
+    window.open(`/pre-ocupacao/familias/${familiaId}`, "_blank");
+  }
+
+  function confirmar() {
+    if (!confirmacao) return;
+    const { tipo, linha } = confirmacao;
+    if (tipo === "cancelar1") return setConfirmacao({ tipo: "cancelar2", linha });
+    setConfirmacao(null);
+    if (tipo === "cancelar2") cancelarLink(linha.envioId);
+    else reenviar(linha.envioId);
+  }
+
   function exportar() {
     if (!dados) return;
     baixarCsv(`acompanhamento-${slugArquivo(questionario.titulo)}.csv`, [
@@ -184,6 +201,7 @@ export default function AbaAcompanhamento({
   return (
     <div className="space-y-4">
       {questionario.status === "PUBLICADO" && <RitmoEnvio questionario={questionario} />}
+      {dados && dados.totais.total > 0 && <PainelQuestionario dados={dados} />}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {CARDS.map((c) => {
           const ativo = filtro === c.situacao;
@@ -282,8 +300,16 @@ export default function AbaAcompanhamento({
               )}
               {linhas.map((l) => (
                 <tr key={l.envioId} className="border-t" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>
-                  <td className="px-4 py-2">{l.numero}</td>
-                  <td className="px-4 py-2">{l.nome}</td>
+                  <td className="px-4 py-2">
+                    <button onClick={() => abrirFamilia(l.familiaId)} title="Abrir a família em outra aba" className="hover:underline">
+                      {l.numero}
+                    </button>
+                  </td>
+                  <td className="px-4 py-2">
+                    <button onClick={() => abrirFamilia(l.familiaId)} title="Abrir a família em outra aba" className="text-left hover:underline">
+                      {l.nome}
+                    </button>
+                  </td>
                   <td className="px-4 py-2">
                     <Badge variant={SITUACAO_VARIANT[l.situacao]}>{SITUACAO_LABEL[l.situacao]}</Badge>
                     <BotaoHistorico questionarioId={questionario.id} envioId={l.envioId} />
@@ -319,7 +345,7 @@ export default function AbaAcompanhamento({
                   <td className="px-4 py-2 text-right whitespace-nowrap">
                     {l.situacao !== "RESPONDEU" && l.tokenExpiraEm && new Date(l.tokenExpiraEm) > new Date() && (
                       <button
-                        onClick={() => cancelarLink(l.envioId)}
+                        onClick={() => setConfirmacao({ tipo: "cancelar1", linha: l })}
                         disabled={!!reenviando}
                         title="Use se o link foi parar em mãos erradas"
                         className="mr-3 text-xs font-medium text-red-600 disabled:opacity-50"
@@ -349,7 +375,7 @@ export default function AbaAcompanhamento({
                       publicado &&
                       l.situacao !== "AGUARDANDO_ENVIO" && (
                         <button
-                          onClick={() => reenviar(l.envioId)}
+                          onClick={() => setConfirmacao({ tipo: "reenviar", linha: l })}
                           disabled={!!reenviando}
                           className="text-xs font-medium disabled:opacity-50"
                           style={{ color: "var(--via-teal, #1D9E75)" }}
@@ -365,6 +391,56 @@ export default function AbaAcompanhamento({
           </table>
         </div>
       </Card>
+      <Modal
+        open={!!confirmacao}
+        onClose={() => setConfirmacao(null)}
+        title={
+          confirmacao?.tipo === "reenviar"
+            ? "Confirmar reenvio"
+            : confirmacao?.tipo === "cancelar2"
+              ? "Tem certeza?"
+              : "Cancelar link"
+        }
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmacao(null)}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]"
+              style={{ color: "var(--shell-text)" }}
+            >
+              Voltar
+            </button>
+            <button
+              onClick={confirmar}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+              style={{ background: confirmacao?.tipo === "reenviar" ? "var(--via-teal, #1D9E75)" : "#dc2626" }}
+            >
+              {confirmacao?.tipo === "reenviar" ? "Sim, reenviar" : confirmacao?.tipo === "cancelar2" ? "Sim, cancelar link" : "Continuar"}
+            </button>
+          </div>
+        }
+      >
+        {confirmacao && (
+          <p className="text-sm" style={{ color: "var(--shell-text)" }}>
+            {confirmacao.tipo === "reenviar" ? (
+              <>
+                Reenviar o questionário para <strong>{confirmacao.linha.nome}</strong>
+                {confirmacao.linha.telefone ? ` no número ${maskPhone(confirmacao.linha.telefone)}` : ""}? Vai um link novo
+                e o link anterior deixa de valer.
+              </>
+            ) : confirmacao.tipo === "cancelar1" ? (
+              <>
+                Cancelar o link de <strong>{confirmacao.linha.nome}</strong>? Use isso se o link foi parar em mãos erradas.
+              </>
+            ) : (
+              <>
+                O link de <strong>{confirmacao.linha.nome}</strong> para de funcionar na hora. As respostas já salvas ficam
+                guardadas e você pode reenviar um link novo depois.
+              </>
+            )}
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

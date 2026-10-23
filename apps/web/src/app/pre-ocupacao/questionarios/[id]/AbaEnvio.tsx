@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
 import { maskPhone } from "@/lib/format";
 import RitmoEnvio from "./RitmoEnvio";
+import FiltroColuna from "./FiltroColuna";
 import { FAMILIA_STATUS_LABEL } from "../../_lib/constants";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao } from "../../_lib/questionario";
 
@@ -51,6 +52,34 @@ function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => voi
   );
 }
 
+type Coluna = "numero" | "familia" | "telefone" | "empreendimento" | "status" | "situacao";
+
+// Texto de cada coluna, igual ao que aparece na tabela (é o que o filtro do título lista)
+const VALOR_COLUNA: Record<Coluna, (f: FamiliaPreview) => string> = {
+  numero: (f) => String(f.numero),
+  familia: (f) => f.nome,
+  telefone: (f) => (f.telefone ? maskPhone(f.telefone) : "Sem telefone"),
+  empreendimento: (f) => (f.empreendimento ? `${f.empreendimento}${f.unidade ? ` · ${f.unidade}` : ""}` : "—"),
+  status: (f) => `${FAMILIA_STATUS_LABEL[f.statusFamilia] ?? f.statusFamilia} · ${ACOMPANHAMENTO_LABEL[f.acompanhamento]}`,
+  situacao: (f) =>
+    f.situacao
+      ? SITUACAO_LABEL[f.situacao]
+      : f.semTelefone
+        ? "Sem telefone"
+        : f.semCpf
+          ? "Sem CPF no cadastro"
+          : "Ainda não recebeu",
+};
+
+const COLUNAS: { key: Coluna; titulo: string }[] = [
+  { key: "numero", titulo: "Nº" },
+  { key: "familia", titulo: "Família" },
+  { key: "telefone", titulo: "Telefone" },
+  { key: "empreendimento", titulo: "Empreendimento / Unidade" },
+  { key: "status", titulo: "Status" },
+  { key: "situacao", titulo: "Situação neste questionário" },
+];
+
 function alternar(lista: string[], v: string) {
   return lista.includes(v) ? lista.filter((x) => x !== v) : [...lista, v];
 }
@@ -68,6 +97,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
   const [resultado, setResultado] = useState<string | null>(null);
   const [modo, setModo] = useState<"agora" | "agendar">("agora");
   const [quando, setQuando] = useState(""); // valor do <input type="datetime-local">, horário local
+  const [filtrosColuna, setFiltrosColuna] = useState<Partial<Record<Coluna, Set<string>>>>({});
 
   const publicado = questionario.status === "PUBLICADO";
 
@@ -95,11 +125,34 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
     }
   }
 
-  const elegiveis = useMemo(
-    () => (preview?.familias ?? []).filter((f) => !f.situacao && !f.semTelefone && !f.semCpf),
-    [preview],
+  // Valores distintos de cada coluna, para o filtro do título
+  const valoresColuna = useMemo(() => {
+    const r = {} as Record<Coluna, string[]>;
+    for (const c of COLUNAS) {
+      const vs = Array.from(new Set((preview?.familias ?? []).map(VALOR_COLUNA[c.key])));
+      r[c.key] = c.key === "numero" ? vs.sort((a, b) => Number(a) - Number(b)) : vs.sort((a, b) => a.localeCompare(b, "pt-BR"));
+    }
+    return r;
+  }, [preview]);
+
+  const visiveis = useMemo(
+    () =>
+      (preview?.familias ?? []).filter((f) =>
+        COLUNAS.every((c) => {
+          const sel = filtrosColuna[c.key];
+          return !sel || sel.has(VALOR_COLUNA[c.key](f));
+        }),
+      ),
+    [preview, filtrosColuna],
   );
-  const todasMarcadas = elegiveis.length > 0 && elegiveis.every((f) => selecionadas.has(f.familiaId));
+  // Só conta/dispara quem está aparecendo: família escondida pelo filtro não vai junto sem o usuário ver
+  const marcadas = useMemo(
+    () => new Set(visiveis.filter((f) => selecionadas.has(f.familiaId)).map((f) => f.familiaId)),
+    [visiveis, selecionadas],
+  );
+  const elegiveis = useMemo(() => visiveis.filter((f) => !f.situacao && !f.semTelefone && !f.semCpf), [visiveis]);
+  const todasMarcadas = elegiveis.length > 0 && elegiveis.every((f) => marcadas.has(f.familiaId));
+  const temFiltroColuna = Object.values(filtrosColuna).some(Boolean);
 
   const agendamentoInvalido = modo === "agendar" && (!quando || new Date(quando).getTime() < Date.now() + 60_000);
   const quandoLabel = quando
@@ -113,7 +166,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
       const res = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/enviar`, {
         method: "POST",
         body: JSON.stringify({
-          familiaIds: Array.from(selecionadas),
+          familiaIds: Array.from(marcadas),
           agendadoPara: modo === "agendar" ? new Date(quando).toISOString() : null,
         }),
       });
@@ -237,17 +290,32 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
                   <strong className="text-amber-600">{preview.semCpf}</strong> sem CPF no cadastro ·{" "}
                 </>
               )}
-              <strong>{selecionadas.size}</strong> selecionada(s) para receber agora
+              {temFiltroColuna && (
+                <>
+                  <strong>{visiveis.length}</strong> aparecendo com os filtros das colunas ·{" "}
+                </>
+              )}
+              <strong>{marcadas.size}</strong> selecionada(s) para receber agora
             </>
+          )}
+          {!loading && preview && (
+            <button onClick={carregar} className="ml-3 text-xs font-medium" style={{ color: "var(--via-teal, #1D9E75)" }}>
+              ↻ Recarregar lista
+            </button>
+          )}
+          {temFiltroColuna && (
+            <button onClick={() => setFiltrosColuna({})} className="ml-3 text-xs font-medium" style={{ color: "var(--via-teal, #1D9E75)" }}>
+              Limpar filtros das colunas
+            </button>
           )}
         </p>
         <button
           onClick={() => setConfirmando(true)}
-          disabled={selecionadas.size === 0 || loading || agendamentoInvalido}
+          disabled={marcadas.size === 0 || loading || agendamentoInvalido}
           className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
           style={{ background: "var(--via-teal, #1D9E75)" }}
         >
-          {modo === "agendar" ? "Agendar para" : "Disparar para"} {selecionadas.size} família(s)
+          {modo === "agendar" ? "Agendar para" : "Disparar para"} {marcadas.size} família(s)
         </button>
       </div>
 
@@ -262,25 +330,49 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
                       type="checkbox"
                       checked={todasMarcadas}
                       onChange={() =>
-                        setSelecionadas(todasMarcadas ? new Set() : new Set(elegiveis.map((f) => f.familiaId)))
+                        setSelecionadas((s) => {
+                          const n = new Set(s);
+                          for (const f of elegiveis) {
+                            if (todasMarcadas) n.delete(f.familiaId);
+                            else n.add(f.familiaId);
+                          }
+                          return n;
+                        })
                       }
                       title="Marcar todas"
                     />
                   </th>
-                  <th className="px-4 py-3">Nº</th>
-                  <th className="px-4 py-3">Família</th>
-                  <th className="px-4 py-3">Telefone</th>
-                  <th className="px-4 py-3">Empreendimento / Unidade</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Situação neste questionário</th>
+                  {COLUNAS.map((c) => (
+                    <th key={c.key} className="px-4 py-3">
+                      <FiltroColuna
+                        titulo={c.titulo}
+                        valores={valoresColuna[c.key]}
+                        selecionados={filtrosColuna[c.key] ?? null}
+                        onChange={(sel) => setFiltrosColuna((fc) => ({ ...fc, [c.key]: sel ?? undefined }))}
+                      />
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {preview.familias.map((f) => {
+                {visiveis.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-6 text-center" style={{ color: "var(--shell-subtext)" }}>
+                      Nenhuma família com esses filtros.
+                    </td>
+                  </tr>
+                )}
+                {visiveis.map((f) => {
                   const bloqueada = !!f.situacao || f.semTelefone || !!f.semCpf;
                   return (
-                    <tr key={f.familiaId} className="border-t" style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}>
-                      <td className="px-4 py-2">
+                    <tr
+                      key={f.familiaId}
+                      onClick={() => window.open(`/pre-ocupacao/familias/${f.familiaId}`, "_blank")}
+                      title="Abrir a família em outra aba"
+                      className="border-t cursor-pointer hover:bg-[var(--shell-hover)]"
+                      style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+                    >
+                      <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           disabled={bloqueada}
@@ -350,7 +442,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
       >
         <p className="text-sm" style={{ color: "var(--shell-text)" }}>
           O questionário &ldquo;{questionario.titulo}&rdquo; será enviado pelo WhatsApp para{" "}
-          <strong>{selecionadas.size}</strong> família(s)
+          <strong>{marcadas.size}</strong> família(s)
           {modo === "agendar" ? (
             <>
               {" "}a partir de <strong>{quandoLabel}</strong>

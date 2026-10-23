@@ -121,7 +121,7 @@ export default function QuestionarioDetalhePage() {
 
   return (
     <AppShell title="Pré-Ocupação — Questionário">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="w-full px-4 lg:px-8 py-8">
         <button
           onClick={() => startTransition(() => router.push("/pre-ocupacao/questionarios"))}
           className="text-sm mb-4"
