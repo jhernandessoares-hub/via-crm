@@ -403,7 +403,7 @@ export class QuestionariosService {
     const [envios, leads, exigeCpf, comCpf] = await Promise.all([
       this.prisma.preOcupacaoQuestionarioEnvio.findMany({
         where: { questionarioId: id, teste: false },
-        select: { familiaId: true, statusEnvio: true, agendadoPara: true, linkAbertoEm: true, respondidoEm: true },
+        select: { familiaId: true, statusEnvio: true, agendadoPara: true, linkAbertoEm: true, respondidoEm: true, iniciadoEm: true, entregueEm: true },
       }),
       this.prisma.lead.findMany({
         where: { tenantId, id: { in: filtradas.map((f) => f.leadId) } },
@@ -756,6 +756,7 @@ export class QuestionariosService {
         agendado: contar('AGENDADO'),
         aguardandoEnvio: contar('AGUARDANDO_ENVIO'),
         falha: contar('FALHA'),
+        enviado: contar('ENVIADO'),
         recebeu: contar('RECEBEU'),
         abriu: contar('ABRIU'),
         respondendo: contar('RESPONDENDO'),

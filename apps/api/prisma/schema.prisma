@@ -2288,6 +2288,12 @@ model PreOcupacaoQuestionarioEnvio {
   enviadoPor      String
   // Primeira resposta salva (família começou e ainda pode não ter terminado)
   iniciadoEm      DateTime?
+  // Entrega pelo WhatsApp: id da última mensagem enviada e o aviso de entrega do
+  // celular da família. "Recebeu" só conta com entregueEm (ou link aberto).
+  waMessageId     String?
+  canalEnvio      String?
+  entregueEm      DateTime?
+  entregaErro     String?
   criadoEm        DateTime                           @default(now())
   atualizadoEm    DateTime                           @updatedAt
 
@@ -2301,6 +2307,7 @@ model PreOcupacaoQuestionarioEnvio {
   @@index([questionarioId, statusEnvio])
   @@index([familiaId])
   @@index([tokenHash])
+  @@index([waMessageId])
   @@map("pre_ocupacao_questionario_envios")
 }
 

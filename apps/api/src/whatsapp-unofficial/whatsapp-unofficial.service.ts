@@ -9,6 +9,7 @@ import OpenAI from 'openai';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
 import { Logger } from '../logger';
+import { registrarAvisoEntregaQuestionario } from '../pre-ocupacao/questionario-entrega.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { upsertLeadFromWhatsapp, telefoneKeyFrom, findOrCreateLeadByPhone } from '../whatsapp/lead-upsert.helper';
@@ -2084,6 +2085,13 @@ export class WhatsappUnofficialService implements OnModuleDestroy {
 
     const rawStatus = (update.update as any)?.status;
     if (rawStatus === undefined || rawStatus === null) return;
+
+    // Questionário da Pré-Ocupação: "Recebeu" só com o aviso de entrega (3+) do celular;
+    // ERROR (0) = WhatsApp recusou (ex.: 463 de LID). Não faz nada se não for de questionário.
+    if (update.key?.fromMe !== false) {
+      if (rawStatus === 0) await registrarAvisoEntregaQuestionario(this.prisma, messageId, 'ERRO');
+      else if (rawStatus >= 3) await registrarAvisoEntregaQuestionario(this.prisma, messageId, 'ENTREGUE');
+    }
 
     const newStatus = mapBaileysAckToStatus(rawStatus);
     if (!newStatus) return; // ERROR ou valor desconhecido — ignora

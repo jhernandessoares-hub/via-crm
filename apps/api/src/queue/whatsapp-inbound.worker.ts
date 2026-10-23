@@ -4,6 +4,7 @@ import { Logger } from '../logger';
 const logger = new Logger('WhatsappInboundWorker');
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { registrarAvisoEntregaQuestionario } from '../pre-ocupacao/questionario-entrega.util';
 import { QueueService } from '../queue/queue.service';
 import { WhatsappService } from '../secretary/whatsapp.service';
 import { userWantsEvent } from '../users/notification-prefs.helper';
@@ -212,6 +213,21 @@ async function processPayload(
       const value = change?.value;
       const messages = Array.isArray(value?.messages) ? value.messages : [];
       const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
+
+      // Avisos de entrega (delivered/read/failed) das mensagens enviadas: hoje só o
+      // questionário da Pré-Ocupação usa ("Recebeu" só com a entrega confirmada).
+      const statuses = Array.isArray(value?.statuses) ? value.statuses : [];
+      for (const st of statuses) {
+        const id = typeof st?.id === 'string' ? st.id : null;
+        if (!id) continue;
+        if (st.status === 'delivered' || st.status === 'read') {
+          await registrarAvisoEntregaQuestionario(prisma, id, 'ENTREGUE');
+        } else if (st.status === 'failed') {
+          const err = Array.isArray(st.errors) ? st.errors[0] : null;
+          const detalhe = err ? [err.code, err.title || err.message].filter(Boolean).join(' - ') : null;
+          await registrarAvisoEntregaQuestionario(prisma, id, 'ERRO', detalhe);
+        }
+      }
 
       if (!messages.length) continue;
 

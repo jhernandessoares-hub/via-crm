@@ -62,12 +62,14 @@ export const QUESTIONARIO_STATUS_VARIANT: Record<string, "neutral" | "success" |
   ENCERRADO: "neutral",
 };
 
-export type Situacao = "AGENDADO" | "AGUARDANDO_ENVIO" | "FALHA" | "RECEBEU" | "ABRIU" | "RESPONDENDO" | "RESPONDEU";
+// ENVIADO = saiu, mas o WhatsApp ainda não confirmou a entrega no celular; RECEBEU = entrega confirmada
+export type Situacao = "AGENDADO" | "AGUARDANDO_ENVIO" | "FALHA" | "ENVIADO" | "RECEBEU" | "ABRIU" | "RESPONDENDO" | "RESPONDEU";
 
 export const SITUACAO_LABEL: Record<Situacao, string> = {
   AGENDADO: "Agendado",
   AGUARDANDO_ENVIO: "Na fila de envio",
   FALHA: "Envio falhou",
+  ENVIADO: "Enviado, aguardando entrega",
   RECEBEU: "Recebeu",
   ABRIU: "Abriu o link",
   RESPONDENDO: "Respondendo",
@@ -78,6 +80,7 @@ export const SITUACAO_VARIANT: Record<Situacao, "neutral" | "error" | "info" | "
   AGENDADO: "warning",
   AGUARDANDO_ENVIO: "neutral",
   FALHA: "error",
+  ENVIADO: "neutral",
   RECEBEU: "info",
   ABRIU: "indigo",
   RESPONDENDO: "warning",

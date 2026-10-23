@@ -21,5 +21,5 @@ export function inicioDoDiaSP(d: Date): Date {
 
 /** Falha que é do número da família (não indica problema no nosso WhatsApp): não conta para pausar. */
 export function falhaDoNumero(erro: string | undefined): boolean {
-  return /não tem whatsapp|não possui telefone|sem telefone|número inválido/i.test(erro ?? '');
+  return /não tem whatsapp|não possui telefone|sem telefone|número inválido|sem canal de whatsapp/i.test(erro ?? '');
 }
