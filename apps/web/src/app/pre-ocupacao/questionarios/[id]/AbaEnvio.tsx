@@ -206,7 +206,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
     <div className="space-y-4">
       <RitmoEnvio questionario={questionario} />
       <Card>
-        <CardBody className="space-y-4">
+        <CardBody className="flex flex-wrap items-start gap-x-10 gap-y-4">
           <div>
             <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Status da família</p>
             <div className="flex flex-wrap gap-2">
@@ -229,7 +229,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
               ))}
             </div>
           </div>
-          <label className="block text-xs font-medium w-full max-w-sm" style={{ color: "var(--shell-subtext)" }}>
+          <label className="block text-xs font-medium w-72" style={{ color: "var(--shell-subtext)" }}>
             Empreendimento
             <select
               value={empreendimento}
