@@ -15,6 +15,8 @@ import {
   situacaoEnvio,
 } from './questionario-pergunta.util';
 import { registrarEventoEnvio, montarHistorico } from './questionario-evento.util';
+import { conferirEntregaPelaConversa } from './questionario-entrega.util';
+import { hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe, opcoesFaltandoNasCondicoes } from './questionario-fluxo';
 
 const MENSAGEM_PADRAO =
@@ -387,6 +389,7 @@ export class QuestionariosService {
 
   async previewPublico(tenantId: string, id: string, filtro: PublicoFiltro) {
     await this.getOrThrow(tenantId, id);
+    await conferirEntregaPelaConversa(this.prisma, tenantId, id, hashConviteToken);
     const { items } = await this.familias.listar(tenantId);
 
     const statusFamilia = filtro.statusFamilia?.length ? filtro.statusFamilia : ['ATIVA'];
@@ -710,6 +713,8 @@ export class QuestionariosService {
 
   async acompanhamento(tenantId: string, id: string) {
     await this.getOrThrow(tenantId, id);
+    // Quem recebeu e ainda aparece "aguardando entrega": confere o ✓✓ na conversa do lead
+    await conferirEntregaPelaConversa(this.prisma, tenantId, id, hashConviteToken);
     const [envios, perguntas] = await Promise.all([
       this.prisma.preOcupacaoQuestionarioEnvio.findMany({
         where: { questionarioId: id, tenantId, teste: false },

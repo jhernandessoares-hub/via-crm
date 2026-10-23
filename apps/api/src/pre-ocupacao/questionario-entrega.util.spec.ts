@@ -1,4 +1,4 @@
-import { registrarAvisoEntregaQuestionario } from './questionario-entrega.util';
+import { acharMensagemDoEnvio, registrarAvisoEntregaQuestionario } from './questionario-entrega.util';
 
 type Envio = {
   id: string;
@@ -74,5 +74,33 @@ describe('aviso de entrega do WhatsApp no questionário', () => {
       throw new Error('banco fora');
     };
     await expect(registrarAvisoEntregaQuestionario(prisma, 'MSG1', 'ENTREGUE')).resolves.toBeUndefined();
+  });
+});
+
+describe('mensagem do envio na conversa do lead', () => {
+  const token = 'a'.repeat(64);
+  const hash = (t: string) => `h:${t}`;
+  const ev = (over: any = {}) => ({
+    id: 'ev1',
+    leadId: 'L1',
+    sourceRef: 'MSG9',
+    criadoEm: new Date(),
+    payloadRaw: { text: `Olá! Responda aqui: https://x/portal/questionario/${token}` },
+    ...over,
+  });
+
+  it('acha pelo token do link quando o envio ainda não guardou o id da mensagem', () => {
+    const r = acharMensagemDoEnvio({ leadId: 'L1', tokenHash: `h:${token}`, waMessageId: null }, [ev()], hash);
+    expect(r?.sourceRef).toBe('MSG9');
+  });
+
+  it('token de envio anterior (reenvio trocou o link) não conta', () => {
+    const r = acharMensagemDoEnvio({ leadId: 'L1', tokenHash: 'h:outro', waMessageId: null }, [ev()], hash);
+    expect(r).toBeNull();
+  });
+
+  it('com id da mensagem guardado, usa o id; mensagem de outro lead não conta', () => {
+    expect(acharMensagemDoEnvio({ leadId: 'L1', tokenHash: null, waMessageId: 'MSG9' }, [ev()], hash)?.id).toBe('ev1');
+    expect(acharMensagemDoEnvio({ leadId: 'L2', tokenHash: `h:${token}`, waMessageId: null }, [ev()], hash)).toBeNull();
   });
 });
