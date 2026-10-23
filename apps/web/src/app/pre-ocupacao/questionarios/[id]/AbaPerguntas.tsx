@@ -97,9 +97,11 @@ function novaPergunta(): Pergunta {
 export default function AbaPerguntas({
   questionario,
   onSalvo,
+  somenteLeitura = false,
 }: {
   questionario: Questionario;
   onSalvo: (q: Questionario) => void;
+  somenteLeitura?: boolean;
 }) {
   const travado = questionario.status !== "RASCUNHO";
   const encerrado = questionario.status === "ENCERRADO";
@@ -182,8 +184,9 @@ export default function AbaPerguntas({
   const previaFinal = /\{\{link\}\}/i.test(mensagem) ? previa : `${previa}\n\nResponda aqui: https://…/portal/questionario/abc123`;
 
   return (
-    <div className="space-y-6">
-      {travado && (
+    // fieldset desabilitado trava de uma vez todos os campos e botões do editor
+    <fieldset disabled={somenteLeitura} className={`space-y-6 min-w-0 ${somenteLeitura ? "opacity-60" : ""}`}>
+      {travado && !somenteLeitura && (
         <div
           className="rounded-lg border px-4 py-3 text-sm"
           style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-subtext)" }}
@@ -485,7 +488,7 @@ export default function AbaPerguntas({
           </Card>
         ))}
 
-        {!travado && (
+        {!travado && !somenteLeitura && (
           <button
             onClick={() => setPerguntas((ps) => [...ps, novaPergunta()])}
             className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm font-medium"
@@ -496,7 +499,7 @@ export default function AbaPerguntas({
         )}
       </div>
 
-      {!encerrado && (
+      {!encerrado && !somenteLeitura && (
         <div className="flex items-center justify-end gap-3">
           {erro && <p className="text-sm text-red-600">{erro}</p>}
           {okMsg && <p className="text-sm" style={{ color: "var(--via-teal, #1D9E75)" }}>{okMsg}</p>}
@@ -510,6 +513,6 @@ export default function AbaPerguntas({
           </button>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }

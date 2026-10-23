@@ -49,10 +49,12 @@ export default function AbaTeste({
   questionario,
   onAtualizado,
   onVerRespostas,
+  somenteLeitura = false,
 }: {
   questionario: Questionario;
   onAtualizado: (q: Questionario) => void;
   onVerRespostas: (envioId: string) => void;
+  somenteLeitura?: boolean;
 }) {
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -139,7 +141,7 @@ export default function AbaTeste({
   const btn = "px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)] disabled:opacity-50";
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${somenteLeitura ? "opacity-60" : ""}`}>
       {/* Situação da liberação */}
       {questionario.testeAprovadoEm ? (
         <div className="rounded-lg border px-4 py-3 text-sm" style={{ borderColor: "var(--via-teal, #1D9E75)", color: "var(--shell-text)" }}>
@@ -156,7 +158,7 @@ export default function AbaTeste({
       )}
 
       {/* Novo teste */}
-      {!encerrado && (
+      {!encerrado && !somenteLeitura && (
         <Card>
           <CardBody className="space-y-3">
             <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>Enviar teste</p>
@@ -271,9 +273,11 @@ export default function AbaTeste({
                         Ver respostas
                       </button>
                     )}
-                    <button onClick={() => apagar(t.envioId)} className="text-xs font-medium text-red-600">
-                      Apagar
-                    </button>
+                    {!somenteLeitura && (
+                      <button onClick={() => apagar(t.envioId)} className="text-xs font-medium text-red-600">
+                        Apagar
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -283,7 +287,7 @@ export default function AbaTeste({
       </Card>
 
       {/* Aprovação */}
-      {rascunho && !questionario.testeAprovadoEm && (
+      {rascunho && !questionario.testeAprovadoEm && !somenteLeitura && (
         <Card>
           <CardBody className="space-y-3">
             <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>Aprovar e liberar a publicação</p>

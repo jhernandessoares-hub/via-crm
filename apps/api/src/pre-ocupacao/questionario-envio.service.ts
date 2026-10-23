@@ -23,6 +23,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * `QuestionarioEnvioWorker` (fila) — ou direto, em background, quando o Redis
  * não está disponível.
  */
+export const SEM_CANAL = 'Lead sem canal de WhatsApp definido. Defina o canal no lead e reenvie.';
+
 @Injectable()
 export class QuestionarioEnvioService {
   private readonly logger = new Logger('PreOcupacaoQuestionarioEnvioService');
@@ -60,7 +62,7 @@ export class QuestionarioEnvioService {
     const unofficial = await this.getUnofficialService();
     const [validacao] = await unofficial.validateNumbers(sessao.id, [telefone]);
     if (validacao?.noWhatsapp) throw new Error('Este número não tem WhatsApp.');
-    await unofficial.sendText(sessao.id, telefone, texto);
+    return unofficial.sendText(sessao.id, telefone, texto);
   }
 
   /**
@@ -140,7 +142,9 @@ export class QuestionarioEnvioService {
       where: { id: envioId },
       include: {
         questionario: true,
-        familia: { include: { lead: { select: { id: true, nome: true, nomeCorreto: true } } } },
+        familia: {
+          include: { lead: { select: { id: true, nome: true, nomeCorreto: true, conversaCanal: true, conversaSessionId: true } } },
+        },
       },
     });
     if (!envio) return { ok: false, erro: 'Envio não encontrado.' };
@@ -149,6 +153,16 @@ export class QuestionarioEnvioService {
     const nome = envio.teste ? envio.testeNome ?? 'Teste' : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
     let link: string | undefined;
     try {
+      // Sem canal definido no lead a mensagem cairia no WhatsApp Oficial (às vezes no
+      // número da plataforma), que diz "ok" mesmo sem entregar — e ainda trava o canal
+      // do lead em Oficial. Melhor não enviar e a equipe definir o canal no lead.
+      if (!envio.teste) {
+        const lead = envio.familia!.lead;
+        if (!lead.conversaCanal || (lead.conversaCanal === 'WHATSAPP_LIGHT' && !lead.conversaSessionId)) {
+          throw new Error(SEM_CANAL);
+        }
+      }
+
       // Token gerado e "hasheado" ANTES do WhatsApp sair (mesma ordem segura do
       // convite) — falha de hash não pode virar mensagem entregue marcada como erro.
       const token = gerarConviteToken();
@@ -169,20 +183,23 @@ export class QuestionarioEnvioService {
         data: { tokenHash, tokenExpiraEm: new Date(agora.getTime() + validadeDias * DIA_MS) },
       });
 
+      let enviado: { canal: string; messageId: string | null };
       if (envio.teste) {
         const textoTeste =
           `[TESTE] ${texto}
 
 ` +
           'Esta é uma mensagem de teste do questionário. Não precisa responder esta mensagem, use apenas o link.';
-        await this.enviarTextoParaNumero(envio.tenantId, envio.testeTelefone ?? '', textoTeste);
+        const r = await this.enviarTextoParaNumero(envio.tenantId, envio.testeTelefone ?? '', textoTeste);
+        enviado = { canal: 'WHATSAPP_LIGHT', messageId: r.id };
       } else {
         const leadsService = await this.getLeadsService();
-        await leadsService.sendWhatsappMessage(
+        const r = await leadsService.sendWhatsappMessage(
           { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
           envio.familia!.leadId,
           { message: texto },
         );
+        enviado = { canal: r.canal, messageId: r.messageId };
       }
 
       await this.prisma.preOcupacaoQuestionarioEnvio.update({
@@ -192,6 +209,11 @@ export class QuestionarioEnvioService {
           enviadoEm: agora,
           enviosCount: { increment: 1 },
           ultimoEnvioErro: null,
+          // Mensagem nova: a entrega volta a ser esperada para ela
+          waMessageId: enviado.messageId,
+          canalEnvio: enviado.canal,
+          entregueEm: null,
+          entregaErro: null,
         },
       });
       await registrarEventoEnvio(this.prisma, envio.id, 'ENVIADO', `${envio.enviosCount + 1}º envio`, por ?? null);

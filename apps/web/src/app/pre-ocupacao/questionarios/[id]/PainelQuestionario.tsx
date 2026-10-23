@@ -5,7 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Situacao } from "../../_lib/questionario";
 
 export type DadosAcompanhamento = {
-  totais: { total: number; agendado: number; aguardandoEnvio: number; falha: number; recebeu: number; abriu: number; respondendo: number; respondeu: number; alertas: number };
+  totais: { total: number; agendado: number; aguardandoEnvio: number; falha: number; enviado?: number; recebeu: number; abriu: number; respondendo: number; respondeu: number; alertas: number };
   linhas: { situacao: Situacao; enviadoEm: string | null; respondidoEm: string | null }[];
 };
 
@@ -36,8 +36,10 @@ export default function PainelQuestionario({ dados }: { dados: DadosAcompanhamen
   const responderam = t.respondeu;
   const comecaram = responderam + t.respondendo;
   const abriram = comecaram + t.abriu;
+  // Receberam = WhatsApp confirmou a entrega (ou a família abriu o link)
   const receberam = abriram + t.recebeu;
-  const enviadas = receberam + t.falha;
+  const aguardandoEntrega = t.enviado ?? 0;
+  const enviadas = receberam + aguardandoEntrega + t.falha;
 
   const funil = [
     { etapa: "Enviadas", total: enviadas },
@@ -55,6 +57,7 @@ export default function PainelQuestionario({ dados }: { dados: DadosAcompanhamen
   const tempoMedio = tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null;
 
   const fora = [
+    aguardandoEntrega && `${aguardandoEntrega} enviada(s) aguardando o WhatsApp confirmar a entrega`,
     t.falha && `Envio falhou para ${t.falha} família(s) (contam em Enviadas, mas não chegaram)`,
     t.agendado && `${t.agendado} agendada(s)`,
     t.aguardandoEnvio && `${t.aguardandoEnvio} na fila de envio`,

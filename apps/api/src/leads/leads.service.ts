@@ -3700,7 +3700,8 @@ const aiAssistanceLabel =
         },
       });
 
-      return { ok: true };
+      // Id da mensagem no WhatsApp: quem chama pode casar com o aviso de entrega depois
+      return { ok: true, canal: 'WHATSAPP_LIGHT' as const, messageId: sent?.id ?? null };
     }
 
     let result: Awaited<ReturnType<MessagingService['sendMetaMessage']>>;
@@ -3762,7 +3763,7 @@ const aiAssistanceLabel =
       },
     });
 
-    return { ok: true };
+    return { ok: true, canal: 'WHATSAPP_OFICIAL' as const, messageId: (messageId as string | null) ?? null };
   }
 
   async endConversation(

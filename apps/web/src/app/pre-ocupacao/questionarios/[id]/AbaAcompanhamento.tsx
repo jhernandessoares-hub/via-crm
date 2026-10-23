@@ -32,7 +32,7 @@ type Linha = {
 };
 
 type Dados = {
-  totais: { total: number; agendado: number; aguardandoEnvio: number; falha: number; recebeu: number; abriu: number; respondendo: number; respondeu: number; alertas: number };
+  totais: { total: number; agendado: number; aguardandoEnvio: number; falha: number; enviado: number; recebeu: number; abriu: number; respondendo: number; respondeu: number; alertas: number };
   linhas: Linha[];
 };
 
@@ -41,6 +41,7 @@ const CARDS: { key: keyof Dados["totais"]; situacao: Situacao | ""; label: strin
   { key: "agendado", situacao: "AGENDADO", label: "Agendado" },
   { key: "aguardandoEnvio", situacao: "AGUARDANDO_ENVIO", label: "Na fila" },
   { key: "falha", situacao: "FALHA", label: "Envio falhou" },
+  { key: "enviado", situacao: "ENVIADO", label: "Enviado, aguardando entrega" },
   { key: "recebeu", situacao: "RECEBEU", label: "Recebeu, não abriu" },
   { key: "abriu", situacao: "ABRIU", label: "Abriu, não começou" },
   { key: "respondendo", situacao: "RESPONDENDO", label: "Começou, não terminou" },
@@ -202,7 +203,7 @@ export default function AbaAcompanhamento({
     <div className="space-y-4">
       {questionario.status === "PUBLICADO" && <RitmoEnvio questionario={questionario} />}
       {dados && dados.totais.total > 0 && <PainelQuestionario dados={dados} />}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-9 gap-3">
         {CARDS.map((c) => {
           const ativo = filtro === c.situacao;
           return (

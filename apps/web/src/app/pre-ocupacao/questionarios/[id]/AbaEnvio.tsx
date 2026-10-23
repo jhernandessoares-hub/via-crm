@@ -116,8 +116,8 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
         body: JSON.stringify({ statusFamilia, acompanhamento, empreendimento: empreendimento || null }),
       });
       setPreview(res);
-      // Pré-seleciona quem ainda não recebeu e tem telefone
-      setSelecionadas(new Set(res.familias.filter((f) => !f.situacao && !f.semTelefone && !f.semCpf).map((f) => f.familiaId)));
+      // Começa sem ninguém marcado: disparar para todos tem que ser escolha consciente
+      setSelecionadas(new Set());
     } catch (e: any) {
       setErro(e?.message ?? "Erro ao carregar famílias");
     } finally {

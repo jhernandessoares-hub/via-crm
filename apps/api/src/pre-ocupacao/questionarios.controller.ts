@@ -1,7 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AddonGuard, RequiresAddon } from '../auth/plan.guard';
 import { QuestionariosService } from './questionarios.service';
+
+// Criar/alterar perguntas, testes e o ciclo do questionário (publicar, encerrar, duplicar, excluir)
+// é só do Proprietário; os demais papéis enviam, acompanham e veem o relatório.
+function requireOwner(req: any) {
+  if (req.user?.role !== 'OWNER') throw new ForbiddenException('Acesso restrito ao OWNER do tenant.');
+}
 
 @UseGuards(JwtAuthGuard, AddonGuard)
 @RequiresAddon('PRE_OCUPACAO')
@@ -20,6 +26,7 @@ export class QuestionariosController {
 
   @Post()
   criar(@Request() req: any, @Body() body: any) {
+    requireOwner(req);
     return this.svc.criar(req.user.tenantId, this.quem(req), body ?? {});
   }
 
@@ -36,31 +43,37 @@ export class QuestionariosController {
 
   @Patch(':id')
   atualizar(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    requireOwner(req);
     return this.svc.atualizar(req.user.tenantId, id, body ?? {});
   }
 
   @Delete(':id')
   excluir(@Request() req: any, @Param('id') id: string) {
+    requireOwner(req);
     return this.svc.excluir(req.user.tenantId, id);
   }
 
   @Put(':id/perguntas')
   salvarPerguntas(@Request() req: any, @Param('id') id: string, @Body('perguntas') perguntas: any[]) {
+    requireOwner(req);
     return this.svc.salvarPerguntas(req.user.tenantId, id, perguntas);
   }
 
   @Post(':id/publicar')
   publicar(@Request() req: any, @Param('id') id: string) {
+    requireOwner(req);
     return this.svc.publicar(req.user.tenantId, id);
   }
 
   @Post(':id/encerrar')
   encerrar(@Request() req: any, @Param('id') id: string) {
+    requireOwner(req);
     return this.svc.encerrar(req.user.tenantId, id);
   }
 
   @Post(':id/duplicar')
   duplicar(@Request() req: any, @Param('id') id: string) {
+    requireOwner(req);
     return this.svc.duplicar(req.user.tenantId, id, this.quem(req));
   }
 
@@ -105,6 +118,7 @@ export class QuestionariosController {
 
   @Post(':id/testes')
   enviarTeste(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    requireOwner(req);
     return this.svc.enviarTeste(req.user.tenantId, id, body ?? {}, this.quem(req));
   }
 
@@ -115,11 +129,13 @@ export class QuestionariosController {
 
   @Delete(':id/testes/:envioId')
   excluirTeste(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
+    requireOwner(req);
     return this.svc.excluirTeste(req.user.tenantId, id, envioId);
   }
 
   @Post(':id/aprovar-teste')
   aprovarTeste(@Request() req: any, @Param('id') id: string) {
+    requireOwner(req);
     return this.svc.aprovarTeste(req.user.tenantId, id, this.quem(req));
   }
 

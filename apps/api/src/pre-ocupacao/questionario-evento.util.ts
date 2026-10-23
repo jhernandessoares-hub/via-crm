@@ -8,6 +8,7 @@ export type TipoEventoEnvio =
   | 'AGENDADO'
   | 'AGENDAMENTO_CANCELADO'
   | 'ENVIADO'
+  | 'ENTREGUE'
   | 'FALHA'
   | 'ABRIU'
   | 'CPF_CONFIRMADO'
@@ -21,6 +22,7 @@ export const EVENTO_ENVIO_LABEL: Record<TipoEventoEnvio, string> = {
   AGENDADO: 'Envio agendado',
   AGENDAMENTO_CANCELADO: 'Agendamento cancelado',
   ENVIADO: 'Mensagem enviada pelo WhatsApp',
+  ENTREGUE: 'WhatsApp confirmou a entrega no celular',
   FALHA: 'Falha no envio',
   ABRIU: 'Abriu o link',
   CPF_CONFIRMADO: 'CPF confirmado',

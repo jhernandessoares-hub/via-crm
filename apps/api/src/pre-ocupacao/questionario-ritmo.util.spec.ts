@@ -10,6 +10,8 @@ describe('proteção do disparo', () => {
   });
   it('falha do número da família não conta para pausar', () => {
     expect(falhaDoNumero('Este número não tem WhatsApp.')).toBe(true);
+    // Lead sem canal é da família (cadastro), não do nosso número: não pausa o disparo
+    expect(falhaDoNumero('Lead sem canal de WhatsApp definido. Defina o canal no lead e reenvie.')).toBe(true);
     expect(falhaDoNumero('Sessão WhatsApp Light não conectada')).toBe(false);
   });
 });

@@ -317,14 +317,27 @@ export function validarValor(p: PerguntaDef, valor: unknown, extrasIn: unknown, 
 }
 
 /** Situação da família em relação a um questionário (calculada, não persistida). */
-export type SituacaoEnvio = 'AGENDADO' | 'AGUARDANDO_ENVIO' | 'FALHA' | 'RECEBEU' | 'ABRIU' | 'RESPONDENDO' | 'RESPONDEU';
+export type SituacaoEnvio =
+  | 'AGENDADO'
+  | 'AGUARDANDO_ENVIO'
+  | 'FALHA'
+  | 'ENVIADO'
+  | 'RECEBEU'
+  | 'ABRIU'
+  | 'RESPONDENDO'
+  | 'RESPONDEU';
 
+/**
+ * ENVIADO = saiu, mas o WhatsApp ainda não confirmou a entrega no celular.
+ * RECEBEU = entrega confirmada (entregueEm). Abrir o link também prova que chegou.
+ */
 export function situacaoEnvio(e: {
   statusEnvio: string;
   agendadoPara?: Date | null;
   linkAbertoEm: Date | null;
   iniciadoEm?: Date | null;
   respondidoEm: Date | null;
+  entregueEm: Date | null;
 }): SituacaoEnvio {
   if (e.respondidoEm) return 'RESPONDEU';
   if (e.statusEnvio === 'FALHA') return 'FALHA';
@@ -333,7 +346,7 @@ export function situacaoEnvio(e: {
   }
   if (e.iniciadoEm) return 'RESPONDENDO';
   if (e.linkAbertoEm) return 'ABRIU';
-  return 'RECEBEU';
+  return e.entregueEm ? 'RECEBEU' : 'ENVIADO';
 }
 
 /** Troca {{pessoa}}, {{ordem}}, {{nome}} e {{telefone}} no texto da pergunta. */

@@ -237,15 +237,19 @@ describe('montarPassos (fluxo)', () => {
 });
 
 describe('situacaoEnvio / respostaParaTexto', () => {
-  it('prioriza respondido > falha > agendado/fila > respondendo > abriu > recebeu', () => {
-    const base = { statusEnvio: 'ENVIADO', linkAbertoEm: null, respondidoEm: null };
+  it('prioriza respondido > falha > agendado/fila > respondendo > abriu > recebeu > enviado', () => {
+    const base = { statusEnvio: 'ENVIADO', linkAbertoEm: null, respondidoEm: null, entregueEm: null as Date | null };
     expect(situacaoEnvio({ ...base, respondidoEm: new Date() })).toBe('RESPONDEU');
     expect(situacaoEnvio({ ...base, statusEnvio: 'FALHA' })).toBe('FALHA');
     expect(situacaoEnvio({ ...base, statusEnvio: 'PENDENTE' })).toBe('AGUARDANDO_ENVIO');
     expect(situacaoEnvio({ ...base, statusEnvio: 'PENDENTE', agendadoPara: new Date(Date.now() + 86_400_000) })).toBe('AGENDADO');
     expect(situacaoEnvio({ ...base, linkAbertoEm: new Date(), iniciadoEm: new Date() })).toBe('RESPONDENDO');
     expect(situacaoEnvio({ ...base, linkAbertoEm: new Date() })).toBe('ABRIU');
-    expect(situacaoEnvio(base)).toBe('RECEBEU');
+    // Só "Recebeu" com o aviso de entrega do WhatsApp; sem ele fica "Enviado"
+    expect(situacaoEnvio(base)).toBe('ENVIADO');
+    expect(situacaoEnvio({ ...base, entregueEm: new Date() })).toBe('RECEBEU');
+    // Abrir o link prova que chegou, mesmo sem o aviso
+    expect(situacaoEnvio({ ...base, linkAbertoEm: new Date() })).toBe('ABRIU');
   });
 
   it('formata data, moeda, complementos e sub-campos', () => {

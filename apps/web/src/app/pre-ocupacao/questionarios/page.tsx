@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
 import { useSP9Guard } from "../_lib/useSP9Guard";
+import { useIsOwner } from "../_lib/useIsOwner";
 import { formatDate } from "../_lib/constants";
 import { QUESTIONARIO_STATUS_LABEL, QUESTIONARIO_STATUS_VARIANT } from "../_lib/questionario";
 
@@ -30,6 +31,7 @@ export default function QuestionariosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [novoAberto, setNovoAberto] = useState(false);
+  const isOwner = useIsOwner();
   const [titulo, setTitulo] = useState("");
   const [criando, setCriando] = useState(false);
 
@@ -79,16 +81,18 @@ export default function QuestionariosPage() {
               Envie questionários às famílias pelo WhatsApp e acompanhe as respostas.
             </p>
           </div>
-          <button
-            onClick={() => {
-              setTitulo("");
-              setNovoAberto(true);
-            }}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-            style={{ background: "var(--via-teal, #1D9E75)" }}
-          >
-            Novo questionário
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => {
+                setTitulo("");
+                setNovoAberto(true);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+              style={{ background: "var(--via-teal, #1D9E75)" }}
+            >
+              Novo questionário
+            </button>
+          )}
         </div>
 
         {error && (
