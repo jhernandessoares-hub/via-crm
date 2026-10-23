@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardBody } from "@/components/ui/Card";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "../../_lib/constants";
+import PainelQuestionario, { DadosAcompanhamento } from "./PainelQuestionario";
 import { PERGUNTA_TIPO_LABEL, PerguntaTipo, Questionario, baixarCsv, slugArquivo } from "../../_lib/questionario";
 
 type Estat = { media: number | null; soma: number; minimo: number | null; maximo: number | null };
@@ -47,23 +49,92 @@ const fmtValor = (n: number | null | undefined, unidade?: string | null) =>
       ? `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : `${fmtNum(n)}${unidade ? ` ${unidade}` : ""}`;
 
-function Barras({ itens }: { itens: { label: string; total: number; percentual: number; extra?: string }[] }) {
+const CORES = ["#2563eb", "#1D9E75", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16", "#64748b", "#f97316"];
+
+type ItemGrafico = { label: string; total: number; percentual: number; extra?: string };
+
+/** Lista com barrinhas (a visão de sempre): texto completo, quantidade e %. */
+function Barras({ itens, cores }: { itens: ItemGrafico[]; cores?: boolean }) {
   const max = Math.max(1, ...itens.map((i) => i.total));
   return (
     <div className="space-y-2">
-      {itens.map((i) => (
+      {itens.map((i, idx) => (
         <div key={i.label}>
           <div className="flex justify-between gap-3 text-xs mb-0.5" style={{ color: "var(--shell-text)" }}>
-            <span>{i.label}</span>
+            <span className="flex items-start gap-2">
+              {cores && <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: CORES[idx % CORES.length] }} />}
+              {i.label}
+            </span>
             <span className="shrink-0" style={{ color: "var(--shell-subtext)" }}>
               {i.total} · {fmtNum(i.percentual)}%{i.extra ? ` · ${i.extra}` : ""}
             </span>
           </div>
           <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--shell-hover)" }}>
-            <div className="h-full rounded-full" style={{ width: `${(i.total / max) * 100}%`, background: "#2563eb" }} />
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${(i.total / max) * 100}%`, background: cores ? CORES[idx % CORES.length] : "#2563eb" }}
+            />
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Pizza (só para escolha única, onde as fatias somam 100%). */
+function GraficoPizza({ itens }: { itens: ItemGrafico[] }) {
+  if (!itens.some((i) => i.total > 0)) return null;
+  return (
+    <div className="h-52 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie data={itens} dataKey="total" nameKey="label" innerRadius={45} outerRadius={90} paddingAngle={1} isAnimationActive={false}>
+            {itens.map((i, idx) => (
+              <Cell key={i.label} fill={CORES[idx % CORES.length]} />
+            ))}
+          </Pie>
+          <Tooltip formatter={(v, _n, item) => [`${v} · ${fmtNum((item?.payload as ItemGrafico)?.percentual)}%`, (item?.payload as ItemGrafico)?.label]} />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** Barras em pé para múltipla escolha, aceite e notas (cada opção conta por si). */
+function GraficoColunas({ itens, numerar }: { itens: ItemGrafico[]; numerar: boolean }) {
+  if (!itens.some((i) => i.total > 0)) return null;
+  // Rótulo curto no eixo: o texto completo fica na lista ao lado e no tooltip
+  const dados = itens.map((i, idx) => ({ ...i, curto: numerar ? String(idx + 1) : i.label }));
+  return (
+    <div className="h-52 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={dados} margin={{ top: 20, right: 8, bottom: 0, left: 8 }}>
+          <XAxis dataKey="curto" tick={{ fontSize: 11, fill: "var(--shell-text)" }} interval={0} />
+          <YAxis hide allowDecimals={false} />
+          <Tooltip
+            formatter={(v, _n, item) => [`${v} · ${fmtNum((item?.payload as ItemGrafico)?.percentual)}%`, "Respostas"]}
+            labelFormatter={(_l, payload) => (payload?.[0]?.payload as ItemGrafico | undefined)?.label ?? ""}
+          />
+          <Bar dataKey="total" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+            {dados.map((d, idx) => (
+              <Cell key={d.label} fill={CORES[idx % CORES.length]} />
+            ))}
+            <LabelList dataKey="percentual" position="top" style={{ fontSize: 11, fill: "var(--shell-subtext)" }} formatter={(v) => `${fmtNum(Number(v))}%`} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** As duas visões juntas: lista (como sempre foi) e gráfico ao lado; em tela estreita, o gráfico vai para baixo. */
+function ListaEGrafico({ itens, pizza }: { itens: ItemGrafico[]; pizza: boolean }) {
+  const numerar = !pizza && (itens.length > 6 || itens.some((i) => i.label.length > 14));
+  const lista = numerar ? itens.map((i, idx) => ({ ...i, label: `${idx + 1}. ${i.label}` })) : itens;
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-center">
+      <Barras itens={lista} cores />
+      {pizza ? <GraficoPizza itens={itens} /> : <GraficoColunas itens={itens} numerar={numerar} />}
     </div>
   );
 }
@@ -87,7 +158,7 @@ function ListaTextos({ itens, vazio = "Nenhuma resposta ainda." }: { itens: Item
 
 function Numeros({ itens }: { itens: [string, string][] }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-xl">
+    <div className={`grid grid-cols-2 ${itens.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-4"} gap-2 max-w-xl`}>
       {itens.map(([l, v]) => (
         <div key={l} className="rounded-lg border px-2 py-2 text-center" style={{ borderColor: "var(--shell-card-border)" }}>
           <p className="text-base font-bold" style={{ color: "var(--shell-text)" }}>{v}</p>
@@ -111,14 +182,15 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
 
         {p.opcoes && (
           <>
-            <Barras
-              itens={p.opcoes.map((o) => ({
+            {(() => {
+              const itens = p.opcoes.map((o) => ({
                 label: o.opcao,
                 total: o.total,
                 percentual: o.percentual,
                 extra: o.valores && o.valores.media !== null ? `média ${fmtValor(o.valores.media, "R$")}` : undefined,
-              }))}
-            />
+              }));
+              return <ListaEGrafico itens={itens} pizza={p.tipo === "ESCOLHA_UNICA"} />;
+            })()}
             {p.opcoes
               .filter((o) => o.textos && o.textos.length)
               .map((o) => (
@@ -133,7 +205,8 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
         )}
 
         {p.distribuicao && (
-          <Barras
+          <ListaEGrafico
+            pizza={false}
             itens={p.distribuicao.map((d) => ({
               label: `Nota ${d.nota}`,
               total: d.total,
@@ -145,10 +218,9 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
         {p.media !== undefined && (
           <Numeros
             itens={[
-              ["Média", fmtValor(p.media, p.unidade)],
               ["Menor", fmtValor(p.minimo, p.unidade)],
+              ["Média", fmtValor(p.media, p.unidade)],
               ["Maior", fmtValor(p.maximo, p.unidade)],
-              ["Soma", fmtValor(p.soma, p.unidade)],
             ]}
           />
         )}
@@ -159,7 +231,7 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
               c.tipo === "CONTADOR" ? (
                 <div key={c.chave}>
                   <p className="text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>{c.label}</p>
-                  <Numeros itens={[["Total", fmtNum(c.soma)], ["Média por família", fmtNum(c.media)], ["Maior", fmtNum(c.maximo)]]} />
+                  <Numeros itens={[["Menor", fmtNum(c.minimo)], ["Média por família", fmtNum(c.media)], ["Maior", fmtNum(c.maximo)]]} />
                 </div>
               ) : (
                 <div key={c.chave}>
@@ -195,11 +267,16 @@ export default function AbaRelatorio({
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [visao, setVisao] = useState<"pergunta" | "familia">("pergunta");
+  const [acomp, setAcomp] = useState<DadosAcompanhamento | null>(null);
 
   useEffect(() => {
     apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/relatorio`)
       .then(setRel)
       .catch((e: any) => setErro(e?.message ?? "Erro ao carregar relatório"));
+    // O painel de cima usa os números do acompanhamento; se falhar, o relatório segue sem ele
+    apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/acompanhamento`)
+      .then(setAcomp)
+      .catch(() => setAcomp(null));
   }, [questionario.id]);
 
   function exportarRespostas() {
@@ -257,6 +334,7 @@ export default function AbaRelatorio({
 
   return (
     <div className="space-y-4">
+      {acomp && <PainelQuestionario dados={acomp} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm" style={{ color: "var(--shell-text)" }}>
           <strong>{rel.totalRespondidos}</strong> de <strong>{rel.totalEnvios}</strong> famílias concluíram ({pct}%)
@@ -311,7 +389,7 @@ export default function AbaRelatorio({
                   <th className="px-4 py-3">Nº</th>
                   <th className="px-4 py-3">Família</th>
                   {rel.perguntas.map((p) => (
-                    <th key={p.id} className="px-4 py-3 min-w-[180px]" title={p.enunciado}>
+                    <th key={p.id} className="px-4 py-3 min-w-[180px] max-w-[220px] truncate whitespace-nowrap" title={p.enunciado}>
                       {p.enunciado.length > 40 ? `${p.enunciado.slice(0, 40)}…` : p.enunciado}
                     </th>
                   ))}
@@ -335,7 +413,10 @@ export default function AbaRelatorio({
                     <td className="px-4 py-2">{f.numero}</td>
                     <td className="px-4 py-2 whitespace-nowrap">{f.nome}</td>
                     {rel.perguntas.map((p) => (
-                      <td key={p.id} className="px-4 py-2 text-xs">{f.respostas[p.id] || "—"}</td>
+                      // Uma linha só por família: texto longo é cortado; a resposta inteira abre no clique da linha
+                      <td key={p.id} className="px-4 py-2 text-xs max-w-[220px] truncate whitespace-nowrap" title={f.respostas[p.id] || undefined}>
+                        {f.respostas[p.id] || "—"}
+                      </td>
                     ))}
                   </tr>
                 ))}
