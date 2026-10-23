@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { ScrollEdgeButtons } from "@/components/ui/ScrollEdgeButtons";
 import { apiFetch } from "@/lib/api";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
 import { useIsOwner } from "../../_lib/useIsOwner";
@@ -124,6 +125,7 @@ export default function QuestionarioDetalhePage() {
 
   return (
     <AppShell title="Pré-Ocupação — Questionário">
+      <ScrollEdgeButtons />
       <div className="w-full px-4 lg:px-8 py-8">
         <button
           onClick={() => startTransition(() => router.push("/pre-ocupacao/questionarios"))}
