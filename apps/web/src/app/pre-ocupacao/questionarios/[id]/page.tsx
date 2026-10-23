@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
+import { useIsOwner } from "../../_lib/useIsOwner";
 import { formatDateTime } from "../../_lib/constants";
 import { QUESTIONARIO_STATUS_LABEL, QUESTIONARIO_STATUS_VARIANT, Questionario } from "../../_lib/questionario";
 import AbaPerguntas from "./AbaPerguntas";
@@ -18,9 +19,10 @@ import AbaTeste from "./AbaTeste";
 
 type Aba = "perguntas" | "teste" | "envio" | "acompanhamento" | "relatorio";
 
-const ABAS: { key: Aba; label: string }[] = [
-  { key: "perguntas", label: "Perguntas" },
-  { key: "teste", label: "Teste" },
+// Perguntas e Teste: só o Proprietário altera; os demais veem em modo leitura
+const ABAS: { key: Aba; label: string; soOwner?: boolean }[] = [
+  { key: "perguntas", label: "Perguntas", soOwner: true },
+  { key: "teste", label: "Teste", soOwner: true },
   { key: "envio", label: "Envio" },
   { key: "acompanhamento", label: "Acompanhamento" },
   { key: "relatorio", label: "Relatório" },
@@ -63,6 +65,7 @@ export default function QuestionarioDetalhePage() {
   const [acao, setAcao] = useState<Acao | null>(null);
   const [executando, setExecutando] = useState(false);
   const [respostas, setRespostas] = useState<RespostasEnvio | null>(null);
+  const isOwner = useIsOwner();
 
   useEffect(() => {
     if (guard !== true) return;
@@ -148,6 +151,7 @@ export default function QuestionarioDetalhePage() {
                   {q.encerradoEm && ` · encerrado em ${formatDateTime(q.encerradoEm)}`}
                 </p>
               </div>
+              {isOwner && (
               <div className="flex flex-wrap gap-2">
                 {q.status === "RASCUNHO" && q.totalEnvios === 0 && (
                   <button onClick={() => setAcao("excluir")} className={`${btn} text-red-600`}>Excluir</button>
@@ -181,26 +185,47 @@ export default function QuestionarioDetalhePage() {
                     </button>
                   ))}
               </div>
+              )}
             </div>
 
-            <div className="flex gap-1 border-b mb-6 overflow-x-auto" style={{ borderColor: "var(--shell-card-border)" }}>
-              {ABAS.map((a) => (
-                <button
-                  key={a.key}
-                  onClick={() => setAba(a.key)}
-                  className="px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap"
-                  style={{
-                    borderColor: aba === a.key ? "var(--via-teal, #1D9E75)" : "transparent",
-                    color: aba === a.key ? "var(--via-teal, #1D9E75)" : "var(--shell-subtext)",
-                  }}
-                >
-                  {a.label}
-                </button>
-              ))}
+            <div
+              className="flex gap-1 p-1 mb-6 rounded-xl overflow-x-auto border"
+              style={{ background: "var(--shell-hover)", borderColor: "var(--shell-card-border)" }}
+            >
+              {ABAS.map((a) => {
+                const ativa = aba === a.key;
+                const leitura = a.soOwner && !isOwner;
+                return (
+                  <button
+                    key={a.key}
+                    onClick={() => setAba(a.key)}
+                    title={leitura ? "Somente visualização: só o Proprietário pode alterar" : undefined}
+                    className={`px-5 py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                      ativa ? "font-bold shadow-sm" : "font-medium hover:bg-[var(--shell-card-bg)]"
+                    } ${leitura && !ativa ? "opacity-50" : ""}`}
+                    style={{
+                      background: ativa ? (leitura ? "#94a3b8" : "var(--via-teal, #1D9E75)") : "transparent",
+                      color: ativa ? "#fff" : "var(--shell-subtext)",
+                    }}
+                  >
+                    {leitura ? "🔒 " : ""}
+                    {a.label}
+                  </button>
+                );
+              })}
             </div>
 
-            {aba === "perguntas" && <AbaPerguntas questionario={q} onSalvo={setQ} />}
-            {aba === "teste" && <AbaTeste questionario={q} onAtualizado={setQ} onVerRespostas={verRespostas} />}
+            {!isOwner && (aba === "perguntas" || aba === "teste") && (
+              <div
+                className="mb-4 rounded-lg border px-4 py-3 text-sm font-medium"
+                style={{ borderColor: "#94a3b8", background: "var(--shell-hover)", color: "var(--shell-subtext)" }}
+              >
+                🔒 Somente visualização. Só o Proprietário pode alterar perguntas e testes.
+              </div>
+            )}
+
+            {aba === "perguntas" && <AbaPerguntas questionario={q} onSalvo={setQ} somenteLeitura={!isOwner} />}
+            {aba === "teste" && <AbaTeste questionario={q} onAtualizado={setQ} onVerRespostas={verRespostas} somenteLeitura={!isOwner} />}
             {aba === "envio" && <AbaEnvio questionario={q} onEnviado={carregar} />}
             {aba === "acompanhamento" && <AbaAcompanhamento questionario={q} onVerRespostas={verRespostas} />}
             {aba === "relatorio" && <AbaRelatorio questionario={q} onVerRespostas={verRespostas} />}

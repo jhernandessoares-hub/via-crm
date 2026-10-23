@@ -23,21 +23,32 @@ export default function FiltroColuna({
   // Posição fixa na tela: a tabela fica dentro de um overflow-x-auto, que cortaria um popup absoluto
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const botaoRef = useRef<HTMLButtonElement>(null);
 
+  function posicionar() {
+    const r = botaoRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 272) });
+  }
+
+  // Fecha só com clique fora ou Esc. Marcar uma opção muda o tamanho da tabela e
+  // faz a página rolar; por isso a rolagem só reposiciona o popup, não fecha.
   useEffect(() => {
     if (!aberto) return;
     const fechar = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
     };
-    // Rolar a página tiraria o popup do lugar: fecha (rolar a própria lista não conta)
-    const rolou = (e: Event) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAberto(false);
     };
     document.addEventListener("mousedown", fechar);
-    window.addEventListener("scroll", rolou, true);
+    document.addEventListener("keydown", tecla);
+    window.addEventListener("scroll", posicionar, true);
+    window.addEventListener("resize", posicionar);
     return () => {
       document.removeEventListener("mousedown", fechar);
-      window.removeEventListener("scroll", rolou, true);
+      document.removeEventListener("keydown", tecla);
+      window.removeEventListener("scroll", posicionar, true);
+      window.removeEventListener("resize", posicionar);
     };
   }, [aberto]);
 
@@ -68,9 +79,9 @@ export default function FiltroColuna({
       <span>{titulo}</span>
       <button
         type="button"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 272) });
+        ref={botaoRef}
+        onClick={() => {
+          posicionar();
           setAberto((a) => !a);
         }}
         title={ativo ? "Filtro ativo" : "Filtrar"}
