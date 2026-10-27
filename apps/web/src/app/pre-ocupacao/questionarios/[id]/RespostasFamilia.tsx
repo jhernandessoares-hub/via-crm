@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { formatDateTime } from "../../_lib/constants";
 
@@ -11,6 +11,10 @@ export type RespostasEnvio = {
   situacao: string;
   teste?: boolean;
   alertas: string[];
+  /** 2+ = reenviado para corrigir */
+  rodada?: number;
+  /** Respostas substituídas por correção (só histórico, não contam no relatório) */
+  anteriores?: { rodada: number; respondidoEm: string | null; arquivadoEm: string; arquivadoPor: string | null; respostas: RespostasEnvio["respostas"] }[];
   respostas: {
     perguntaId: string;
     instancia: number;
@@ -77,7 +81,10 @@ function Linhas({ linhas }: { linhas: Linha[] }) {
  * por pessoa. Fecha só pelo botão (regra global de modais do CRM).
  */
 export default function RespostasFamilia({ dados, onClose }: { dados: RespostasEnvio; onClose: () => void }) {
-  const blocos = organizar(dados.respostas);
+  // Aba "atual" (null) ou uma resposta anterior, substituída por correção (número da rodada)
+  const [verRodada, setVerRodada] = useState<number | null>(null);
+  const anterior = verRodada !== null ? dados.anteriores?.find((a) => a.rodada === verRodada) : undefined;
+  const blocos = organizar(anterior ? anterior.respostas : dados.respostas);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -101,10 +108,33 @@ export default function RespostasFamilia({ dados, onClose }: { dados: RespostasE
             {dados.teste ? dados.familia.nome : `Família ${dados.familia.numero} · ${dados.familia.nome}`}
           </h2>
           <p className="mt-1 text-sm" style={{ color: "var(--shell-subtext)" }}>
-            {dados.respondidoEm
-              ? `Respondeu em ${formatDateTime(dados.respondidoEm)}`
-              : "Ainda está respondendo. Abaixo, o que já foi salvo."}
+            {anterior
+              ? `${anterior.rodada}ª resposta, enviada em ${formatDateTime(anterior.respondidoEm)} — substituída em ${formatDateTime(anterior.arquivadoEm)}${anterior.arquivadoPor ? ` por ${anterior.arquivadoPor}` : ""}. Só histórico: não conta no relatório.`
+              : dados.respondidoEm
+                ? `${(dados.rodada ?? 1) > 1 ? `${dados.rodada}ª resposta · ` : ""}Respondeu em ${formatDateTime(dados.respondidoEm)}`
+                : `${(dados.rodada ?? 1) > 1 ? `Corrigindo (${dados.rodada}ª resposta). ` : ""}Ainda está respondendo. Abaixo, o que já foi salvo.`}
           </p>
+          {!!dados.anteriores?.length && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[{ rodada: null as number | null, label: "Atual" }, ...dados.anteriores.map((a) => ({ rodada: a.rodada as number | null, label: `${a.rodada}ª resposta (substituída)` }))].map((t) => {
+                const ativa = verRodada === t.rodada;
+                return (
+                  <button
+                    key={String(t.rodada)}
+                    onClick={() => setVerRodada(t.rodada)}
+                    className="rounded-full border px-3 py-1 text-xs font-semibold"
+                    style={{
+                      borderColor: ativa ? "var(--via-teal, #1D9E75)" : "var(--shell-card-border)",
+                      background: ativa ? "var(--via-teal, #1D9E75)" : "transparent",
+                      color: ativa ? "#fff" : "var(--shell-text)",
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -139,7 +169,12 @@ export default function RespostasFamilia({ dados, onClose }: { dados: RespostasE
         {/* Conteúdo */}
         <div className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
           <div className="mx-auto max-w-4xl space-y-6">
-            {dados.alertas.map((a) => (
+            {anterior && (
+              <p className="rounded-xl px-4 py-3 text-sm font-semibold text-amber-800" style={{ background: "#fffbeb" }}>
+                Estas respostas foram substituídas quando a família foi chamada para corrigir. Ficam só para consulta.
+              </p>
+            )}
+            {!anterior && dados.alertas.map((a) => (
               <p key={a} className="rounded-xl px-4 py-3 text-sm font-semibold text-red-700" style={{ background: "#fef2f2" }}>
                 ⚠ {a}
               </p>

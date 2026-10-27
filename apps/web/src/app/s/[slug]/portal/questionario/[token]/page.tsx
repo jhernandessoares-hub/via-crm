@@ -43,6 +43,8 @@ type Dados =
       config: QuestionarioConfig | null;
       jaRespondido: false;
       teste?: boolean;
+      /** 2+ = reenviado para corrigir: esta resposta substitui a anterior */
+      rodada?: number;
       /** Ainda falta o CPF: o servidor só mandou as telas de abertura. */
       precisaCpf?: boolean;
       prefill: { NOME: string | null; TELEFONE: string | null };
@@ -939,6 +941,12 @@ export default function QuestionarioPublicoPage() {
             {dados.teste && (
               <p className="mb-3 rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-2 text-center text-base font-semibold text-amber-900">
                 Modo teste: estas respostas não contam no relatório
+              </p>
+            )}
+            {(dados.rodada ?? 1) > 1 && (
+              <p className="mb-3 rounded-2xl border-2 border-sky-400 bg-sky-50 px-4 py-3 text-center text-base font-semibold text-sky-900">
+                Esta é a sua {dados.rodada}ª resposta. Ela vai substituir a anterior. Suas respostas já estão preenchidas: use
+                &ldquo;← Voltar&rdquo; para revisar e corrija só o que precisar.
               </p>
             )}
             {/* Progresso */}

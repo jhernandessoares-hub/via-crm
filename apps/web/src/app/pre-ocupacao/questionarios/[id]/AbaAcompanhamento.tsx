@@ -30,6 +30,7 @@ type Linha = {
   ultimoEnvioErro: string | null;
   tokenExpiraEm: string | null;
   canalEnvio: string | null;
+  rodada: number;
 };
 
 type Dados = {
@@ -65,7 +66,7 @@ export default function AbaAcompanhamento({
   const [reenviando, setReenviando] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   // Cancelar link pede duas confirmações; reenviar pede uma
-  const [confirmacao, setConfirmacao] = useState<{ tipo: "cancelar1" | "cancelar2" | "reenviar"; linha: Linha } | null>(null);
+  const [confirmacao, setConfirmacao] = useState<{ tipo: "cancelar1" | "cancelar2" | "reenviar" | "corrigir1" | "corrigir2"; linha: Linha } | null>(null);
 
   const publicado = questionario.status === "PUBLICADO";
   const naFilaRef = useRef(0);
@@ -104,6 +105,26 @@ export default function AbaAcompanhamento({
       await carregar(true);
     } catch (e: any) {
       setMsg(e?.message ?? "Erro ao reenviar");
+    } finally {
+      setReenviando(null);
+    }
+  }
+
+  async function reenviarParaCorrigir(envioId: string) {
+    setReenviando(envioId);
+    setMsg(null);
+    try {
+      const r = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/envios/${envioId}/reenviar-correcao`, {
+        method: "POST",
+      });
+      setMsg(
+        r.ok
+          ? "Reenviado para correção. As respostas anteriores foram para o histórico (Ver respostas) e a família recebeu um link novo, já preenchido."
+          : `As respostas foram para o histórico, mas o WhatsApp falhou: ${r.erro}. Use Reenviar.`,
+      );
+      await carregar(true);
+    } catch (e: any) {
+      setMsg(e?.message ?? "Erro ao reenviar para correção");
     } finally {
       setReenviando(null);
     }
@@ -164,20 +185,23 @@ export default function AbaAcompanhamento({
     if (!confirmacao) return;
     const { tipo, linha } = confirmacao;
     if (tipo === "cancelar1") return setConfirmacao({ tipo: "cancelar2", linha });
+    if (tipo === "corrigir1") return setConfirmacao({ tipo: "corrigir2", linha });
     setConfirmacao(null);
     if (tipo === "cancelar2") cancelarLink(linha.envioId);
+    else if (tipo === "corrigir2") reenviarParaCorrigir(linha.envioId);
     else reenviar(linha.envioId);
   }
 
   function exportar() {
     if (!dados) return;
     baixarCsv(`acompanhamento-${slugArquivo(questionario.titulo)}.csv`, [
-      ["Nº", "Família", "Telefone", "Situação", "Canal", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
+      ["Nº", "Família", "Telefone", "Situação", "Resposta nº", "Canal", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
       ...dados.linhas.map((l) => [
         String(l.numero),
         l.nome,
         l.telefone ?? "",
         SITUACAO_LABEL[l.situacao],
+        String(l.rodada ?? 1),
         l.canalEnvio === "WHATSAPP_OFICIAL" ? "WhatsApp Oficial" : l.canalEnvio === "WHATSAPP_LIGHT" ? "WhatsApp Light" : "",
         l.agendadoPara ? formatDateTime(l.agendadoPara) : "",
         l.enviadoEm ? formatDateTime(l.enviadoEm) : "",
@@ -316,6 +340,11 @@ export default function AbaAcompanhamento({
                   <td className="px-4 py-2">
                     <Badge variant={SITUACAO_VARIANT[l.situacao]}>{SITUACAO_LABEL[l.situacao]}</Badge>
                     <BotaoHistorico questionarioId={questionario.id} envioId={l.envioId} />
+                    {(l.rodada ?? 1) > 1 && (
+                      <span className="ml-2 inline-block rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                        {l.rodada}ª resposta
+                      </span>
+                    )}
                     {l.situacao === "RESPONDENDO" && (
                       <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
                         {l.respostasSalvas} resposta(s) salva(s)
@@ -363,6 +392,16 @@ export default function AbaAcompanhamento({
                         Cancelar link
                       </button>
                     )}
+                    {l.situacao === "RESPONDEU" && publicado && (
+                      <button
+                        onClick={() => setConfirmacao({ tipo: "corrigir1", linha: l })}
+                        disabled={!!reenviando}
+                        title="A família recebe um link novo, já preenchido, para corrigir e enviar de novo"
+                        className="mr-3 text-xs font-medium text-amber-700 disabled:opacity-50"
+                      >
+                        {reenviando === l.envioId ? "Reenviando..." : "Reenviar para corrigir"}
+                      </button>
+                    )}
                     {l.situacao === "RESPONDEU" || l.situacao === "RESPONDENDO" ? (
                       <button
                         onClick={() => onVerRespostas(l.envioId)}
@@ -407,9 +446,11 @@ export default function AbaAcompanhamento({
         title={
           confirmacao?.tipo === "reenviar"
             ? "Confirmar reenvio"
-            : confirmacao?.tipo === "cancelar2"
-              ? "Tem certeza?"
-              : "Cancelar link"
+            : confirmacao?.tipo === "corrigir1"
+              ? "Reenviar para corrigir"
+              : confirmacao?.tipo === "cancelar2" || confirmacao?.tipo === "corrigir2"
+                ? "Tem certeza?"
+                : "Cancelar link"
         }
         footer={
           <div className="flex justify-end gap-2">
@@ -423,9 +464,22 @@ export default function AbaAcompanhamento({
             <button
               onClick={confirmar}
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-              style={{ background: confirmacao?.tipo === "reenviar" ? "var(--via-teal, #1D9E75)" : "#dc2626" }}
+              style={{
+                background:
+                  confirmacao?.tipo === "reenviar"
+                    ? "var(--via-teal, #1D9E75)"
+                    : confirmacao?.tipo === "corrigir1" || confirmacao?.tipo === "corrigir2"
+                      ? "#b45309"
+                      : "#dc2626",
+              }}
             >
-              {confirmacao?.tipo === "reenviar" ? "Sim, reenviar" : confirmacao?.tipo === "cancelar2" ? "Sim, cancelar link" : "Continuar"}
+              {confirmacao?.tipo === "reenviar"
+                ? "Sim, reenviar"
+                : confirmacao?.tipo === "cancelar2"
+                  ? "Sim, cancelar link"
+                  : confirmacao?.tipo === "corrigir2"
+                    ? "Sim, reenviar para correção"
+                    : "Continuar"}
             </button>
           </div>
         }
@@ -437,6 +491,18 @@ export default function AbaAcompanhamento({
                 Reenviar o questionário para <strong>{confirmacao.linha.nome}</strong>
                 {confirmacao.linha.telefone ? ` no número ${maskPhone(confirmacao.linha.telefone)}` : ""}? Vai um link novo
                 e o link anterior deixa de valer.
+              </>
+            ) : confirmacao.tipo === "corrigir1" ? (
+              <>
+                <strong>{confirmacao.linha.nome}</strong>{" "}já respondeu. As respostas atuais vão para o histórico (dá para ver em
+                &ldquo;Ver respostas&rdquo;) e <strong>deixam de contar no relatório</strong> até a família enviar de novo. Ela
+                recebe{confirmacao.linha.telefone ? ` no ${maskPhone(confirmacao.linha.telefone)}` : ""} um link novo, já
+                preenchido, avisando que é a {(confirmacao.linha.rodada ?? 1) + 1}ª resposta.
+              </>
+            ) : confirmacao.tipo === "corrigir2" ? (
+              <>
+                A nova resposta de <strong>{confirmacao.linha.nome}</strong> vai <strong>substituir</strong>{" "}a anterior. Até a
+                família enviar de novo, ela sai de &ldquo;Respondeu&rdquo; e volta a contar como enviado/respondendo.
               </>
             ) : confirmacao.tipo === "cancelar1" ? (
               <>

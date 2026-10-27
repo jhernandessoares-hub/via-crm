@@ -9,6 +9,7 @@ import { validarValor } from '../questionario-pergunta.util';
 import { PerguntaConfig, indexarRespostas, montarPassos, opcoesDe, opcoesDinamicas, respostaPreenchida } from '../questionario-fluxo';
 import { DemandasService } from '../demandas.service';
 import { QuestionarioEnvioService } from '../questionario-envio.service';
+import { alertasNovos, mensagemObrigado } from '../questionario-correcao.util';
 
 /** CPF que não confere: a família precisa falar com a equipe para verificar o cadastro. */
 const CPF_NAO_CONFIRMADO =
@@ -192,6 +193,8 @@ export class QuestionarioPublicoService {
       config: envio.questionario.config ?? null,
       jaRespondido: false as const,
       teste: envio.teste,
+      // 2+ = reenviado para corrigir: a tela avisa que esta resposta substitui a anterior
+      rodada: envio.rodada,
       precisaCpf: !liberado,
       prefill: { NOME: nome || null, TELEFONE: telefone ?? null },
       perguntas: perguntas.map((p) => ({
@@ -334,11 +337,24 @@ export class QuestionarioPublicoService {
 
     // Pedido de sigilo / atendimento reservado: abre demanda para um analista avaliar
     const visiveisFinais = envio.respostas.filter((r) => visiveis.has(`${r.perguntaId}#${r.instancia}`));
-    const alertas: string[] = [];
-    for (const r of visiveisFinais) {
-      const p = porId.get(r.perguntaId);
-      if (!p) continue;
-      for (const o of opcoesDe(p)) if (o.alerta && r.valorOpcoes.includes(o.label) && !alertas.includes(o.alerta)) alertas.push(o.alerta);
+    const alertasDe = (lista: { perguntaId: string; valorOpcoes: string[] }[]) => {
+      const out: string[] = [];
+      for (const r of lista) {
+        const p = porId.get(r.perguntaId);
+        if (!p) continue;
+        for (const o of opcoesDe(p)) if (o.alerta && (r.valorOpcoes ?? []).includes(o.label) && !out.includes(o.alerta)) out.push(o.alerta);
+      }
+      return out;
+    };
+    let alertas = alertasDe(visiveisFinais);
+    // Correção: o que já estava marcado na resposta anterior já virou demanda — só abre para o que é novo
+    if (envio.rodada > 1 && alertas.length) {
+      const anterior = await this.prisma.preOcupacaoQuestionarioEnvioRodada.findFirst({
+        where: { envioId: envio.id },
+        orderBy: { rodada: 'desc' },
+        select: { respostas: true },
+      });
+      alertas = alertasNovos(alertas, alertasDe((anterior?.respostas as any[]) ?? []));
     }
     if (alertas.length && envio.teste) {
       this.logger.log(`Teste do questionário: abriria demanda (${alertas.join('; ')}) — não aberta por ser teste. envio=${envio.id}`);
@@ -368,7 +384,7 @@ export class QuestionarioPublicoService {
 
     // Agradecimento por WhatsApp. Falha aqui não desfaz a resposta já gravada.
     const nome = envio.teste ? envio.testeNome ?? 'Teste' : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
-    const agradecimento = `Obrigado, ${nome}! Recebemos suas respostas do questionário "${envio.questionario.titulo}".`;
+    const agradecimento = mensagemObrigado(nome, envio.questionario.titulo, envio.rodada);
     try {
       if (envio.teste) {
         await this.envios.enviarTextoParaNumero(envio.tenantId, envio.testeTelefone ?? '', `[TESTE] ${agradecimento}`);

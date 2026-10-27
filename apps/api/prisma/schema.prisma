@@ -2294,13 +2294,16 @@ model PreOcupacaoQuestionarioEnvio {
   canalEnvio      String?
   entregueEm      DateTime?
   entregaErro     String?
+  // 1 = primeira resposta; 2+ = reenviado para a família corrigir (respostas anteriores em `rodadas`)
+  rodada          Int                                @default(1)
   criadoEm        DateTime                           @default(now())
   atualizadoEm    DateTime                           @updatedAt
 
-  questionario PreOcupacaoQuestionario           @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
-  familia      PreOcupacaoFamilia?               @relation(fields: [familiaId], references: [id], onDelete: Cascade)
+  questionario PreOcupacaoQuestionario              @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
+  familia      PreOcupacaoFamilia?                  @relation(fields: [familiaId], references: [id], onDelete: Cascade)
   respostas    PreOcupacaoQuestionarioResposta[]
   eventos      PreOcupacaoQuestionarioEnvioEvento[]
+  rodadas      PreOcupacaoQuestionarioEnvioRodada[]
 
   @@unique([questionarioId, familiaId])
   @@index([questionarioId, teste])
@@ -2325,6 +2328,27 @@ model PreOcupacaoQuestionarioEnvioEvento {
 
   @@index([envioId, em])
   @@map("pre_ocupacao_questionario_envio_eventos")
+}
+
+/// Respostas já enviadas e substituídas quando a família foi chamada para corrigir
+/// ("Reenviar para corrigir"). Só histórico: não entra em relatório nem em contagem.
+model PreOcupacaoQuestionarioEnvioRodada {
+  id           String    @id @default(uuid())
+  envioId      String
+  rodada       Int
+  enviadoEm    DateTime?
+  linkAbertoEm DateTime?
+  iniciadoEm   DateTime?
+  respondidoEm DateTime?
+  // [{ perguntaId, instancia, valorTexto, valorNumero, valorData, valorOpcoes, extras }]
+  respostas    Json
+  arquivadoEm  DateTime  @default(now())
+  arquivadoPor String?
+
+  envio PreOcupacaoQuestionarioEnvio @relation(fields: [envioId], references: [id], onDelete: Cascade)
+
+  @@unique([envioId, rodada])
+  @@map("pre_ocupacao_questionario_envio_rodadas")
 }
 
 model PreOcupacaoQuestionarioResposta {
