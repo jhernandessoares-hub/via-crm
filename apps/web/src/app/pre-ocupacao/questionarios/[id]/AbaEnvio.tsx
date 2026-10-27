@@ -98,6 +98,7 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
   const [modo, setModo] = useState<"agora" | "agendar">("agora");
   const [quando, setQuando] = useState(""); // valor do <input type="datetime-local">, horário local
   const [filtrosColuna, setFiltrosColuna] = useState<Partial<Record<Coluna, Set<string>>>>({});
+  const [busca, setBusca] = useState("");
 
   const publicado = questionario.status === "PUBLICADO";
 
@@ -150,7 +151,21 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
     () => new Set(visiveis.filter((f) => selecionadas.has(f.familiaId)).map((f) => f.familiaId)),
     [visiveis, selecionadas],
   );
-  const elegiveis = useMemo(() => visiveis.filter((f) => !f.situacao && !f.semTelefone && !f.semCpf), [visiveis]);
+  // Busca por nome, número ou telefone: só ajuda a achar; quem já foi marcado continua
+  // marcado (e vai no disparo) mesmo quando a busca esconde a linha
+  const naLista = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    if (!t) return visiveis;
+    const dig = t.replace(/\D/g, "");
+    return visiveis.filter(
+      (f) =>
+        f.nome.toLowerCase().includes(t) ||
+        String(f.numero).includes(t) ||
+        (dig.length >= 4 && (f.telefone ?? "").includes(dig)),
+    );
+  }, [visiveis, busca]);
+  const escondidasMarcadas = busca.trim() ? [...marcadas].filter((id) => !naLista.some((f) => f.familiaId === id)).length : 0;
+  const elegiveis = useMemo(() => naLista.filter((f) => !f.situacao && !f.semTelefone && !f.semCpf), [naLista]);
   const todasMarcadas = elegiveis.length > 0 && elegiveis.every((f) => marcadas.has(f.familiaId));
   const temFiltroColuna = Object.values(filtrosColuna).some(Boolean);
 
@@ -320,6 +335,26 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
       </div>
 
       {preview && preview.familias.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar família por nome, número ou telefone"
+            className="h-10 w-full max-w-sm rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none"
+          />
+          {busca.trim() && (
+            <span className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+              {naLista.length} encontrada(s)
+              {escondidasMarcadas > 0 && ` · ${escondidasMarcadas} marcada(s) fora da busca continuam marcadas e vão no disparo`}
+              <button onClick={() => setBusca("")} className="ml-2 font-medium" style={{ color: "var(--via-teal, #1D9E75)" }}>
+                Limpar busca
+              </button>
+            </span>
+          )}
+        </div>
+      )}
+
+      {preview && preview.familias.length > 0 && (
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -355,14 +390,16 @@ export default function AbaEnvio({ questionario, onEnviado }: { questionario: Qu
                 </tr>
               </thead>
               <tbody>
-                {visiveis.length === 0 && (
+                {naLista.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-4 py-24 text-center" style={{ color: "var(--shell-subtext)" }}>
-                      Nenhuma família com esses filtros. Ajuste os filtros dos títulos ou clique em "Limpar filtros das colunas".
+                      {busca.trim() && visiveis.length > 0
+                        ? "Nenhuma família encontrada com essa busca."
+                        : 'Nenhuma família com esses filtros. Ajuste os filtros dos títulos ou clique em "Limpar filtros das colunas".'}
                     </td>
                   </tr>
                 )}
-                {visiveis.map((f) => {
+                {naLista.map((f) => {
                   const bloqueada = !!f.situacao || f.semTelefone || !!f.semCpf;
                   return (
                     <tr
