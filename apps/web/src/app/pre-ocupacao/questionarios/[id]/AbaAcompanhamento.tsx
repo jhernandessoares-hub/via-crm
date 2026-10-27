@@ -196,22 +196,6 @@ export default function AbaAcompanhamento({
     }
   }
 
-  async function reenviarTodos() {
-    setReenviando("todos");
-    setMsg(null);
-    try {
-      const r = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/reenviar-nao-respondidos`, {
-        method: "POST",
-      });
-      setMsg(`${r.enfileirados} família(s) voltaram para a fila de envio.`);
-      await carregar(true);
-    } catch (e: any) {
-      setMsg(e?.message ?? "Erro ao reenviar");
-    } finally {
-      setReenviando(null);
-    }
-  }
-
   function abrirFamilia(familiaId: string) {
     window.open(`/pre-ocupacao/familias/${familiaId}`, "_blank");
   }
@@ -258,10 +242,6 @@ export default function AbaAcompanhamento({
     const t = busca.trim().toLowerCase();
     return !t || l.nome.toLowerCase().includes(t) || String(l.numero).includes(t);
   });
-  // Agendados e os que ainda estão na fila não entram no "reenviar" (ainda não saíram)
-  const naoRespondidos = dados
-    ? dados.totais.total - dados.totais.respondeu - dados.totais.agendado - dados.totais.aguardandoEnvio
-    : 0;
 
   return (
     <div className="space-y-4">
@@ -309,16 +289,6 @@ export default function AbaAcompanhamento({
               className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)] text-red-600 disabled:opacity-50"
             >
               {reenviando === "cancelar-todos" ? "Cancelando..." : `Cancelar os ${dados?.totais.agendado} agendados`}
-            </button>
-          )}
-          {publicado && naoRespondidos > 0 && (
-            <button
-              onClick={reenviarTodos}
-              disabled={!!reenviando}
-              className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)] disabled:opacity-50"
-              style={{ color: "var(--shell-text)" }}
-            >
-              {reenviando === "todos" ? "Reenviando..." : `Reenviar para os ${naoRespondidos} que não responderam`}
             </button>
           )}
           <button
