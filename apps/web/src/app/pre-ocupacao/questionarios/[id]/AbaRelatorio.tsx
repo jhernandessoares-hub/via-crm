@@ -3,13 +3,16 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardBody } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "../../_lib/constants";
 import PainelQuestionario, { DadosAcompanhamento } from "./PainelQuestionario";
 import { PERGUNTA_TIPO_LABEL, PerguntaTipo, Questionario, baixarCsv, slugArquivo } from "../../_lib/questionario";
 
 type Estat = { media: number | null; soma: number; minimo: number | null; maximo: number | null };
-type ItemTexto = { familiaNumero: number; familiaNome: string; rotulo: string | null; valor: string };
+type ItemTexto = { envioId: string; familiaNumero: number; familiaNome: string; rotulo: string | null; valor: string };
+/** Janela "Quem respondeu": título (pergunta → resposta) e a lista de famílias. */
+type Quem = { pergunta: string; resposta: string; itens: ItemTexto[]; unidade?: string | null };
 
 type PerguntaRel = {
   id: string;
@@ -20,13 +23,14 @@ type PerguntaRel = {
   porPessoa: boolean;
   totalRespostas: number;
   familias: number;
-  opcoes?: { opcao: string; total: number; percentual: number; valores?: Estat; textos?: ItemTexto[] }[];
+  opcoes?: { opcao: string; total: number; percentual: number; quem?: ItemTexto[]; valores?: Estat; textos?: ItemTexto[] }[];
   unidade?: string | null;
   media?: number | null;
   soma?: number;
   minimo?: number | null;
   maximo?: number | null;
-  distribuicao?: { nota: number; total: number }[];
+  valoresPorFamilia?: ItemTexto[];
+  distribuicao?: { nota: number; total: number; quem?: ItemTexto[] }[];
   campos?: ({ chave: string; label: string; tipo: "CONTADOR" } & Estat | { chave: string; label: string; tipo: "TEXTO"; respostas: ItemTexto[] })[];
   respostas?: ItemTexto[];
   pessoasTotal?: number;
@@ -54,12 +58,24 @@ const CORES = ["#2563eb", "#1D9E75", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4",
 type ItemGrafico = { label: string; total: number; percentual: number; extra?: string };
 
 /** Lista com barrinhas (a visão de sempre): texto completo, quantidade e %. */
-function Barras({ itens, cores }: { itens: ItemGrafico[]; cores?: boolean }) {
+function Barras({ itens, cores, onClicar }: { itens: ItemGrafico[]; cores?: boolean; onClicar?: (idx: number) => void }) {
   const max = Math.max(1, ...itens.map((i) => i.total));
   return (
     <div className="space-y-2">
       {itens.map((i, idx) => (
-        <div key={i.label}>
+        <div
+          key={i.label}
+          {...(onClicar && i.total > 0
+            ? {
+                role: "button",
+                tabIndex: 0,
+                title: "Ver quem respondeu",
+                onClick: () => onClicar(idx),
+                onKeyDown: (e: React.KeyboardEvent) => (e.key === "Enter" || e.key === " ") && onClicar(idx),
+                className: "cursor-pointer rounded-md -mx-1 px-1 py-0.5 hover:bg-[var(--shell-hover)]",
+              }
+            : {})}
+        >
           <div className="flex justify-between gap-3 text-xs mb-0.5" style={{ color: "var(--shell-text)" }}>
             <span className="flex items-start gap-2">
               {cores && <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: CORES[idx % CORES.length] }} />}
@@ -67,6 +83,7 @@ function Barras({ itens, cores }: { itens: ItemGrafico[]; cores?: boolean }) {
             </span>
             <span className="shrink-0" style={{ color: "var(--shell-subtext)" }}>
               {i.total} · {fmtNum(i.percentual)}%{i.extra ? ` · ${i.extra}` : ""}
+              {onClicar && i.total > 0 && <span className="ml-1 text-blue-700">›</span>}
             </span>
           </div>
           <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--shell-hover)" }}>
@@ -82,13 +99,23 @@ function Barras({ itens, cores }: { itens: ItemGrafico[]; cores?: boolean }) {
 }
 
 /** Pizza (só para escolha única, onde as fatias somam 100%). */
-function GraficoPizza({ itens }: { itens: ItemGrafico[] }) {
+function GraficoPizza({ itens, onClicar }: { itens: ItemGrafico[]; onClicar?: (idx: number) => void }) {
   if (!itens.some((i) => i.total > 0)) return null;
   return (
     <div className="h-52 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Pie data={itens} dataKey="total" nameKey="label" innerRadius={45} outerRadius={90} paddingAngle={1} isAnimationActive={false}>
+          <Pie
+            data={itens}
+            dataKey="total"
+            nameKey="label"
+            innerRadius={45}
+            outerRadius={90}
+            paddingAngle={1}
+            isAnimationActive={false}
+            onClick={onClicar ? (_d, idx) => onClicar(idx) : undefined}
+            style={onClicar ? { cursor: "pointer" } : undefined}
+          >
             {itens.map((i, idx) => (
               <Cell key={i.label} fill={CORES[idx % CORES.length]} />
             ))}
@@ -101,7 +128,7 @@ function GraficoPizza({ itens }: { itens: ItemGrafico[] }) {
 }
 
 /** Barras em pé para múltipla escolha, aceite e notas (cada opção conta por si). */
-function GraficoColunas({ itens, numerar }: { itens: ItemGrafico[]; numerar: boolean }) {
+function GraficoColunas({ itens, numerar, onClicar }: { itens: ItemGrafico[]; numerar: boolean; onClicar?: (idx: number) => void }) {
   if (!itens.some((i) => i.total > 0)) return null;
   // Rótulo curto no eixo: o texto completo fica na lista ao lado e no tooltip
   const dados = itens.map((i, idx) => ({ ...i, curto: numerar ? String(idx + 1) : i.label }));
@@ -115,7 +142,13 @@ function GraficoColunas({ itens, numerar }: { itens: ItemGrafico[]; numerar: boo
             formatter={(v, _n, item) => [`${v} · ${fmtNum((item?.payload as ItemGrafico)?.percentual)}%`, "Respostas"]}
             labelFormatter={(_l, payload) => (payload?.[0]?.payload as ItemGrafico | undefined)?.label ?? ""}
           />
-          <Bar dataKey="total" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+          <Bar
+            dataKey="total"
+            radius={[4, 4, 0, 0]}
+            isAnimationActive={false}
+            onClick={onClicar ? (_d, idx) => onClicar(idx) : undefined}
+            style={onClicar ? { cursor: "pointer" } : undefined}
+          >
             {dados.map((d, idx) => (
               <Cell key={d.label} fill={CORES[idx % CORES.length]} />
             ))}
@@ -128,23 +161,37 @@ function GraficoColunas({ itens, numerar }: { itens: ItemGrafico[]; numerar: boo
 }
 
 /** As duas visões juntas: lista (como sempre foi) e gráfico ao lado; em tela estreita, o gráfico vai para baixo. */
-function ListaEGrafico({ itens, pizza }: { itens: ItemGrafico[]; pizza: boolean }) {
+function ListaEGrafico({ itens, pizza, onClicar }: { itens: ItemGrafico[]; pizza: boolean; onClicar?: (idx: number) => void }) {
   const numerar = !pizza && (itens.length > 6 || itens.some((i) => i.label.length > 14));
   const lista = numerar ? itens.map((i, idx) => ({ ...i, label: `${idx + 1}. ${i.label}` })) : itens;
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-center">
-      <Barras itens={lista} cores />
-      {pizza ? <GraficoPizza itens={itens} /> : <GraficoColunas itens={itens} numerar={numerar} />}
+      <Barras itens={lista} cores onClicar={onClicar} />
+      {pizza ? <GraficoPizza itens={itens} onClicar={onClicar} /> : <GraficoColunas itens={itens} numerar={numerar} onClicar={onClicar} />}
     </div>
   );
 }
 
-function ListaTextos({ itens, vazio = "Nenhuma resposta ainda." }: { itens: ItemTexto[]; vazio?: string }) {
+function ListaTextos({
+  itens,
+  vazio = "Nenhuma resposta ainda.",
+  onAbrir,
+}: {
+  itens: ItemTexto[];
+  vazio?: string;
+  onAbrir?: (envioId: string) => void;
+}) {
   if (itens.length === 0) return <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>{vazio}</p>;
   return (
     <div className="max-h-72 overflow-y-auto divide-y" style={{ borderColor: "var(--shell-card-border)" }}>
       {itens.map((r, i) => (
-        <div key={i} className="py-2 text-sm" style={{ borderColor: "var(--shell-card-border)" }}>
+        <div
+          key={i}
+          className={`py-2 text-sm ${onAbrir ? "cursor-pointer hover:bg-[var(--shell-hover)]" : ""}`}
+          style={{ borderColor: "var(--shell-card-border)" }}
+          onClick={onAbrir ? () => onAbrir(r.envioId) : undefined}
+          title={onAbrir ? "Ver as respostas desta família" : undefined}
+        >
           <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
             {r.familiaNumero} · {r.familiaNome}
             {r.rotulo ? ` · ${r.rotulo}` : ""}
@@ -153,6 +200,79 @@ function ListaTextos({ itens, vazio = "Nenhuma resposta ainda." }: { itens: Item
         </div>
       ))}
     </div>
+  );
+}
+
+/** Janela com as famílias que deram uma resposta: busca, CSV e clique para abrir a família. */
+function QuemRespondeu({ quem, onFechar, onAbrir }: { quem: Quem; onFechar: () => void; onAbrir: (envioId: string) => void }) {
+  const [busca, setBusca] = useState("");
+  const valorTxt = (v: string) => (v && quem.unidade !== undefined && !isNaN(Number(v)) ? fmtValor(Number(v), quem.unidade) : v);
+  const t = busca.trim().toLowerCase();
+  const itens = quem.itens.filter((i) => !t || i.familiaNome.toLowerCase().includes(t) || String(i.familiaNumero).includes(t));
+  const familias = new Set(quem.itens.map((i) => i.envioId)).size;
+  const temPessoa = quem.itens.some((i) => i.rotulo);
+  const temValor = quem.itens.some((i) => i.valor);
+
+  function baixar() {
+    baixarCsv(`quem-respondeu-${slugArquivo(`${quem.pergunta}-${quem.resposta}`)}.csv`, [
+      ["Pergunta", "Resposta", "Nº", "Família", ...(temPessoa ? ["Pessoa"] : []), ...(temValor ? ["Detalhe"] : [])],
+      ...quem.itens.map((i) => [
+        quem.pergunta,
+        quem.resposta,
+        String(i.familiaNumero),
+        i.familiaNome,
+        ...(temPessoa ? [i.rotulo ?? ""] : []),
+        ...(temValor ? [valorTxt(i.valor)] : []),
+      ]),
+    ]);
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onFechar}
+      size="lg"
+      title="Quem respondeu"
+      description={`${quem.pergunta} → ${quem.resposta} (${familias} família${familias === 1 ? "" : "s"}${temPessoa ? `, ${quem.itens.length} pessoa(s)` : ""})`}
+      footer={
+        <div className="flex w-full flex-wrap justify-between gap-2">
+          <button onClick={baixar} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]" style={{ color: "var(--shell-text)" }}>
+            Baixar CSV
+          </button>
+          <button onClick={onFechar} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]" style={{ color: "var(--shell-text)" }}>
+            Fechar
+          </button>
+        </div>
+      }
+    >
+      <input
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder="Buscar por nome ou número"
+        className="mb-3 h-10 w-full rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none"
+      />
+      <div className="max-h-[55vh] overflow-y-auto divide-y" style={{ borderColor: "var(--shell-card-border)" }}>
+        {itens.length === 0 && (
+          <p className="py-4 text-center text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma família encontrada.</p>
+        )}
+        {itens.map((i, idx) => (
+          <button
+            key={`${i.envioId}-${idx}`}
+            onClick={() => onAbrir(i.envioId)}
+            title="Ver as respostas desta família"
+            className="flex w-full items-start justify-between gap-3 py-2 px-1 text-left text-sm hover:bg-[var(--shell-hover)]"
+            style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
+          >
+            <span>
+              <strong>{i.familiaNumero}</strong> · {i.familiaNome}
+              {i.rotulo && <span className="block text-xs" style={{ color: "var(--shell-subtext)" }}>{i.rotulo}</span>}
+              {i.valor && <span className="block text-xs whitespace-pre-wrap" style={{ color: "var(--shell-subtext)" }}>{valorTxt(i.valor)}</span>}
+            </span>
+            <span className="shrink-0 text-xs text-blue-700">Ver respostas ›</span>
+          </button>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -169,7 +289,7 @@ function Numeros({ itens }: { itens: [string, string][] }) {
   );
 }
 
-function BlocoPergunta({ p }: { p: PerguntaRel }) {
+function BlocoPergunta({ p, onQuem, onAbrir }: { p: PerguntaRel; onQuem: (q: Quem) => void; onAbrir: (envioId: string) => void }) {
   return (
     <Card>
       <CardBody className="space-y-3">
@@ -189,7 +309,17 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
                 percentual: o.percentual,
                 extra: o.valores && o.valores.media !== null ? `média ${fmtValor(o.valores.media, "R$")}` : undefined,
               }));
-              return <ListaEGrafico itens={itens} pizza={p.tipo === "ESCOLHA_UNICA"} />;
+              const opcoes = p.opcoes;
+              return (
+                <ListaEGrafico
+                  itens={itens}
+                  pizza={p.tipo === "ESCOLHA_UNICA"}
+                  onClicar={(idx) => {
+                    const o = opcoes[idx];
+                    if (o?.quem?.length) onQuem({ pergunta: p.enunciado, resposta: o.opcao, itens: o.quem, unidade: o.valores ? "R$" : undefined });
+                  }}
+                />
+              );
             })()}
             {p.opcoes
               .filter((o) => o.textos && o.textos.length)
@@ -198,7 +328,7 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
                   <p className="text-xs font-medium mt-2 mb-1" style={{ color: "var(--shell-subtext)" }}>
                     Detalhes de &ldquo;{o.opcao}&rdquo;
                   </p>
-                  <ListaTextos itens={o.textos!} />
+                  <ListaTextos itens={o.textos!} onAbrir={onAbrir} />
                 </div>
               ))}
           </>
@@ -207,6 +337,10 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
         {p.distribuicao && (
           <ListaEGrafico
             pizza={false}
+            onClicar={(idx) => {
+              const d = p.distribuicao![idx];
+              if (d?.quem?.length) onQuem({ pergunta: p.enunciado, resposta: `Nota ${d.nota}`, itens: d.quem });
+            }}
             itens={p.distribuicao.map((d) => ({
               label: `Nota ${d.nota}`,
               total: d.total,
@@ -224,6 +358,16 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
             ]}
           />
         )}
+        {!!p.valoresPorFamilia?.length && (
+          <button
+            onClick={() =>
+              onQuem({ pergunta: p.enunciado, resposta: "Resposta de cada família", itens: p.valoresPorFamilia!, unidade: p.unidade ?? null })
+            }
+            className="text-xs font-medium text-blue-700"
+          >
+            Ver respostas de cada família ›
+          </button>
+        )}
 
         {p.campos && (
           <div className="space-y-3">
@@ -236,7 +380,7 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
               ) : (
                 <div key={c.chave}>
                   <p className="text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>{c.label}</p>
-                  <ListaTextos itens={c.respostas} />
+                  <ListaTextos itens={c.respostas} onAbrir={onAbrir} />
                 </div>
               ),
             )}
@@ -251,7 +395,7 @@ function BlocoPergunta({ p }: { p: PerguntaRel }) {
             ]}
           />
         )}
-        {p.respostas && <ListaTextos itens={p.respostas} />}
+        {p.respostas && <ListaTextos itens={p.respostas} onAbrir={onAbrir} />}
       </CardBody>
     </Card>
   );
@@ -268,6 +412,7 @@ export default function AbaRelatorio({
   const [erro, setErro] = useState<string | null>(null);
   const [visao, setVisao] = useState<"pergunta" | "familia">("pergunta");
   const [acomp, setAcomp] = useState<DadosAcompanhamento | null>(null);
+  const [quem, setQuem] = useState<Quem | null>(null);
 
   useEffect(() => {
     apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/relatorio`)
@@ -375,7 +520,7 @@ export default function AbaRelatorio({
               </p>
             )}
             {b.perguntas.map((p) => (
-              <BlocoPergunta key={p.id} p={p} />
+              <BlocoPergunta key={p.id} p={p} onQuem={setQuem} onAbrir={onVerRespostas} />
             ))}
           </div>
         ))}
@@ -425,6 +570,8 @@ export default function AbaRelatorio({
           </div>
         </Card>
       )}
+      {/* As respostas da família abrem por cima; ao fechar, a lista continua aberta */}
+      {quem && <QuemRespondeu quem={quem} onFechar={() => setQuem(null)} onAbrir={onVerRespostas} />}
     </div>
   );
 }

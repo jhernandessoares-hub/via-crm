@@ -945,10 +945,16 @@ export class QuestionariosService {
           totalRespostas: respostas.length,
           familias,
         };
+        // Item de "quem respondeu": envioId deixa a tela abrir as respostas da família
+        const item = (r: (typeof respostas)[number], valor: string) => ({
+          envioId: r.envioId,
+          familiaNumero: r.familiaNumero,
+          familiaNome: r.familiaNome,
+          rotulo: r.rotulo,
+          valor,
+        });
         const lista = (valor: (r: (typeof respostas)[number]) => string) =>
-          respostas
-            .map((r) => ({ familiaNumero: r.familiaNumero, familiaNome: r.familiaNome, rotulo: r.rotulo, valor: valor(r) }))
-            .filter((x) => x.valor);
+          respostas.map((r) => item(r, valor(r))).filter((x) => x.valor);
 
         // "Quais moradores...": conta famílias com pelo menos 1 pessoa e o total de pessoas
         if (cfg.opcoesDinamicas) {
@@ -968,21 +974,17 @@ export class QuestionariosService {
               const comp = marcaram
                 .map((r) => ({ r, v: ((r.extras ?? {}) as Record<string, string | number>)[o.label] }))
                 .filter((x) => x.v !== undefined && x.v !== '');
+              const extras = (r: (typeof respostas)[number]) => ((r.extras ?? {}) as Record<string, string | number>)[o.label];
               return {
                 opcao: o.label,
                 total: marcaram.length,
                 percentual: pct(marcaram.length, respostas.length),
+                // Quem marcou a opção (com o complemento, quando a opção tem)
+                quem: marcaram.map((r) => item(r, extras(r) !== undefined && extras(r) !== '' ? String(extras(r)) : '')),
                 ...(o.complemento === 'VALOR'
                   ? { valores: estat(comp.map((x) => Number(x.v))) }
                   : o.complemento === 'TEXTO'
-                    ? {
-                        textos: comp.map((x) => ({
-                          familiaNumero: x.r.familiaNumero,
-                          familiaNome: x.r.familiaNome,
-                          rotulo: x.r.rotulo,
-                          valor: String(x.v),
-                        })),
-                      }
+                    ? { textos: comp.map((x) => item(x.r, String(x.v))) }
                     : {}),
               };
             }),
@@ -990,15 +992,21 @@ export class QuestionariosService {
         }
         if (['ESCALA', 'NUMERO', 'CONTADOR', 'MOEDA'].includes(p.tipo)) {
           const nums = respostas.map((r) => r.valorNumero).filter((n): n is number => n !== null);
+          const comNumero = respostas.filter((r) => r.valorNumero !== null);
           return {
             ...base,
             unidade: p.tipo === 'MOEDA' ? 'R$' : (cfg.unidade ?? null),
             ...estat(nums),
+            // Valor de cada família, do maior para o menor (a tela formata com a unidade)
+            valoresPorFamilia: comNumero
+              .sort((a, b) => (b.valorNumero ?? 0) - (a.valorNumero ?? 0))
+              .map((r) => item(r, String(r.valorNumero))),
             ...(p.tipo === 'ESCALA'
               ? {
                   distribuicao: Array.from({ length: (p.escalaMax ?? 5) - (p.escalaMin ?? 1) + 1 }, (_, i) => {
                     const nota = (p.escalaMin ?? 1) + i;
-                    return { nota, total: nums.filter((n) => n === nota).length };
+                    const deram = comNumero.filter((r) => r.valorNumero === nota);
+                    return { nota, total: deram.length, quem: deram.map((r) => item(r, '')) };
                   }),
                 }
               : {}),
@@ -1017,12 +1025,7 @@ export class QuestionariosService {
                     chave: c.chave,
                     label: c.label,
                     tipo: c.tipo,
-                    respostas: valores.map((x) => ({
-                      familiaNumero: x.r.familiaNumero,
-                      familiaNome: x.r.familiaNome,
-                      rotulo: x.r.rotulo,
-                      valor: String(x.v),
-                    })),
+                    respostas: valores.map((x) => item(x.r, String(x.v))),
                   };
             }),
           };
