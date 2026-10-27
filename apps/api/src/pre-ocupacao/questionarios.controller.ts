@@ -19,6 +19,12 @@ export class QuestionariosController {
     return req.user?.nome || req.user?.email || req.user?.id;
   }
 
+  /** "Para quem vai o link": sem o campo, vai para quem recebeu o último envio; null = titular. */
+  private destino(body: any): { participanteId: string | null } | undefined {
+    if (!body || !('participanteId' in body)) return undefined;
+    return { participanteId: typeof body.participanteId === 'string' && body.participanteId ? body.participanteId : null };
+  }
+
   @Get()
   listar(@Request() req: any) {
     return this.svc.listar(req.user.tenantId);
@@ -144,9 +150,14 @@ export class QuestionariosController {
     return this.svc.reenviarNaoRespondidos(req.user.tenantId, id);
   }
 
+  @Get(':id/envios/:envioId/destinatarios')
+  destinatarios(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
+    return this.svc.destinatarios(req.user.tenantId, id, envioId);
+  }
+
   @Post(':id/envios/:envioId/reenviar')
-  reenviar(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
-    return this.svc.reenviar(req.user.tenantId, id, envioId, this.quem(req));
+  reenviar(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string, @Body() body: any) {
+    return this.svc.reenviar(req.user.tenantId, id, envioId, this.quem(req), this.destino(body));
   }
 
   @Post(':id/envios/:envioId/cobrar')
@@ -155,8 +166,8 @@ export class QuestionariosController {
   }
 
   @Post(':id/envios/:envioId/reenviar-correcao')
-  reenviarParaCorrigir(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
-    return this.svc.reenviarParaCorrigir(req.user.tenantId, id, envioId, this.quem(req));
+  reenviarParaCorrigir(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string, @Body() body: any) {
+    return this.svc.reenviarParaCorrigir(req.user.tenantId, id, envioId, this.quem(req), this.destino(body));
   }
 
   @Get(':id/envios/:envioId/historico')

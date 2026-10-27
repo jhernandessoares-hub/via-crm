@@ -10,14 +10,20 @@ import { PerguntaConfig, indexarRespostas, montarPassos, opcoesDe, opcoesDinamic
 import { DemandasService } from '../demandas.service';
 import { QuestionarioEnvioService } from '../questionario-envio.service';
 import { alertasNovos, mensagemObrigado } from '../questionario-correcao.util';
+import { conferirCpfDaFamilia, pessoaDoCpf, soDigitos } from './questionario-cpf.util';
 
 /** CPF que não confere: a família precisa falar com a equipe para verificar o cadastro. */
 const CPF_NAO_CONFIRMADO =
   'Não conseguimos confirmar este CPF no cadastro da sua família. ' +
   'Por favor, fale com a nossa equipe para verificarmos o seu cadastro: é só responder a mensagem do WhatsApp em que você recebeu este link.';
 
+/** Alguém da família já começou com outro CPF: um questionário por família, quem começou termina. */
+const CPF_DE_OUTRA_PESSOA =
+  'Este questionário já foi começado por outra pessoa da sua família. ' +
+  'Para continuar, digite o mesmo CPF de quem começou a responder.';
+
 /** Chamada sem chave de acesso (outro aparelho, chave vencida): a tela volta para o CPF. */
-const CPF_NECESSARIO = 'Para continuar, digite o CPF do titular de novo.';
+const CPF_NECESSARIO = 'Para continuar, digite de novo o CPF de quem começou a responder.';
 
 /**
  * Ordem da primeira pergunta de CPF, ou null se o questionário não pede CPF.
@@ -57,7 +63,19 @@ export class QuestionarioPublicoService {
       where: { tokenHash: hashConviteToken(token) },
       include: {
         questionario: { include: { perguntas: { orderBy: { ordem: 'asc' } } } },
-        familia: { include: { lead: { select: { nome: true, nomeCorreto: true, telefone: true } } } },
+        familia: {
+          include: {
+            lead: {
+              select: {
+                nome: true,
+                nomeCorreto: true,
+                telefone: true,
+                cpf: true,
+                participantes: { select: { cpf: true, nome: true, telefone: true } },
+              },
+            },
+          },
+        },
         respostas: true,
       },
     });
@@ -111,26 +129,37 @@ export class QuestionarioPublicoService {
         questionario: { select: { status: true } },
         familia: {
           select: {
-            lead: { select: { cpf: true, nome: true, nomeCorreto: true, participantes: { select: { cpf: true } } } },
+            lead: {
+              select: {
+                cpf: true,
+                nome: true,
+                nomeCorreto: true,
+                telefone: true,
+                participantes: { select: { cpf: true, nome: true, telefone: true } },
+              },
+            },
           },
         },
+        // CPF de quem começou a responder (fica salvo como resposta da pergunta de CPF)
+        respostas: { where: { pergunta: { tipo: 'CPF' } }, select: { valorTexto: true }, take: 1 },
       },
     });
     if (!envio) throw new NotFoundException('Questionário não encontrado.');
     if (envio.respondidoEm) throw new ConflictException('Você já respondeu este questionário. Obrigado!');
     this.checarValidade(envio);
 
-    const so = (v: string | null | undefined) => String(v ?? '').replace(/\D/g, '');
     if (envio.teste) {
-      if (so(envio.testeCpf) === cpf) return { encontrado: true as const, nome: envio.testeNome ?? 'Teste' };
+      if (soDigitos(envio.testeCpf) === cpf) return { encontrado: true as const, nome: envio.testeNome ?? 'Teste' };
       throw new BadRequestException(CPF_NAO_CONFIRMADO);
     }
     const lead = envio.familia!.lead;
-    const cadastrados = [so(lead.cpf), ...(lead.participantes ?? []).map((p) => so(p.cpf))].filter(Boolean);
-    if (cadastrados.includes(cpf)) return { encontrado: true as const, nome: lead.nomeCorreto ?? lead.nome };
-
+    // Qualquer pessoa do cadastro do lead pode responder, mas é um questionário por família:
+    // depois que alguém começou, só continua quem digitar o mesmo CPF.
+    const conferido = conferirCpfDaFamilia(lead, cpf, envio.respostas[0]?.valorTexto);
+    if (conferido === 'OUTRA_PESSOA') throw new BadRequestException(CPF_DE_OUTRA_PESSOA);
     // Sem CPF no cadastro ou CPF diferente: mesma orientação (e não revela qual caso é)
-    throw new BadRequestException(CPF_NAO_CONFIRMADO);
+    if (conferido === 'NAO_CADASTRADO') throw new BadRequestException(CPF_NAO_CONFIRMADO);
+    return { encontrado: true as const, nome: pessoaDoCpf(lead, cpf)!.nome };
   }
 
   /** Conferência ao digitar (não grava nada). */
@@ -161,12 +190,17 @@ export class QuestionarioPublicoService {
     const envio = await this.buscarEnvio(token);
     const cpfOrdem = ordemDoCpf(envio.questionario.perguntas);
     const liberado = this.autorizado(envio, cpfOrdem, chave);
-    const nome = !liberado
-      ? ''
-      : envio.teste
-        ? envio.testeNome ?? 'Teste'
-        : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
-    const telefone = !liberado ? null : envio.teste ? envio.testeTelefone : envio.familia!.lead.telefone;
+    // Quem está respondendo: a pessoa do cadastro dona do CPF digitado (pode ser o
+    // cônjuge ou um familiar); sem CPF, o titular. Usado na saudação e no preenchimento.
+    let pessoa: { nome: string; telefone: string | null } | null = null;
+    if (liberado && !envio.teste) {
+      const lead = envio.familia!.lead;
+      const idsCpf = new Set(envio.questionario.perguntas.filter((p) => p.tipo === 'CPF').map((p) => p.id));
+      const cpfSalvo = envio.respostas.find((r) => idsCpf.has(r.perguntaId))?.valorTexto;
+      pessoa = pessoaDoCpf(lead, cpfSalvo) ?? { nome: lead.nomeCorreto ?? lead.nome, telefone: lead.telefone };
+    }
+    const nome = !liberado ? '' : envio.teste ? envio.testeNome ?? 'Teste' : pessoa!.nome;
+    const telefone = !liberado ? null : envio.teste ? envio.testeTelefone : pessoa!.telefone;
     // Quem já respondeu vê o aviso de "já respondido", mesmo com link vencido.
     if (envio.respondidoEm) {
       return { nome, titulo: envio.questionario.titulo, jaRespondido: true as const, respondidoEm: envio.respondidoEm };

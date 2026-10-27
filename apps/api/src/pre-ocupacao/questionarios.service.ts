@@ -18,6 +18,7 @@ import { registrarEventoEnvio, montarHistorico } from './questionario-evento.uti
 import { conferirEntregaPelaConversa } from './questionario-entrega.util';
 import { copiaDasRespostas, ordinalResposta } from './questionario-correcao.util';
 import { SITUACOES_COBRAVEIS, SituacaoCobravel, podeCobrar } from './questionario-cobranca.util';
+import { telefoneBrValido } from './questionario-canal.util';
 import { hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe, opcoesFaltandoNasCondicoes } from './questionario-fluxo';
 
@@ -564,7 +565,81 @@ export class QuestionariosService {
   }
 
   /** Reenvia na hora (gera token novo, o anterior deixa de valer). */
-  async reenviar(tenantId: string, id: string, envioId: string, por?: string) {
+  /**
+   * Números da família para a escolha de "para quem vai o link": o titular e as pessoas
+   * do cadastro do lead (aba Documentos, conversas incorporadas) que têm telefone.
+   * `atual` marca quem recebeu o último envio.
+   */
+  async destinatarios(tenantId: string, id: string, envioId: string) {
+    await this.getOrThrow(tenantId, id);
+    const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
+      where: { id: envioId, questionarioId: id, tenantId, teste: false },
+      select: {
+        destinoParticipanteId: true,
+        familia: {
+          select: {
+            lead: {
+              select: {
+                nome: true,
+                nomeCorreto: true,
+                telefone: true,
+                participantes: {
+                  where: { telefone: { not: null } },
+                  orderBy: [{ sortOrder: 'asc' }, { criadoEm: 'asc' }],
+                  select: { id: true, nome: true, telefone: true, classificacao: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!envio?.familia) throw new NotFoundException('Envio não encontrado.');
+    const lead = envio.familia.lead;
+    const atual = envio.destinoParticipanteId;
+    const participantes = lead.participantes.filter((p) => !!p.telefone);
+    // Participante escolhido antes que saiu do cadastro (ou ficou com telefone inválido): o titular volta a ser o atual
+    const atualExiste = !!atual && participantes.some((p) => p.id === atual && telefoneBrValido(p.telefone));
+    return [
+      {
+        participanteId: null,
+        nome: lead.nomeCorreto ?? lead.nome,
+        telefone: lead.telefone,
+        papel: 'Titular',
+        atual: !atualExiste,
+        aviso: null as string | null,
+      },
+      ...participantes.map((p) => ({
+        participanteId: p.id,
+        nome: p.nome,
+        telefone: p.telefone,
+        papel: p.classificacao ?? 'Pessoa do cadastro',
+        atual: atualExiste && p.id === atual,
+        // Telefone sem 55 + DDD: a tela mostra, mas não deixa escolher
+        aviso: telefoneBrValido(p.telefone) ? null : 'Telefone incompleto (falta 55 + DDD). Corrija na aba Documentos do lead.',
+      })),
+    ];
+  }
+
+  /** Escolha explícita de destino: a pessoa tem que ser do cadastro do lead desta família e ter telefone. */
+  private async validarDestino(tenantId: string, familiaId: string | null, destino?: { participanteId: string | null }) {
+    if (!destino?.participanteId) return;
+    const familia = familiaId
+      ? await this.prisma.preOcupacaoFamilia.findFirst({ where: { id: familiaId, tenantId }, select: { leadId: true } })
+      : null;
+    const p = familia
+      ? await this.prisma.leadParticipante.findFirst({
+          where: { id: destino.participanteId, leadId: familia.leadId, tenantId },
+          select: { telefone: true },
+        })
+      : null;
+    if (!p) throw new BadRequestException('Esta pessoa não está no cadastro desta família.');
+    if (!telefoneBrValido(p.telefone)) {
+      throw new BadRequestException('O telefone desta pessoa está incompleto (precisa de 55 + DDD). Corrija na aba Documentos do lead.');
+    }
+  }
+
+  async reenviar(tenantId: string, id: string, envioId: string, por?: string, destino?: { participanteId: string | null }) {
     const q = await this.getOrThrow(tenantId, id);
     if (q.status !== 'PUBLICADO') throw new ConflictException('Só é possível reenviar um questionário publicado.');
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
@@ -575,7 +650,8 @@ export class QuestionariosService {
     if (envio.statusEnvio === 'PENDENTE' && envio.agendadoPara && envio.agendadoPara > new Date()) {
       throw new ConflictException('Este envio está agendado. Cancele o agendamento para enviar agora.');
     }
-    return this.envioService.enviarUm(envio.id, por);
+    await this.validarDestino(tenantId, envio.familiaId, destino);
+    return this.envioService.enviarUm(envio.id, por, destino);
   }
 
   /**
@@ -622,7 +698,7 @@ export class QuestionariosService {
    * já preenchido) e sai um link novo avisando que esta resposta substitui a anterior.
    * Relatório e contagens passam a seguir o envio novo; o histórico não entra em conta.
    */
-  async reenviarParaCorrigir(tenantId: string, id: string, envioId: string, por?: string) {
+  async reenviarParaCorrigir(tenantId: string, id: string, envioId: string, por?: string, destino?: { participanteId: string | null }) {
     const q = await this.getOrThrow(tenantId, id);
     if (q.status !== 'PUBLICADO') throw new ConflictException('Só é possível reenviar um questionário publicado.');
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
@@ -631,6 +707,8 @@ export class QuestionariosService {
     });
     if (!envio) throw new NotFoundException('Envio não encontrado.');
     if (!envio.respondidoEm) throw new ConflictException('Esta família ainda não respondeu: use "Reenviar".');
+    // Antes de arquivar as respostas: escolha inválida não pode deixar o envio pela metade
+    await this.validarDestino(tenantId, envio.familiaId, destino);
 
     const novaRodada = envio.rodada + 1;
     await this.prisma.$transaction(async (tx) => {
@@ -667,7 +745,7 @@ export class QuestionariosService {
       resourceId: id,
       metadata: { envioId, rodada: novaRodada, respostasArquivadas: envio.respostas.length, por },
     });
-    return this.envioService.enviarUm(envio.id, por);
+    return this.envioService.enviarUm(envio.id, por, destino);
   }
 
   /** Coloca de volta na fila todos que ainda não responderam. */
@@ -844,7 +922,9 @@ export class QuestionariosService {
       familiaId: e.familiaId,
       numero: e.familia!.numero,
       nome: e.familia!.lead.nomeCorreto ?? e.familia!.lead.nome,
-      telefone: e.familia!.lead.telefone,
+      // Telefone de quem recebeu o último link (titular ou outra pessoa do cadastro)
+      telefone: e.destinoParticipanteId ? e.destinoTelefone : e.familia!.lead.telefone,
+      destinoNome: e.destinoParticipanteId ? e.destinoNome : null,
       situacao: situacaoEnvio(e),
       agendadoPara: e.agendadoPara,
       enviadoEm: e.enviadoEm,

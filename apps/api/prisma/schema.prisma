@@ -2296,6 +2296,11 @@ model PreOcupacaoQuestionarioEnvio {
   entregaErro     String?
   // 1 = primeira resposta; 2+ = reenviado para a família corrigir (respostas anteriores em `rodadas`)
   rodada          Int                                @default(1)
+  // Para quem o link foi mandado: participante nulo = titular do lead; senão uma pessoa
+  // do cadastro do lead (cônjuge, familiar). Nome/telefone guardados como foram enviados.
+  destinoParticipanteId String?
+  destinoNome           String?
+  destinoTelefone       String?
   criadoEm        DateTime                           @default(now())
   atualizadoEm    DateTime                           @updatedAt
 
