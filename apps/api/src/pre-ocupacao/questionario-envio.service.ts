@@ -138,11 +138,7 @@ export class QuestionarioEnvioService {
    * Envio de TESTE vai para o telefone informado (sem lead) e devolve o link,
    * para a equipe poder abrir/copiar mesmo se o WhatsApp falhar.
    */
-  async enviarUm(
-    envioId: string,
-    por?: string,
-    opcoes?: { cobranca?: SituacaoCobravel },
-  ): Promise<{ ok: boolean; erro?: string; link?: string }> {
+  async enviarUm(envioId: string, por?: string): Promise<{ ok: boolean; erro?: string; link?: string }> {
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findUnique({
       where: { id: envioId },
       include: {
@@ -188,10 +184,8 @@ export class QuestionarioEnvioService {
       link = `${baseUrl}/portal/questionario/${token}`;
       const corpo = envio.questionario.mensagemEnvio.replace(/\{\{nome\}\}/gi, nome);
       // Reenviado para corrigir: avisa que é a 2ª (3ª…) resposta e que substitui a anterior
-      // Cobrança ("Cobrar resposta"): lembrete com texto conforme a situação da família
-      const texto = opcoes?.cobranca
-        ? mensagemCobranca(nome, envio.questionario.titulo, opcoes.cobranca, link)
-        : envio.rodada > 1
+      const texto =
+        envio.rodada > 1
           ? mensagemCorrecao(nome, envio.questionario.titulo, envio.rodada, link)
           : /\{\{link\}\}/i.test(corpo)
             ? corpo.replace(/\{\{link\}\}/gi, link)
@@ -250,6 +244,57 @@ export class QuestionarioEnvioService {
         .catch((err: any) => this.logger.error(`Falha ao registrar erro de envio: envio=${envio.id}`, { error: err?.message }));
       await registrarEventoEnvio(this.prisma, envio.id, 'FALHA', erro, por ?? null);
       return { ok: false, erro, link: envio.teste ? link : undefined };
+    }
+  }
+
+  /**
+   * "Cobrar resposta": só manda o lembrete (sem link), pelo mesmo canal do envio. Não mexe
+   * no link nem no envio (token, validade, status, entrega): a família usa o link que já
+   * recebeu e a situação continua presa à mensagem original. Falha não marca o envio como
+   * FALHA, porque o link original continua bom. Nunca lança.
+   */
+  async enviarLembrete(envioId: string, situacao: SituacaoCobravel): Promise<{ ok: boolean; erro?: string }> {
+    try {
+      const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findUnique({
+        where: { id: envioId },
+        include: {
+          questionario: { select: { titulo: true } },
+          familia: {
+            include: { lead: { select: { id: true, nome: true, nomeCorreto: true, conversaCanal: true, conversaSessionId: true } } },
+          },
+        },
+      });
+      if (!envio?.familia) return { ok: false, erro: 'Envio sem família.' };
+      const lead = envio.familia.lead;
+      const [tenant, sessao] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: envio.tenantId }, select: { whatsappToken: true, whatsappPhoneNumberId: true } }),
+        this.prisma.whatsappUnofficialSession.findFirst({
+          where: { tenantId: envio.tenantId, status: 'CONNECTED' },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        }),
+      ]);
+      const decisao = decidirCanalQuestionario(lead, !!(tenant?.whatsappToken && tenant?.whatsappPhoneNumberId), sessao?.id ?? null);
+      if (decisao.acao === 'ERRO') return { ok: false, erro: decisao.erro };
+      if (decisao.acao === 'GRAVAR_LIGHT') {
+        await this.prisma.lead.update({
+          where: { id: lead.id },
+          data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: decisao.sessionId },
+        });
+      }
+      const texto = mensagemCobranca(lead.nomeCorreto ?? lead.nome, envio.questionario.titulo, situacao);
+      const leadsService = await this.getLeadsService();
+      await leadsService.sendWhatsappMessage(
+        { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
+        envio.familia.leadId,
+        { message: texto },
+      );
+      this.logger.log(`Cobrança do questionário enviada: envio=${envio.id} situacao=${situacao}`);
+      return { ok: true };
+    } catch (e: any) {
+      const erro = (e?.message || String(e)).slice(0, 500);
+      this.logger.error(`Falha ao cobrar questionário: envio=${envioId} erro=${erro}`);
+      return { ok: false, erro };
     }
   }
 }

@@ -39,11 +39,12 @@ type Linha = {
 const COBRAVEIS: Situacao[] = ["RECEBEU", "ABRIU", "RESPONDENDO"];
 const DIA_MS = 24 * 60 * 60 * 1000;
 function previaCobranca(nome: string, titulo: string, situacao: Situacao): string {
+  const seNaoAbrir = "Se o link não abrir, responda aqui que mandamos outro.";
   if (situacao === "RESPONDENDO")
-    return `Olá, ${nome}! Você ainda não finalizou o preenchimento do questionário "${titulo}". Suas respostas já estão salvas: é só tocar no link e continuar de onde parou.`;
+    return `Olá, ${nome}! Você ainda não finalizou o preenchimento do questionário "${titulo}". Suas respostas já estão salvas: é só tocar no link da mensagem anterior e continuar de onde parou. ${seNaoAbrir}`;
   if (situacao === "ABRIU")
-    return `Olá, ${nome}! Você abriu o questionário "${titulo}", mas ainda não começou a responder. Leva poucos minutos e ajuda muito a equipe a conhecer sua família. Toque no link:`;
-  return `Olá, ${nome}! Ainda não recebemos suas respostas do questionário "${titulo}". Toque no link para responder:`;
+    return `Olá, ${nome}! Você abriu o questionário "${titulo}", mas ainda não começou a responder. Leva poucos minutos e ajuda muito a equipe a conhecer sua família. É só tocar no link da mensagem anterior. ${seNaoAbrir}`;
+  return `Olá, ${nome}! Ainda não recebemos suas respostas do questionário "${titulo}". É só tocar no link da mensagem anterior para responder. ${seNaoAbrir}`;
 }
 /** Trava de 24h: null = pode cobrar; senão quantas horas faz e quantas faltam. */
 function travaCobranca(ultima: string | null): { ha: number; faltam: number } | null {
@@ -135,7 +136,7 @@ export default function AbaAcompanhamento({
     setMsg(null);
     try {
       const r = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/envios/${envioId}/cobrar`, { method: "POST" });
-      setMsg(r.ok ? "Cobrança enviada — a família recebeu um link novo e continua de onde parou." : `Falha ao cobrar: ${r.erro}`);
+      setMsg(r.ok ? "Cobrança enviada — a família foi lembrada de usar o link que já recebeu." : `Falha ao cobrar: ${r.erro}`);
       await carregar(true);
     } catch (e: any) {
       setMsg(e?.message ?? "Erro ao cobrar");
@@ -440,7 +441,7 @@ export default function AbaAcompanhamento({
                         <button
                           onClick={() => setConfirmacao({ tipo: "cobrar", linha: l })}
                           disabled={!!reenviando || !!trava}
-                          title={trava ? `Dá para cobrar de novo em ${trava.faltam}h` : "Manda um lembrete pelo WhatsApp com um link novo"}
+                          title={trava ? `Dá para cobrar de novo em ${trava.faltam}h` : "Manda um lembrete pelo WhatsApp (sem link novo)"}
                           className="mr-3 text-xs font-medium text-blue-700 disabled:opacity-50"
                         >
                           {reenviando === l.envioId ? "Cobrando..." : trava ? `Cobrado há ${trava.ha}h` : "Cobrar resposta"}
@@ -554,13 +555,18 @@ export default function AbaAcompanhamento({
             ) : confirmacao.tipo === "cobrar" ? (
               <>
                 Mandar um lembrete para <strong>{confirmacao.linha.nome}</strong>
-                {confirmacao.linha.telefone ? ` no ${maskPhone(confirmacao.linha.telefone)}` : ""}? Vai um link novo; as respostas
-                já salvas continuam. Depois disso, só dá para cobrar de novo em 24h.
+                {confirmacao.linha.telefone ? ` no ${maskPhone(confirmacao.linha.telefone)}` : ""}? Não vai link novo: a família
+                usa o link que já recebeu. Depois disso, só dá para cobrar de novo em 24h.
+                {confirmacao.linha.tokenExpiraEm && new Date(confirmacao.linha.tokenExpiraEm) < new Date() && (
+                  <span className="mt-3 block text-xs font-medium text-orange-600">
+                    O link desta família já venceu. Ela não vai conseguir abrir; prefira Reenviar, que manda um link novo.
+                  </span>
+                )}
                 <span
                   className="mt-3 block whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs"
                   style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)" }}
                 >
-                  {previaCobranca(confirmacao.linha.nome, questionario.titulo, confirmacao.linha.situacao)} [link]
+                  {previaCobranca(confirmacao.linha.nome, questionario.titulo, confirmacao.linha.situacao)}
                 </span>
               </>
             ) : confirmacao.tipo === "corrigir1" ? (
