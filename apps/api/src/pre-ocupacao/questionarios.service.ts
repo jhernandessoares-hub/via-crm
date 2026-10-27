@@ -16,6 +16,7 @@ import {
 } from './questionario-pergunta.util';
 import { registrarEventoEnvio, montarHistorico } from './questionario-evento.util';
 import { conferirEntregaPelaConversa } from './questionario-entrega.util';
+import { copiaDasRespostas, ordinalResposta } from './questionario-correcao.util';
 import { hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe, opcoesFaltandoNasCondicoes } from './questionario-fluxo';
 
@@ -576,6 +577,60 @@ export class QuestionariosService {
     return this.envioService.enviarUm(envio.id, por);
   }
 
+  /**
+   * Família que já respondeu e precisa corrigir: as respostas atuais vão para o histórico
+   * (EnvioRodada), o envio volta a "não respondido" com as respostas no lugar (o link abre
+   * já preenchido) e sai um link novo avisando que esta resposta substitui a anterior.
+   * Relatório e contagens passam a seguir o envio novo; o histórico não entra em conta.
+   */
+  async reenviarParaCorrigir(tenantId: string, id: string, envioId: string, por?: string) {
+    const q = await this.getOrThrow(tenantId, id);
+    if (q.status !== 'PUBLICADO') throw new ConflictException('Só é possível reenviar um questionário publicado.');
+    const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
+      where: { id: envioId, questionarioId: id, tenantId, teste: false },
+      include: { respostas: true },
+    });
+    if (!envio) throw new NotFoundException('Envio não encontrado.');
+    if (!envio.respondidoEm) throw new ConflictException('Esta família ainda não respondeu: use "Reenviar".');
+
+    const novaRodada = envio.rodada + 1;
+    await this.prisma.$transaction(async (tx) => {
+      // Guarda contra clique duplo: só arquiva se ainda estiver como respondido nesta rodada
+      const { count } = await tx.preOcupacaoQuestionarioEnvio.updateMany({
+        where: { id: envio.id, rodada: envio.rodada, respondidoEm: { not: null } },
+        data: { rodada: novaRodada, respondidoEm: null, iniciadoEm: null, linkAbertoEm: null, entregueEm: null },
+      });
+      if (count === 0) throw new ConflictException('Este envio já foi reenviado para correção.');
+      await tx.preOcupacaoQuestionarioEnvioRodada.create({
+        data: {
+          envioId: envio.id,
+          rodada: envio.rodada,
+          enviadoEm: envio.enviadoEm,
+          linkAbertoEm: envio.linkAbertoEm,
+          iniciadoEm: envio.iniciadoEm,
+          respondidoEm: envio.respondidoEm,
+          respostas: copiaDasRespostas(envio.respostas) as any,
+          arquivadoPor: por ?? null,
+        },
+      });
+    });
+    await registrarEventoEnvio(
+      this.prisma,
+      envio.id,
+      'CORRECAO_SOLICITADA',
+      `Respostas da ${ordinalResposta(envio.rodada)} vez guardadas; esta é a ${ordinalResposta(novaRodada)} resposta`,
+      por ?? null,
+    );
+    await this.audit.log({
+      tenantId,
+      action: 'PRE_OCUPACAO_QUESTIONARIO_REENVIO_CORRECAO',
+      resourceType: 'PreOcupacaoQuestionario',
+      resourceId: id,
+      metadata: { envioId, rodada: novaRodada, respostasArquivadas: envio.respostas.length, por },
+    });
+    return this.envioService.enviarUm(envio.id, por);
+  }
+
   /** Coloca de volta na fila todos que ainda não responderam. */
   async reenviarNaoRespondidos(tenantId: string, id: string) {
     const q = await this.getOrThrow(tenantId, id);
@@ -752,6 +807,7 @@ export class QuestionariosService {
       ultimoEnvioErro: e.ultimoEnvioErro,
       tokenExpiraEm: e.tokenExpiraEm,
       canalEnvio: e.canalEnvio,
+      rodada: e.rodada,
       alertas: alertas.get(e.id) ?? [],
     }));
 
@@ -987,12 +1043,38 @@ export class QuestionariosService {
     const q = await this.detalhe(tenantId, id);
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({
       where: { id: envioId, questionarioId: id, tenantId },
-      include: { familia: { include: { lead: { select: { nome: true, nomeCorreto: true, telefone: true } } } }, respostas: true },
+      include: {
+        familia: { include: { lead: { select: { nome: true, nomeCorreto: true, telefone: true } } } },
+        respostas: true,
+        rodadas: { orderBy: { rodada: 'desc' } },
+      },
     });
     if (!envio) throw new NotFoundException('Envio não encontrado.');
     const porId = new Map(q.perguntas.map((p) => [p.id, p]));
-    const idx = indexarRespostas(envio.respostas);
-    const passos = montarPassos(q.perguntas, q.config, envio.respostas).filter((s) => porId.get(s.perguntaId)!.tipo !== 'INFO');
+    // Mesmo formato para as respostas atuais e para as substituídas (histórico das correções)
+    const formatar = (lista: any[]) => {
+      const idx = indexarRespostas(lista);
+      return montarPassos(q.perguntas, q.config, lista)
+        .filter((s) => porId.get(s.perguntaId)!.tipo !== 'INFO')
+        .map((s) => {
+          const p = porId.get(s.perguntaId)!;
+          const r = idx.get(`${s.perguntaId}#${s.instancia}`) as any;
+          return {
+            perguntaId: p.id,
+            instancia: s.instancia,
+            ordem: p.ordem,
+            secao: ((p.config ?? {}) as PerguntaConfig).secao ?? null,
+            rotuloGrupo: s.rotuloGrupo,
+            enunciado: preencherTexto(p.enunciado, {
+              pessoa: s.pessoa,
+              instancia: s.instancia,
+              nome: envio.teste ? envio.testeNome : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome,
+              telefone: envio.teste ? envio.testeTelefone : envio.familia!.lead.telefone,
+            }),
+            valor: r ? respostaParaTexto(p, r) : '',
+          };
+        });
+    };
     const alertas = this.alertasPorEnvio(q.perguntas, envio.respostas.map((r) => ({ ...r, envioId: envio.id })));
     return {
       questionario: { id: q.id, titulo: q.titulo },
@@ -1003,24 +1085,18 @@ export class QuestionariosService {
       situacao: situacaoEnvio(envio),
       respondidoEm: envio.respondidoEm,
       alertas: alertas.get(envio.id) ?? [],
-      respostas: passos.map((s) => {
-        const p = porId.get(s.perguntaId)!;
-        const r = idx.get(`${s.perguntaId}#${s.instancia}`) as (typeof envio.respostas)[number] | undefined;
-        return {
-          perguntaId: p.id,
-          instancia: s.instancia,
-          ordem: p.ordem,
-          secao: ((p.config ?? {}) as PerguntaConfig).secao ?? null,
-          rotuloGrupo: s.rotuloGrupo,
-          enunciado: preencherTexto(p.enunciado, {
-            pessoa: s.pessoa,
-            instancia: s.instancia,
-            nome: envio.teste ? envio.testeNome : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome,
-            telefone: envio.teste ? envio.testeTelefone : envio.familia!.lead.telefone,
-          }),
-          valor: r ? respostaParaTexto(p, r) : '',
-        };
-      }),
+      rodada: envio.rodada,
+      respostas: formatar(envio.respostas),
+      // Respostas substituídas por correção: só consulta, não entram em relatório
+      anteriores: envio.rodadas.map((r) => ({
+        rodada: r.rodada,
+        respondidoEm: r.respondidoEm,
+        arquivadoEm: r.arquivadoEm,
+        arquivadoPor: r.arquivadoPor,
+        respostas: formatar(
+          ((r.respostas as any[]) ?? []).map((x) => ({ ...x, envioId: envio.id, valorData: x.valorData ? new Date(x.valorData) : null })),
+        ),
+      })),
     };
   }
 

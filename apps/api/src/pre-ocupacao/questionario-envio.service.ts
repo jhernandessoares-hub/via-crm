@@ -8,6 +8,7 @@ import { gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-toke
 import { registrarEventoEnvio } from './questionario-evento.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
 import { decidirCanalQuestionario } from './questionario-canal.util';
+import { mensagemCorrecao } from './questionario-correcao.util';
 import { FALHAS_SEGUIDAS_PARA_PAUSAR, falhaDoNumero, inicioDoDiaSP } from './questionario-ritmo.util';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -181,9 +182,13 @@ export class QuestionarioEnvioService {
       const baseUrl = await resolvePortalBaseUrl(this.prisma, envio.tenantId);
       link = `${baseUrl}/portal/questionario/${token}`;
       const corpo = envio.questionario.mensagemEnvio.replace(/\{\{nome\}\}/gi, nome);
-      const texto = /\{\{link\}\}/i.test(corpo)
-        ? corpo.replace(/\{\{link\}\}/gi, link)
-        : `${corpo}\n\nResponda aqui: ${link}`;
+      // Reenviado para corrigir: avisa que é a 2ª (3ª…) resposta e que substitui a anterior
+      const texto =
+        envio.rodada > 1
+          ? mensagemCorrecao(nome, envio.questionario.titulo, envio.rodada, link)
+          : /\{\{link\}\}/i.test(corpo)
+            ? corpo.replace(/\{\{link\}\}/gi, link)
+            : `${corpo}\n\nResponda aqui: ${link}`;
 
       // Token e validade gravados antes do envio: no teste o link tem que funcionar
       // mesmo se o WhatsApp falhar (a equipe copia o link).
