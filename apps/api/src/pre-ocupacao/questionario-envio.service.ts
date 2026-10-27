@@ -7,7 +7,7 @@ import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-
 import { gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { registrarEventoEnvio } from './questionario-evento.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
-import { decidirCanalQuestionario } from './questionario-canal.util';
+import { decidirCanalQuestionario, telefoneBrValido } from './questionario-canal.util';
 import { mensagemCorrecao } from './questionario-correcao.util';
 import { mensagemCobranca, SituacaoCobravel } from './questionario-cobranca.util';
 import { FALHAS_SEGUIDAS_PARA_PAUSAR, falhaDoNumero, inicioDoDiaSP } from './questionario-ritmo.util';
@@ -134,24 +134,59 @@ export class QuestionarioEnvioService {
   }
 
   /**
+   * Para quem vai o link: um participante do cadastro do lead (cônjuge, familiar) com
+   * telefone, ou o titular. Participante que sumiu ou ficou sem telefone volta para o
+   * titular (a escolha explícita é validada antes, em `QuestionariosService`).
+   */
+  async resolverDestino(
+    lead: { id: string; nome: string; nomeCorreto: string | null; telefone: string | null },
+    tenantId: string,
+    participanteId: string | null,
+  ): Promise<{ participanteId: string | null; nome: string; telefone: string | null }> {
+    if (participanteId) {
+      const p = await this.prisma.leadParticipante.findFirst({
+        where: { id: participanteId, leadId: lead.id, tenantId },
+        select: { id: true, nome: true, telefone: true },
+      });
+      if (p?.telefone && telefoneBrValido(p.telefone)) return { participanteId: p.id, nome: p.nome, telefone: p.telefone };
+    }
+    return { participanteId: null, nome: lead.nomeCorreto ?? lead.nome, telefone: lead.telefone };
+  }
+
+  /**
    * Gera token novo, envia o WhatsApp e registra o resultado. Nunca lança.
    * Envio de TESTE vai para o telefone informado (sem lead) e devolve o link,
    * para a equipe poder abrir/copiar mesmo se o WhatsApp falhar.
+   * `destino`: para quem vai (participante nulo = titular); sem ele, vai para quem
+   * recebeu o último envio. Só um número fica com o link válido por vez.
    */
-  async enviarUm(envioId: string, por?: string): Promise<{ ok: boolean; erro?: string; link?: string }> {
+  async enviarUm(
+    envioId: string,
+    por?: string,
+    destino?: { participanteId: string | null },
+  ): Promise<{ ok: boolean; erro?: string; link?: string }> {
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findUnique({
       where: { id: envioId },
       include: {
         questionario: true,
         familia: {
-          include: { lead: { select: { id: true, nome: true, nomeCorreto: true, conversaCanal: true, conversaSessionId: true } } },
+          include: {
+            lead: { select: { id: true, nome: true, nomeCorreto: true, telefone: true, conversaCanal: true, conversaSessionId: true } },
+          },
         },
       },
     });
     if (!envio) return { ok: false, erro: 'Envio não encontrado.' };
     if (!envio.teste && !envio.familia) return { ok: false, erro: 'Envio sem família.' };
 
-    const nome = envio.teste ? envio.testeNome ?? 'Teste' : envio.familia!.lead.nomeCorreto ?? envio.familia!.lead.nome;
+    const alvo = envio.teste
+      ? null
+      : await this.resolverDestino(
+          envio.familia!.lead,
+          envio.tenantId,
+          destino !== undefined ? destino.participanteId : envio.destinoParticipanteId,
+        );
+    const nome = envio.teste ? envio.testeNome ?? 'Teste' : alvo!.nome;
     let link: string | undefined;
     try {
       // Canal do envio: o do lead; lead sem canal útil sai pelo WhatsApp Light conectado
@@ -214,7 +249,8 @@ export class QuestionarioEnvioService {
         const r = await leadsService.sendWhatsappMessage(
           { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
           envio.familia!.leadId,
-          { message: texto },
+          // Participante: o LeadsService manda para o telefone dele, na conversa do lead
+          { message: texto, ...(alvo!.participanteId ? { participanteId: alvo!.participanteId } : {}) },
         );
         enviado = { canal: r.canal, messageId: r.messageId };
       }
@@ -231,9 +267,13 @@ export class QuestionarioEnvioService {
           canalEnvio: enviado.canal,
           entregueEm: null,
           entregaErro: null,
+          ...(alvo
+            ? { destinoParticipanteId: alvo.participanteId, destinoNome: alvo.nome, destinoTelefone: alvo.telefone }
+            : {}),
         },
       });
-      await registrarEventoEnvio(this.prisma, envio.id, 'ENVIADO', `${envio.enviosCount + 1}º envio`, por ?? null);
+      const para = alvo?.participanteId ? ` · para ${alvo.nome}` : '';
+      await registrarEventoEnvio(this.prisma, envio.id, 'ENVIADO', `${envio.enviosCount + 1}º envio${para}`, por ?? null);
       this.logger.log(`Questionário enviado: envio=${envio.id} questionario=${envio.questionarioId} teste=${envio.teste}`);
       return { ok: true, link: envio.teste ? link : undefined };
     } catch (e: any) {
@@ -260,12 +300,19 @@ export class QuestionarioEnvioService {
         include: {
           questionario: { select: { titulo: true } },
           familia: {
-            include: { lead: { select: { id: true, nome: true, nomeCorreto: true, conversaCanal: true, conversaSessionId: true } } },
+            include: {
+              lead: { select: { id: true, nome: true, nomeCorreto: true, telefone: true, conversaCanal: true, conversaSessionId: true } },
+            },
           },
         },
       });
       if (!envio?.familia) return { ok: false, erro: 'Envio sem família.' };
       const lead = envio.familia.lead;
+      // O lembrete vai para quem tem o link válido (quem recebeu o último envio)
+      const alvo = await this.resolverDestino(lead, envio.tenantId, envio.destinoParticipanteId);
+      if (envio.destinoParticipanteId && !alvo.participanteId) {
+        return { ok: false, erro: 'Quem recebeu o link não está mais no cadastro (ou ficou sem telefone). Use "Reenviar".' };
+      }
       const [tenant, sessao] = await Promise.all([
         this.prisma.tenant.findUnique({ where: { id: envio.tenantId }, select: { whatsappToken: true, whatsappPhoneNumberId: true } }),
         this.prisma.whatsappUnofficialSession.findFirst({
@@ -282,12 +329,12 @@ export class QuestionarioEnvioService {
           data: { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: decisao.sessionId },
         });
       }
-      const texto = mensagemCobranca(lead.nomeCorreto ?? lead.nome, envio.questionario.titulo, situacao);
+      const texto = mensagemCobranca(alvo.nome, envio.questionario.titulo, situacao);
       const leadsService = await this.getLeadsService();
       await leadsService.sendWhatsappMessage(
         { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
         envio.familia.leadId,
-        { message: texto },
+        { message: texto, ...(alvo.participanteId ? { participanteId: alvo.participanteId } : {}) },
       );
       this.logger.log(`Cobrança do questionário enviada: envio=${envio.id} situacao=${situacao}`);
       return { ok: true };

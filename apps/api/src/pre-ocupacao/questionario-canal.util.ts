@@ -25,3 +25,13 @@ export function decidirCanalQuestionario(
   if (sessaoLightConectadaId) return { acao: 'GRAVAR_LIGHT', sessionId: sessaoLightConectadaId };
   return { acao: 'ERRO', erro: SEM_LIGHT_CONECTADO };
 }
+
+/**
+ * Telefone pronto para o WhatsApp: 55 + DDD + número (12 ou 13 dígitos). O envio usa o
+ * número como está no cadastro; sem o 55, "11 9..." vira código de país 1 e a mensagem
+ * pode ir para outro número. Pessoa do cadastro com telefone fora disso não recebe link.
+ */
+export function telefoneBrValido(telefone: string | null | undefined): boolean {
+  const d = String(telefone ?? '').replace(/\D/g, '');
+  return d.startsWith('55') && (d.length === 12 || d.length === 13);
+}

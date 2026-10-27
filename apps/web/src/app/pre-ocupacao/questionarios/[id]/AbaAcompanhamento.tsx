@@ -33,6 +33,19 @@ type Linha = {
   rodada: number;
   cobrancas: number;
   ultimaCobrancaEm: string | null;
+  /** Quem recebeu o último link, quando não foi o titular (cônjuge, familiar do cadastro). */
+  destinoNome: string | null;
+};
+
+/** Pessoa da família que pode receber o link (GET .../destinatarios). participanteId nulo = titular. */
+type Destinatario = {
+  participanteId: string | null;
+  nome: string;
+  telefone: string | null;
+  papel: string;
+  atual: boolean;
+  /** Preenchido quando não dá para escolher (telefone sem 55 + DDD). */
+  aviso: string | null;
 };
 
 // "Cobrar resposta": mesmos textos da API (questionario-cobranca.util.ts), para a confirmação mostrar o que vai sair
@@ -88,6 +101,26 @@ export default function AbaAcompanhamento({
   const [msg, setMsg] = useState<string | null>(null);
   // Cancelar link pede duas confirmações; reenviar pede uma
   const [confirmacao, setConfirmacao] = useState<{ tipo: "cancelar1" | "cancelar2" | "reenviar" | "corrigir1" | "corrigir2" | "cobrar"; linha: Linha } | null>(null);
+  // "Para quem vai o link" (Reenviar e Reenviar para corrigir): um número por vez; "" = titular
+  const [destinos, setDestinos] = useState<Destinatario[] | null>(null);
+  const [destinoEscolhido, setDestinoEscolhido] = useState("");
+  const [carregandoDestinos, setCarregandoDestinos] = useState(false);
+  const tipoConf = confirmacao?.tipo;
+  const envioConf = confirmacao?.linha.envioId;
+  useEffect(() => {
+    if (!tipoConf) return setDestinos(null);
+    if (tipoConf !== "reenviar" && tipoConf !== "corrigir1") return;
+    setDestinos(null);
+    setCarregandoDestinos(true);
+    apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/envios/${envioConf}/destinatarios`)
+      .then((lista: Destinatario[]) => {
+        setDestinos(lista);
+        setDestinoEscolhido(lista.find((d) => d.atual)?.participanteId ?? "");
+      })
+      // Sem a lista, o reenvio segue para quem recebeu o último link
+      .catch(() => setDestinos(null))
+      .finally(() => setCarregandoDestinos(false));
+  }, [tipoConf, envioConf, questionario.id]);
 
   const publicado = questionario.status === "PUBLICADO";
   const naFilaRef = useRef(0);
@@ -115,12 +148,18 @@ export default function AbaAcompanhamento({
     }
   }
 
-  async function reenviar(envioId: string) {
+  /** Corpo com "para quem vai": só quando a lista carregou (senão a API manda para quem recebeu o último link). */
+  function corpoDestino(participanteId: string | null | undefined) {
+    return participanteId === undefined ? {} : { body: JSON.stringify({ participanteId }) };
+  }
+
+  async function reenviar(envioId: string, participanteId?: string | null) {
     setReenviando(envioId);
     setMsg(null);
     try {
       const r = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/envios/${envioId}/reenviar`, {
         method: "POST",
+        ...corpoDestino(participanteId),
       });
       setMsg(r.ok ? "Reenviado — o link anterior deixou de valer." : `Falha ao reenviar: ${r.erro}`);
       await carregar(true);
@@ -145,12 +184,13 @@ export default function AbaAcompanhamento({
     }
   }
 
-  async function reenviarParaCorrigir(envioId: string) {
+  async function reenviarParaCorrigir(envioId: string, participanteId?: string | null) {
     setReenviando(envioId);
     setMsg(null);
     try {
       const r = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/envios/${envioId}/reenviar-correcao`, {
         method: "POST",
+        ...corpoDestino(participanteId),
       });
       setMsg(
         r.ok
@@ -205,20 +245,22 @@ export default function AbaAcompanhamento({
     const { tipo, linha } = confirmacao;
     if (tipo === "cancelar1") return setConfirmacao({ tipo: "cancelar2", linha });
     if (tipo === "corrigir1") return setConfirmacao({ tipo: "corrigir2", linha });
+    const participanteId = destinos ? destinoEscolhido || null : undefined;
     setConfirmacao(null);
     if (tipo === "cancelar2") cancelarLink(linha.envioId);
-    else if (tipo === "corrigir2") reenviarParaCorrigir(linha.envioId);
+    else if (tipo === "corrigir2") reenviarParaCorrigir(linha.envioId, participanteId);
     else if (tipo === "cobrar") cobrar(linha.envioId);
-    else reenviar(linha.envioId);
+    else reenviar(linha.envioId, participanteId);
   }
 
   function exportar() {
     if (!dados) return;
     baixarCsv(`acompanhamento-${slugArquivo(questionario.titulo)}.csv`, [
-      ["Nº", "Família", "Telefone", "Situação", "Resposta nº", "Cobranças", "Última cobrança", "Canal", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
+      ["Nº", "Família", "Link enviado para", "Telefone", "Situação", "Resposta nº", "Cobranças", "Última cobrança", "Canal", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
       ...dados.linhas.map((l) => [
         String(l.numero),
         l.nome,
+        l.destinoNome ?? "Titular",
         l.telefone ?? "",
         SITUACAO_LABEL[l.situacao],
         String(l.rodada ?? 1),
@@ -344,6 +386,12 @@ export default function AbaAcompanhamento({
                     <button onClick={() => abrirFamilia(l.familiaId)} title="Abrir a família em outra aba" className="text-left hover:underline">
                       {l.nome}
                     </button>
+                    {l.destinoNome && (
+                      <p className="text-[11px] mt-0.5 text-sky-700" title="O link válido está com esta pessoa do cadastro">
+                        Link com: {l.destinoNome}
+                        {l.telefone ? ` · ${maskPhone(l.telefone)}` : ""}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     <Badge variant={SITUACAO_VARIANT[l.situacao]}>{SITUACAO_LABEL[l.situacao]}</Badge>
@@ -491,7 +539,8 @@ export default function AbaAcompanhamento({
             </button>
             <button
               onClick={confirmar}
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+              disabled={carregandoDestinos}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
               style={{
                 background:
                   confirmacao?.tipo === "reenviar" || confirmacao?.tipo === "cobrar"
@@ -515,16 +564,16 @@ export default function AbaAcompanhamento({
         }
       >
         {confirmacao && (
+          <>
           <p className="text-sm" style={{ color: "var(--shell-text)" }}>
             {confirmacao.tipo === "reenviar" ? (
               <>
-                Reenviar o questionário para <strong>{confirmacao.linha.nome}</strong>
-                {confirmacao.linha.telefone ? ` no número ${maskPhone(confirmacao.linha.telefone)}` : ""}? Vai um link novo
-                e o link anterior deixa de valer.
+                Reenviar o questionário da família <strong>{confirmacao.linha.nome}</strong>? Vai um link novo e o link anterior
+                deixa de valer.
               </>
             ) : confirmacao.tipo === "cobrar" ? (
               <>
-                Mandar um lembrete para <strong>{confirmacao.linha.nome}</strong>
+                Mandar um lembrete para <strong>{confirmacao.linha.destinoNome ?? confirmacao.linha.nome}</strong>
                 {confirmacao.linha.telefone ? ` no ${maskPhone(confirmacao.linha.telefone)}` : ""}? Não vai link novo: a família
                 usa o link que já recebeu. Depois disso, só dá para cobrar de novo em 24h.
                 {confirmacao.linha.tokenExpiraEm && new Date(confirmacao.linha.tokenExpiraEm) < new Date() && (
@@ -536,20 +585,30 @@ export default function AbaAcompanhamento({
                   className="mt-3 block whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs"
                   style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)" }}
                 >
-                  {previaCobranca(confirmacao.linha.nome, questionario.titulo, confirmacao.linha.situacao)}
+                  {previaCobranca(confirmacao.linha.destinoNome ?? confirmacao.linha.nome, questionario.titulo, confirmacao.linha.situacao)}
                 </span>
               </>
             ) : confirmacao.tipo === "corrigir1" ? (
               <>
                 <strong>{confirmacao.linha.nome}</strong>{" "}já respondeu. As respostas atuais vão para o histórico (dá para ver em
-                &ldquo;Ver respostas&rdquo;) e <strong>deixam de contar no relatório</strong> até a família enviar de novo. Ela
-                recebe{confirmacao.linha.telefone ? ` no ${maskPhone(confirmacao.linha.telefone)}` : ""} um link novo, já
-                preenchido, avisando que é a {(confirmacao.linha.rodada ?? 1) + 1}ª resposta.
+                &ldquo;Ver respostas&rdquo;) e <strong>deixam de contar no relatório</strong> até a família enviar de novo. Vai
+                um link novo, já preenchido, avisando que é a {(confirmacao.linha.rodada ?? 1) + 1}ª resposta.
               </>
             ) : confirmacao.tipo === "corrigir2" ? (
               <>
                 A nova resposta de <strong>{confirmacao.linha.nome}</strong> vai <strong>substituir</strong>{" "}a anterior. Até a
                 família enviar de novo, ela sai de &ldquo;Respondeu&rdquo; e volta a contar como enviado/respondendo.
+                {destinos && (
+                  <span className="mt-2 block text-xs" style={{ color: "var(--shell-subtext)" }}>
+                    O link vai para:{" "}
+                    <strong>
+                      {(() => {
+                        const d = destinos.find((x) => (x.participanteId ?? "") === destinoEscolhido);
+                        return d ? `${d.nome}${d.telefone ? ` · ${maskPhone(d.telefone)}` : ""}` : confirmacao.linha.nome;
+                      })()}
+                    </strong>
+                  </span>
+                )}
               </>
             ) : confirmacao.tipo === "cancelar1" ? (
               <>
@@ -562,6 +621,56 @@ export default function AbaAcompanhamento({
               </>
             )}
           </p>
+          {(confirmacao.tipo === "reenviar" || confirmacao.tipo === "corrigir1") && (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs font-semibold" style={{ color: "var(--shell-text)" }}>
+                Para quem vai o link (só um número fica com o link válido):
+              </p>
+              {!destinos ? (
+                <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                  {carregandoDestinos
+                    ? "Carregando os números da família..."
+                    : "Não foi possível carregar os números; o link vai para quem recebeu o último envio."}
+                </p>
+              ) : (
+                destinos.map((d) => {
+                  const valor = d.participanteId ?? "";
+                  return (
+                    <label
+                      key={valor || "titular"}
+                      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${d.aviso ? "opacity-60" : "cursor-pointer"}`}
+                      style={{
+                        borderColor: destinoEscolhido === valor ? "var(--via-teal, #1D9E75)" : "var(--shell-card-border)",
+                        color: "var(--shell-text)",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="destino-link"
+                        className="mt-1"
+                        disabled={!!d.aviso}
+                        checked={destinoEscolhido === valor}
+                        onChange={() => setDestinoEscolhido(valor)}
+                      />
+                      <span>
+                        <strong>{d.nome}</strong> · {d.papel}
+                        {d.atual && <span className="ml-1 text-[11px] text-sky-700">(está com o link hoje)</span>}
+                        <span className="block text-xs" style={{ color: "var(--shell-subtext)" }}>
+                          {/* Telefone incompleto aparece como está no cadastro, para a equipe ver o que corrigir */}
+                          {!d.telefone ? "sem telefone" : d.aviso ? d.telefone : maskPhone(d.telefone)}
+                        </span>
+                        {d.aviso && <span className="block text-xs text-orange-600">{d.aviso}</span>}
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+              <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>
+                É um questionário por família. Quem já começou a responder só continua digitando o mesmo CPF.
+              </p>
+            </div>
+          )}
+          </>
         )}
       </Modal>
     </div>
