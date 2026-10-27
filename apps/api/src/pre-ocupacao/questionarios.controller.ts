@@ -149,6 +149,11 @@ export class QuestionariosController {
     return this.svc.reenviar(req.user.tenantId, id, envioId, this.quem(req));
   }
 
+  @Post(':id/envios/:envioId/cobrar')
+  cobrar(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
+    return this.svc.cobrar(req.user.tenantId, id, envioId, this.quem(req));
+  }
+
   @Post(':id/envios/:envioId/reenviar-correcao')
   reenviarParaCorrigir(@Request() req: any, @Param('id') id: string, @Param('envioId') envioId: string) {
     return this.svc.reenviarParaCorrigir(req.user.tenantId, id, envioId, this.quem(req));

@@ -16,6 +16,7 @@ export type TipoEventoEnvio =
   | 'RESPONDEU'
   | 'LINK_CANCELADO'
   | 'CORRECAO_SOLICITADA'
+  | 'COBRADO'
   | 'VALIDADE_ALTERADA';
 
 export const EVENTO_ENVIO_LABEL: Record<TipoEventoEnvio, string> = {
@@ -31,6 +32,7 @@ export const EVENTO_ENVIO_LABEL: Record<TipoEventoEnvio, string> = {
   RESPONDEU: 'Respondeu e enviou',
   LINK_CANCELADO: 'Link cancelado',
   CORRECAO_SOLICITADA: 'Reenviado para corrigir (respostas anteriores guardadas no histórico)',
+  COBRADO: 'Cobrado para responder',
   VALIDADE_ALTERADA: 'Validade do link alterada',
 };
 

@@ -31,7 +31,27 @@ type Linha = {
   tokenExpiraEm: string | null;
   canalEnvio: string | null;
   rodada: number;
+  cobrancas: number;
+  ultimaCobrancaEm: string | null;
 };
+
+// "Cobrar resposta": mesmos textos da API (questionario-cobranca.util.ts), para a confirmação mostrar o que vai sair
+const COBRAVEIS: Situacao[] = ["RECEBEU", "ABRIU", "RESPONDENDO"];
+const DIA_MS = 24 * 60 * 60 * 1000;
+function previaCobranca(nome: string, titulo: string, situacao: Situacao): string {
+  if (situacao === "RESPONDENDO")
+    return `Olá, ${nome}! Você ainda não finalizou o preenchimento do questionário "${titulo}". Suas respostas já estão salvas: é só tocar no link e continuar de onde parou.`;
+  if (situacao === "ABRIU")
+    return `Olá, ${nome}! Você abriu o questionário "${titulo}", mas ainda não começou a responder. Leva poucos minutos e ajuda muito a equipe a conhecer sua família. Toque no link:`;
+  return `Olá, ${nome}! Ainda não recebemos suas respostas do questionário "${titulo}". Toque no link para responder:`;
+}
+/** Trava de 24h: null = pode cobrar; senão quantas horas faz e quantas faltam. */
+function travaCobranca(ultima: string | null): { ha: number; faltam: number } | null {
+  if (!ultima) return null;
+  const passou = Date.now() - new Date(ultima).getTime();
+  if (passou >= DIA_MS) return null;
+  return { ha: Math.floor(passou / 3_600_000), faltam: Math.ceil((DIA_MS - passou) / 3_600_000) };
+}
 
 type Dados = {
   totais: { total: number; agendado: number; aguardandoEnvio: number; falha: number; enviado: number; recebeu: number; abriu: number; respondendo: number; respondeu: number; alertas: number };
@@ -66,7 +86,7 @@ export default function AbaAcompanhamento({
   const [reenviando, setReenviando] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   // Cancelar link pede duas confirmações; reenviar pede uma
-  const [confirmacao, setConfirmacao] = useState<{ tipo: "cancelar1" | "cancelar2" | "reenviar" | "corrigir1" | "corrigir2"; linha: Linha } | null>(null);
+  const [confirmacao, setConfirmacao] = useState<{ tipo: "cancelar1" | "cancelar2" | "reenviar" | "corrigir1" | "corrigir2" | "cobrar"; linha: Linha } | null>(null);
 
   const publicado = questionario.status === "PUBLICADO";
   const naFilaRef = useRef(0);
@@ -105,6 +125,20 @@ export default function AbaAcompanhamento({
       await carregar(true);
     } catch (e: any) {
       setMsg(e?.message ?? "Erro ao reenviar");
+    } finally {
+      setReenviando(null);
+    }
+  }
+
+  async function cobrar(envioId: string) {
+    setReenviando(envioId);
+    setMsg(null);
+    try {
+      const r = await apiFetch(`/pre-ocupacao/questionarios/${questionario.id}/envios/${envioId}/cobrar`, { method: "POST" });
+      setMsg(r.ok ? "Cobrança enviada — a família recebeu um link novo e continua de onde parou." : `Falha ao cobrar: ${r.erro}`);
+      await carregar(true);
+    } catch (e: any) {
+      setMsg(e?.message ?? "Erro ao cobrar");
     } finally {
       setReenviando(null);
     }
@@ -189,19 +223,22 @@ export default function AbaAcompanhamento({
     setConfirmacao(null);
     if (tipo === "cancelar2") cancelarLink(linha.envioId);
     else if (tipo === "corrigir2") reenviarParaCorrigir(linha.envioId);
+    else if (tipo === "cobrar") cobrar(linha.envioId);
     else reenviar(linha.envioId);
   }
 
   function exportar() {
     if (!dados) return;
     baixarCsv(`acompanhamento-${slugArquivo(questionario.titulo)}.csv`, [
-      ["Nº", "Família", "Telefone", "Situação", "Resposta nº", "Canal", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
+      ["Nº", "Família", "Telefone", "Situação", "Resposta nº", "Cobranças", "Última cobrança", "Canal", "Agendado para", "Enviado em", "Abriu em", "Respondeu em", "Envios", "Erro do último envio", "Alertas"],
       ...dados.linhas.map((l) => [
         String(l.numero),
         l.nome,
         l.telefone ?? "",
         SITUACAO_LABEL[l.situacao],
         String(l.rodada ?? 1),
+        String(l.cobrancas ?? 0),
+        l.ultimaCobrancaEm ? formatDateTime(l.ultimaCobrancaEm) : "",
         l.canalEnvio === "WHATSAPP_OFICIAL" ? "WhatsApp Oficial" : l.canalEnvio === "WHATSAPP_LIGHT" ? "WhatsApp Light" : "",
         l.agendadoPara ? formatDateTime(l.agendadoPara) : "",
         l.enviadoEm ? formatDateTime(l.enviadoEm) : "",
@@ -340,6 +377,11 @@ export default function AbaAcompanhamento({
                   <td className="px-4 py-2">
                     <Badge variant={SITUACAO_VARIANT[l.situacao]}>{SITUACAO_LABEL[l.situacao]}</Badge>
                     <BotaoHistorico questionarioId={questionario.id} envioId={l.envioId} />
+                    {(l.cobrancas ?? 0) > 0 && (
+                      <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
+                        Cobrado {l.cobrancas}x · última em {formatDateTime(l.ultimaCobrancaEm)}
+                      </p>
+                    )}
                     {(l.rodada ?? 1) > 1 && (
                       <span className="ml-2 inline-block rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
                         {l.rodada}ª resposta
@@ -392,6 +434,19 @@ export default function AbaAcompanhamento({
                         Cancelar link
                       </button>
                     )}
+                    {publicado && COBRAVEIS.includes(l.situacao) && (() => {
+                      const trava = travaCobranca(l.ultimaCobrancaEm);
+                      return (
+                        <button
+                          onClick={() => setConfirmacao({ tipo: "cobrar", linha: l })}
+                          disabled={!!reenviando || !!trava}
+                          title={trava ? `Dá para cobrar de novo em ${trava.faltam}h` : "Manda um lembrete pelo WhatsApp com um link novo"}
+                          className="mr-3 text-xs font-medium text-blue-700 disabled:opacity-50"
+                        >
+                          {reenviando === l.envioId ? "Cobrando..." : trava ? `Cobrado há ${trava.ha}h` : "Cobrar resposta"}
+                        </button>
+                      );
+                    })()}
                     {l.situacao === "RESPONDEU" && publicado && (
                       <button
                         onClick={() => setConfirmacao({ tipo: "corrigir1", linha: l })}
@@ -446,7 +501,9 @@ export default function AbaAcompanhamento({
         title={
           confirmacao?.tipo === "reenviar"
             ? "Confirmar reenvio"
-            : confirmacao?.tipo === "corrigir1"
+            : confirmacao?.tipo === "cobrar"
+              ? "Cobrar resposta"
+              : confirmacao?.tipo === "corrigir1"
               ? "Reenviar para corrigir"
               : confirmacao?.tipo === "cancelar2" || confirmacao?.tipo === "corrigir2"
                 ? "Tem certeza?"
@@ -466,14 +523,16 @@ export default function AbaAcompanhamento({
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
               style={{
                 background:
-                  confirmacao?.tipo === "reenviar"
+                  confirmacao?.tipo === "reenviar" || confirmacao?.tipo === "cobrar"
                     ? "var(--via-teal, #1D9E75)"
                     : confirmacao?.tipo === "corrigir1" || confirmacao?.tipo === "corrigir2"
                       ? "#b45309"
                       : "#dc2626",
               }}
             >
-              {confirmacao?.tipo === "reenviar"
+              {confirmacao?.tipo === "cobrar"
+                ? "Sim, cobrar"
+                : confirmacao?.tipo === "reenviar"
                 ? "Sim, reenviar"
                 : confirmacao?.tipo === "cancelar2"
                   ? "Sim, cancelar link"
@@ -491,6 +550,18 @@ export default function AbaAcompanhamento({
                 Reenviar o questionário para <strong>{confirmacao.linha.nome}</strong>
                 {confirmacao.linha.telefone ? ` no número ${maskPhone(confirmacao.linha.telefone)}` : ""}? Vai um link novo
                 e o link anterior deixa de valer.
+              </>
+            ) : confirmacao.tipo === "cobrar" ? (
+              <>
+                Mandar um lembrete para <strong>{confirmacao.linha.nome}</strong>
+                {confirmacao.linha.telefone ? ` no ${maskPhone(confirmacao.linha.telefone)}` : ""}? Vai um link novo; as respostas
+                já salvas continuam. Depois disso, só dá para cobrar de novo em 24h.
+                <span
+                  className="mt-3 block whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs"
+                  style={{ borderColor: "var(--shell-card-border)", background: "var(--shell-hover)" }}
+                >
+                  {previaCobranca(confirmacao.linha.nome, questionario.titulo, confirmacao.linha.situacao)} [link]
+                </span>
               </>
             ) : confirmacao.tipo === "corrigir1" ? (
               <>
