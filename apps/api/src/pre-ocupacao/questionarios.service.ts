@@ -601,7 +601,7 @@ export class QuestionariosService {
     if (!trava.pode) {
       throw new ConflictException(`Já cobrada há ${trava.haHoras}h. Dá para cobrar de novo em ${trava.faltamHoras}h.`);
     }
-    const r = await this.envioService.enviarUm(envio.id, por, { cobranca: situacao as SituacaoCobravel });
+    const r = await this.envioService.enviarLembrete(envio.id, situacao as SituacaoCobravel);
     // Só conta como cobrança (e trava 24h) se a mensagem saiu
     if (r.ok) {
       await registrarEventoEnvio(this.prisma, envio.id, 'COBRADO', `Situação: ${situacao}`, por ?? null);

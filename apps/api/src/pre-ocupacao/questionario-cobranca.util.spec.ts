@@ -1,14 +1,17 @@
 import { mensagemCobranca, podeCobrar } from './questionario-cobranca.util';
 
 describe('cobrar resposta', () => {
-  const link = 'https://x/portal/questionario/abc';
-
-  it('texto muda conforme a situação e sempre leva o link', () => {
-    expect(mensagemCobranca('MARIA', 'Q', 'RESPONDENDO', link)).toContain('ainda não finalizou o preenchimento');
-    expect(mensagemCobranca('MARIA', 'Q', 'RESPONDENDO', link)).toContain('continuar de onde parou');
-    expect(mensagemCobranca('MARIA', 'Q', 'ABRIU', link)).toContain('ainda não começou a responder');
-    expect(mensagemCobranca('MARIA', 'Q', 'RECEBEU', link)).toContain('Ainda não recebemos suas respostas');
-    for (const s of ['RESPONDENDO', 'ABRIU', 'RECEBEU'] as const) expect(mensagemCobranca('MARIA', 'Q', s, link)).toContain(link);
+  it('texto muda conforme a situação, não leva link e manda usar o link anterior', () => {
+    expect(mensagemCobranca('MARIA', 'Q', 'RESPONDENDO')).toContain('ainda não finalizou o preenchimento');
+    expect(mensagemCobranca('MARIA', 'Q', 'RESPONDENDO')).toContain('continuar de onde parou');
+    expect(mensagemCobranca('MARIA', 'Q', 'ABRIU')).toContain('ainda não começou a responder');
+    expect(mensagemCobranca('MARIA', 'Q', 'RECEBEU')).toContain('Ainda não recebemos suas respostas');
+    for (const s of ['RESPONDENDO', 'ABRIU', 'RECEBEU'] as const) {
+      const t = mensagemCobranca('MARIA', 'Q', s);
+      expect(t).toContain('link da mensagem anterior');
+      expect(t).toContain('responda aqui que mandamos outro');
+      expect(t).not.toMatch(/https?:\/\//);
+    }
   });
 
   it('libera na primeira vez e depois de 24h; bloqueia antes, dizendo quanto falta', () => {
