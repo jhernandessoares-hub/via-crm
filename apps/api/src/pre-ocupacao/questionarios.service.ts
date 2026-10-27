@@ -17,6 +17,7 @@ import {
 import { registrarEventoEnvio, montarHistorico } from './questionario-evento.util';
 import { conferirEntregaPelaConversa } from './questionario-entrega.util';
 import { copiaDasRespostas, ordinalResposta } from './questionario-correcao.util';
+import { SITUACOES_COBRAVEIS, SituacaoCobravel, podeCobrar } from './questionario-cobranca.util';
 import { hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe, opcoesFaltandoNasCondicoes } from './questionario-fluxo';
 
@@ -578,6 +579,44 @@ export class QuestionariosService {
   }
 
   /**
+   * "Cobrar resposta": lembrete para quem recebeu e não terminou (Recebeu / Abriu / Respondendo).
+   * Link novo (as respostas salvas continuam: a família retoma de onde parou), texto conforme a
+   * situação e no máximo 1 cobrança a cada 24h por família.
+   */
+  async cobrar(tenantId: string, id: string, envioId: string, por?: string) {
+    const q = await this.getOrThrow(tenantId, id);
+    if (q.status !== 'PUBLICADO') throw new ConflictException('Só é possível cobrar num questionário publicado.');
+    const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findFirst({ where: { id: envioId, questionarioId: id, tenantId, teste: false } });
+    if (!envio) throw new NotFoundException('Envio não encontrado.');
+    const situacao = situacaoEnvio(envio);
+    if (!(SITUACOES_COBRAVEIS as readonly string[]).includes(situacao)) {
+      throw new ConflictException('Só dá para cobrar quem recebeu, abriu ou está respondendo.');
+    }
+    const ultima = await this.prisma.preOcupacaoQuestionarioEnvioEvento.findFirst({
+      where: { envioId, tipo: 'COBRADO' },
+      orderBy: { em: 'desc' },
+      select: { em: true },
+    });
+    const trava = podeCobrar(ultima?.em);
+    if (!trava.pode) {
+      throw new ConflictException(`Já cobrada há ${trava.haHoras}h. Dá para cobrar de novo em ${trava.faltamHoras}h.`);
+    }
+    const r = await this.envioService.enviarUm(envio.id, por, { cobranca: situacao as SituacaoCobravel });
+    // Só conta como cobrança (e trava 24h) se a mensagem saiu
+    if (r.ok) {
+      await registrarEventoEnvio(this.prisma, envio.id, 'COBRADO', `Situação: ${situacao}`, por ?? null);
+      await this.audit.log({
+        tenantId,
+        action: 'PRE_OCUPACAO_QUESTIONARIO_COBRADO',
+        resourceType: 'PreOcupacaoQuestionario',
+        resourceId: id,
+        metadata: { envioId, situacao, por },
+      });
+    }
+    return r;
+  }
+
+  /**
    * Família que já respondeu e precisa corrigir: as respostas atuais vão para o histórico
    * (EnvioRodada), o envio volta a "não respondido" com as respostas no lugar (o link abre
    * já preenchido) e sai um link novo avisando que esta resposta substitui a anterior.
@@ -789,6 +828,16 @@ export class QuestionariosService {
         })
       : [];
     const alertas = this.alertasPorEnvio(perguntas, respostasAlerta);
+    // Cobranças ("Cobrar resposta") por envio: quantas e a última (trava de 24h na tela)
+    const cobrancasEv = await this.prisma.preOcupacaoQuestionarioEnvioEvento.findMany({
+      where: { tipo: 'COBRADO', envioId: { in: envios.map((e) => e.id) } },
+      select: { envioId: true, em: true },
+    });
+    const cobrancas = new Map<string, { total: number; ultima: Date }>();
+    for (const c of cobrancasEv) {
+      const atual = cobrancas.get(c.envioId);
+      cobrancas.set(c.envioId, { total: (atual?.total ?? 0) + 1, ultima: !atual || c.em > atual.ultima ? c.em : atual.ultima });
+    }
 
     const linhas = envios.map((e) => ({
       envioId: e.id,
@@ -808,6 +857,8 @@ export class QuestionariosService {
       tokenExpiraEm: e.tokenExpiraEm,
       canalEnvio: e.canalEnvio,
       rodada: e.rodada,
+      cobrancas: cobrancas.get(e.id)?.total ?? 0,
+      ultimaCobrancaEm: cobrancas.get(e.id)?.ultima ?? null,
       alertas: alertas.get(e.id) ?? [],
     }));
 

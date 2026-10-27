@@ -9,6 +9,7 @@ import { registrarEventoEnvio } from './questionario-evento.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
 import { decidirCanalQuestionario } from './questionario-canal.util';
 import { mensagemCorrecao } from './questionario-correcao.util';
+import { mensagemCobranca, SituacaoCobravel } from './questionario-cobranca.util';
 import { FALHAS_SEGUIDAS_PARA_PAUSAR, falhaDoNumero, inicioDoDiaSP } from './questionario-ritmo.util';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -137,7 +138,11 @@ export class QuestionarioEnvioService {
    * Envio de TESTE vai para o telefone informado (sem lead) e devolve o link,
    * para a equipe poder abrir/copiar mesmo se o WhatsApp falhar.
    */
-  async enviarUm(envioId: string, por?: string): Promise<{ ok: boolean; erro?: string; link?: string }> {
+  async enviarUm(
+    envioId: string,
+    por?: string,
+    opcoes?: { cobranca?: SituacaoCobravel },
+  ): Promise<{ ok: boolean; erro?: string; link?: string }> {
     const envio = await this.prisma.preOcupacaoQuestionarioEnvio.findUnique({
       where: { id: envioId },
       include: {
@@ -183,8 +188,10 @@ export class QuestionarioEnvioService {
       link = `${baseUrl}/portal/questionario/${token}`;
       const corpo = envio.questionario.mensagemEnvio.replace(/\{\{nome\}\}/gi, nome);
       // Reenviado para corrigir: avisa que é a 2ª (3ª…) resposta e que substitui a anterior
-      const texto =
-        envio.rodada > 1
+      // Cobrança ("Cobrar resposta"): lembrete com texto conforme a situação da família
+      const texto = opcoes?.cobranca
+        ? mensagemCobranca(nome, envio.questionario.titulo, opcoes.cobranca, link)
+        : envio.rodada > 1
           ? mensagemCorrecao(nome, envio.questionario.titulo, envio.rodada, link)
           : /\{\{link\}\}/i.test(corpo)
             ? corpo.replace(/\{\{link\}\}/gi, link)
