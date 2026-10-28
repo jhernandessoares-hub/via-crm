@@ -1025,9 +1025,12 @@ export class QuestionariosService {
           totalRespostas: respostas.length,
           familias,
         };
-        // Item de "quem respondeu": envioId deixa a tela abrir as respostas da família
+        // Item de "quem respondeu": envioId abre as respostas da família e perguntaId/instancia
+        // levam a tela até esta resposta (com destaque)
         const item = (r: (typeof respostas)[number], valor: string) => ({
           envioId: r.envioId,
+          perguntaId: r.perguntaId,
+          instancia: r.instancia,
           familiaNumero: r.familiaNumero,
           familiaNome: r.familiaNome,
           rotulo: r.rotulo,
@@ -1044,6 +1047,8 @@ export class QuestionariosService {
             pessoasTotal: comAlguem.reduce((acc, r) => acc + r.valorOpcoes.length, 0),
             familiasComAlguem: new Set(comAlguem.map((r) => r.envioId)).size,
             respostas: lista((r) => r.valorOpcoes.join(', ')),
+            // Quem marcou alguém, com os nomes marcados
+            quem: comAlguem.map((r) => item(r, r.valorOpcoes.join(', '))),
           };
         }
         if (['ESCOLHA_UNICA', 'ESCOLHA_MULTIPLA', 'ACEITE'].includes(p.tipo)) {
@@ -1054,13 +1059,13 @@ export class QuestionariosService {
               const comp = marcaram
                 .map((r) => ({ r, v: ((r.extras ?? {}) as Record<string, string | number>)[o.label] }))
                 .filter((x) => x.v !== undefined && x.v !== '');
-              const extras = (r: (typeof respostas)[number]) => ((r.extras ?? {}) as Record<string, string | number>)[o.label];
               return {
                 opcao: o.label,
                 total: marcaram.length,
                 percentual: pct(marcaram.length, respostas.length),
-                // Quem marcou a opção (com o complemento, quando a opção tem)
-                quem: marcaram.map((r) => item(r, extras(r) !== undefined && extras(r) !== '' ? String(extras(r)) : '')),
+                // Quem marcou a opção, com a resposta inteira dela na pergunta (todas as opções
+                // marcadas e os complementos), igual à visão "Por família"
+                quem: marcaram.map((r) => item(r, respostaParaTexto(p, r))),
                 ...(o.complemento === 'VALOR'
                   ? { valores: estat(comp.map((x) => Number(x.v))) }
                   : o.complemento === 'TEXTO'
@@ -1086,7 +1091,7 @@ export class QuestionariosService {
                   distribuicao: Array.from({ length: (p.escalaMax ?? 5) - (p.escalaMin ?? 1) + 1 }, (_, i) => {
                     const nota = (p.escalaMin ?? 1) + i;
                     const deram = comNumero.filter((r) => r.valorNumero === nota);
-                    return { nota, total: deram.length, quem: deram.map((r) => item(r, '')) };
+                    return { nota, total: deram.length, quem: deram.map((r) => item(r, `Nota ${nota}`)) };
                   }),
                 }
               : {}),
@@ -1095,6 +1100,8 @@ export class QuestionariosService {
         if (p.tipo === 'CAMPOS') {
           return {
             ...base,
+            // Todos os campos de cada família numa linha ("Cômodos: 3 · Quartos: 2")
+            valoresPorFamilia: lista((r) => respostaParaTexto(p, r)),
             campos: (cfg.campos ?? []).map((c) => {
               const valores = respostas
                 .map((r) => ({ r, v: ((r.extras ?? {}) as Record<string, string | number>)[c.chave] }))

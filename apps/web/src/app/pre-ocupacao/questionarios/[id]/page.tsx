@@ -16,6 +16,7 @@ import AbaEnvio from "./AbaEnvio";
 import AbaAcompanhamento from "./AbaAcompanhamento";
 import AbaRelatorio from "./AbaRelatorio";
 import RespostasFamilia, { RespostasEnvio } from "./RespostasFamilia";
+import type { FocoResposta } from "./AbaRelatorio";
 import AbaTeste from "./AbaTeste";
 
 type Aba = "perguntas" | "teste" | "envio" | "acompanhamento" | "relatorio";
@@ -66,6 +67,8 @@ export default function QuestionarioDetalhePage() {
   const [acao, setAcao] = useState<Acao | null>(null);
   const [executando, setExecutando] = useState(false);
   const [respostas, setRespostas] = useState<RespostasEnvio | null>(null);
+  // Resposta clicada no relatório: a tela da família rola até ela e destaca
+  const [focoResposta, setFocoResposta] = useState<FocoResposta | null>(null);
   const isOwner = useIsOwner();
 
   useEffect(() => {
@@ -111,9 +114,11 @@ export default function QuestionarioDetalhePage() {
     }
   }
 
-  async function verRespostas(envioId: string) {
+  async function verRespostas(envioId: string, foco?: FocoResposta) {
     try {
-      setRespostas(await apiFetch(`/pre-ocupacao/questionarios/${id}/envios/${envioId}`));
+      const dados = await apiFetch(`/pre-ocupacao/questionarios/${id}/envios/${envioId}`);
+      setFocoResposta(foco ?? null);
+      setRespostas(dados);
     } catch (e: any) {
       setErro(e?.message ?? "Erro ao carregar respostas");
     }
@@ -258,7 +263,7 @@ export default function QuestionarioDetalhePage() {
         <p className="text-sm" style={{ color: "var(--shell-text)" }}>{acao ? ACAO_TEXTO[acao].texto : ""}</p>
       </Modal>
 
-      {respostas && <RespostasFamilia dados={respostas} onClose={() => setRespostas(null)} />}
+      {respostas && <RespostasFamilia dados={respostas} foco={focoResposta} onClose={() => setRespostas(null)} />}
     </AppShell>
   );
 }
