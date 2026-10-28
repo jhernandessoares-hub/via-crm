@@ -123,10 +123,11 @@ export default function RespostasFamilia({
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
-    // Entrada suave do painel
-    const t = requestAnimationFrame(() => setVisivel(true));
+    // Entrada suave do painel (timer, não requestAnimationFrame: aba em segundo plano
+    // pausa o rAF e o painel ficaria transparente por cima da tela)
+    const t = setTimeout(() => setVisivel(true), 20);
     return () => {
-      cancelAnimationFrame(t);
+      clearTimeout(t);
       document.body.style.overflow = "";
     };
   }, []);
@@ -163,8 +164,14 @@ export default function RespostasFamilia({
     };
     atualizar();
     raiz.addEventListener("scroll", atualizar, { passive: true });
-    return () => raiz.removeEventListener("scroll", atualizar);
-  }, [blocos.length, verRodada]);
+    // Depois da rolagem automática até a resposta destacada, confere de novo (nem todo
+    // navegador avisa a rolagem feita por código)
+    const t = destaque ? setTimeout(atualizar, 1200) : undefined;
+    return () => {
+      raiz.removeEventListener("scroll", atualizar);
+      if (t) clearTimeout(t);
+    };
+  }, [blocos.length, verRodada, destaque]);
 
   return (
     <div
