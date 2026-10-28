@@ -10,7 +10,19 @@ import PainelQuestionario, { DadosAcompanhamento } from "./PainelQuestionario";
 import { PERGUNTA_TIPO_LABEL, PerguntaTipo, Questionario, baixarCsv, slugArquivo } from "../../_lib/questionario";
 
 type Estat = { media: number | null; soma: number; minimo: number | null; maximo: number | null };
-type ItemTexto = { envioId: string; familiaNumero: number; familiaNome: string; rotulo: string | null; valor: string };
+type ItemTexto = {
+  envioId: string;
+  perguntaId: string;
+  instancia: number;
+  familiaNumero: number;
+  familiaNome: string;
+  rotulo: string | null;
+  valor: string;
+};
+/** Resposta a destacar ao abrir as respostas da família (a tela rola até ela). */
+export type FocoResposta = { perguntaId: string; instancia: number };
+type AbrirFamilia = (envioId: string, foco?: FocoResposta) => void;
+const focoDe = (i: ItemTexto): FocoResposta => ({ perguntaId: i.perguntaId, instancia: i.instancia });
 /** Janela "Quem respondeu": título (pergunta → resposta) e a lista de famílias. */
 type Quem = { pergunta: string; resposta: string; itens: ItemTexto[]; unidade?: string | null };
 
@@ -33,6 +45,8 @@ type PerguntaRel = {
   distribuicao?: { nota: number; total: number; quem?: ItemTexto[] }[];
   campos?: ({ chave: string; label: string; tipo: "CONTADOR" } & Estat | { chave: string; label: string; tipo: "TEXTO"; respostas: ItemTexto[] })[];
   respostas?: ItemTexto[];
+  /** "Quais moradores…": famílias que marcaram alguém, com os nomes */
+  quem?: ItemTexto[];
   pessoasTotal?: number;
   familiasComAlguem?: number;
 };
@@ -179,7 +193,7 @@ function ListaTextos({
 }: {
   itens: ItemTexto[];
   vazio?: string;
-  onAbrir?: (envioId: string) => void;
+  onAbrir?: AbrirFamilia;
 }) {
   if (itens.length === 0) return <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>{vazio}</p>;
   return (
@@ -189,7 +203,7 @@ function ListaTextos({
           key={i}
           className={`py-2 text-sm ${onAbrir ? "cursor-pointer hover:bg-[var(--shell-hover)]" : ""}`}
           style={{ borderColor: "var(--shell-card-border)" }}
-          onClick={onAbrir ? () => onAbrir(r.envioId) : undefined}
+          onClick={onAbrir ? () => onAbrir(r.envioId, focoDe(r)) : undefined}
           title={onAbrir ? "Ver as respostas desta família" : undefined}
         >
           <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
@@ -204,7 +218,7 @@ function ListaTextos({
 }
 
 /** Janela com as famílias que deram uma resposta: busca, CSV e clique para abrir a família. */
-function QuemRespondeu({ quem, onFechar, onAbrir }: { quem: Quem; onFechar: () => void; onAbrir: (envioId: string) => void }) {
+function QuemRespondeu({ quem, onFechar, onAbrir }: { quem: Quem; onFechar: () => void; onAbrir: AbrirFamilia }) {
   const [busca, setBusca] = useState("");
   const valorTxt = (v: string) => (v && quem.unidade !== undefined && !isNaN(Number(v)) ? fmtValor(Number(v), quem.unidade) : v);
   const t = busca.trim().toLowerCase();
@@ -258,7 +272,7 @@ function QuemRespondeu({ quem, onFechar, onAbrir }: { quem: Quem; onFechar: () =
         {itens.map((i, idx) => (
           <button
             key={`${i.envioId}-${idx}`}
-            onClick={() => onAbrir(i.envioId)}
+            onClick={() => onAbrir(i.envioId, focoDe(i))}
             title="Ver as respostas desta família"
             className="flex w-full items-start justify-between gap-3 py-2 px-1 text-left text-sm hover:bg-[var(--shell-hover)]"
             style={{ borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }}
@@ -289,7 +303,7 @@ function Numeros({ itens }: { itens: [string, string][] }) {
   );
 }
 
-function BlocoPergunta({ p, onQuem, onAbrir }: { p: PerguntaRel; onQuem: (q: Quem) => void; onAbrir: (envioId: string) => void }) {
+function BlocoPergunta({ p, onQuem, onAbrir }: { p: PerguntaRel; onQuem: (q: Quem) => void; onAbrir: AbrirFamilia }) {
   return (
     <Card>
       <CardBody className="space-y-3">
@@ -316,7 +330,7 @@ function BlocoPergunta({ p, onQuem, onAbrir }: { p: PerguntaRel; onQuem: (q: Que
                   pizza={p.tipo === "ESCOLHA_UNICA"}
                   onClicar={(idx) => {
                     const o = opcoes[idx];
-                    if (o?.quem?.length) onQuem({ pergunta: p.enunciado, resposta: o.opcao, itens: o.quem, unidade: o.valores ? "R$" : undefined });
+                    if (o?.quem?.length) onQuem({ pergunta: p.enunciado, resposta: o.opcao, itens: o.quem });
                   }}
                 />
               );
@@ -388,12 +402,31 @@ function BlocoPergunta({ p, onQuem, onAbrir }: { p: PerguntaRel; onQuem: (q: Que
         )}
 
         {p.pessoasTotal !== undefined && (
-          <Numeros
-            itens={[
-              ["Famílias com pelo menos 1 pessoa", fmtNum(p.familiasComAlguem)],
-              ["Pessoas no total", fmtNum(p.pessoasTotal)],
-            ]}
-          />
+          <>
+            <Numeros
+              itens={[
+                ["Famílias com pelo menos 1 pessoa", fmtNum(p.familiasComAlguem)],
+                ["Pessoas no total", fmtNum(p.pessoasTotal)],
+              ]}
+            />
+            {!!p.quem?.length && (
+              <button
+                onClick={() => onQuem({ pergunta: p.enunciado, resposta: "Pessoas marcadas", itens: p.quem! })}
+                className="text-xs font-medium text-blue-700"
+              >
+                Ver quem marcou ›
+              </button>
+            )}
+          </>
+        )}
+        {/* Texto, telefone, CPF: a lista fica no cartão; "Abrir em lista" dá busca e CSV */}
+        {p.respostas && p.pessoasTotal === undefined && p.respostas.length > 0 && (
+          <button
+            onClick={() => onQuem({ pergunta: p.enunciado, resposta: "Respostas", itens: p.respostas! })}
+            className="text-xs font-medium text-blue-700"
+          >
+            Abrir em lista ›
+          </button>
         )}
         {p.respostas && <ListaTextos itens={p.respostas} onAbrir={onAbrir} />}
       </CardBody>
@@ -406,7 +439,7 @@ export default function AbaRelatorio({
   onVerRespostas,
 }: {
   questionario: Questionario;
-  onVerRespostas: (envioId: string) => void;
+  onVerRespostas: AbrirFamilia;
 }) {
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [erro, setErro] = useState<string | null>(null);
