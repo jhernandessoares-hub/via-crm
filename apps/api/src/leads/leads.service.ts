@@ -3595,6 +3595,9 @@ async listTransitions(user: any, leadId: string) {
     if (!lead) throw new NotFoundException('Lead não encontrado');
 
     const participanteId: string | null = input?.participanteId || null;
+    // Mensagem automática (ex.: link/cobrança/agradecimento do questionário) não abre a conversa:
+    // ela só aparece em "conversas abertas" quando a família responder.
+    const abrirConversa = input?.abrirConversa !== false;
     let toPhone: string;
     if (participanteId) {
       const participante = await (this.prisma as any).leadParticipante.findFirst({
@@ -3695,7 +3698,7 @@ const aiAssistanceLabel =
       await this.prisma.lead.update({
         where: { id: leadId },
         data: {
-          conversaAberta: true,
+          ...(abrirConversa ? { conversaAberta: true } : {}),
           ...(!lead.conversaCanal ? { conversaCanal: 'WHATSAPP_LIGHT', conversaSessionId: activeSessionId } : {}),
         },
       });
@@ -3758,7 +3761,7 @@ const aiAssistanceLabel =
     await this.prisma.lead.update({
       where: { id: leadId },
       data: {
-        conversaAberta: true,
+        ...(abrirConversa ? { conversaAberta: true } : {}),
         ...(!lead.conversaCanal ? { conversaCanal: 'WHATSAPP_OFICIAL' } : {}),
       },
     });

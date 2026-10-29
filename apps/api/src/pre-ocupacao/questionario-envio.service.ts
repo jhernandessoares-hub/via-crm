@@ -250,7 +250,7 @@ export class QuestionarioEnvioService {
           { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
           envio.familia!.leadId,
           // Participante: o LeadsService manda para o telefone dele, na conversa do lead
-          { message: texto, ...(alvo!.participanteId ? { participanteId: alvo!.participanteId } : {}) },
+          { message: texto, abrirConversa: false, ...(alvo!.participanteId ? { participanteId: alvo!.participanteId } : {}) },
         );
         enviado = { canal: r.canal, messageId: r.messageId };
       }
@@ -334,7 +334,7 @@ export class QuestionarioEnvioService {
       await leadsService.sendWhatsappMessage(
         { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
         envio.familia.leadId,
-        { message: texto, ...(alvo.participanteId ? { participanteId: alvo.participanteId } : {}) },
+        { message: texto, abrirConversa: false, ...(alvo.participanteId ? { participanteId: alvo.participanteId } : {}) },
       );
       this.logger.log(`Cobrança do questionário enviada: envio=${envio.id} situacao=${situacao}`);
       return { ok: true };
