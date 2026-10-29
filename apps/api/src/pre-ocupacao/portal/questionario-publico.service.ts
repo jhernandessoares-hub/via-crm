@@ -427,7 +427,7 @@ export class QuestionarioPublicoService {
         await leadsService.sendWhatsappMessage(
           { tenantId: envio.tenantId, nome: 'Questionário Pré-Ocupação' },
           envio.familia!.leadId,
-          { message: agradecimento },
+          { message: agradecimento, abrirConversa: false },
         );
       }
     } catch (e: any) {
