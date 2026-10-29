@@ -34,6 +34,33 @@ export function mensagemCobranca(nome: string, titulo: string, situacao: Situaca
   }
 }
 
+/**
+ * Link vencido: o "Reenviar" manda um link novo que vale só 24h (as respostas salvas continuam).
+ * O texto diz até quando vale e, para quem já começou, que é só continuar de onde parou.
+ */
+export const VALIDADE_RENOVACAO_MS = 24 * 60 * 60 * 1000;
+
+export function linkVencido(tokenExpiraEm: Date | null | undefined, agora = new Date()): boolean {
+  return !!tokenExpiraEm && tokenExpiraEm.getTime() <= agora.getTime();
+}
+
+function dataHoraSP(d: Date): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return `${p.day}/${p.month} às ${p.hour}:${p.minute}`;
+}
+
+export function mensagemRenovacao(nome: string, titulo: string, comecou: boolean, link: string, expiraEm: Date): string {
+  const inicio = `Olá, ${nome}! O link do questionário "${titulo}" venceu, então mandamos um novo.`;
+  const meio = comecou
+    ? ' Suas respostas já estão salvas: é só tocar no link e continuar de onde parou.'
+    : ' Leva poucos minutos e ajuda muito a equipe a conhecer sua família.';
+  return `${inicio}${meio} Este link vale até ${dataHoraSP(expiraEm)}.\n\nToque no link: ${link}`;
+}
+
 /** Libera a cobrança só se a última foi há mais de 24h; devolve quanto falta (em horas, arredondado para cima). */
 export function podeCobrar(ultimaCobrancaEm: Date | null | undefined, agora = new Date()): { pode: boolean; faltamHoras: number; haHoras: number } {
   if (!ultimaCobrancaEm) return { pode: true, faltamHoras: 0, haHoras: 0 };

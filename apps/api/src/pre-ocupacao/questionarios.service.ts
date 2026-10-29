@@ -17,7 +17,7 @@ import {
 import { registrarEventoEnvio, montarHistorico } from './questionario-evento.util';
 import { conferirEntregaPelaConversa } from './questionario-entrega.util';
 import { copiaDasRespostas, ordinalResposta } from './questionario-correcao.util';
-import { SITUACOES_COBRAVEIS, SituacaoCobravel, podeCobrar } from './questionario-cobranca.util';
+import { SITUACOES_COBRAVEIS, SituacaoCobravel, linkVencido, podeCobrar } from './questionario-cobranca.util';
 import { telefoneBrValido } from './questionario-canal.util';
 import { hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { PerguntaConfig, QuestionarioConfig, indexarRespostas, montarPassos, opcoesDe, opcoesFaltandoNasCondicoes } from './questionario-fluxo';
@@ -667,6 +667,10 @@ export class QuestionariosService {
     const situacao = situacaoEnvio(envio);
     if (!(SITUACOES_COBRAVEIS as readonly string[]).includes(situacao)) {
       throw new ConflictException('Só dá para cobrar quem recebeu, abriu ou está respondendo.');
+    }
+    // O lembrete manda usar o link anterior: vencido, ele não abre mais
+    if (linkVencido(envio.tokenExpiraEm)) {
+      throw new ConflictException('O link desta família venceu. Use "Reenviar", que manda um link novo válido por 24h.');
     }
     const ultima = await this.prisma.preOcupacaoQuestionarioEnvioEvento.findFirst({
       where: { envioId, tipo: 'COBRADO' },

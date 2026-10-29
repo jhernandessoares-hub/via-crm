@@ -50,6 +50,11 @@ type Destinatario = {
 
 // "Cobrar resposta": mesmos textos da API (questionario-cobranca.util.ts), para a confirmação mostrar o que vai sair
 const COBRAVEIS: Situacao[] = ["RECEBEU", "ABRIU", "RESPONDENDO"];
+
+/** Link vencido de quem não terminou: a cobrança não serve (manda usar o link antigo), só o Reenviar (link novo de 24h). */
+function linkVencido(l: Linha): boolean {
+  return l.situacao !== "RESPONDEU" && !!l.tokenExpiraEm && new Date(l.tokenExpiraEm) <= new Date();
+}
 const DIA_MS = 24 * 60 * 60 * 1000;
 function previaCobranca(nome: string, titulo: string, situacao: Situacao): string {
   const seNaoAbrir = "Se o link não abrir, responda aqui que mandamos outro.";
@@ -453,7 +458,7 @@ export default function AbaAcompanhamento({
                         Cancelar link
                       </button>
                     )}
-                    {publicado && COBRAVEIS.includes(l.situacao) && (() => {
+                    {publicado && COBRAVEIS.includes(l.situacao) && !linkVencido(l) && (() => {
                       const trava = travaCobranca(l.ultimaCobrancaEm);
                       return (
                         <button
@@ -474,6 +479,17 @@ export default function AbaAcompanhamento({
                         className="mr-3 text-xs font-medium text-amber-700 disabled:opacity-50"
                       >
                         {reenviando === l.envioId ? "Reenviando..." : "Reenviar para corrigir"}
+                      </button>
+                    )}
+                    {l.situacao === "RESPONDENDO" && publicado && linkVencido(l) && (
+                      <button
+                        onClick={() => setConfirmacao({ tipo: "reenviar", linha: l })}
+                        disabled={!!reenviando}
+                        title="Manda um link novo, válido por 24h. As respostas salvas continuam."
+                        className="mr-3 text-xs font-medium disabled:opacity-50"
+                        style={{ color: "var(--via-teal, #1D9E75)" }}
+                      >
+                        {reenviando === l.envioId ? "Reenviando..." : "Reenviar"}
                       </button>
                     )}
                     {l.situacao === "RESPONDEU" || l.situacao === "RESPONDENDO" ? (
@@ -568,8 +584,16 @@ export default function AbaAcompanhamento({
           <p className="text-sm" style={{ color: "var(--shell-text)" }}>
             {confirmacao.tipo === "reenviar" ? (
               <>
-                Reenviar o questionário da família <strong>{confirmacao.linha.nome}</strong>? Vai um link novo e o link anterior
-                deixa de valer.
+                Reenviar o questionário da família <strong>{confirmacao.linha.nome}</strong>?{" "}
+                {linkVencido(confirmacao.linha) ? (
+                  <>
+                    O link venceu: vai um link novo, <strong>válido por 24 horas</strong>.
+                    {confirmacao.linha.situacao === "RESPONDENDO" &&
+                      ` As ${confirmacao.linha.respostasSalvas} resposta(s) salva(s) continuam; a família segue de onde parou, com o mesmo CPF.`}
+                  </>
+                ) : (
+                  "Vai um link novo e o link anterior deixa de valer."
+                )}
               </>
             ) : confirmacao.tipo === "cobrar" ? (
               <>

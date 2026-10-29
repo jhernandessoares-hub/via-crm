@@ -9,7 +9,7 @@ import { registrarEventoEnvio } from './questionario-evento.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
 import { decidirCanalQuestionario, telefoneBrValido } from './questionario-canal.util';
 import { mensagemCorrecao } from './questionario-correcao.util';
-import { mensagemCobranca, SituacaoCobravel } from './questionario-cobranca.util';
+import { linkVencido, mensagemCobranca, mensagemRenovacao, SituacaoCobravel, VALIDADE_RENOVACAO_MS } from './questionario-cobranca.util';
 import { FALHAS_SEGUIDAS_PARA_PAUSAR, falhaDoNumero, inicioDoDiaSP } from './questionario-ritmo.util';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -218,9 +218,21 @@ export class QuestionarioEnvioService {
       const baseUrl = await resolvePortalBaseUrl(this.prisma, envio.tenantId);
       link = `${baseUrl}/portal/questionario/${token}`;
       const corpo = envio.questionario.mensagemEnvio.replace(/\{\{nome\}\}/gi, nome);
+      const agora = new Date();
+      // Link anterior vencido e família sem terminar: o link novo vale só 24h (as respostas salvas continuam)
+      const renovacao = !envio.teste && !envio.respondidoEm && linkVencido(envio.tokenExpiraEm, agora);
+      const validadeMs = envio.teste
+        ? VALIDADE_TESTE_DIAS * DIA_MS
+        : renovacao
+          ? VALIDADE_RENOVACAO_MS
+          : envio.questionario.validadeDias * DIA_MS;
+      const tokenExpiraEm = new Date(agora.getTime() + validadeMs);
+      const comecou =
+        renovacao && (!!envio.iniciadoEm || (await this.prisma.preOcupacaoQuestionarioResposta.count({ where: { envioId: envio.id } })) > 0);
       // Reenviado para corrigir: avisa que é a 2ª (3ª…) resposta e que substitui a anterior
-      const texto =
-        envio.rodada > 1
+      const texto = renovacao
+        ? mensagemRenovacao(nome, envio.questionario.titulo, comecou, link, tokenExpiraEm)
+        : envio.rodada > 1
           ? mensagemCorrecao(nome, envio.questionario.titulo, envio.rodada, link)
           : /\{\{link\}\}/i.test(corpo)
             ? corpo.replace(/\{\{link\}\}/gi, link)
@@ -228,11 +240,9 @@ export class QuestionarioEnvioService {
 
       // Token e validade gravados antes do envio: no teste o link tem que funcionar
       // mesmo se o WhatsApp falhar (a equipe copia o link).
-      const agora = new Date();
-      const validadeDias = envio.teste ? VALIDADE_TESTE_DIAS : envio.questionario.validadeDias;
       await this.prisma.preOcupacaoQuestionarioEnvio.update({
         where: { id: envio.id },
-        data: { tokenHash, tokenExpiraEm: new Date(agora.getTime() + validadeDias * DIA_MS) },
+        data: { tokenHash, tokenExpiraEm },
       });
 
       let enviado: { canal: string; messageId: string | null };
@@ -273,7 +283,7 @@ export class QuestionarioEnvioService {
         },
       });
       const para = alvo?.participanteId ? ` · para ${alvo.nome}` : '';
-      await registrarEventoEnvio(this.prisma, envio.id, 'ENVIADO', `${envio.enviosCount + 1}º envio${para}`, por ?? null);
+      await registrarEventoEnvio(this.prisma, envio.id, 'ENVIADO', `${envio.enviosCount + 1}º envio${para}${renovacao ? ' · link vencido, novo vale 24h' : ''}`, por ?? null);
       this.logger.log(`Questionário enviado: envio=${envio.id} questionario=${envio.questionarioId} teste=${envio.teste}`);
       return { ok: true, link: envio.teste ? link : undefined };
     } catch (e: any) {
