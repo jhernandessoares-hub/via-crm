@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { MessagingService } from '../messaging/messaging.service';
 import type { LeadsService } from '../leads/leads.service';
 import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
+import { resolvePermissions } from '../tenants/permissions.config';
 import { PRE_OCUPACAO_CATEGORIA_LABEL } from './pre-ocupacao-status.util';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
 import { CONVITE_TOKEN_VALIDADE_MS, gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
@@ -224,17 +225,84 @@ export class AtividadesService {
     return atividade;
   }
 
+  /** OWNER sempre pode; demais perfis dependem de `pre_ocupacao.<action>` em Permissões (padrão: negado). */
+  private async exigirPermissao(tenantId: string, role: string | undefined, action: 'edit' | 'delete') {
+    if (role === 'OWNER') return;
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { permissionsConfig: true } });
+    const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+    if (!perms[(role ?? '').toLowerCase() as 'manager']?.pre_ocupacao?.[action]) {
+      throw new ForbiddenException('Seu perfil não tem permissão para esta ação nas sessões da Pré-Ocupação.');
+    }
+  }
+
   async atualizar(
     tenantId: string,
     id: string,
-    body: { local?: string | null; titulo?: string | null; relatorio?: string | null },
+    role: string | undefined,
+    body: { local?: string | null; titulo?: string | null; relatorio?: string | null; dataAgendada?: string },
   ) {
-    await this.getAtividadeOrThrow(tenantId, id);
+    const alteraSessao = body.dataAgendada !== undefined || body.titulo !== undefined || body.local !== undefined;
+    if (alteraSessao) await this.exigirPermissao(tenantId, role, 'edit');
+    const atual = await this.getAtividadeOrThrow(tenantId, id);
     const data: any = {};
     if (body.local !== undefined) data.local = body.local?.trim() || null;
     if (body.titulo !== undefined) data.titulo = body.titulo?.trim() || null;
     if (body.relatorio !== undefined) data.relatorio = body.relatorio?.trim() || null;
-    return this.prisma.preOcupacaoAtividade.update({ where: { id }, data });
+    if (body.dataAgendada !== undefined) {
+      const nova = new Date(body.dataAgendada);
+      if (Number.isNaN(nova.getTime())) throw new BadRequestException('dataAgendada inválida.');
+      data.dataAgendada = nova;
+    }
+
+    const titulo = data.titulo !== undefined ? data.titulo : atual.titulo;
+    const sincronizaAgenda = data.dataAgendada || data.local !== undefined || data.titulo !== undefined;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.preOcupacaoAtividade.update({ where: { id }, data });
+      if (sincronizaAgenda && atual.calendarEventId) {
+        const eventData: any = {
+          title: titulo || PRE_OCUPACAO_CATEGORIA_LABEL[atual.categoria] || 'Sessão Pré-Ocupação',
+          location: updated.local,
+        };
+        if (data.dataAgendada) {
+          eventData.startAt = data.dataAgendada;
+          eventData.endAt = new Date(data.dataAgendada.getTime() + DURACAO_PADRAO_MS);
+          eventData.reminderSentAt = null;
+        }
+        await tx.calendarEvent.updateMany({ where: { id: atual.calendarEventId, tenantId }, data: eventData });
+      }
+      return updated;
+    });
+  }
+
+  /**
+   * Exclui a sessão. Participantes, anexos e agendamentos de convite saem em
+   * cascata; o `CalendarEvent` (FK do lado da atividade, SetNull) é removido
+   * aqui para não sobrar compromisso órfão na agenda. Itens do planejamento TTS
+   * vinculados apenas perdem o vínculo (SetNull).
+   */
+  async remover(tenantId: string, id: string, role: string | undefined, userId?: string) {
+    await this.exigirPermissao(tenantId, role, 'delete');
+    const atividade = await this.getAtividadeOrThrow(tenantId, id);
+    const total = await this.prisma.preOcupacaoAtividadeParticipante.count({ where: { atividadeId: id } });
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.preOcupacaoAtividade.delete({ where: { id } });
+      if (atividade.calendarEventId) {
+        await tx.calendarEvent.deleteMany({ where: { id: atividade.calendarEventId, tenantId } });
+      }
+    });
+
+    this.logger.log(`Sessão excluída: id=${id} categoria=${atividade.categoria} participantes=${total}`);
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'PRE_OCUPACAO_EXCLUIR_SESSAO',
+      resourceType: 'PreOcupacaoAtividade',
+      resourceId: id,
+      metadata: { categoria: atividade.categoria, titulo: atividade.titulo, dataAgendada: atividade.dataAgendada, participantes: total },
+    });
+    return { ok: true };
   }
 
   /** Upload de evidência geral da sessão (lista de presença, foto, vídeo). */

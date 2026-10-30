@@ -8,6 +8,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
+import { usePermissions } from "@/lib/permissions";
 import { maskPhone } from "@/lib/format";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
@@ -98,6 +99,14 @@ export default function AtividadeDetalhePage() {
   const [savingRelatorio, setSavingRelatorio] = useState(false);
 
   const [anexoTipo, setAnexoTipo] = useState("FOTO");
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editData, setEditData] = useState("");
+  const [editTitulo, setEditTitulo] = useState("");
+  const [editLocal, setEditLocal] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const router = useRouter();
+  const { can } = usePermissions();
 
   const [fichaModal, setFichaModal] = useState<Participante | null>(null);
   const [addFamiliaModal, setAddFamiliaModal] = useState(false);
@@ -224,6 +233,53 @@ export default function AtividadeDetalhePage() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  function abrirEdicao() {
+    if (!data) return;
+    const d = new Date(data.dataAgendada);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setEditData(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    setEditTitulo(data.titulo ?? "");
+    setEditLocal(data.local ?? "");
+    setEditOpen(true);
+  }
+
+  async function handleSalvarEdicao() {
+    if (!editData) {
+      showToast("Informe a data e hora.");
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await apiFetch(`/pre-ocupacao/atividades/${atividadeId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          dataAgendada: new Date(editData).toISOString(),
+          titulo: editTitulo.trim() || null,
+          local: editLocal.trim() || null,
+        }),
+      });
+      setEditOpen(false);
+      showToast("Sessão atualizada.");
+      await load();
+    } catch (e: any) {
+      showToast(e?.message ?? "Erro ao atualizar sessão");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleExcluirSessao() {
+    if (!data) return;
+    const total = data.participantes.length;
+    if (!confirm(`Excluir esta sessão? Serão apagados ${total} participante(s), anexos, convites agendados e o compromisso da agenda. Não dá para desfazer.`)) return;
+    try {
+      await apiFetch(`/pre-ocupacao/atividades/${atividadeId}`, { method: "DELETE" });
+      startTransition(() => router.replace("/pre-ocupacao/calendario"));
+    } catch (e: any) {
+      showToast(e?.message ?? "Erro ao excluir sessão");
+    }
+  }
+
   async function handleSaveRelatorio() {
     setSavingRelatorio(true);
     try {
@@ -305,6 +361,26 @@ export default function AtividadeDetalhePage() {
           <>
             <Card className="mb-4">
               <CardBody>
+                <div className="flex justify-end gap-2 mb-2">
+                  {can("pre_ocupacao", "edit") && (
+                  <button
+                    onClick={abrirEdicao}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                    style={{ color: "var(--shell-text)" }}
+                  >
+                    Editar sessão
+                  </button>
+                  )}
+                  {can("pre_ocupacao", "delete") && (
+                  <button
+                    onClick={handleExcluirSessao}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                    style={{ background: "#fef2f2", color: "#dc2626" }}
+                  >
+                    Excluir sessão
+                  </button>
+                  )}
+                </div>
                 <h1 className="text-xl font-bold" style={{ color: "var(--shell-text)" }}>
                   {CATEGORIA_LABEL[data.categoria] ?? data.categoria}
                   {data.titulo ? ` — ${data.titulo}` : ""}
@@ -742,6 +818,63 @@ export default function AtividadeDetalhePage() {
         >
           {toast}
         </div>
+      )}
+      {editOpen && (
+        <Modal
+          open
+          onClose={() => setEditOpen(false)}
+          title="Editar sessão"
+          footer={
+            <>
+              <button
+                onClick={() => setEditOpen(false)}
+                disabled={savingEdit}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]"
+                style={{ color: "var(--shell-text)" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSalvarEdicao}
+                disabled={savingEdit}
+                className="px-4 py-2 rounded-lg text-sm font-medium"
+                style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+              >
+                {savingEdit ? "Salvando..." : "Salvar"}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Data e hora *</label>
+              <input
+                type="datetime-local"
+                value={editData}
+                onChange={(e) => setEditData(e.target.value)}
+                className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Título</label>
+              <input
+                type="text"
+                value={editTitulo}
+                onChange={(e) => setEditTitulo(e.target.value)}
+                className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Local</label>
+              <input
+                type="text"
+                value={editLocal}
+                onChange={(e) => setEditLocal(e.target.value)}
+                className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+              />
+            </div>
+          </div>
+        </Modal>
       )}
     </AppShell>
   );
