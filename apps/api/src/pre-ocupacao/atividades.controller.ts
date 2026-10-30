@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -43,6 +44,11 @@ export class AtividadesController {
   @Patch(':id')
   atualizar(@Request() req: any, @Param('id') id: string, @Body() body: any) {
     return this.svc.atualizar(req.user.tenantId, id, body);
+  }
+
+  @Delete(':id')
+  remover(@Request() req: any, @Param('id') id: string) {
+    return this.svc.remover(req.user.tenantId, id, req.user.id ?? req.user.sub);
   }
 
   @Post(':id/anexos')
