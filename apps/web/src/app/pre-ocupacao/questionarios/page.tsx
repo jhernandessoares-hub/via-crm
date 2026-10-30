@@ -71,7 +71,7 @@ export default function QuestionariosPage() {
 
   return (
     <AppShell title="Pré-Ocupação — Questionários">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: "var(--shell-text)" }}>
