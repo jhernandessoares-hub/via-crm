@@ -8,6 +8,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
+import { usePermissions } from "@/lib/permissions";
 import { maskPhone } from "@/lib/format";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
@@ -105,6 +106,7 @@ export default function AtividadeDetalhePage() {
   const [editLocal, setEditLocal] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const router = useRouter();
+  const { can } = usePermissions();
 
   const [fichaModal, setFichaModal] = useState<Participante | null>(null);
   const [addFamiliaModal, setAddFamiliaModal] = useState(false);
@@ -360,6 +362,7 @@ export default function AtividadeDetalhePage() {
             <Card className="mb-4">
               <CardBody>
                 <div className="flex justify-end gap-2 mb-2">
+                  {can("pre_ocupacao", "edit") && (
                   <button
                     onClick={abrirEdicao}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
@@ -367,6 +370,8 @@ export default function AtividadeDetalhePage() {
                   >
                     Editar sessão
                   </button>
+                  )}
+                  {can("pre_ocupacao", "delete") && (
                   <button
                     onClick={handleExcluirSessao}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium"
@@ -374,6 +379,7 @@ export default function AtividadeDetalhePage() {
                   >
                     Excluir sessão
                   </button>
+                  )}
                 </div>
                 <h1 className="text-xl font-bold" style={{ color: "var(--shell-text)" }}>
                   {CATEGORIA_LABEL[data.categoria] ?? data.categoria}

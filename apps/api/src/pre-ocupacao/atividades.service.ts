@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { MessagingService } from '../messaging/messaging.service';
 import type { LeadsService } from '../leads/leads.service';
 import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
+import { resolvePermissions } from '../tenants/permissions.config';
 import { PRE_OCUPACAO_CATEGORIA_LABEL } from './pre-ocupacao-status.util';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
 import { CONVITE_TOKEN_VALIDADE_MS, gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
@@ -224,11 +225,24 @@ export class AtividadesService {
     return atividade;
   }
 
+  /** OWNER sempre pode; demais perfis dependem de `pre_ocupacao.<action>` em Permissões (padrão: negado). */
+  private async exigirPermissao(tenantId: string, role: string | undefined, action: 'edit' | 'delete') {
+    if (role === 'OWNER') return;
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { permissionsConfig: true } });
+    const perms = resolvePermissions(tenant?.permissionsConfig as Record<string, any> | null);
+    if (!perms[(role ?? '').toLowerCase() as 'manager']?.pre_ocupacao?.[action]) {
+      throw new ForbiddenException('Seu perfil não tem permissão para esta ação nas sessões da Pré-Ocupação.');
+    }
+  }
+
   async atualizar(
     tenantId: string,
     id: string,
+    role: string | undefined,
     body: { local?: string | null; titulo?: string | null; relatorio?: string | null; dataAgendada?: string },
   ) {
+    const alteraSessao = body.dataAgendada !== undefined || body.titulo !== undefined || body.local !== undefined;
+    if (alteraSessao) await this.exigirPermissao(tenantId, role, 'edit');
     const atual = await this.getAtividadeOrThrow(tenantId, id);
     const data: any = {};
     if (body.local !== undefined) data.local = body.local?.trim() || null;
@@ -267,7 +281,8 @@ export class AtividadesService {
    * aqui para não sobrar compromisso órfão na agenda. Itens do planejamento TTS
    * vinculados apenas perdem o vínculo (SetNull).
    */
-  async remover(tenantId: string, id: string, userId?: string) {
+  async remover(tenantId: string, id: string, role: string | undefined, userId?: string) {
+    await this.exigirPermissao(tenantId, role, 'delete');
     const atividade = await this.getAtividadeOrThrow(tenantId, id);
     const total = await this.prisma.preOcupacaoAtividadeParticipante.count({ where: { atividadeId: id } });
 

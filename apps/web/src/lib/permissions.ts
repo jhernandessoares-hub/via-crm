@@ -172,7 +172,11 @@ export const PERMISSION_MODULES = [
   {
     key: "pre_ocupacao",
     label: "Pré-Ocupação",
-    actions: [{ key: "view", label: "Ver" }],
+    actions: [
+      { key: "view",   label: "Ver" },
+      { key: "edit",   label: "Alterar sessões do calendário" },
+      { key: "delete", label: "Excluir sessões do calendário" },
+    ],
   },
   {
     key: "pos_ocupacao",

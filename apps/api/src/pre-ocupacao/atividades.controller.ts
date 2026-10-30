@@ -43,12 +43,12 @@ export class AtividadesController {
 
   @Patch(':id')
   atualizar(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.svc.atualizar(req.user.tenantId, id, body);
+    return this.svc.atualizar(req.user.tenantId, id, req.user.role, body);
   }
 
   @Delete(':id')
   remover(@Request() req: any, @Param('id') id: string) {
-    return this.svc.remover(req.user.tenantId, id, req.user.id ?? req.user.sub);
+    return this.svc.remover(req.user.tenantId, id, req.user.role, req.user.id ?? req.user.sub);
   }
 
   @Post(':id/anexos')
