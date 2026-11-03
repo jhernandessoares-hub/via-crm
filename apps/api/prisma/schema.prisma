@@ -3226,3 +3226,195 @@ model FinBankTransaction {
   @@index([bankAccountId, status, data])
   @@map("fin_bank_transactions")
 }
+
+// ─── Pré-Ocupação: Assembleia de Instalação do Condomínio ──────────────────
+// Assembleia online/híbrida (Código Civil art. 1.354-A): convocação por WhatsApp com
+// link individual por unidade, credenciamento por CPF, votação item a item e apuração
+// com quórum. 1 voto por unidade. Vídeo fica numa sala externa (linkVideo).
+
+enum PreOcupacaoAssembleiaStatus {
+  RASCUNHO
+  CONVOCADA
+  EM_ANDAMENTO
+  ENCERRADA
+}
+
+enum PreOcupacaoAssembleiaItemTipo {
+  APROVACAO
+  ELEICAO
+  ESCOLHA
+}
+
+enum PreOcupacaoAssembleiaQuorum {
+  MAIORIA_PRESENTES
+  MAIORIA_ABSOLUTA
+  DOIS_TERCOS
+}
+
+enum PreOcupacaoAssembleiaItemStatus {
+  PENDENTE
+  ABERTO
+  FECHADO
+}
+
+model PreOcupacaoAssembleia {
+  id                     String                      @id @default(uuid())
+  tenantId               String
+  developmentId          String
+  // ASSEMBLEIA = com votação e quórum; REUNIAO = reunião do condomínio (conselho,
+  // síndico, moradores) só com convocação, presença e pauta, sem votação
+  tipo                   String                      @default("ASSEMBLEIA")
+  titulo                 String
+  // Texto do edital enviado pelo WhatsApp: {{nome}}, {{unidade}}, {{data}}, {{video}}, {{pauta}}, {{link}}
+  edital                 String
+  linkVideo              String?
+  dataPrimeiraConvocacao DateTime
+  dataSegundaConvocacao  DateTime
+  status                 PreOcupacaoAssembleiaStatus @default(RASCUNHO)
+  // UNIDADE = 1 voto por unidade (decisão SP9). FRACAO fica para o futuro.
+  modoPeso               String                      @default("UNIDADE")
+  presidenteNome         String?
+  secretarioNome         String?
+  atividadeId            String?
+  envioPausadoEm         DateTime?
+  envioPausaMotivo       String?
+  iniciadaEm             DateTime?
+  encerradaEm            DateTime?
+  ataAssinadaUrl         String?
+  criadoPor              String
+  criadoEm               DateTime                    @default(now())
+  atualizadoEm           DateTime                    @updatedAt
+
+  itens    PreOcupacaoAssembleiaItem[]
+  unidades PreOcupacaoAssembleiaUnidade[]
+  eventos  PreOcupacaoAssembleiaEvento[]
+
+  @@index([tenantId, status])
+  @@map("pre_ocupacao_assembleias")
+}
+
+model PreOcupacaoAssembleiaItem {
+  id           String                          @id @default(uuid())
+  assembleiaId String
+  ordem        Int
+  titulo       String
+  descricao    String?
+  tipo         PreOcupacaoAssembleiaItemTipo
+  // Lista de opções (string[]). APROVACAO: Sim / Não / Abstenção.
+  opcoes       Json
+  quorum       PreOcupacaoAssembleiaQuorum     @default(MAIORIA_PRESENTES)
+  status       PreOcupacaoAssembleiaItemStatus @default(PENDENTE)
+  abertoEm     DateTime?
+  fechadoEm    DateTime?
+  // Apuração congelada no fechamento — não muda depois
+  resultado    Json?
+
+  assembleia PreOcupacaoAssembleia      @relation(fields: [assembleiaId], references: [id], onDelete: Cascade)
+  votos      PreOcupacaoAssembleiaVoto[]
+
+  @@index([assembleiaId, ordem])
+  @@map("pre_ocupacao_assembleia_itens")
+}
+
+/// Uma linha por unidade do empreendimento (quem vota). Nome da unidade e lead
+/// guardados como estavam na criação; unidade sem lead não recebe convocação
+/// pelo WhatsApp (vota presencial ou por procurador).
+model PreOcupacaoAssembleiaUnidade {
+  id              String    @id @default(uuid())
+  tenantId        String
+  assembleiaId    String
+  unitId          String
+  unidadeNome     String
+  torreNome       String?
+  leadId          String?
+  familiaId       String?
+  peso            Int       @default(1)
+  // null = ainda não convocada; PENDENTE / ENVIADO / FALHA
+  statusEnvio     String?
+  tokenHash       String?
+  tokenExpiraEm   DateTime?
+  enviadoEm       DateTime?
+  enviosCount     Int       @default(0)
+  ultimoEnvioErro String?
+  waMessageId     String?
+  canalEnvio      String?
+  entregueEm      DateTime?
+  entregaErro     String?
+  linkAbertoEm    DateTime?
+  destinoNome     String?
+  destinoTelefone String?
+  // Procurador liberado pela equipe (procuração conferida)
+  procuradorNome  String?
+  procuradorCpf   String?
+  procuracaoUrl   String?
+  criadoEm        DateTime  @default(now())
+  atualizadoEm    DateTime  @updatedAt
+
+  assembleia PreOcupacaoAssembleia           @relation(fields: [assembleiaId], references: [id], onDelete: Cascade)
+  presencas  PreOcupacaoAssembleiaPresenca[]
+  votos      PreOcupacaoAssembleiaVoto[]
+
+  @@unique([assembleiaId, unitId])
+  @@index([assembleiaId, statusEnvio])
+  @@index([tokenHash])
+  @@index([waMessageId])
+  @@map("pre_ocupacao_assembleia_unidades")
+}
+
+/// Credenciamento: cada vez que alguém confirma o CPF (online) ou é registrado na mesa (presencial).
+model PreOcupacaoAssembleiaPresenca {
+  id            String   @id @default(uuid())
+  assembleiaId  String
+  unidadeId     String
+  nome          String
+  cpf           String
+  // TITULAR | PARTICIPANTE | PROCURADOR
+  papel         String
+  // ONLINE | PRESENCIAL
+  origem        String
+  registradoPor String?
+  ip            String?
+  userAgent     String?
+  entrouEm      DateTime @default(now())
+
+  unidade PreOcupacaoAssembleiaUnidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  @@index([assembleiaId, entrouEm])
+  @@index([unidadeId])
+  @@map("pre_ocupacao_assembleia_presencas")
+}
+
+/// 1 voto por unidade por item. Não se altera depois de gravado.
+model PreOcupacaoAssembleiaVoto {
+  id            String   @id @default(uuid())
+  itemId        String
+  unidadeId     String
+  opcao         String
+  nome          String
+  cpf           String
+  origem        String
+  registradoPor String?
+  em            DateTime @default(now())
+
+  item    PreOcupacaoAssembleiaItem    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  unidade PreOcupacaoAssembleiaUnidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, unidadeId])
+  @@map("pre_ocupacao_assembleia_votos")
+}
+
+/// Log append-only (anexo da ata): convocou, entregou, abriu, credenciou, abriu item, votou, fechou.
+model PreOcupacaoAssembleiaEvento {
+  id           String   @id @default(uuid())
+  assembleiaId String
+  unidadeId    String?
+  tipo         String
+  detalhe      String?
+  por          String?
+  em           DateTime @default(now())
+
+  assembleia PreOcupacaoAssembleia @relation(fields: [assembleiaId], references: [id], onDelete: Cascade)
+
+  @@index([assembleiaId, em])
+  @@map("pre_ocupacao_assembleia_eventos")
+}

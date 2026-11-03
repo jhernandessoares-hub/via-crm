@@ -23,6 +23,10 @@ import { QuestionariosController } from './questionarios.controller';
 import { QuestionariosService } from './questionarios.service';
 import { QuestionarioEnvioService } from './questionario-envio.service';
 import { QuestionarioEnvioWorker } from './questionario-envio.worker';
+import { AssembleiasController } from './assembleias.controller';
+import { AssembleiasService } from './assembleias.service';
+import { AssembleiaConvocacaoService } from './assembleia-convocacao.service';
+import { AssembleiaConvocacaoWorker } from './assembleia-convocacao.worker';
 
 @Module({
   imports: [PrismaModule, LeadsModule, MessagingModule],
@@ -35,6 +39,7 @@ import { QuestionarioEnvioWorker } from './questionario-envio.worker';
     TemplatesController,
     AtendimentosController,
     QuestionariosController,
+    AssembleiasController,
   ],
   providers: [
     AddonGuard,
@@ -50,7 +55,10 @@ import { QuestionarioEnvioWorker } from './questionario-envio.worker';
     QuestionariosService,
     QuestionarioEnvioService,
     QuestionarioEnvioWorker,
+    AssembleiasService,
+    AssembleiaConvocacaoService,
+    AssembleiaConvocacaoWorker,
   ],
-  exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService, QuestionarioEnvioService],
+  exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService, QuestionarioEnvioService, AssembleiasService],
 })
 export class PreOcupacaoModule {}

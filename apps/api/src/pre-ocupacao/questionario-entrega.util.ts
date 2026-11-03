@@ -1,6 +1,7 @@
 import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { registrarEventoEnvio } from './questionario-evento.util';
+import { registrarAvisoEntregaAssembleia } from './assembleia-convocacao.service';
 
 const logger = new Logger('PreOcupacaoQuestionarioEntrega');
 
@@ -21,6 +22,8 @@ export async function registrarAvisoEntregaQuestionario(
   aviso: 'ENTREGUE' | 'ERRO',
   detalhe?: string | null,
 ) {
+  // Convocação da assembleia usa o mesmo aviso (prova de convocação)
+  await registrarAvisoEntregaAssembleia(prisma, waMessageId, aviso, detalhe);
   try {
     const envios = await prisma.preOcupacaoQuestionarioEnvio.findMany({
       where: { waMessageId },
