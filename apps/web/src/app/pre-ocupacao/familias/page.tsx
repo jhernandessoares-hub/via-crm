@@ -194,16 +194,16 @@ function contarPor(lista: AtendimentoRelatorio[], campo: "motivo" | "assunto" | 
 }
 
 /** Barras horizontais com rótulo — usado para atendimentos por assunto e demandas por tipo. */
-function BarrasHorizontais({ dados, cor, nome }: { dados: { label: string; total: number }[]; cor: string; nome: string }) {
+function BarrasHorizontais({ dados, cor, nome, linhas }: { dados: { label: string; total: number }[]; cor: string; nome: string; linhas?: number }) {
   return (
-    <div style={{ width: "100%", height: Math.max(120, dados.length * 34) }}>
+    <div style={{ width: "100%", height: Math.max(dados.length, linhas ?? 0) * 34 + 8 }}>
       <ResponsiveContainer>
         <BarChart data={dados} layout="vertical" margin={{ top: 0, right: 32, bottom: 0, left: 0 }}>
           <XAxis type="number" hide allowDecimals={false} />
           <YAxis
             type="category"
             dataKey="label"
-            width={190}
+            width={170}
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: 12, fill: "var(--shell-subtext)" }}
@@ -222,117 +222,170 @@ const COR_ATENDIMENTO = "#2563eb";
 const COR_DEMANDA = "#d97706";
 const COR_TOTAL = "#7c3aed";
 
-/** Resumo do período: atendimentos, demandas e soma — com gráficos de cada um. */
+
+/** Indicador grande e clicável (filtra a tabela). */
+function Indicador({
+  label,
+  valor,
+  cor,
+  ativo,
+  onClick,
+}: {
+  label: string;
+  valor: number | string;
+  cor: string;
+  ativo: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-1 min-w-[120px] text-left rounded-lg px-4 py-3 transition-colors hover:bg-[var(--shell-hover)]"
+      style={{ boxShadow: ativo ? `inset 0 0 0 2px ${cor}` : "inset 0 0 0 1px var(--shell-card-border)" }}
+    >
+      <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>{label}</p>
+      <p className="text-3xl font-bold leading-tight mt-0.5" style={{ color: cor }}>{valor}</p>
+    </button>
+  );
+}
+
+/** "Dúvida 11 · Presencial 1" — só o que tem valor. */
+function resumoTexto(mapa: Map<string, number>, labels: Record<string, string>): string {
+  return Object.entries(labels)
+    .map(([k, label]) => ({ label, n: mapa.get(k) ?? 0 }))
+    .filter((x) => x.n > 0)
+    .map((x) => `${x.label} ${x.n}`)
+    .join(" · ");
+}
+
+/**
+ * Bloco do período: seletor de datas, os 3 números (atendimentos, demandas,
+ * soma) e os dois gráficos lado a lado.
+ */
 function PainelAtendimentos({
   lista,
   dashboard,
   periodo,
+  setPeriodo,
   loading,
+  filtros,
 }: {
   lista: AtendimentoRelatorio[];
   dashboard: Dashboard | null;
   periodo: Periodo;
+  setPeriodo: (p: Periodo) => void;
   loading: boolean;
+  filtros: {
+    atend: ComSem;
+    demandas: ComSem;
+    total: ComSem;
+    toggleAtend: () => void;
+    toggleDemandas: () => void;
+    toggleTotal: () => void;
+  };
 }) {
   const porAssunto = contarPor(lista, "assunto");
   const dadosAssunto = Object.entries(ATENDIMENTO_ASSUNTO_LABEL)
     .map(([k, label]) => ({ label, total: porAssunto.get(k) ?? 0 }))
     .filter((d) => d.total > 0)
     .sort((a, b) => b.total - a.total);
-  const porMotivo = contarPor(lista, "motivo");
-  const porModalidade = contarPor(lista, "modalidade");
   const porTipo = dashboard?.demandasPorTipo ?? {};
   const dadosTipo = Object.entries(OCORRENCIA_TIPO_LABEL)
     .map(([k, label]) => ({ label, total: porTipo[k] ?? 0 }))
     .filter((d) => d.total > 0)
     .sort((a, b) => b.total - a.total);
-  const nAtend = dashboard?.atendimentos ?? lista.length;
-  const nDem = dashboard?.demandas ?? 0;
-  const nTotal = dashboard?.contatosTotal ?? nAtend + nDem;
+  // Mesma altura nos dois gráficos para ficarem alinhados
+  const linhas = Math.max(dadosAssunto.length, dadosTipo.length, 3);
 
-  const resumo = [
-    { label: "Atendimentos", valor: nAtend, cor: COR_ATENDIMENTO },
-    { label: "Demandas", valor: nDem, cor: COR_DEMANDA },
-    { label: "Total (atendimentos + demandas)", valor: nTotal, cor: COR_TOTAL },
-  ];
+  const detalheAtend = [
+    resumoTexto(contarPor(lista, "motivo"), ATENDIMENTO_MOTIVO_LABEL),
+    resumoTexto(contarPor(lista, "modalidade"), ATENDIMENTO_MODALIDADE_LABEL),
+  ]
+    .filter(Boolean)
+    .join("  |  ");
+  const detalheDem = dashboard?.demandas
+    ? `${dashboard.demandasAbertas} aberta(s) · ${dashboard.demandasEncerradas} encerrada(s)`
+    : "";
+
+  const inputCls =
+    "h-9 rounded-lg border px-2 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none";
 
   return (
     <Card className="mb-6">
       <CardBody>
-        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
-          <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>
-            Atendimentos e demandas — {periodoLabel(periodo)}
-          </p>
-          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-            {nTotal} registro(s) em {dashboard?.familiasComContato ?? 0} família(s)
-          </p>
+        {/* Cabeçalho: título + período */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <p className="text-base font-semibold" style={{ color: "var(--shell-text)" }}>Atendimentos e demandas</p>
+            <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+              {periodoLabel(periodo)}
+              {dashboard ? ` · ${dashboard.familiasComContato} família(s) atendida(s)` : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {PERIODO_ATALHOS.map((atalho) => {
+              const v = atalho.value();
+              const ativo = periodo.de === v.de && periodo.ate === v.ate;
+              return (
+                <button
+                  key={atalho.label}
+                  onClick={() => setPeriodo(v)}
+                  className="h-9 px-3 rounded-lg text-sm font-medium border"
+                  style={{
+                    borderColor: ativo ? "var(--via-teal, #1D9E75)" : "var(--shell-card-border)",
+                    color: ativo ? "var(--via-teal, #1D9E75)" : "var(--shell-text)",
+                  }}
+                >
+                  {atalho.label}
+                </button>
+              );
+            })}
+            <input
+              type="date"
+              aria-label="De"
+              value={periodo.de}
+              max={periodo.ate || undefined}
+              onChange={(e) => setPeriodo({ ...periodo, de: e.target.value })}
+              className={inputCls}
+            />
+            <span className="text-xs" style={{ color: "var(--shell-subtext)" }}>até</span>
+            <input
+              type="date"
+              aria-label="Até"
+              value={periodo.ate}
+              min={periodo.de || undefined}
+              onChange={(e) => setPeriodo({ ...periodo, ate: e.target.value })}
+              className={inputCls}
+            />
+          </div>
         </div>
 
+        {/* Os 3 números — clicar filtra a tabela */}
+        <div className="flex flex-wrap gap-3 mb-6">
+          <Indicador label="Atendimentos" valor={dashboard?.atendimentos ?? "—"} cor={COR_ATENDIMENTO} ativo={filtros.atend === "com"} onClick={filtros.toggleAtend} />
+          <Indicador label="Demandas" valor={dashboard?.demandas ?? "—"} cor={COR_DEMANDA} ativo={filtros.demandas === "com"} onClick={filtros.toggleDemandas} />
+          <Indicador label="Total" valor={dashboard?.contatosTotal ?? "—"} cor={COR_TOTAL} ativo={filtros.total === "com"} onClick={filtros.toggleTotal} />
+        </div>
+
+        {/* Os dois gráficos lado a lado */}
         {loading ? (
           <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Carregando...</p>
-        ) : nTotal === 0 ? (
-          <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhum atendimento ou demanda no período.</p>
         ) : (
-          <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {resumo.map((r) => (
-              <div key={r.label} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
-                <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>{r.label}</p>
-                <p className="text-2xl font-bold" style={{ color: r.cor }}>{r.valor}</p>
-                <div className="mt-2 h-1.5 rounded-full" style={{ background: "var(--shell-hover)" }}>
-                  <div
-                    className="h-1.5 rounded-full"
-                    style={{ width: `${nTotal ? Math.round((r.valor / nTotal) * 100) : 0}%`, background: r.cor }}
-                  />
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {[
+              { titulo: "Atendimentos por assunto", detalhe: detalheAtend, dados: dadosAssunto, cor: COR_ATENDIMENTO, nome: "Atendimentos", vazio: "Nenhum atendimento no período." },
+              { titulo: "Demandas por tipo", detalhe: detalheDem, dados: dadosTipo, cor: COR_DEMANDA, nome: "Demandas", vazio: "Nenhuma demanda no período." },
+            ].map((g) => (
+              <div key={g.titulo}>
+                <p className="text-sm font-medium" style={{ color: "var(--shell-text)" }}>{g.titulo}</p>
+                <p className="text-xs mb-3 min-h-[16px]" style={{ color: "var(--shell-subtext)" }}>{g.detalhe}</p>
+                {g.dados.length > 0 ? (
+                  <BarrasHorizontais dados={g.dados} cor={g.cor} nome={g.nome} linhas={linhas} />
+                ) : (
+                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>{g.vazio}</p>
+                )}
               </div>
             ))}
-          </div>
-
-          {/* Os dois gráficos lado a lado */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Atendimentos por assunto</p>
-              {dadosAssunto.length > 0 ? (
-                <BarrasHorizontais dados={dadosAssunto} cor={COR_ATENDIMENTO} nome="Atendimentos" />
-              ) : (
-                <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhum atendimento no período.</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>
-                Demandas por tipo · {dashboard?.demandasAbertas ?? 0} aberta(s), {dashboard?.demandasEncerradas ?? 0} encerrada(s)
-              </p>
-              {dadosTipo.length > 0 ? (
-                <BarrasHorizontais dados={dadosTipo} cor={COR_DEMANDA} nome="Demandas" />
-              ) : (
-                <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma demanda no período.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Motivo e modalidade dos atendimentos — uma linha só */}
-          {lista.length > 0 && (
-            <div className="flex flex-wrap items-stretch gap-2">
-              {[
-                { titulo: "Motivo", labels: ATENDIMENTO_MOTIVO_LABEL, mapa: porMotivo },
-                { titulo: "Modalidade", labels: ATENDIMENTO_MODALIDADE_LABEL, mapa: porModalidade },
-              ].flatMap((bloco) =>
-                Object.entries(bloco.labels).map(([k, label]) => (
-                  <div
-                    key={`${bloco.titulo}-${k}`}
-                    className="flex-1 min-w-[110px] rounded-lg border px-2 py-2 text-center"
-                    style={{ borderColor: "var(--shell-card-border)" }}
-                  >
-                    <p className="text-lg font-bold" style={{ color: "var(--shell-text)" }}>{bloco.mapa.get(k) ?? 0}</p>
-                    <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>
-                      {bloco.titulo}: {label}
-                    </p>
-                  </div>
-                )),
-              )}
-            </div>
-          )}
           </div>
         )}
       </CardBody>
@@ -466,141 +519,37 @@ export default function FamiliasPage() {
           </div>
         </div>
 
-        {/* Período — vale para atendimentos, demandas, total e para os relatórios */}
-        <div className="flex flex-wrap items-end gap-3 mb-4">
-          <label className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-            De
-            <input
-              type="date"
-              value={periodo.de}
-              max={periodo.ate || undefined}
-              onChange={(e) => setPeriodo((p) => ({ ...p, de: e.target.value }))}
-              className="block mt-1 h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none"
-            />
-          </label>
-          <label className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-            Até
-            <input
-              type="date"
-              value={periodo.ate}
-              min={periodo.de || undefined}
-              onChange={(e) => setPeriodo((p) => ({ ...p, ate: e.target.value }))}
-              className="block mt-1 h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none"
-            />
-          </label>
-          {PERIODO_ATALHOS.map((atalho) => {
-            const v = atalho.value();
-            const ativo = periodo.de === v.de && periodo.ate === v.ate;
-            return (
-              <button
-                key={atalho.label}
-                onClick={() => setPeriodo(v)}
-                className="h-10 px-3 rounded-lg text-sm font-medium border"
-                style={{
-                  borderColor: ativo ? "var(--via-teal, #1D9E75)" : "var(--shell-card-border)",
-                  color: ativo ? "var(--via-teal, #1D9E75)" : "var(--shell-text)",
-                }}
-              >
-                {atalho.label}
-              </button>
-            );
-          })}
+        {/* Situação das famílias — clicáveis, filtram a listagem */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {[
+            { label: "Famílias no Pré-Ocupação", valor: dashboard?.total, cor: "var(--shell-text)", ativo: !temFiltro, borda: "var(--via-teal, #1D9E75)", onClick: limparFiltros },
+            { label: "Em dia", valor: dashboard?.emDia, cor: "#16a34a", ativo: statusFilter === "EM_DIA", borda: "#16a34a", onClick: () => setStatusFilter((s) => (s === "EM_DIA" ? "" : "EM_DIA")) },
+            { label: "Com pendência", valor: dashboard?.comPendencia, cor: "#dc2626", ativo: statusFilter === "COM_PENDENCIA", borda: "#dc2626", onClick: () => setStatusFilter((s) => (s === "COM_PENDENCIA" ? "" : "COM_PENDENCIA")) },
+          ].map((c) => (
+            <Card key={c.label} className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]" onClick={c.onClick}>
+              <CardBody style={c.ativo ? { boxShadow: `inset 0 0 0 2px ${c.borda}` } : undefined}>
+                <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>{c.label}</p>
+                <p className="text-2xl font-bold mt-1" style={{ color: c.cor }}>{c.valor ?? "—"}</p>
+              </CardBody>
+            </Card>
+          ))}
         </div>
 
-        {/* Dashboard cards — clicáveis, filtram a listagem */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 mb-6">
-          <Card
-            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={limparFiltros}
-          >
-            <CardBody style={!temFiltro ? { boxShadow: "inset 0 0 0 2px var(--via-teal, #1D9E75)" } : undefined}>
-              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-                Total no Pré-Ocupação
-              </p>
-              <p className="text-2xl font-bold mt-1" style={{ color: "var(--shell-text)" }}>
-                {dashboard?.total ?? "—"}
-              </p>
-            </CardBody>
-          </Card>
-          <Card
-            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={() => setStatusFilter((s) => (s === "EM_DIA" ? "" : "EM_DIA"))}
-          >
-            <CardBody style={statusFilter === "EM_DIA" ? { boxShadow: "inset 0 0 0 2px #16a34a" } : undefined}>
-              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-                Em dia
-              </p>
-              <p className="text-2xl font-bold mt-1" style={{ color: "#16a34a" }}>
-                {dashboard?.emDia ?? "—"}
-              </p>
-            </CardBody>
-          </Card>
-          <Card
-            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={() => setStatusFilter((s) => (s === "COM_PENDENCIA" ? "" : "COM_PENDENCIA"))}
-          >
-            <CardBody style={statusFilter === "COM_PENDENCIA" ? { boxShadow: "inset 0 0 0 2px #dc2626" } : undefined}>
-              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-                Com pendência
-              </p>
-              <p className="text-2xl font-bold mt-1" style={{ color: "#dc2626" }}>
-                {dashboard?.comPendencia ?? "—"}
-              </p>
-            </CardBody>
-          </Card>
-          <Card
-            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={() => setFiltroAtend((v) => (v === "com" ? "" : "com"))}
-          >
-            <CardBody style={filtroAtend === "com" ? { boxShadow: "inset 0 0 0 2px #2563eb" } : undefined}>
-              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-                Atendimentos
-              </p>
-              <p className="text-2xl font-bold mt-1" style={{ color: COR_ATENDIMENTO }}>
-                {dashboard?.atendimentos ?? "—"}
-              </p>
-              <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
-                {periodoLabel(periodo)}
-              </p>
-            </CardBody>
-          </Card>
-          <Card
-            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={() => setFiltroDemandas((v) => (v === "com" ? "" : "com"))}
-          >
-            <CardBody style={filtroDemandas === "com" ? { boxShadow: `inset 0 0 0 2px ${COR_DEMANDA}` } : undefined}>
-              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-                Demandas
-              </p>
-              <p className="text-2xl font-bold mt-1" style={{ color: COR_DEMANDA }}>
-                {dashboard?.demandas ?? "—"}
-              </p>
-              <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
-                {periodoLabel(periodo)}
-                {dashboard && dashboard.demandas > 0 ? ` · ${dashboard.demandasAbertas} aberta(s)` : ""}
-              </p>
-            </CardBody>
-          </Card>
-          <Card
-            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-            onClick={() => setFiltroTotal((v) => (v === "com" ? "" : "com"))}
-          >
-            <CardBody style={filtroTotal === "com" ? { boxShadow: `inset 0 0 0 2px ${COR_TOTAL}` } : undefined}>
-              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
-                Atendimentos + demandas
-              </p>
-              <p className="text-2xl font-bold mt-1" style={{ color: COR_TOTAL }}>
-                {dashboard?.contatosTotal ?? "—"}
-              </p>
-              <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
-                {dashboard ? `${dashboard.familiasComContato} família(s) · ` : ""}
-                {periodoLabel(periodo)}
-              </p>
-            </CardBody>
-          </Card>
-        </div>
-
-        <PainelAtendimentos lista={atendimentosLista} dashboard={dashboard} periodo={periodo} loading={loading} />
+        <PainelAtendimentos
+          lista={atendimentosLista}
+          dashboard={dashboard}
+          periodo={periodo}
+          setPeriodo={setPeriodo}
+          loading={loading}
+          filtros={{
+            atend: filtroAtend,
+            demandas: filtroDemandas,
+            total: filtroTotal,
+            toggleAtend: () => setFiltroAtend((v) => (v === "com" ? "" : "com")),
+            toggleDemandas: () => setFiltroDemandas((v) => (v === "com" ? "" : "com")),
+            toggleTotal: () => setFiltroTotal((v) => (v === "com" ? "" : "com")),
+          }}
+        />
 
         {/* Search */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
