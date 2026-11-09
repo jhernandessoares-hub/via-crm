@@ -507,6 +507,10 @@ function AnexoPreviewModal({
           <img src={anexo.url} alt={anexo.nome} className="max-h-[70vh] max-w-full rounded-lg object-contain" />
         ) : isPdf ? (
           <iframe src={anexo.url} className="w-full h-[70vh] rounded-lg border" style={{ borderColor: "var(--shell-card-border)" }} />
+        ) : anexo.mimeType?.startsWith("audio/") ? (
+          <audio controls autoPlay src={anexo.url} className="w-full max-w-md my-6" />
+        ) : anexo.mimeType?.startsWith("video/") ? (
+          <video controls src={anexo.url} className="max-h-[70vh] max-w-full rounded-lg" />
         ) : (
           <div className="py-10 text-center">
             <p className="text-sm mb-3" style={{ color: "var(--shell-subtext)" }}>
