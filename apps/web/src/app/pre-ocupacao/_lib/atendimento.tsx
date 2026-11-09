@@ -12,7 +12,7 @@
 import { useEffect, useState, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, manualRefreshToken } from "@/lib/api";
 import {
   ATENDIMENTO_ASSUNTO_LABEL,
   ATENDIMENTO_MODALIDADE_LABEL,
@@ -141,15 +141,21 @@ function AtendimentoFormFields({ value, onChange }: { value: FormValues; onChang
   );
 }
 
-/** Abre mídia da mensagem pelo proxy autenticado do lead (mesmo endpoint do chat). */
-async function abrirMidia(leadId: string, eventId: string) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/leads/${encodeURIComponent(leadId)}/events/${encodeURIComponent(eventId)}/download`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-  );
+/** Baixa a mídia da mensagem pelo proxy autenticado do lead (mesmo endpoint do chat). */
+async function baixarMidia(leadId: string, eventId: string): Promise<Blob> {
+  const url = `${process.env.NEXT_PUBLIC_API_URL}/leads/${encodeURIComponent(leadId)}/events/${encodeURIComponent(eventId)}/download`;
+  const get = (token: string | null) => fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  let res = await get(typeof window !== "undefined" ? localStorage.getItem("accessToken") : null);
+  if (res.status === 401) {
+    const novo = await manualRefreshToken();
+    if (novo) res = await get(novo);
+  }
   if (!res.ok) throw new Error(`Falha ao abrir arquivo (${res.status})`);
-  const url = URL.createObjectURL(await res.blob());
+  return res.blob();
+}
+
+async function abrirMidia(leadId: string, eventId: string) {
+  const url = URL.createObjectURL(await baixarMidia(leadId, eventId));
   window.open(url, "_blank", "noopener");
 }
 
@@ -161,8 +167,82 @@ const MIDIA_LABEL: Record<string, string> = {
   sticker: "🖼️ Figurinha",
 };
 
+/** Texto que só repete o tipo da mídia ("[IMAGEM]", "[ÁUDIO]") — some quando a mídia aparece. */
+const ROTULO_MIDIA = /^\[[^\]]{1,40}\]$/;
+
+/** Imagem, figurinha, áudio e vídeo aparecem dentro da mensagem; documento continua como link. */
+function MidiaMensagem({ leadId, mensagem }: { leadId: string; mensagem: AtendimentoMensagem }) {
+  const tipo = mensagem.midia?.tipo ?? "document";
+  const inline = ["image", "sticker", "audio", "video"].includes(tipo);
+  const [src, setSrc] = useState<string | null>(null);
+  const [falhou, setFalhou] = useState(false);
+
+  useEffect(() => {
+    if (!inline) return;
+    let url: string | null = null;
+    let vivo = true;
+    baixarMidia(leadId, mensagem.id)
+      .then((blob) => {
+        url = URL.createObjectURL(blob);
+        if (vivo) setSrc(url);
+        else URL.revokeObjectURL(url);
+      })
+      .catch(() => vivo && setFalhou(true));
+    return () => {
+      vivo = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [inline, leadId, mensagem.id]);
+
+  const link = (
+    <button
+      type="button"
+      onClick={() => abrirMidia(leadId, mensagem.id).catch(() => setFalhou(true))}
+      className="block text-xs font-medium underline mb-1"
+    >
+      {MIDIA_LABEL[tipo] ?? "📎 Arquivo"}
+      {mensagem.midia?.nome ? ` · ${mensagem.midia.nome}` : ""} (abrir)
+    </button>
+  );
+
+  if (!inline || falhou) {
+    return (
+      <>
+        {link}
+        {falhou && inline && (
+          <p className="text-[10px] mb-1" style={{ color: "#dc2626" }}>
+            Não foi possível carregar a mídia.
+          </p>
+        )}
+      </>
+    );
+  }
+  if (!src) {
+    return (
+      <p className="text-xs mb-1 opacity-70">
+        {MIDIA_LABEL[tipo]} · carregando...
+      </p>
+    );
+  }
+  if (tipo === "audio") {
+    return <audio controls preload="metadata" src={src} className="mb-1 w-64 max-w-full" />;
+  }
+  if (tipo === "video") {
+    return <video controls preload="metadata" src={src} className="mb-1 max-h-56 max-w-full rounded-lg" />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={MIDIA_LABEL[tipo]}
+      title="Clique para abrir em tamanho real"
+      onClick={() => window.open(src, "_blank", "noopener")}
+      className={(tipo === "sticker" ? "max-h-24" : "max-h-56") + " mb-1 max-w-full rounded-lg cursor-zoom-in"}
+    />
+  );
+}
+
 export function MensagensAtendimento({ leadId, mensagens }: { leadId: string; mensagens: AtendimentoMensagem[] }) {
-  const [erro, setErro] = useState<string | null>(null);
   if (mensagens.length === 0) {
     return (
       <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
@@ -172,11 +252,6 @@ export function MensagensAtendimento({ leadId, mensagens }: { leadId: string; me
   }
   return (
     <div className="space-y-2">
-      {erro && (
-        <p className="text-xs" style={{ color: "#dc2626" }}>
-          {erro}
-        </p>
-      )}
       {mensagens.map((m) => (
         <div key={m.id} className={"flex " + (m.direcao === "OUT" ? "justify-end" : "justify-start")}>
           <div
@@ -187,17 +262,10 @@ export function MensagensAtendimento({ leadId, mensagens }: { leadId: string; me
                 : { background: "var(--shell-card-bg)", borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }
             }
           >
-            {m.midia && (
-              <button
-                type="button"
-                onClick={() => abrirMidia(leadId, m.id).catch((e) => setErro(e?.message ?? "Falha ao abrir arquivo"))}
-                className="block text-xs font-medium underline mb-1"
-              >
-                {MIDIA_LABEL[m.midia.tipo] ?? "📎 Arquivo"}
-                {m.midia.nome ? ` · ${m.midia.nome}` : ""} (abrir)
-              </button>
+            {m.midia && <MidiaMensagem leadId={leadId} mensagem={m} />}
+            {m.texto && !(m.midia && ROTULO_MIDIA.test(m.texto)) && (
+              <p className="whitespace-pre-wrap break-words">{m.texto}</p>
             )}
-            {m.texto && <p className="whitespace-pre-wrap break-words">{m.texto}</p>}
             <p className="mt-1 text-[10px] opacity-70 text-right">
               {m.direcao === "IN" ? "Família" : m.autor ?? "Equipe"} · {formatDateTime(m.criadoEm)}
             </p>
@@ -523,12 +591,21 @@ export function AtendimentoDetalheModal({ atendimentoId, onClose }: { atendiment
           {data.descricao && <Info label="Descrição">{data.descricao}</Info>}
           {data.anexos.length > 0 && (
             <Info label="Anexos">
-              <div className="flex flex-wrap gap-2 mt-1">
-                {data.anexos.map((a) => (
-                  <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="text-xs underline">
-                    📎 {a.nome}
-                  </a>
-                ))}
+              <div className="flex flex-wrap items-start gap-3 mt-1">
+                {data.anexos.map((a) =>
+                  a.mimeType?.startsWith("image/") ? (
+                    <a key={a.id} href={a.url} target="_blank" rel="noreferrer" title={a.nome}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={a.url} alt={a.nome} className="h-32 w-auto rounded-lg border object-cover" style={{ borderColor: "var(--shell-card-border)" }} />
+                    </a>
+                  ) : a.mimeType?.startsWith("audio/") ? (
+                    <audio key={a.id} controls preload="metadata" src={a.url} className="w-64 max-w-full" />
+                  ) : (
+                    <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="text-xs underline">
+                      📎 {a.nome}
+                    </a>
+                  ),
+                )}
               </div>
             </Info>
           )}
