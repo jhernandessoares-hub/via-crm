@@ -289,40 +289,49 @@ function PainelAtendimentos({
             ))}
           </div>
 
-          {dadosTipo.length > 0 && (
+          {/* Os dois gráficos lado a lado */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Atendimentos por assunto</p>
+              {dadosAssunto.length > 0 ? (
+                <BarrasHorizontais dados={dadosAssunto} cor={COR_ATENDIMENTO} nome="Atendimentos" />
+              ) : (
+                <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhum atendimento no período.</p>
+              )}
+            </div>
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>
                 Demandas por tipo · {dashboard?.demandasAbertas ?? 0} aberta(s), {dashboard?.demandasEncerradas ?? 0} encerrada(s)
               </p>
-              <BarrasHorizontais dados={dadosTipo} cor={COR_DEMANDA} nome="Demandas" />
-            </div>
-          )}
-
-          {lista.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Atendimentos por assunto</p>
-              <BarrasHorizontais dados={dadosAssunto} cor={COR_ATENDIMENTO} nome="Atendimentos" />
-            </div>
-            <div className="space-y-4">
-              {[
-                { titulo: "Por motivo", labels: ATENDIMENTO_MOTIVO_LABEL, mapa: porMotivo },
-                { titulo: "Por modalidade", labels: ATENDIMENTO_MODALIDADE_LABEL, mapa: porModalidade },
-              ].map((bloco) => (
-                <div key={bloco.titulo}>
-                  <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Atendimentos {bloco.titulo.toLowerCase()}</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {Object.entries(bloco.labels).map(([k, label]) => (
-                      <div key={k} className="rounded-lg border px-2 py-2 text-center" style={{ borderColor: "var(--shell-card-border)" }}>
-                        <p className="text-lg font-bold" style={{ color: "var(--shell-text)" }}>{bloco.mapa.get(k) ?? 0}</p>
-                        <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+              {dadosTipo.length > 0 ? (
+                <BarrasHorizontais dados={dadosTipo} cor={COR_DEMANDA} nome="Demandas" />
+              ) : (
+                <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma demanda no período.</p>
+              )}
             </div>
           </div>
+
+          {/* Motivo e modalidade dos atendimentos — uma linha só */}
+          {lista.length > 0 && (
+            <div className="flex flex-wrap items-stretch gap-2">
+              {[
+                { titulo: "Motivo", labels: ATENDIMENTO_MOTIVO_LABEL, mapa: porMotivo },
+                { titulo: "Modalidade", labels: ATENDIMENTO_MODALIDADE_LABEL, mapa: porModalidade },
+              ].flatMap((bloco) =>
+                Object.entries(bloco.labels).map(([k, label]) => (
+                  <div
+                    key={`${bloco.titulo}-${k}`}
+                    className="flex-1 min-w-[110px] rounded-lg border px-2 py-2 text-center"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    <p className="text-lg font-bold" style={{ color: "var(--shell-text)" }}>{bloco.mapa.get(k) ?? 0}</p>
+                    <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>
+                      {bloco.titulo}: {label}
+                    </p>
+                  </div>
+                )),
+              )}
+            </div>
           )}
           </div>
         )}
