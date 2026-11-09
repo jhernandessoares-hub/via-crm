@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { getNextFamiliaNumber } from './pre-ocupacao-numbering.helper';
 import { computeStatusAcompanhamento, countFaltas } from './pre-ocupacao-status.util';
-import { AtendimentosService } from './atendimentos.service';
+import { AtendimentosService, periodoWhere } from './atendimentos.service';
 
 @Injectable()
 export class FamiliasService {
@@ -105,7 +105,9 @@ export class FamiliasService {
 
   /**
    * Lista todas as famílias do tenant + dashboard agregado. `periodo` (YYYY-MM-DD)
-   * filtra só a contagem de atendimentos — a lista de famílias é sempre completa.
+   * filtra a contagem de atendimentos (por `inicioEm`) e de demandas (por
+   * `dataAtendimento`) — a lista de famílias é sempre completa. Só entram
+   * demandas vinculadas a uma família.
    */
   async listar(tenantId: string, take?: number, skip?: number, periodo?: { de?: string; ate?: string }) {
     const familias = await this.prisma.preOcupacaoFamilia.findMany({
@@ -122,10 +124,15 @@ export class FamiliasService {
           select: { familiaId: true, status: true },
         })
       : [];
+    const dataDemanda = periodoWhere(periodo?.de, periodo?.ate);
     const demandas = familiaIds.length
       ? await this.prisma.preOcupacaoOcorrencia.findMany({
-          where: { familiaId: { in: familiaIds } },
-          select: { familiaId: true, status: true },
+          where: {
+            tenantId,
+            familiaId: { in: familiaIds },
+            ...(dataDemanda ? { dataAtendimento: dataDemanda } : {}),
+          },
+          select: { familiaId: true, status: true, tipo: true },
         })
       : [];
 
@@ -166,14 +173,27 @@ export class FamiliasService {
         demandasAbertas: demandasFamilia.filter((d) => d.status === 'ABERTA').length,
         demandasEncerradas: demandasFamilia.filter((d) => d.status === 'ENCERRADA').length,
         atendimentos: atendimentosPorFamilia.get(f.id) ?? 0,
+        contatosTotal: (atendimentosPorFamilia.get(f.id) ?? 0) + demandasFamilia.length,
       };
     });
 
+    const demandasPorTipo: Record<string, number> = {};
+    for (const d of demandas) {
+      const k = d.tipo ?? 'OUTRO';
+      demandasPorTipo[k] = (demandasPorTipo[k] ?? 0) + 1;
+    }
+    const totalAtendimentos = items.reduce((acc, i) => acc + i.atendimentos, 0);
     const dashboard = {
       total: items.length,
       emDia: items.filter((i) => i.status === 'EM_DIA').length,
       comPendencia: items.filter((i) => i.status === 'COM_PENDENCIA').length,
-      atendimentos: items.reduce((acc, i) => acc + i.atendimentos, 0),
+      atendimentos: totalAtendimentos,
+      demandas: demandas.length,
+      demandasAbertas: demandas.filter((d) => d.status === 'ABERTA').length,
+      demandasEncerradas: demandas.filter((d) => d.status === 'ENCERRADA').length,
+      demandasPorTipo,
+      contatosTotal: totalAtendimentos + demandas.length,
+      familiasComContato: items.filter((i) => i.contatosTotal > 0).length,
     };
 
     const paginated = typeof take === 'number' ? items.slice(skip ?? 0, (skip ?? 0) + take) : items;

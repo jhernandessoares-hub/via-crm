@@ -78,7 +78,7 @@ type AtendimentoBody = {
 type Actor = { id?: string; nome?: string };
 
 /** Data `YYYY-MM-DD` interpretada no fuso de Brasília (servidor roda em UTC). */
-function periodoWhere(de?: string, ate?: string) {
+export function periodoWhere(de?: string, ate?: string) {
   const isDate = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
   if (!isDate(de) && !isDate(ate)) return undefined;
   const where: { gte?: Date; lte?: Date } = {};
