@@ -14,6 +14,7 @@ import {
   ATENDIMENTO_MOTIVO_LABEL,
   formatDate,
   intervaloDoMes,
+  OCORRENCIA_TIPO_LABEL,
 } from "../_lib/constants";
 
 type FamiliaItem = {
@@ -32,9 +33,21 @@ type FamiliaItem = {
   demandasAbertas: number;
   demandasEncerradas: number;
   atendimentos: number;
+  contatosTotal: number;
 };
 
-type Dashboard = { total: number; emDia: number; comPendencia: number; atendimentos: number };
+type Dashboard = {
+  total: number;
+  emDia: number;
+  comPendencia: number;
+  atendimentos: number;
+  demandas: number;
+  demandasAbertas: number;
+  demandasEncerradas: number;
+  demandasPorTipo: Record<string, number>;
+  contatosTotal: number;
+  familiasComContato: number;
+};
 
 type Periodo = { de: string; ate: string };
 
@@ -96,9 +109,10 @@ function baixarRelatorio(items: FamiliaItem[], periodo: Periodo) {
     "Unidade",
     "Incluída em",
     `Atendimentos (${periodoLabel(periodo)})`,
-    "Demandas (total)",
+    `Demandas (${periodoLabel(periodo)})`,
     "Demandas abertas",
     "Demandas encerradas",
+    "Total (atendimentos + demandas)",
     "Status",
     "Faltas",
   ];
@@ -113,6 +127,7 @@ function baixarRelatorio(items: FamiliaItem[], periodo: Periodo) {
     String(f.demandasTotal),
     String(f.demandasAbertas),
     String(f.demandasEncerradas),
+    String(f.contatosTotal),
     f.status === "EM_DIA" ? "Em dia" : "Com pendência",
     String(f.faltas),
   ]);
@@ -178,8 +193,47 @@ function contarPor(lista: AtendimentoRelatorio[], campo: "motivo" | "assunto" | 
   return m;
 }
 
-/** Gráfico/números dos atendimentos do período (assunto, motivo, modalidade). */
-function PainelAtendimentos({ lista, periodo, loading }: { lista: AtendimentoRelatorio[]; periodo: Periodo; loading: boolean }) {
+/** Barras horizontais com rótulo — usado para atendimentos por assunto e demandas por tipo. */
+function BarrasHorizontais({ dados, cor, nome }: { dados: { label: string; total: number }[]; cor: string; nome: string }) {
+  return (
+    <div style={{ width: "100%", height: Math.max(120, dados.length * 34) }}>
+      <ResponsiveContainer>
+        <BarChart data={dados} layout="vertical" margin={{ top: 0, right: 32, bottom: 0, left: 0 }}>
+          <XAxis type="number" hide allowDecimals={false} />
+          <YAxis
+            type="category"
+            dataKey="label"
+            width={190}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 12, fill: "var(--shell-subtext)" }}
+          />
+          <Tooltip cursor={{ fill: "var(--shell-hover)" }} formatter={(v) => [String(v), nome]} />
+          <Bar dataKey="total" fill={cor} radius={[0, 4, 4, 0]} barSize={18}>
+            <LabelList dataKey="total" position="right" style={{ fontSize: 12, fill: "var(--shell-text)" }} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+const COR_ATENDIMENTO = "#2563eb";
+const COR_DEMANDA = "#d97706";
+const COR_TOTAL = "#7c3aed";
+
+/** Resumo do período: atendimentos, demandas e soma — com gráficos de cada um. */
+function PainelAtendimentos({
+  lista,
+  dashboard,
+  periodo,
+  loading,
+}: {
+  lista: AtendimentoRelatorio[];
+  dashboard: Dashboard | null;
+  periodo: Periodo;
+  loading: boolean;
+}) {
   const porAssunto = contarPor(lista, "assunto");
   const dadosAssunto = Object.entries(ATENDIMENTO_ASSUNTO_LABEL)
     .map(([k, label]) => ({ label, total: porAssunto.get(k) ?? 0 }))
@@ -187,47 +241,68 @@ function PainelAtendimentos({ lista, periodo, loading }: { lista: AtendimentoRel
     .sort((a, b) => b.total - a.total);
   const porMotivo = contarPor(lista, "motivo");
   const porModalidade = contarPor(lista, "modalidade");
-  const familias = new Set(lista.map((a) => a.familia.numero)).size;
+  const porTipo = dashboard?.demandasPorTipo ?? {};
+  const dadosTipo = Object.entries(OCORRENCIA_TIPO_LABEL)
+    .map(([k, label]) => ({ label, total: porTipo[k] ?? 0 }))
+    .filter((d) => d.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const nAtend = dashboard?.atendimentos ?? lista.length;
+  const nDem = dashboard?.demandas ?? 0;
+  const nTotal = dashboard?.contatosTotal ?? nAtend + nDem;
+
+  const resumo = [
+    { label: "Atendimentos", valor: nAtend, cor: COR_ATENDIMENTO },
+    { label: "Demandas", valor: nDem, cor: COR_DEMANDA },
+    { label: "Total (atendimentos + demandas)", valor: nTotal, cor: COR_TOTAL },
+  ];
 
   return (
     <Card className="mb-6">
       <CardBody>
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
           <p className="text-sm font-semibold" style={{ color: "var(--shell-text)" }}>
-            Atendimentos — {periodoLabel(periodo)}
+            Atendimentos e demandas — {periodoLabel(periodo)}
           </p>
           <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-            {lista.length} atendimento(s) em {familias} família(s)
+            {nTotal} registro(s) em {dashboard?.familiasComContato ?? 0} família(s)
           </p>
         </div>
 
         {loading ? (
           <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Carregando...</p>
-        ) : lista.length === 0 ? (
-          <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhum atendimento no período.</p>
+        ) : nTotal === 0 ? (
+          <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhum atendimento ou demanda no período.</p>
         ) : (
+          <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {resumo.map((r) => (
+              <div key={r.label} className="rounded-lg border px-3 py-3" style={{ borderColor: "var(--shell-card-border)" }}>
+                <p className="text-[11px]" style={{ color: "var(--shell-subtext)" }}>{r.label}</p>
+                <p className="text-2xl font-bold" style={{ color: r.cor }}>{r.valor}</p>
+                <div className="mt-2 h-1.5 rounded-full" style={{ background: "var(--shell-hover)" }}>
+                  <div
+                    className="h-1.5 rounded-full"
+                    style={{ width: `${nTotal ? Math.round((r.valor / nTotal) * 100) : 0}%`, background: r.cor }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {dadosTipo.length > 0 && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>
+                Demandas por tipo · {dashboard?.demandasAbertas ?? 0} aberta(s), {dashboard?.demandasEncerradas ?? 0} encerrada(s)
+              </p>
+              <BarrasHorizontais dados={dadosTipo} cor={COR_DEMANDA} nome="Demandas" />
+            </div>
+          )}
+
+          {lista.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Por assunto</p>
-              <div style={{ width: "100%", height: Math.max(120, dadosAssunto.length * 34) }}>
-                <ResponsiveContainer>
-                  <BarChart data={dadosAssunto} layout="vertical" margin={{ top: 0, right: 32, bottom: 0, left: 0 }}>
-                    <XAxis type="number" hide allowDecimals={false} />
-                    <YAxis
-                      type="category"
-                      dataKey="label"
-                      width={190}
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fontSize: 12, fill: "var(--shell-subtext)" }}
-                    />
-                    <Tooltip cursor={{ fill: "var(--shell-hover)" }} formatter={(v) => [String(v), "Atendimentos"]} />
-                    <Bar dataKey="total" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={18}>
-                      <LabelList dataKey="total" position="right" style={{ fontSize: 12, fill: "var(--shell-text)" }} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Atendimentos por assunto</p>
+              <BarrasHorizontais dados={dadosAssunto} cor={COR_ATENDIMENTO} nome="Atendimentos" />
             </div>
             <div className="space-y-4">
               {[
@@ -235,7 +310,7 @@ function PainelAtendimentos({ lista, periodo, loading }: { lista: AtendimentoRel
                 { titulo: "Por modalidade", labels: ATENDIMENTO_MODALIDADE_LABEL, mapa: porModalidade },
               ].map((bloco) => (
                 <div key={bloco.titulo}>
-                  <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>{bloco.titulo}</p>
+                  <p className="text-xs font-medium mb-2" style={{ color: "var(--shell-subtext)" }}>Atendimentos {bloco.titulo.toLowerCase()}</p>
                   <div className="grid grid-cols-3 gap-2">
                     {Object.entries(bloco.labels).map(([k, label]) => (
                       <div key={k} className="rounded-lg border px-2 py-2 text-center" style={{ borderColor: "var(--shell-card-border)" }}>
@@ -247,6 +322,8 @@ function PainelAtendimentos({ lista, periodo, loading }: { lista: AtendimentoRel
                 </div>
               ))}
             </div>
+          </div>
+          )}
           </div>
         )}
       </CardBody>
@@ -273,6 +350,7 @@ export default function FamiliasPage() {
   const [filtroAtend, setFiltroAtend] = useState<ComSem>("");
   const [filtroDemandas, setFiltroDemandas] = useState<ComSem>("");
   const [filtroFaltas, setFiltroFaltas] = useState<ComSem>("");
+  const [filtroTotal, setFiltroTotal] = useState<ComSem>("");
   const [atendimentosLista, setAtendimentosLista] = useState<AtendimentoRelatorio[]>([]);
   const [periodo, setPeriodo] = useState<Periodo>({ de: "", ate: "" });
   const [baixandoAtendimentos, setBaixandoAtendimentos] = useState(false);
@@ -317,6 +395,7 @@ export default function FamiliasPage() {
     if (!passaComSem(filtroAtend, f.atendimentos)) return false;
     if (!passaComSem(filtroDemandas, f.demandasTotal)) return false;
     if (!passaComSem(filtroFaltas, f.faltas)) return false;
+    if (!passaComSem(filtroTotal, f.contatosTotal)) return false;
     if (!q.trim()) return true;
     const term = q.trim().toLowerCase();
     return (
@@ -326,12 +405,13 @@ export default function FamiliasPage() {
     );
   });
 
-  const temFiltro = !!(statusFilter || filtroAtend || filtroDemandas || filtroFaltas || q.trim());
+  const temFiltro = !!(statusFilter || filtroAtend || filtroDemandas || filtroFaltas || filtroTotal || q.trim());
   function limparFiltros() {
     setStatusFilter("");
     setFiltroAtend("");
     setFiltroDemandas("");
     setFiltroFaltas("");
+    setFiltroTotal("");
     setQ("");
   }
 
@@ -377,7 +457,7 @@ export default function FamiliasPage() {
           </div>
         </div>
 
-        {/* Período — vale para o card/coluna Atendimentos e para os relatórios */}
+        {/* Período — vale para atendimentos, demandas, total e para os relatórios */}
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <label className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
             De
@@ -419,7 +499,7 @@ export default function FamiliasPage() {
         </div>
 
         {/* Dashboard cards — clicáveis, filtram a listagem */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 mb-6">
           <Card
             className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
             onClick={limparFiltros}
@@ -467,7 +547,7 @@ export default function FamiliasPage() {
               <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
                 Atendimentos
               </p>
-              <p className="text-2xl font-bold mt-1" style={{ color: "#2563eb" }}>
+              <p className="text-2xl font-bold mt-1" style={{ color: COR_ATENDIMENTO }}>
                 {dashboard?.atendimentos ?? "—"}
               </p>
               <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
@@ -475,9 +555,43 @@ export default function FamiliasPage() {
               </p>
             </CardBody>
           </Card>
+          <Card
+            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
+            onClick={() => setFiltroDemandas((v) => (v === "com" ? "" : "com"))}
+          >
+            <CardBody style={filtroDemandas === "com" ? { boxShadow: `inset 0 0 0 2px ${COR_DEMANDA}` } : undefined}>
+              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+                Demandas
+              </p>
+              <p className="text-2xl font-bold mt-1" style={{ color: COR_DEMANDA }}>
+                {dashboard?.demandas ?? "—"}
+              </p>
+              <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
+                {periodoLabel(periodo)}
+                {dashboard && dashboard.demandas > 0 ? ` · ${dashboard.demandasAbertas} aberta(s)` : ""}
+              </p>
+            </CardBody>
+          </Card>
+          <Card
+            className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
+            onClick={() => setFiltroTotal((v) => (v === "com" ? "" : "com"))}
+          >
+            <CardBody style={filtroTotal === "com" ? { boxShadow: `inset 0 0 0 2px ${COR_TOTAL}` } : undefined}>
+              <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+                Atendimentos + demandas
+              </p>
+              <p className="text-2xl font-bold mt-1" style={{ color: COR_TOTAL }}>
+                {dashboard?.contatosTotal ?? "—"}
+              </p>
+              <p className="text-[11px] mt-1" style={{ color: "var(--shell-subtext)" }}>
+                {dashboard ? `${dashboard.familiasComContato} família(s) · ` : ""}
+                {periodoLabel(periodo)}
+              </p>
+            </CardBody>
+          </Card>
         </div>
 
-        <PainelAtendimentos lista={atendimentosLista} periodo={periodo} loading={loading} />
+        <PainelAtendimentos lista={atendimentosLista} dashboard={dashboard} periodo={periodo} loading={loading} />
 
         {/* Search */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -525,6 +639,9 @@ export default function FamiliasPage() {
                   <th className="text-left px-4 py-3 font-medium align-top" style={{ color: "var(--shell-subtext)" }}>
                     <ColunaComSem titulo="Demandas" value={filtroDemandas} onChange={setFiltroDemandas} />
                   </th>
+                  <th className="text-left px-4 py-3 font-medium align-top" style={{ color: "var(--shell-subtext)" }}>
+                    <ColunaComSem titulo="Total" value={filtroTotal} onChange={setFiltroTotal} />
+                  </th>
                   <th className="text-left px-4 py-3 font-medium" style={{ color: "var(--shell-subtext)" }}>Status</th>
                   <th className="text-left px-4 py-3 font-medium align-top" style={{ color: "var(--shell-subtext)" }}>
                     <ColunaComSem titulo="Faltas" value={filtroFaltas} onChange={setFiltroFaltas} />
@@ -534,14 +651,14 @@ export default function FamiliasPage() {
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={10} className="text-center py-8" style={{ color: "var(--shell-subtext)" }}>
+                    <td colSpan={11} className="text-center py-8" style={{ color: "var(--shell-subtext)" }}>
                       Carregando...
                     </td>
                   </tr>
                 )}
                 {!loading && filtered.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="text-center py-8" style={{ color: "var(--shell-subtext)" }}>
+                    <td colSpan={11} className="text-center py-8" style={{ color: "var(--shell-subtext)" }}>
                       Nenhuma família encontrada.
                     </td>
                   </tr>
@@ -581,6 +698,9 @@ export default function FamiliasPage() {
                           {" "}({f.demandasAbertas} abertas, {f.demandasEncerradas} encerradas)
                         </span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 font-semibold" style={{ color: f.contatosTotal > 0 ? COR_TOTAL : "var(--shell-text)" }}>
+                      {f.contatosTotal}
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={f.status === "EM_DIA" ? "success" : "error"}>
