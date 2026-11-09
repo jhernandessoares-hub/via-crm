@@ -52,6 +52,9 @@ const IGNORED_PAYLOAD_TYPES = new Set([
   'read',
   'protocol',
   'system',
+  // Baileys não decodificou (sinal interno do WhatsApp, sem conteúdo) — aparecia
+  // como "[Mensagem não reconhecida]" no resumo do atendimento.
+  'unknown',
 ]);
 /** Sem encerramento anterior, a conversa "atual" considera no máximo os últimos 30 dias. */
 const JANELA_PADRAO_DIAS = 30;
