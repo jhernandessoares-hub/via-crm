@@ -16,6 +16,7 @@ import {
   intervaloDoMes,
   OCORRENCIA_TIPO_LABEL,
 } from "../_lib/constants";
+import { baixarAcompanhamentoPsicossocial, rotuloPeriodo } from "../_lib/relatorio-acompanhamento";
 
 type FamiliaItem = {
   id: string;
@@ -416,6 +417,9 @@ export default function FamiliasPage() {
   const [atendimentosLista, setAtendimentosLista] = useState<AtendimentoRelatorio[]>([]);
   const [periodo, setPeriodo] = useState<Periodo>({ de: "", ate: "" });
   const [baixandoAtendimentos, setBaixandoAtendimentos] = useState(false);
+  const [baixandoPsicossocial, setBaixandoPsicossocial] = useState(false);
+  // Planilha da Verificadora: usa o período escolhido; sem período completo, o mês anterior.
+  const periodoPsicossocial = periodo.de && periodo.ate ? periodo : intervaloDoMes(-1);
 
   useEffect(() => {
     if (guard !== true) return;
@@ -449,6 +453,17 @@ export default function FamiliasPage() {
       setError(e?.message ?? "Erro ao baixar atendimentos");
     } finally {
       setBaixandoAtendimentos(false);
+    }
+  }
+
+  async function onBaixarPsicossocial() {
+    setBaixandoPsicossocial(true);
+    try {
+      await baixarAcompanhamentoPsicossocial(periodoPsicossocial.de, periodoPsicossocial.ate);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao gerar a planilha de acompanhamento psicossocial");
+    } finally {
+      setBaixandoPsicossocial(false);
     }
   }
 
@@ -507,6 +522,17 @@ export default function FamiliasPage() {
               style={{ color: "var(--shell-text)" }}
             >
               {baixandoAtendimentos ? "Gerando..." : "Baixar atendimentos"}
+            </button>
+            <button
+              onClick={onBaixarPsicossocial}
+              disabled={baixandoPsicossocial}
+              title={`Planilha com Resumo, Atendimentos e Demandas (com andamentos) de ${rotuloPeriodo(periodoPsicossocial.de, periodoPsicossocial.ate)}`}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)] disabled:opacity-50"
+              style={{ color: "var(--shell-text)" }}
+            >
+              {baixandoPsicossocial
+                ? "Gerando..."
+                : `Acompanhamento psicossocial (${rotuloPeriodo(periodoPsicossocial.de, periodoPsicossocial.ate)})`}
             </button>
             <button
               onClick={load}
