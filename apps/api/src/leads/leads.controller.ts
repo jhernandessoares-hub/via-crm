@@ -693,7 +693,18 @@ export class LeadsController {
 
   @Get(':id/pendencias')
   async listPendencias(@Req() req: any, @Param('id') id: string) {
-    if (req.user.role === 'PARTNER') throw new ForbiddenException('Sem permissão');
+    // Externo Consultivo (Verificadora) só lê, e só quando o OWNER liberou
+    // acesso a documentos ('view' ou 'download'): pendências são o dossiê documental.
+    if (req.user.role === 'PARTNER') {
+      const acc = await this.leadsService.getPartnerDocumentAccess(req.user.tenantId, req.user.role);
+      if (acc === 'none') throw new ForbiddenException('Sem permissão');
+      const res = await this.leadsService.listPendencias(req.user.tenantId, id);
+      // não expõe quem criou/resolveu (mesma regra do "responsável" oculto)
+      return {
+        ...res,
+        items: (res.items ?? []).map(({ criadoPor, resolvidoPor, ...it }: any) => it),
+      };
+    }
     return this.leadsService.listPendencias(req.user.tenantId, id);
   }
 

@@ -25,6 +25,7 @@ import { maskPhone, maskCPF, isValidCPF } from "@/lib/format";
 import { unlinkUnit, listMedia, listObraUpdates, DevMedia, DevObraUpdate } from "@/lib/developments.service";
 import { MaskedField } from "@/components/MaskedValue";
 import { isSP9 } from "@/lib/sp9";
+import { useDocumentAccess } from "@/lib/permissions";
 import { EncerrarConversaPreOcupacaoModal, type AtendimentoMensagem } from "@/app/pre-ocupacao/_lib/atendimento";
 import { Check, CheckCheck, Send, UserPlus, X, ChevronRight, ChevronDown, ArrowLeftRight, Search, Users, StickyNote, Pencil, Unlink, Lock, Trash2 } from "lucide-react";
 
@@ -2352,6 +2353,7 @@ export default function LeadDetailChatPage() {
   const router = useRouter();
 
   const [user, setUser] = useState<StoredUser | null>(null);
+  const documentAccess = useDocumentAccess();
 
 
   const [lead, setLead] = useState<Lead | null>(null);
@@ -6262,11 +6264,12 @@ function discardAiSuggestion() {
 
             {/* Pendências: aparece na etapa Docs Pendente (requiresNow) e permanece
                 como histórico enquanto o lead tiver pendências registradas. */}
-            {user?.role !== "PARTNER" && id && (
+            {/* Externo Consultivo vê (só leitura) quando tem acesso a documentos. */}
+            {(user?.role !== "PARTNER" || documentAccess !== "none") && id && (
               <PendenciasPanel
                 leadId={id}
                 pessoas={pendenciaPessoas}
-                canEdit={true}
+                canEdit={user?.role !== "PARTNER"}
                 requiresNow={currentStageRequiresPendencias}
                 reloadKey={pendenciasReloadKey}
               />
