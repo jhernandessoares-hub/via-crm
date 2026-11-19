@@ -2395,6 +2395,7 @@ export default function LeadDetailChatPage() {
   const [preOcupacaoAtivando, setPreOcupacaoAtivando] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [evidencePreview, setEvidencePreview] = useState<{ url: string; mime: string; nome: string } | null>(null);
+  const [evidenceLoadingId, setEvidenceLoadingId] = useState<string | null>(null); // doc em carregamento (evita cliques repetidos)
   const [evidenceModalOpen, setEvidenceModalOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
   const [pendenciasModalOpen, setPendenciasModalOpen] = useState(false);
@@ -2780,6 +2781,8 @@ export default function LeadDetailChatPage() {
   }
 
   async function openStatusEvidenceDoc(docId: string, nome: string) {
+    if (evidenceLoadingId) return; // já está carregando
+    setEvidenceLoadingId(docId);
     try {
       const blob = await authFetchBlob(absApiUrl(`/leads/${id}/documents/${docId}/view`));
       const url = URL.createObjectURL(blob);
@@ -2789,6 +2792,8 @@ export default function LeadDetailChatPage() {
       });
     } catch (e: any) {
       alert(e?.message || "Não foi possível abrir a evidência.");
+    } finally {
+      setEvidenceLoadingId(null);
     }
   }
 
@@ -4527,14 +4532,14 @@ function discardAiSuggestion() {
               }
             }
 
-            async function handleEvidenceConfirm(payload: { file?: File; motivo?: string }) {
+            async function handleEvidenceConfirm(payload: { file?: File; motivo?: string; docLabel?: string }) {
               if (!pendingStage || !id) return;
               let evidenceDocumentId: string | undefined;
 
               if (payload.file) {
                 const docRes = await apiFetch(`/leads/${id}/documents`, {
                   method: "POST",
-                  body: JSON.stringify({ tipo: "EVIDENCIA_TRANSICAO", nome: `Evidência — ${pendingStage.name}` }),
+                  body: JSON.stringify({ tipo: "EVIDENCIA_TRANSICAO", nome: payload.docLabel || `Evidência — ${pendingStage.name}` }),
                 });
                 if (!docRes?.id) {
                   throw new Error("Não foi possível registrar a evidência. Tente novamente.");
@@ -6102,6 +6107,12 @@ function discardAiSuggestion() {
                           <div className="font-medium text-[var(--shell-text)]">
                             {ev.fromStage ? `${ev.fromStage} → ` : ""}{ev.toStage}
                           </div>
+                          {ev.document && (
+                            <div className="mt-0.5 flex items-center gap-1 font-semibold text-blue-700 dark:text-blue-300">
+                              <span>📄</span>
+                              <span className="truncate">{ev.document.nome}</span>
+                            </div>
+                          )}
                           {ev.motivo && (
                             <div className="mt-0.5 text-[var(--shell-subtext)]">{ev.motivo}</div>
                           )}
@@ -6114,9 +6125,18 @@ function discardAiSuggestion() {
                           <button
                             type="button"
                             onClick={() => openStatusEvidenceDoc(ev.document!.id, ev.document!.filename || ev.document!.nome)}
-                            className="shrink-0 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-text)] hover:bg-[var(--shell-bg)]"
+                            disabled={evidenceLoadingId !== null}
+                            aria-busy={evidenceLoadingId === ev.document.id}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--shell-card-border)] px-3 py-1.5 text-xs font-medium text-[var(--shell-text)] hover:bg-[var(--shell-bg)] disabled:cursor-wait disabled:opacity-60"
                           >
-                            Ver evidência
+                            {evidenceLoadingId === ev.document.id ? (
+                              <>
+                                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                Abrindo…
+                              </>
+                            ) : (
+                              "Ver evidência"
+                            )}
                           </button>
                         )}
                       </li>

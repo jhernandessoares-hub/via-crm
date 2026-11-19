@@ -2,6 +2,25 @@
 
 import { useRef, useState } from "react";
 
+// Tipos de documento de evidência (aparecem no cartão "Evidências de Status" do lead).
+const DOC_TIPOS = [
+  "Contrato de financiamento registrado",
+  "Contrato de financiamento assinado",
+  "Matrícula / certidão do imóvel",
+  "E-mail",
+  "Print / captura de tela",
+  "Comprovante",
+  "Outro",
+] as const;
+
+// Sugestão automática conforme o status de destino.
+function defaultDocTipo(stageName: string): string {
+  const s = (stageName || "").toLowerCase();
+  if (s === "registrado") return "Contrato de financiamento registrado";
+  if (s.includes("contrato assinado")) return "Contrato de financiamento assinado";
+  return "";
+}
+
 interface EvidenceUploadModalProps {
   isOpen: boolean;
   stageName: string;
@@ -9,7 +28,7 @@ interface EvidenceUploadModalProps {
   needsDocument?: boolean; // status exige evidência (documento)
   needsReason?: boolean;   // status exige justificativa em texto
   onClose: () => void;
-  onConfirm: (payload: { file?: File; motivo?: string }) => Promise<void>;
+  onConfirm: (payload: { file?: File; motivo?: string; docLabel?: string }) => Promise<void>;
 }
 
 export function EvidenceUploadModal({
@@ -23,6 +42,8 @@ export function EvidenceUploadModal({
 }: EvidenceUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [motivo, setMotivo] = useState("");
+  const [docTipo, setDocTipo] = useState(""); // "" = usa a sugestão automática do status
+  const [docDesc, setDocDesc] = useState("");
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,8 +59,17 @@ export function EvidenceUploadModal({
   const showMotivo = needsReason || (needsDocument && isOwner);
   const showFile = needsDocument;
 
+  const tipoEfetivo = docTipo || defaultDocTipo(stageName);
+  const descObrigatoria = tipoEfetivo === "Outro";
+  // Nome final do documento: "Tipo — descrição" (descrição é opcional, salvo em "Outro").
+  const docLabel = file
+    ? [tipoEfetivo === "Outro" ? "" : tipoEfetivo, docDesc.trim()].filter(Boolean).join(" — ") || undefined
+    : undefined;
+
   function reset() {
     setFile(null);
+    setDocTipo("");
+    setDocDesc("");
     setMotivo("");
     setDragging(false);
     setLoading(false);
@@ -54,7 +84,8 @@ export function EvidenceUploadModal({
   const canSubmit =
     (!motivoRequired || motivo.trim().length > 0) &&
     (!fileRequired || !!file) &&
-    (!ownerNeedsOne || !!file || motivo.trim().length > 0);
+    (!ownerNeedsOne || !!file || motivo.trim().length > 0) &&
+    (!file || !descObrigatoria || docDesc.trim().length > 0);
 
   async function handleSubmit() {
     if (!canSubmit) {
@@ -64,7 +95,7 @@ export function EvidenceUploadModal({
     setLoading(true);
     setError(null);
     try {
-      await onConfirm({ file: file ?? undefined, motivo: motivo.trim() || undefined });
+      await onConfirm({ file: file ?? undefined, motivo: motivo.trim() || undefined, docLabel });
       reset();
     } catch (e: any) {
       setError(e?.message || "Erro ao registrar a movimentação.");
@@ -152,6 +183,37 @@ export function EvidenceUploadModal({
                   <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">PDF, imagem ou documento</p>
                 </>
               )}
+            </div>
+          )}
+
+          {/* O que é o documento — aparece no cartão "Evidências de Status" */}
+          {showFile && file && (
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Que documento é este?
+                </label>
+                <select
+                  value={tipoEfetivo}
+                  onChange={(e) => { setDocTipo(e.target.value); setError(null); }}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-blue-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-200"
+                >
+                  <option value="">Selecione…</option>
+                  {DOC_TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Descrição{descObrigatoria ? "" : " (opcional)"}
+                </label>
+                <input
+                  type="text"
+                  value={docDesc}
+                  onChange={(e) => { setDocDesc(e.target.value); setError(null); }}
+                  placeholder={descObrigatoria ? "Digite o que é o documento" : "Ex.: registrado em cartório em 12/11"}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-slate-200"
+                />
+              </div>
             </div>
           )}
 
