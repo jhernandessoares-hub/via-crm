@@ -186,8 +186,8 @@ export function EvidenceUploadModal({
             </div>
           )}
 
-          {/* O que é o documento — aparece no cartão "Evidências de Status" */}
-          {showFile && file && (
+          {/* O que é o documento — aparece no cartão "Evidências de Status" (sempre visível) */}
+          {showFile && (
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
