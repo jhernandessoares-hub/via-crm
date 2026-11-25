@@ -2,10 +2,12 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
   Post,
+  Put,
   Request,
   UploadedFile,
   UseGuards,
@@ -28,12 +30,24 @@ export class AtividadesController {
 
   @Post()
   criar(@Request() req: any, @Body() body: any) {
+    this.bloquearExterno(req);
     return this.svc.criar(req.user.tenantId, req.user.id ?? req.user.sub, body);
   }
 
   @Get()
   listar(@Request() req: any) {
     return this.svc.listar(req.user.tenantId);
+  }
+
+  @Get('familias-para-lista')
+  familiasParaLista(@Request() req: any) {
+    this.bloquearExterno(req);
+    return this.svc.familiasParaLista(req.user.tenantId);
+  }
+
+  @Get('quadro-presenca')
+  quadroPresenca(@Request() req: any) {
+    return this.svc.quadroPresenca(req.user.tenantId);
   }
 
   @Get(':id')
@@ -43,11 +57,13 @@ export class AtividadesController {
 
   @Patch(':id')
   atualizar(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    this.bloquearExterno(req);
     return this.svc.atualizar(req.user.tenantId, id, req.user.role, body);
   }
 
   @Delete(':id')
   remover(@Request() req: any, @Param('id') id: string) {
+    this.bloquearExterno(req);
     return this.svc.remover(req.user.tenantId, id, req.user.role, req.user.id ?? req.user.sub);
   }
 
@@ -60,11 +76,13 @@ export class AtividadesController {
     @Body('tipo') tipo: string,
     @Body('legenda') legenda?: string,
   ) {
+    this.bloquearExterno(req);
     return this.svc.adicionarAnexo(req.user.tenantId, id, file, tipo, legenda);
   }
 
   @Post(':id/participantes')
   adicionarParticipantes(@Request() req: any, @Param('id') id: string, @Body('familiaIds') familiaIds: string[]) {
+    this.bloquearExterno(req);
     return this.svc.adicionarParticipantes(req.user.tenantId, id, familiaIds);
   }
 
@@ -76,6 +94,7 @@ export class AtividadesController {
     @Body('mensagem') mensagem?: string,
     @Body('imagemUrl') imagemUrl?: string,
   ) {
+    this.bloquearExterno(req);
     const user = { tenantId: req.user.tenantId, id: req.user.id ?? req.user.sub, nome: req.user.nome };
     return this.svc.enviarConvites(req.user.tenantId, id, user, familiaIds, mensagem, imagemUrl);
   }
@@ -86,6 +105,7 @@ export class AtividadesController {
     @Param('id') id: string,
     @Body() body: { familiaIds?: string[]; mensagem?: string; imagemUrl?: string; agendadoPara?: string },
   ) {
+    this.bloquearExterno(req);
     const criadoPor = req.user?.nome || req.user?.email || req.user?.id;
     return this.agendamentos.criar(req.user.tenantId, id, criadoPor, body);
   }
@@ -97,7 +117,38 @@ export class AtividadesController {
 
   @Patch('agendamentos/:agendamentoId/cancelar')
   cancelarAgendamento(@Request() req: any, @Param('agendamentoId') agendamentoId: string) {
+    this.bloquearExterno(req);
     return this.agendamentos.cancelar(req.user.tenantId, agendamentoId);
+  }
+
+  /** Externo Consultivo (Verificadora) só consulta: não altera atividade, presença nem convite. */
+  private bloquearExterno(req: any) {
+    if (req.user?.role === 'PARTNER') {
+      throw new ForbiddenException('Seu perfil só pode consultar as atividades.');
+    }
+  }
+
+  @Put(':id/presenca')
+  lancarPresenca(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('itens') itens: { familiaId: string; situacao: string }[],
+  ) {
+    this.bloquearExterno(req);
+    return this.svc.lancarPresenca(req.user.tenantId, id, itens, req.user?.nome || req.user?.email || req.user?.id);
+  }
+
+  @Patch(':id/participantes/:familiaId/reposicao')
+  marcarReposicao(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('familiaId') familiaId: string,
+    @Body('feita') feita?: boolean,
+    @Body('dia') dia?: string,
+  ) {
+    this.bloquearExterno(req);
+    const quem = req.user?.nome || req.user?.email || req.user?.id;
+    return this.svc.marcarReposicao(req.user.tenantId, id, familiaId, feita !== false, quem, dia);
   }
 
   @Patch(':id/participantes/:familiaId/falta')
@@ -107,6 +158,7 @@ export class AtividadesController {
     @Param('familiaId') familiaId: string,
     @Body('marcadoFaltaPor') marcadoFaltaPor?: string,
   ) {
+    this.bloquearExterno(req);
     const quem = marcadoFaltaPor?.trim() || req.user?.nome || req.user?.email || req.user?.id;
     return this.svc.marcarFalta(req.user.tenantId, id, familiaId, quem);
   }
@@ -121,6 +173,7 @@ export class AtividadesController {
     @Body('avaliacao') avaliacao?: string,
     @Body('transcricaoFicha') transcricaoFicha?: string,
   ) {
+    this.bloquearExterno(req);
     return this.svc.preencherFicha(req.user.tenantId, id, familiaId, file, { avaliacao, transcricaoFicha });
   }
 }

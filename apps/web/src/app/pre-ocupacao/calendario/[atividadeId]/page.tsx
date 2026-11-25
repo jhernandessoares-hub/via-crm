@@ -12,6 +12,9 @@ import { usePermissions } from "@/lib/permissions";
 import { maskPhone } from "@/lib/format";
 import { formatLeadNumber } from "@/lib/format-lead-number";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
+import { usePodeLancar } from "../../_lib/usePodeLancar";
+import { ColarLista } from "../../_lib/ColarLista";
+import { FamiliaLista } from "../../_lib/casar-lista";
 import { FileUploadButton } from "../../_lib/FileUploadButton";
 import {
   CATEGORIA_LABEL,
@@ -31,6 +34,7 @@ type Participante = {
   preenchidoEm: string | null;
   avaliacao: string | null;
   marcadoFaltaPor: string | null;
+  reposicaoEm: string | null;
   rsvpStatus: "AGUARDANDO" | "CONFIRMOU" | "RECUSOU";
   conviteEnviadoEm: string | null;
   ultimaTentativaEnvioEm: string | null;
@@ -53,7 +57,10 @@ type Participante = {
   anexos: { id: string; url: string; nome: string }[];
 };
 
-type FiltroParticipante = "ENVIADOS" | "ERRO" | "ABRIRAM" | "CONFIRMOU" | "RECUSOU" | "AGUARDANDO" | null;
+type FiltroParticipante =
+  | "ENVIADOS" | "ERRO" | "ABRIRAM" | "CONFIRMOU" | "RECUSOU" | "AGUARDANDO"
+  | "PRESENTES" | "FALTAS" | "REPOSICAO" | "SEM_LANCAMENTO"
+  | null;
 
 const RSVP_LABEL: Record<string, string> = {
   AGUARDANDO: "Aguardando confirmação",
@@ -79,7 +86,6 @@ type Atividade = {
   local: string | null;
   titulo: string | null;
   relatorio: string | null;
-  prazoPreenchimentoDias: number;
   anexos: Anexo[];
   participantes: Participante[];
 };
@@ -107,8 +113,11 @@ export default function AtividadeDetalhePage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const router = useRouter();
   const { can } = usePermissions();
+  const podeLancar = usePodeLancar();
 
   const [fichaModal, setFichaModal] = useState<Participante | null>(null);
+  const [presencaModal, setPresencaModal] = useState(false);
+  const [reposicaoDe, setReposicaoDe] = useState<Participante | null>(null);
   const [addFamiliaModal, setAddFamiliaModal] = useState(false);
   const [conviteModal, setConviteModal] = useState<string[] | "todos" | null>(null);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
@@ -321,11 +330,30 @@ export default function AtividadeDetalhePage() {
     }
   }
 
+  async function handleDesfazerReposicao(p: Participante) {
+    const nome = p.familia.lead.nomeCorreto ?? p.familia.lead.nome;
+    if (!confirm(`Desfazer a reposição de ${nome}? A família volta a ficar com falta.`)) return;
+    try {
+      await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/participantes/${p.familiaId}/reposicao`, {
+        method: "PATCH",
+        body: JSON.stringify({ feita: false }),
+      });
+      showToast("Reposição desfeita.");
+      await load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Erro ao desfazer reposição");
+    }
+  }
+
   function participanteBate(p: Participante, filtro: FiltroParticipante): boolean {
     if (!filtro) return true;
     if (filtro === "ENVIADOS") return !!p.conviteEnviadoEm;
     if (filtro === "ERRO") return !!p.ultimoEnvioErro;
     if (filtro === "ABRIRAM") return !!p.linkAbertoEm;
+    if (filtro === "PRESENTES") return p.status === "CONCLUIDA";
+    if (filtro === "FALTAS") return p.status === "FALTOU" && !p.reposicaoEm;
+    if (filtro === "REPOSICAO") return p.status === "FALTOU" && !!p.reposicaoEm;
+    if (filtro === "SEM_LANCAMENTO") return p.status !== "CONCLUIDA" && p.status !== "FALTOU";
     return p.rsvpStatus === filtro;
   }
 
@@ -339,15 +367,17 @@ export default function AtividadeDetalhePage() {
     recusou: participantes.filter((p) => p.rsvpStatus === "RECUSOU").length,
     aguardando: participantes.filter((p) => p.rsvpStatus === "AGUARDANDO").length,
   };
+  const jaComecou = !!data && new Date(data.dataAgendada) <= new Date();
+  const contar = (f: FiltroParticipante) => participantes.filter((p) => participanteBate(p, f)).length;
   const participantesFiltrados = participantes.filter((p) => participanteBate(p, filtroParticipante));
 
   if (guard === null) return null;
 
   return (
-    <AppShell title="Pré-Ocupação — Sessão">
-      <div className="max-w-4xl mx-auto px-4 py-8">
+    <AppShell title="Pré-Ocupação — Atividade">
+      <div className="max-w-5xl mx-auto px-4 py-8">
         <Link href="/pre-ocupacao/calendario" className="text-sm mb-4 inline-block" style={{ color: "var(--shell-subtext)" }}>
-          ← Voltar para Calendário
+          ← Voltar para Atividades e Presença
         </Link>
 
         {loading && <p style={{ color: "var(--shell-subtext)" }}>Carregando...</p>}
@@ -368,7 +398,7 @@ export default function AtividadeDetalhePage() {
                     className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
                     style={{ color: "var(--shell-text)" }}
                   >
-                    Editar sessão
+                    Editar atividade
                   </button>
                   )}
                   {can("pre_ocupacao", "delete") && (
@@ -377,7 +407,7 @@ export default function AtividadeDetalhePage() {
                     className="px-3 py-1.5 rounded-lg text-xs font-medium"
                     style={{ background: "#fef2f2", color: "#dc2626" }}
                   >
-                    Excluir sessão
+                    Excluir atividade
                   </button>
                   )}
                 </div>
@@ -388,42 +418,193 @@ export default function AtividadeDetalhePage() {
                 <p className="text-sm mt-1" style={{ color: "var(--shell-subtext)" }}>
                   {formatDateTime(data.dataAgendada)}
                   {data.local ? ` · ${data.local}` : ""}
-                  {` · Prazo de preenchimento: ${data.prazoPreenchimentoDias} dia(s)`}
                 </p>
               </CardBody>
             </Card>
 
+            {jaComecou && (
+              <Card className="mb-4">
+                <CardHeader className="flex items-center justify-between">
+                  <CardTitle>Presença</CardTitle>
+                  {podeLancar && (
+                    <button
+                      onClick={() => setPresencaModal(true)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                      style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                    >
+                      Lançar presença
+                    </button>
+                  )}
+                </CardHeader>
+                <CardBody>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(
+                      [
+                        { key: "PRESENTES", label: "Presentes", cor: "#16a34a" },
+                        { key: "FALTAS", label: "Faltas sem reposição", cor: "#dc2626" },
+                        { key: "REPOSICAO", label: "Fizeram reposição", cor: "#b45309" },
+                        { key: "SEM_LANCAMENTO", label: "Sem lançamento", cor: "var(--shell-text)" },
+                      ] as { key: FiltroParticipante; label: string; cor: string }[]
+                    ).map((bloco) => (
+                      <button
+                        key={bloco.label}
+                        onClick={() => setFiltroParticipante((prev) => (prev === bloco.key ? null : bloco.key))}
+                        className="rounded-lg border px-3 py-2 text-left transition-colors hover:bg-[var(--shell-hover)]"
+                        style={
+                          filtroParticipante === bloco.key
+                            ? { borderColor: "var(--via-teal, #1D9E75)", boxShadow: "inset 0 0 0 1px var(--via-teal, #1D9E75)" }
+                            : { borderColor: "var(--shell-card-border)" }
+                        }
+                      >
+                        <p className="text-xl font-bold" style={{ color: bloco.cor }}>{contar(bloco.key)}</p>
+                        <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>{bloco.label}</p>
+                      </button>
+                    ))}
+                  </div>
+                </CardBody>
+              </Card>
+            )}
+
             <Card className="mb-4">
-              <CardHeader>
-                <CardTitle>Evidências gerais</CardTitle>
-              </CardHeader>
-              <CardBody className="space-y-3">
+              <CardHeader className="flex items-center justify-between">
+                <CardTitle>
+                  Famílias convocadas ({participantesFiltrados.length}{filtroParticipante ? ` de ${resumoConvites.total}` : ""})
+                </CardTitle>
                 <div className="flex items-center gap-2">
-                  <select
-                    value={anexoTipo}
-                    onChange={(e) => setAnexoTipo(e.target.value)}
-                    className="h-9 rounded-lg border px-2 text-xs bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-                  >
-                    {Object.entries(ANEXO_TIPO_LABEL).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                  <FileUploadButton label="Enviar evidência" onSelect={handleUploadEvidencia} />
+                  {filtroParticipante && (
+                    <button
+                      onClick={() => setFiltroParticipante(null)}
+                      className="text-xs font-medium"
+                      style={{ color: "var(--via-teal, #1D9E75)" }}
+                    >
+                      Limpar filtro
+                    </button>
+                  )}
+                  {podeLancar && (
+                    <>
+                      <button
+                        onClick={() => setConviteModal("todos")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                        style={{ color: "var(--shell-text)" }}
+                      >
+                        Enviar convite a todos
+                      </button>
+                      <button
+                        onClick={() => setAddFamiliaModal(true)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                        style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                      >
+                        + Adicionar família
+                      </button>
+                    </>
+                  )}
                 </div>
-                {data.anexos.length === 0 ? (
-                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma evidência enviada ainda.</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {data.anexos.map((a) => (
-                      <li key={a.id} className="text-sm flex items-center gap-2">
-                        <Badge variant="default">{ANEXO_TIPO_LABEL[a.tipo] ?? a.tipo}</Badge>
-                        <a href={a.url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--via-teal, #1D9E75)" }}>
-                          {a.nome}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
+              </CardHeader>
+              <CardBody className="space-y-2">
+                {participantesFiltrados.length === 0 && (
+                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma família nesse filtro.</p>
                 )}
+                {participantesFiltrados.map((p) => (
+                  <div
+                    key={p.id}
+                    className="rounded-lg border px-3 py-2 space-y-2"
+                    style={{ borderColor: "var(--shell-card-border)" }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate" style={{ color: "var(--shell-text)" }}>
+                          {p.familia.lead.nomeCorreto ?? p.familia.lead.nome}
+                        </p>
+                        <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                          Família #{String(p.familia.numero).padStart(4, "0")}
+                          {p.familia.lead.numero != null && ` · Lead ${formatLeadNumber(p.familia.lead.numero, p.familia.lead.reentradaCount) ? `#${formatLeadNumber(p.familia.lead.numero, p.familia.lead.reentradaCount)}` : ""}`}
+                          {p.familia.lead.telefone && ` · ${maskPhone(p.familia.lead.telefone)}`}
+                        </p>
+                        {p.status === "CONCLUIDA" && p.avaliacao && (
+                          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                            Nota: {AVALIACAO_LABEL[p.avaliacao] ?? p.avaliacao}
+                          </p>
+                        )}
+                      </div>
+                      {p.status === "CONCLUIDA" && p.anexos.length === 0 && podeLancar && (
+                        <button
+                          onClick={() => setFichaModal(p)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)] shrink-0"
+                          style={{ color: "var(--shell-text)" }}
+                        >
+                          Anexar ficha
+                        </button>
+                      )}
+                      {podeLancar && p.status !== "CONCLUIDA" && p.status !== "FALTOU" && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => setConviteModal([p.familiaId])}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                            style={{ color: "var(--shell-text)" }}
+                          >
+                            Enviar convite
+                          </button>
+                          {podeLancar && jaComecou && (
+                            <button
+                              onClick={() => handleMarcarFalta(p.familiaId)}
+                              className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+                              style={{ color: "var(--shell-text)" }}
+                            >
+                              Marcar falta
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setFichaModal(p)}
+                            className="px-2.5 py-1 rounded-lg text-xs font-medium"
+                            style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+                          >
+                            Enviar ficha
+                          </button>
+                        </div>
+                      )}
+                      {p.status === "FALTOU" && podeLancar && (
+                        <button
+                          onClick={() => (p.reposicaoEm ? handleDesfazerReposicao(p) : setReposicaoDe(p))}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)] shrink-0"
+                          style={{ color: "var(--shell-text)" }}
+                        >
+                          {p.reposicaoEm ? "Desfazer reposição" : "Fez reposição"}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {p.ultimoEnvioErro ? (
+                        <Badge variant="error">Erro no envio</Badge>
+                      ) : p.conviteEnviadoEm ? (
+                        <Badge variant="success">Convite enviado</Badge>
+                      ) : (
+                        <Badge variant="default">Convite não enviado</Badge>
+                      )}
+                      <Badge variant={p.linkAbertoEm ? "success" : "default"}>
+                        {p.linkAbertoEm ? "Abriu o link" : "Não abriu o link"}
+                      </Badge>
+                      <Badge variant={p.rsvpStatus === "CONFIRMOU" ? "success" : p.rsvpStatus === "RECUSOU" ? "error" : "default"}>
+                        {RSVP_LABEL[p.rsvpStatus] ?? p.rsvpStatus}
+                      </Badge>
+                      <Badge variant={p.status === "FALTOU" ? (p.reposicaoEm ? "warning" : "error") : p.status === "CONCLUIDA" ? "success" : "default"}>
+                        {p.status === "FALTOU" && p.reposicaoEm
+                          ? `Faltou, fez reposição em ${new Date(p.reposicaoEm).toLocaleDateString("pt-BR")}`
+                          : PARTICIPANTE_STATUS_LABEL[p.status] ?? p.status}
+                      </Badge>
+                    </div>
+
+                    {p.ultimoEnvioErro && (
+                      <p className="text-xs" style={{ color: "#dc2626" }}>Erro: {p.ultimoEnvioErro}</p>
+                    )}
+                    {p.conviteEnviadoEm && !p.ultimoEnvioErro && (
+                      <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                        Enviado {p.enviosCount}x · última vez em {new Date(p.conviteEnviadoEm).toLocaleString("pt-BR")}
+                        {p.linkAbertoEm && ` · Abriu em ${new Date(p.linkAbertoEm).toLocaleString("pt-BR")}`}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </CardBody>
             </Card>
 
@@ -624,119 +805,36 @@ export default function AtividadeDetalhePage() {
             )}
 
             <Card className="mb-4">
-              <CardHeader className="flex items-center justify-between">
-                <CardTitle>
-                  Famílias participantes ({participantesFiltrados.length}{filtroParticipante ? ` de ${resumoConvites.total}` : ""})
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  {filtroParticipante && (
-                    <button
-                      onClick={() => setFiltroParticipante(null)}
-                      className="text-xs font-medium"
-                      style={{ color: "var(--via-teal, #1D9E75)" }}
-                    >
-                      Limpar filtro
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setConviteModal("todos")}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
-                    style={{ color: "var(--shell-text)" }}
-                  >
-                    Enviar convite a todos
-                  </button>
-                  <button
-                    onClick={() => setAddFamiliaModal(true)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
-                  >
-                    + Adicionar família
-                  </button>
-                </div>
+              <CardHeader>
+                <CardTitle>Evidências gerais</CardTitle>
               </CardHeader>
-              <CardBody className="space-y-2">
-                {participantesFiltrados.length === 0 && (
-                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma família nesse filtro.</p>
-                )}
-                {participantesFiltrados.map((p) => (
-                  <div
-                    key={p.id}
-                    className="rounded-lg border px-3 py-2 space-y-2"
-                    style={{ borderColor: "var(--shell-card-border)" }}
+              <CardBody className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={anexoTipo}
+                    onChange={(e) => setAnexoTipo(e.target.value)}
+                    className="h-9 rounded-lg border px-2 text-xs bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate" style={{ color: "var(--shell-text)" }}>
-                          {p.familia.lead.nomeCorreto ?? p.familia.lead.nome}
-                        </p>
-                        <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-                          Família #{String(p.familia.numero).padStart(4, "0")}
-                          {p.familia.lead.numero != null && ` · Lead ${formatLeadNumber(p.familia.lead.numero, p.familia.lead.reentradaCount) ? `#${formatLeadNumber(p.familia.lead.numero, p.familia.lead.reentradaCount)}` : ""}`}
-                          {p.familia.lead.telefone && ` · ${maskPhone(p.familia.lead.telefone)}`}
-                        </p>
-                        {p.status === "CONCLUIDA" && p.avaliacao && (
-                          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-                            Nota: {AVALIACAO_LABEL[p.avaliacao] ?? p.avaliacao}
-                          </p>
-                        )}
-                      </div>
-                      {p.status !== "CONCLUIDA" && p.status !== "FALTOU" && (
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => setConviteModal([p.familiaId])}
-                            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
-                            style={{ color: "var(--shell-text)" }}
-                          >
-                            Enviar convite
-                          </button>
-                          <button
-                            onClick={() => handleMarcarFalta(p.familiaId)}
-                            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
-                            style={{ color: "var(--shell-text)" }}
-                          >
-                            Marcar falta
-                          </button>
-                          <button
-                            onClick={() => setFichaModal(p)}
-                            className="px-2.5 py-1 rounded-lg text-xs font-medium"
-                            style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
-                          >
-                            Enviar ficha
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {p.ultimoEnvioErro ? (
-                        <Badge variant="error">Erro no envio</Badge>
-                      ) : p.conviteEnviadoEm ? (
-                        <Badge variant="success">Convite enviado</Badge>
-                      ) : (
-                        <Badge variant="default">Convite não enviado</Badge>
-                      )}
-                      <Badge variant={p.linkAbertoEm ? "success" : "default"}>
-                        {p.linkAbertoEm ? "Abriu o link" : "Não abriu o link"}
-                      </Badge>
-                      <Badge variant={p.rsvpStatus === "CONFIRMOU" ? "success" : p.rsvpStatus === "RECUSOU" ? "error" : "default"}>
-                        {RSVP_LABEL[p.rsvpStatus] ?? p.rsvpStatus}
-                      </Badge>
-                      <Badge variant={p.status === "FALTOU" ? "error" : p.status === "CONCLUIDA" ? "success" : p.status === "PENDENTE" ? "warning" : "default"}>
-                        {PARTICIPANTE_STATUS_LABEL[p.status] ?? p.status}
-                      </Badge>
-                    </div>
-
-                    {p.ultimoEnvioErro && (
-                      <p className="text-xs" style={{ color: "#dc2626" }}>Erro: {p.ultimoEnvioErro}</p>
-                    )}
-                    {p.conviteEnviadoEm && !p.ultimoEnvioErro && (
-                      <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
-                        Enviado {p.enviosCount}x · última vez em {new Date(p.conviteEnviadoEm).toLocaleString("pt-BR")}
-                        {p.linkAbertoEm && ` · Abriu em ${new Date(p.linkAbertoEm).toLocaleString("pt-BR")}`}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                    {Object.entries(ANEXO_TIPO_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <FileUploadButton label="Enviar evidência" onSelect={handleUploadEvidencia} />
+                </div>
+                {data.anexos.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma evidência enviada ainda.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {data.anexos.map((a) => (
+                      <li key={a.id} className="text-sm flex items-center gap-2">
+                        <Badge variant="default">{ANEXO_TIPO_LABEL[a.tipo] ?? a.tipo}</Badge>
+                        <a href={a.url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--via-teal, #1D9E75)" }}>
+                          {a.nome}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </CardBody>
             </Card>
 
@@ -778,6 +876,33 @@ export default function AtividadeDetalhePage() {
             await load();
           }}
           atividadeId={atividadeId}
+        />
+      )}
+
+      {reposicaoDe && data && (
+        <ReposicaoModal
+          atividadeId={atividadeId}
+          participante={reposicaoDe}
+          dataAtividade={data.dataAgendada}
+          onClose={() => setReposicaoDe(null)}
+          onSaved={async () => {
+            setReposicaoDe(null);
+            showToast("Reposição registrada.");
+            await load();
+          }}
+        />
+      )}
+
+      {presencaModal && data && (
+        <PresencaModal
+          atividadeId={atividadeId}
+          participantes={data.participantes}
+          onClose={() => setPresencaModal(false)}
+          onSaved={async (mensagem) => {
+            setPresencaModal(false);
+            showToast(mensagem);
+            await load();
+          }}
         />
       )}
 
@@ -877,6 +1002,299 @@ export default function AtividadeDetalhePage() {
         </Modal>
       )}
     </AppShell>
+  );
+}
+
+/** Dia local em YYYY-MM-DD (para <input type="date">). */
+function diaLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Registra o dia em que a família que faltou fez a reposição. */
+function ReposicaoModal({
+  atividadeId,
+  participante,
+  dataAtividade,
+  onClose,
+  onSaved,
+}: {
+  atividadeId: string;
+  participante: Participante;
+  dataAtividade: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [dia, setDia] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/participantes/${participante.familiaId}/reposicao`, {
+        method: "PATCH",
+        body: JSON.stringify({ feita: true, dia }),
+      });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao registrar reposição");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Fez reposição"
+      description={`${participante.familia.lead.nomeCorreto ?? participante.familia.lead.nome}: a falta continua no histórico, mas deixa de ser pendência.`}
+      footer={
+        <>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]"
+            style={{ color: "var(--shell-text)" }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || !dia}
+            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+            style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+          >
+            {saving ? "Salvando..." : "Salvar"}
+          </button>
+        </>
+      }
+    >
+      <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+        Em que dia a reposição aconteceu? *
+        <input
+          type="date"
+          value={dia}
+          min={diaLocal(new Date(dataAtividade))}
+          max={diaLocal(new Date())}
+          onChange={(e) => setDia(e.target.value)}
+          className="mt-1 w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
+        />
+      </label>
+      {error && <p className="mt-3 text-sm" style={{ color: "#dc2626" }}>{error}</p>}
+    </Modal>
+  );
+}
+
+type Marcacao = "PRESENTE" | "FALTOU";
+
+/** Lança a lista de presença da atividade de uma vez (colada ou marcada na mão): marca quem veio e joga o resto como falta. */
+function PresencaModal({
+  atividadeId,
+  participantes,
+  onClose,
+  onSaved,
+}: {
+  atividadeId: string;
+  participantes: Participante[];
+  onClose: () => void;
+  onSaved: (mensagem: string) => void;
+}) {
+  const original = (p: Participante): Marcacao | null =>
+    p.status === "CONCLUIDA" ? "PRESENTE" : p.status === "FALTOU" ? "FALTOU" : null;
+
+  const [marcas, setMarcas] = useState<Record<string, Marcacao | null>>(() =>
+    Object.fromEntries(participantes.map((p) => [p.familiaId, original(p)]))
+  );
+  const [busca, setBusca] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [colar, setColar] = useState(false);
+  const [familias, setFamilias] = useState<FamiliaLista[] | null>(null);
+  // Estava na lista colada, mas não foi convocada para esta atividade
+  const [foraDaAtividade, setForaDaAtividade] = useState<FamiliaLista[]>([]);
+
+  async function abrirColar() {
+    setColar(true);
+    if (familias) return;
+    try {
+      setFamilias(await apiFetch("/pre-ocupacao/atividades/familias-para-lista"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao carregar as famílias");
+    }
+  }
+
+  function aplicarLista(ids: string[]) {
+    const convocadas = new Set(participantes.map((p) => p.familiaId));
+    setMarcas((prev) => {
+      const next = { ...prev };
+      for (const id of ids) if (convocadas.has(id)) next[id] = "PRESENTE";
+      return next;
+    });
+    setForaDaAtividade((familias ?? []).filter((f) => ids.includes(f.familiaId) && !convocadas.has(f.familiaId)));
+    setColar(false);
+  }
+
+  const nomeDe = (p: Participante) => p.familia.lead.nomeCorreto ?? p.familia.lead.nome;
+  const temFicha = (p: Participante) => p.anexos.length > 0;
+  const semAcento = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  const termo = semAcento(busca.trim());
+  const lista = [...participantes]
+    .sort((a, b) => nomeDe(a).localeCompare(nomeDe(b), "pt-BR"))
+    .filter((p) => !termo || semAcento(nomeDe(p)).includes(termo) || String(p.familia.numero).includes(termo));
+
+  const total = (m: Marcacao | null) => participantes.filter((p) => marcas[p.familiaId] === m).length;
+  const alteradas = participantes.filter((p) => marcas[p.familiaId] && marcas[p.familiaId] !== original(p));
+
+  function marcar(familiaId: string, m: Marcacao) {
+    setMarcas((prev) => ({ ...prev, [familiaId]: m }));
+  }
+
+  function marcarRestantesComoFalta() {
+    setMarcas((prev) =>
+      Object.fromEntries(participantes.map((p) => [p.familiaId, prev[p.familiaId] ?? ("FALTOU" as Marcacao)]))
+    );
+  }
+
+  async function handleSubmit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await apiFetch(`/pre-ocupacao/atividades/${atividadeId}/presenca`, {
+        method: "PUT",
+        body: JSON.stringify({
+          itens: alteradas.map((p) => ({ familiaId: p.familiaId, situacao: marcas[p.familiaId] })),
+        }),
+      });
+      onSaved(`Presença salva: ${r.presentes} presente(s) e ${r.faltas} falta(s).`);
+    } catch (e: any) {
+      setError(e?.message ?? "Erro ao salvar a presença");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Lançar presença"
+      description="Cole a lista de presença ou marque na mão quem veio. Depois, use o botão para marcar o restante como falta."
+      size="lg"
+      footer={
+        <>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--shell-card-border)]"
+            style={{ color: "var(--shell-text)" }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || alteradas.length === 0}
+            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+            style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+          >
+            {saving ? "Salvando..." : `Salvar (${alteradas.length} alteração(ões))`}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+        {!colar && (
+          <button
+            onClick={abrirColar}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)]"
+            style={{ color: "var(--shell-text)" }}
+          >
+            Colar lista de presença
+          </button>
+        )}
+        {colar && !familias && !error && (
+          <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Carregando famílias...</p>
+        )}
+        {colar && familias && (
+          <ColarLista
+            familias={familias}
+            rotuloAplicar={(n) => `Marcar ${n} famílias como presentes`}
+            onAplicar={aplicarLista}
+          />
+        )}
+        {foraDaAtividade.length > 0 && (
+          <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#fffbeb", color: "#92400e" }}>
+            <p className="font-semibold">
+              {foraDaAtividade.length} família(s) da lista não foram convocadas para esta atividade e não foram marcadas.
+              Para incluir, feche e use “+ Adicionar família”:
+            </p>
+            {foraDaAtividade.map((f) => (
+              <p key={f.familiaId}>{String(f.numero).padStart(4, "0")} {f.nome}</p>
+            ))}
+          </div>
+        )}
+        <input
+          type="text"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por nome ou número da família..."
+          className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)] outline-none"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+            {total("PRESENTE")} presentes · {total("FALTOU")} faltas · {total(null)} sem lançamento
+          </p>
+          <button
+            onClick={marcarRestantesComoFalta}
+            disabled={total(null) === 0}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--shell-card-border)] disabled:opacity-50"
+            style={{ color: "var(--shell-text)" }}
+          >
+            Marcar os {total(null)} restantes como falta
+          </button>
+        </div>
+        <div className="max-h-96 overflow-y-auto rounded-lg border divide-y" style={{ borderColor: "var(--shell-card-border)" }}>
+          {lista.length === 0 && (
+            <p className="text-sm px-3 py-4" style={{ color: "var(--shell-subtext)" }}>Nenhuma família encontrada.</p>
+          )}
+          {lista.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between gap-3 px-3 py-2"
+              style={{ borderColor: "var(--shell-card-border)" }}
+            >
+              <p className="text-sm min-w-0 truncate" style={{ color: "var(--shell-text)" }}>
+                <b>{String(p.familia.numero).padStart(4, "0")}</b> {nomeDe(p)}
+              </p>
+              <div className="flex gap-1 shrink-0">
+                {(["PRESENTE", "FALTOU"] as const).map((m) => {
+                  const ativo = marcas[p.familiaId] === m;
+                  const cor = m === "PRESENTE" ? "#16a34a" : "#dc2626";
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => marcar(p.familiaId, m)}
+                      disabled={m === "FALTOU" && temFicha(p)}
+                      title={m === "FALTOU" && temFicha(p) ? "Já tem ficha anexada" : undefined}
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium border disabled:opacity-40"
+                      style={
+                        ativo
+                          ? { background: cor, borderColor: cor, color: "#fff" }
+                          : { borderColor: "var(--shell-card-border)", color: "var(--shell-text)" }
+                      }
+                    >
+                      {m === "PRESENTE" ? "Presente" : "Faltou"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}
+      </div>
+    </Modal>
   );
 }
 

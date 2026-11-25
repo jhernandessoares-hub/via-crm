@@ -31,8 +31,6 @@ import {
   Home,
   AlertCircle,
   CalendarDays,
-  Archive,
-  Image as ImageIcon,
   HelpCircle,
   ClipboardList,
   Vote,
@@ -359,9 +357,7 @@ export function Sidebar({ role, tenantNome, tenantId, counts, branding, addons =
                 {[
                   { href: "/pre-ocupacao/familias", label: "Famílias", icon: Home },
                   { href: "/pre-ocupacao/demandas", label: "Demandas", icon: AlertCircle },
-                  { href: "/pre-ocupacao/calendario", label: "Calendário", icon: CalendarDays },
-                  { href: "/pre-ocupacao/entregaveis", label: "Entregáveis Mensais", icon: Archive },
-                  { href: "/pre-ocupacao/conteudo", label: "Conteúdo e Mídias", icon: ImageIcon },
+                  { href: "/pre-ocupacao/calendario", label: "Atividades e Presença", icon: CalendarDays },
                   { href: "/pre-ocupacao/questionarios", label: "Questionários", icon: ClipboardList },
                   { href: "/pre-ocupacao/assembleias", label: "Assembleias e Reuniões", icon: Vote },
                 ].map((item) => {

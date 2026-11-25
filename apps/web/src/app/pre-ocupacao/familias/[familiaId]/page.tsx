@@ -11,7 +11,10 @@ import { formatLeadNumber } from "@/lib/format-lead-number";
 import { maskPhone } from "@/lib/format";
 import { useSP9Guard } from "../../_lib/useSP9Guard";
 import {
+  ACOMPANHAMENTO_LABEL,
   CATEGORIA_LABEL,
+  PendenciaFamilia,
+  textoPendencia,
   OCORRENCIA_STATUS_LABEL,
   PARTICIPANTE_STATUS_LABEL,
   FAMILIA_STATUS_LABEL,
@@ -38,6 +41,7 @@ type Participacao = {
   atividadeId: string;
   status: string;
   preenchidoEm: string | null;
+  reposicaoEm: string | null;
   avaliacao: string | null;
   atividade: { id: string; categoria: string; dataAgendada: string; titulo: string | null; local: string | null };
 };
@@ -71,7 +75,9 @@ type Detalhe = {
     };
   };
   status: "EM_DIA" | "COM_PENDENCIA";
+  pendencias: PendenciaFamilia[];
   faltas: number;
+  faltasAbertas: number;
   empreendimento: string | null;
   unidade: string | null;
   participacoes: Participacao[];
@@ -158,15 +164,35 @@ export default function FamiliaDetalhePage() {
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <Badge variant={data.status === "EM_DIA" ? "success" : "error"}>
-                      {data.status === "EM_DIA" ? "Em dia" : "Com pendência"}
+                      {ACOMPANHAMENTO_LABEL[data.status]}
                     </Badge>
                     <Badge variant="default">{FAMILIA_STATUS_LABEL[data.familia.status] ?? data.familia.status}</Badge>
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-4 text-xs" style={{ color: "var(--shell-subtext)" }}>
                   <span>Incluída em {formatDate(data.familia.ativadoEm)} por {data.familia.ativadoPor}</span>
-                  <span>Faltas: {data.faltas}</span>
+                  <span>
+                    Faltas sem reposição: {data.faltasAbertas}
+                    {data.faltas > data.faltasAbertas ? ` (${data.faltas} no total)` : ""}
+                  </span>
                 </div>
+                {data.pendencias.length > 0 && (
+                  <div className="mt-4 rounded-lg px-4 py-3" style={{ background: "#fef2f2" }}>
+                    <p className="text-sm font-semibold" style={{ color: "#dc2626" }}>O que falta nesta família</p>
+                    <ul className="mt-1 space-y-0.5 text-sm" style={{ color: "#7f1d1d" }}>
+                      {data.pendencias.map((p) => (
+                        <li key={`${p.tipo}:${p.id}`}>
+                          <Link
+                            href={p.tipo === "QUESTIONARIO" ? `/pre-ocupacao/questionarios/${p.id}` : `/pre-ocupacao/calendario/${p.id}`}
+                            className="underline"
+                          >
+                            {textoPendencia(p)}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div className="mt-4">
                   <Link
                     href={`/leads/${data.familia.leadId}`}
@@ -228,12 +254,16 @@ export default function FamiliaDetalhePage() {
 
             <Card className="mb-4">
               <CardHeader>
-                <CardTitle>Histórico de participações em sessões</CardTitle>
+                <CardTitle>Presença nas atividades</CardTitle>
+                <p className="text-xs mt-1" style={{ color: "var(--shell-subtext)" }}>
+                  {data.participacoes.filter((p) => p.status === "CONCLUIDA").length} presença(s) · {data.faltasAbertas} falta(s) sem reposição
+                  {data.faltas > data.faltasAbertas ? ` · ${data.faltas - data.faltasAbertas} com reposição` : ""}
+                </p>
               </CardHeader>
               <CardBody className="space-y-2">
                 {data.participacoes.length === 0 && (
                   <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>
-                    Nenhuma participação registrada ainda.
+                    Esta família ainda não foi convocada para nenhuma atividade.
                   </p>
                 )}
                 {data.participacoes.map((p) => (
@@ -253,8 +283,10 @@ export default function FamiliaDetalhePage() {
                         {p.atividade.local ? ` · ${p.atividade.local}` : ""}
                       </p>
                     </div>
-                    <Badge variant={p.status === "FALTOU" ? "error" : p.status === "CONCLUIDA" ? "success" : p.status === "PENDENTE" ? "warning" : "default"}>
-                      {PARTICIPANTE_STATUS_LABEL[p.status] ?? p.status}
+                    <Badge variant={p.status === "FALTOU" ? (p.reposicaoEm ? "warning" : "error") : p.status === "CONCLUIDA" ? "success" : "default"}>
+                      {p.status === "FALTOU" && p.reposicaoEm
+                        ? `Faltou, fez reposição em ${formatDate(p.reposicaoEm)}`
+                        : PARTICIPANTE_STATUS_LABEL[p.status] ?? p.status}
                     </Badge>
                   </Link>
                 ))}

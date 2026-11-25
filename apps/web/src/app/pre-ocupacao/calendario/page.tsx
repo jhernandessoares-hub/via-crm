@@ -7,9 +7,13 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { apiFetch } from "@/lib/api";
 import { useSP9Guard } from "../_lib/useSP9Guard";
-import { CATEGORIA_OPTIONS, formatDateTime } from "../_lib/constants";
+import { usePodeLancar } from "../_lib/usePodeLancar";
+import { CATEGORIA_OPTIONS, formatDate, formatDateTime } from "../_lib/constants";
+import { ColarLista } from "../_lib/ColarLista";
+import { FamiliaLista } from "../_lib/casar-lista";
+import { QuadroPresenca } from "./QuadroPresenca";
 
-type Sessao = {
+type Atividade = {
   id: string;
   categoria: string;
   categoriaLabel: string;
@@ -18,15 +22,27 @@ type Sessao = {
   titulo: string | null;
   totalFamilias: number;
   concluidas: number;
+  faltas: number;
+  reposicoes: number;
+  semLancamento: number;
 };
 
-type FamiliaOption = { id: string; numero: number; nome: string };
+function Numero({ valor, rotulo, cor }: { valor: number; rotulo: string; cor: string }) {
+  return (
+    <div className="text-center min-w-[72px]">
+      <p className="text-xl font-bold leading-tight" style={{ color: cor }}>{valor}</p>
+      <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>{rotulo}</p>
+    </div>
+  );
+}
 
-export default function CalendarioPage() {
+export default function AtividadesPage() {
   const guard = useSP9Guard();
   const router = useRouter();
+  const podeLancar = usePodeLancar();
 
-  const [items, setItems] = useState<Sessao[]>([]);
+  const [aba, setAba] = useState<"atividades" | "quadro">("atividades");
+  const [items, setItems] = useState<Atividade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -34,17 +50,15 @@ export default function CalendarioPage() {
   useEffect(() => {
     if (guard !== true) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guard]);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/pre-ocupacao/atividades");
-      setItems(res);
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao carregar sessões");
+      setItems(await apiFetch("/pre-ocupacao/atividades"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao carregar atividades");
     } finally {
       setLoading(false);
     }
@@ -53,24 +67,40 @@ export default function CalendarioPage() {
   if (guard === null) return null;
 
   return (
-    <AppShell title="Pré-Ocupação — Calendário">
+    <AppShell title="Pré-Ocupação — Atividades e Presença">
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: "var(--shell-text)" }}>
-              Calendário de Sessões
-            </h1>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--shell-text)" }}>Atividades e Presença</h1>
             <p className="text-sm mt-1" style={{ color: "var(--shell-subtext)" }}>
-              Sessões do Trabalho Técnico Social com as famílias.
+              Reuniões e oficinas do Trabalho Técnico Social, e quem compareceu em cada uma.
             </p>
           </div>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="px-4 py-2 rounded-lg text-sm font-medium"
-            style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
-          >
-            + Nova sessão
-          </button>
+          {podeLancar && (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
+            >
+              + Nova atividade
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          {([["atividades", "Atividades"], ["quadro", "Quadro de presença"]] as const).map(([k, l]) => (
+            <button
+              key={k}
+              onClick={() => setAba(k)}
+              className="px-4 py-2 rounded-lg text-sm font-medium border"
+              style={{
+                borderColor: aba === k ? "var(--via-teal, #1D9E75)" : "var(--shell-card-border)",
+                color: aba === k ? "var(--via-teal, #1D9E75)" : "var(--shell-text)",
+              }}
+            >
+              {l}
+            </button>
+          ))}
         </div>
 
         {error && (
@@ -79,47 +109,64 @@ export default function CalendarioPage() {
           </div>
         )}
 
-        <div className="space-y-2">
-          {loading && <p style={{ color: "var(--shell-subtext)" }}>Carregando...</p>}
-          {!loading && items.length === 0 && (
-            <Card>
-              <CardBody className="text-center py-8">
-                <p style={{ color: "var(--shell-subtext)" }}>Nenhuma sessão agendada ainda.</p>
-              </CardBody>
-            </Card>
-          )}
-          {!loading && items.map((s) => (
-            <Card
-              key={s.id}
-              className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
-              onClick={() => startTransition(() => router.push(`/pre-ocupacao/calendario/${s.id}`))}
-            >
-              <CardBody className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium" style={{ color: "var(--shell-text)" }}>
-                    {s.categoriaLabel}
-                    {s.titulo ? ` — ${s.titulo}` : ""}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--shell-subtext)" }}>
-                    {formatDateTime(s.dataAgendada)}
-                    {s.local ? ` · ${s.local}` : ""}
-                  </p>
-                </div>
-                <p className="text-sm font-medium shrink-0" style={{ color: "var(--shell-text)" }}>
-                  {s.concluidas} de {s.totalFamilias} famílias já pontuaram
-                </p>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
+        {aba === "quadro" && <QuadroPresenca />}
+
+        {aba === "atividades" && (
+          <div className="space-y-2">
+            {loading && <p style={{ color: "var(--shell-subtext)" }}>Carregando...</p>}
+            {!loading && items.length === 0 && (
+              <Card>
+                <CardBody className="text-center py-8">
+                  <p style={{ color: "var(--shell-subtext)" }}>Nenhuma atividade cadastrada ainda.</p>
+                </CardBody>
+              </Card>
+            )}
+            {!loading && items.map((s) => {
+              const futura = new Date(s.dataAgendada) > new Date();
+              return (
+                <Card
+                  key={s.id}
+                  className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]"
+                  onClick={() => startTransition(() => router.push(`/pre-ocupacao/calendario/${s.id}`))}
+                >
+                  <CardBody className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="font-medium" style={{ color: "var(--shell-text)" }}>
+                        {formatDate(s.dataAgendada)} · {s.titulo || s.categoriaLabel}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--shell-subtext)" }}>
+                        {s.titulo ? `${s.categoriaLabel} · ` : ""}
+                        {formatDateTime(s.dataAgendada)}
+                        {s.local ? ` · ${s.local}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-3 shrink-0">
+                      <Numero valor={s.totalFamilias} rotulo="convocadas" cor="var(--shell-text)" />
+                      {!futura && (
+                        <>
+                          <Numero valor={s.concluidas} rotulo="presentes" cor="#16a34a" />
+                          <Numero valor={s.faltas} rotulo="faltas" cor="#dc2626" />
+                          <Numero valor={s.reposicoes} rotulo="reposição" cor="#b45309" />
+                          {s.semLancamento > 0 && (
+                            <Numero valor={s.semLancamento} rotulo="sem lançamento" cor="var(--shell-subtext)" />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {createOpen && (
-        <NovaSessaoModal
+        <NovaAtividadeModal
           onClose={() => setCreateOpen(false)}
-          onCreated={() => {
+          onCreated={(id) => {
             setCreateOpen(false);
-            load();
+            startTransition(() => router.push(`/pre-ocupacao/calendario/${id}`));
           }}
         />
       )}
@@ -127,29 +174,31 @@ export default function CalendarioPage() {
   );
 }
 
-function NovaSessaoModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [categoria, setCategoria] = useState(CATEGORIA_OPTIONS[0]?.value ?? "");
+const CAMPO =
+  "w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]";
+
+function NovaAtividadeModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const [categoria, setCategoria] = useState("");
   const [dataAgendada, setDataAgendada] = useState("");
   const [local, setLocal] = useState("");
   const [titulo, setTitulo] = useState("");
-  const [prazoPreenchimentoDias, setPrazoPreenchimentoDias] = useState("");
-  const [familias, setFamilias] = useState<FamiliaOption[]>([]);
+  // Sem padrão: quem não foi convocado não pode levar falta, então a escolha é obrigatória
+  const [publico, setPublico] = useState<"" | "todas" | "escolher">("");
+  const [familias, setFamilias] = useState<FamiliaLista[]>([]);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState("");
   const [loadingFamilias, setLoadingFamilias] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch("/pre-ocupacao/familias")
-      .then((res) => {
-        const opts: FamiliaOption[] = (res.items ?? []).map((f: any) => ({ id: f.id, numero: f.numero, nome: f.nome }));
-        setFamilias(opts);
-      })
-      .catch(() => {})
+    apiFetch("/pre-ocupacao/atividades/familias-para-lista")
+      .then((res: FamiliaLista[]) => setFamilias(res))
+      .catch(() => setError("Não foi possível carregar as famílias."))
       .finally(() => setLoadingFamilias(false));
   }, []);
 
-  function toggleFamilia(id: string) {
+  function toggle(id: string) {
     setSelecionadas((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -158,29 +207,28 @@ function NovaSessaoModal({ onClose, onCreated }: { onClose: () => void; onCreate
     });
   }
 
+  const convocadas = publico === "todas" ? familias.map((f) => f.familiaId) : publico === "escolher" ? [...selecionadas] : [];
+  const pronto = !!categoria && !!dataAgendada && convocadas.length > 0;
+  const termo = busca.trim().toLowerCase();
+  const lista = familias.filter((f) => !termo || f.nome.toLowerCase().includes(termo) || String(f.numero).includes(termo));
+
   async function handleSubmit() {
-    if (!categoria || !dataAgendada) {
-      setError("Categoria e data são obrigatórias.");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      await apiFetch("/pre-ocupacao/atividades", {
+      const criada = await apiFetch("/pre-ocupacao/atividades", {
         method: "POST",
         body: JSON.stringify({
           categoria,
           dataAgendada: new Date(dataAgendada).toISOString(),
           local: local.trim() || undefined,
           titulo: titulo.trim() || undefined,
-          prazoPreenchimentoDias: prazoPreenchimentoDias ? Number(prazoPreenchimentoDias) : undefined,
-          familiaIds: selecionadas.size > 0 ? [...selecionadas] : undefined,
+          familiaIds: convocadas,
         }),
       });
-      onCreated();
-    } catch (e: any) {
-      setError(e?.message ?? "Erro ao criar sessão");
-    } finally {
+      onCreated(criada.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao criar atividade");
       setLoading(false);
     }
   }
@@ -189,8 +237,8 @@ function NovaSessaoModal({ onClose, onCreated }: { onClose: () => void; onCreate
     <Modal
       open
       onClose={onClose}
-      title="Nova sessão"
-      description="Se nenhuma família for selecionada, todas as famílias ativas serão incluídas."
+      title="Nova atividade"
+      description="Pode ser uma atividade que já aconteceu ou que ainda vai acontecer. Nada é enviado às famílias."
       size="lg"
       footer={
         <>
@@ -204,96 +252,83 @@ function NovaSessaoModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm font-medium"
+            disabled={loading || !pronto}
+            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
             style={{ background: "var(--via-teal, #1D9E75)", color: "#fff" }}
           >
-            {loading ? "Criando..." : "Criar sessão"}
+            {loading ? "Criando..." : convocadas.length ? `Criar com ${convocadas.length} famílias` : "Criar atividade"}
           </button>
         </>
       }
     >
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Categoria *</label>
-            <select
-              value={categoria}
-              onChange={(e) => setCategoria(e.target.value)}
-              className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-            >
+      <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+            Tipo *
+            <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className={`${CAMPO} mt-1`}>
+              <option value="">Escolha...</option>
               {CATEGORIA_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Data e hora *</label>
-            <input
-              type="datetime-local"
-              value={dataAgendada}
-              onChange={(e) => setDataAgendada(e.target.value)}
-              className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Local</label>
-            <input
-              type="text"
-              value={local}
-              onChange={(e) => setLocal(e.target.value)}
-              className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Prazo p/ preenchimento (dias)</label>
-            <input
-              type="number"
-              min={1}
-              value={prazoPreenchimentoDias}
-              onChange={(e) => setPrazoPreenchimentoDias(e.target.value)}
-              placeholder="5 (padrão)"
-              className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>Título (opcional)</label>
-          <input
-            type="text"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
-            className="w-full h-10 rounded-lg border px-3 text-sm bg-[var(--shell-input-bg)] text-[var(--shell-input-text)] border-[var(--shell-input-border)]"
-          />
+          </label>
+          <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+            Data e hora *
+            <input type="datetime-local" value={dataAgendada} onChange={(e) => setDataAgendada(e.target.value)} className={`${CAMPO} mt-1`} />
+          </label>
+          <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+            Título
+            <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex.: 1ª reunião com as famílias" className={`${CAMPO} mt-1`} />
+          </label>
+          <label className="block text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+            Local
+            <input type="text" value={local} onChange={(e) => setLocal(e.target.value)} className={`${CAMPO} mt-1`} />
+          </label>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium mb-1" style={{ color: "var(--shell-subtext)" }}>
-            Famílias participantes ({selecionadas.size > 0 ? `${selecionadas.size} selecionada(s)` : "todas as ativas"})
-          </label>
-          <div
-            className="max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1"
-            style={{ borderColor: "var(--shell-card-border)" }}
-          >
-            {loadingFamilias && <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>Carregando famílias...</p>}
-            {!loadingFamilias && familias.length === 0 && (
-              <p className="text-xs" style={{ color: "var(--shell-subtext)" }}>Nenhuma família disponível.</p>
-            )}
-            {familias.map((f) => (
-              <label key={f.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selecionadas.has(f.id)}
-                  onChange={() => toggleFamilia(f.id)}
-                />
-                <span style={{ color: "var(--shell-text)" }}>
-                  #{String(f.numero).padStart(4, "0")} — {f.nome}
-                </span>
+        <div className="space-y-2">
+          <p className="text-xs font-medium" style={{ color: "var(--shell-subtext)" }}>
+            Quem foi convocado? * (só quem foi convocado pode ter falta)
+          </p>
+          {loadingFamilias ? (
+            <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Carregando famílias...</p>
+          ) : (
+            <div className="flex flex-wrap gap-4 text-sm" style={{ color: "var(--shell-text)" }}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="publico" checked={publico === "todas"} onChange={() => setPublico("todas")} />
+                Todas as famílias ativas ({familias.length})
               </label>
-            ))}
-          </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="publico" checked={publico === "escolher"} onChange={() => setPublico("escolher")} />
+                Só algumas ({selecionadas.size} escolhidas)
+              </label>
+            </div>
+          )}
+
+          {publico === "escolher" && (
+            <div className="space-y-3">
+              <ColarLista
+                familias={familias}
+                rotuloAplicar={(n) => `Marcar ${n} famílias como convocadas`}
+                onAplicar={(ids) => setSelecionadas((prev) => new Set([...prev, ...ids]))}
+              />
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Ou busque por nome ou número da família..."
+                className={CAMPO}
+              />
+              <div className="max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1" style={{ borderColor: "var(--shell-card-border)" }}>
+                {lista.map((f) => (
+                  <label key={f.familiaId} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: "var(--shell-text)" }}>
+                    <input type="checkbox" checked={selecionadas.has(f.familiaId)} onChange={() => toggle(f.familiaId)} />
+                    <span><b>{String(f.numero).padStart(4, "0")}</b> {f.nome}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {error && <p className="text-sm" style={{ color: "#dc2626" }}>{error}</p>}

@@ -11,10 +11,13 @@ import { useSP9Guard } from "../_lib/useSP9Guard";
 import {
   ATENDIMENTO_ASSUNTO_LABEL,
   ATENDIMENTO_MODALIDADE_LABEL,
+  ACOMPANHAMENTO_LABEL,
   ATENDIMENTO_MOTIVO_LABEL,
   formatDate,
   intervaloDoMes,
   OCORRENCIA_TIPO_LABEL,
+  PendenciaFamilia,
+  textoPendencia,
 } from "../_lib/constants";
 import { baixarAcompanhamentoPsicossocial, rotuloPeriodo } from "../_lib/relatorio-acompanhamento";
 
@@ -28,7 +31,9 @@ type FamiliaItem = {
   unidade: string | null;
   statusFamilia: string;
   status: "EM_DIA" | "COM_PENDENCIA";
+  pendencias: PendenciaFamilia[];
   faltas: number;
+  faltasAbertas: number;
   ativadoEm: string;
   demandasTotal: number;
   demandasAbertas: number;
@@ -41,6 +46,12 @@ type Dashboard = {
   total: number;
   emDia: number;
   comPendencia: number;
+  pendencias: {
+    familiasSemResponder: number;
+    questionarios: { id: string; titulo: string; total: number; pendentes: number; responderam: number; naoEnviados: number }[];
+    familiasComFalta: number;
+    faltasPorSessao: { id: string; titulo: string; data: string; familias: number }[];
+  };
   atendimentos: number;
   demandas: number;
   demandasAbertas: number;
@@ -115,7 +126,9 @@ function baixarRelatorio(items: FamiliaItem[], periodo: Periodo) {
     "Demandas encerradas",
     "Total (atendimentos + demandas)",
     "Status",
+    "Pendências",
     "Faltas",
+    "Faltas sem reposição",
   ];
   const rows = items.map((f) => [
     String(f.numero).padStart(4, "0"),
@@ -129,8 +142,10 @@ function baixarRelatorio(items: FamiliaItem[], periodo: Periodo) {
     String(f.demandasAbertas),
     String(f.demandasEncerradas),
     String(f.contatosTotal),
-    f.status === "EM_DIA" ? "Em dia" : "Com pendência",
+    ACOMPANHAMENTO_LABEL[f.status],
+    f.pendencias.map(textoPendencia).join(" | "),
     String(f.faltas),
+    String(f.faltasAbertas),
   ]);
   salvarCsv([header, ...rows], `familias-pre-ocupacao-${periodoSufixo(periodo)}.csv`);
 }
@@ -400,6 +415,100 @@ const PERIODO_ATALHOS: { label: string; value: () => Periodo }[] = [
   { label: "Todo o período", value: () => ({ de: "", ate: "" }) },
 ];
 
+/** Linha clicável do painel de pendências (filtra a tabela). */
+function LinhaPendencia({
+  titulo,
+  detalhe,
+  valor,
+  ativo,
+  onClick,
+}: {
+  titulo: string;
+  detalhe: string;
+  valor: number;
+  ativo: boolean;
+  onClick: () => void;
+}) {
+  const cor = valor > 0 ? "#dc2626" : "#16a34a";
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left flex items-center justify-between gap-4 rounded-lg px-4 py-3 transition-colors hover:bg-[var(--shell-hover)]"
+      style={{ boxShadow: ativo ? `inset 0 0 0 2px ${cor}` : "inset 0 0 0 1px var(--shell-card-border)" }}
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-medium" style={{ color: "var(--shell-text)" }}>{titulo}</span>
+        <span className="block text-xs mt-0.5" style={{ color: "var(--shell-subtext)" }}>{detalhe}</span>
+      </span>
+      <span className="text-2xl font-bold shrink-0" style={{ color: cor }}>{valor}</span>
+    </button>
+  );
+}
+
+/** O que deixa as famílias pendentes: cada questionário publicado e cada sessão com falta. */
+function PainelPendencias({
+  pendencias,
+  filtro,
+  onFiltrar,
+}: {
+  pendencias: Dashboard["pendencias"];
+  filtro: string;
+  onFiltrar: (chave: string) => void;
+}) {
+  return (
+    <Card className="mb-6">
+      <CardBody>
+        <p className="text-base font-semibold" style={{ color: "var(--shell-text)" }}>O que está pendente</p>
+        <p className="text-xs mb-4" style={{ color: "var(--shell-subtext)" }}>
+          Famílias ativas, situação de hoje. Clique em uma linha para ver quais são.
+        </p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <p className="text-sm font-medium mb-2" style={{ color: "var(--shell-text)" }}>
+              Precisam responder questionário: {pendencias.familiasSemResponder}
+            </p>
+            <div className="space-y-2">
+              {pendencias.questionarios.length === 0 && (
+                <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhum questionário publicado.</p>
+              )}
+              {pendencias.questionarios.map((q) => (
+                <LinhaPendencia
+                  key={q.id}
+                  titulo={q.titulo}
+                  detalhe={`${q.responderam} de ${q.total} responderam${q.naoEnviados > 0 ? ` · ${q.naoEnviados} sem envio` : ""}`}
+                  valor={q.pendentes}
+                  ativo={filtro === `QUESTIONARIO:${q.id}`}
+                  onClick={() => onFiltrar(`QUESTIONARIO:${q.id}`)}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium mb-2" style={{ color: "var(--shell-text)" }}>
+              Com falta em atividade, sem reposição: {pendencias.familiasComFalta}
+            </p>
+            <div className="space-y-2">
+              {pendencias.faltasPorSessao.length === 0 && (
+                <p className="text-sm" style={{ color: "var(--shell-subtext)" }}>Nenhuma falta em aberto.</p>
+              )}
+              {pendencias.faltasPorSessao.map((s) => (
+                <LinhaPendencia
+                  key={s.id}
+                  titulo={s.titulo}
+                  detalhe={`Sessão de ${formatDate(s.data)}`}
+                  valor={s.familias}
+                  ativo={filtro === `FALTA:${s.id}`}
+                  onClick={() => onFiltrar(`FALTA:${s.id}`)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 export default function FamiliasPage() {
   const guard = useSP9Guard();
   const router = useRouter();
@@ -410,6 +519,8 @@ export default function FamiliasPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "EM_DIA" | "COM_PENDENCIA">("");
+  // "QUESTIONARIO:<id>" ou "FALTA:<id da sessão>" — linha clicada no painel de pendências
+  const [filtroPendencia, setFiltroPendencia] = useState("");
   const [filtroAtend, setFiltroAtend] = useState<ComSem>("");
   const [filtroDemandas, setFiltroDemandas] = useState<ComSem>("");
   const [filtroFaltas, setFiltroFaltas] = useState<ComSem>("");
@@ -469,9 +580,10 @@ export default function FamiliasPage() {
 
   const filtered = items.filter((f) => {
     if (statusFilter && f.status !== statusFilter) return false;
+    if (filtroPendencia && !f.pendencias.some((p) => `${p.tipo}:${p.id}` === filtroPendencia)) return false;
     if (!passaComSem(filtroAtend, f.atendimentos)) return false;
     if (!passaComSem(filtroDemandas, f.demandasTotal)) return false;
-    if (!passaComSem(filtroFaltas, f.faltas)) return false;
+    if (!passaComSem(filtroFaltas, f.faltasAbertas)) return false;
     if (!passaComSem(filtroTotal, f.contatosTotal)) return false;
     if (!q.trim()) return true;
     const term = q.trim().toLowerCase();
@@ -482,9 +594,10 @@ export default function FamiliasPage() {
     );
   });
 
-  const temFiltro = !!(statusFilter || filtroAtend || filtroDemandas || filtroFaltas || filtroTotal || q.trim());
+  const temFiltro = !!(statusFilter || filtroPendencia || filtroAtend || filtroDemandas || filtroFaltas || filtroTotal || q.trim());
   function limparFiltros() {
     setStatusFilter("");
+    setFiltroPendencia("");
     setFiltroAtend("");
     setFiltroDemandas("");
     setFiltroFaltas("");
@@ -550,7 +663,7 @@ export default function FamiliasPage() {
           {[
             { label: "Famílias no Pré-Ocupação", valor: dashboard?.total, cor: "var(--shell-text)", ativo: !temFiltro, borda: "var(--via-teal, #1D9E75)", onClick: limparFiltros },
             { label: "Em dia", valor: dashboard?.emDia, cor: "#16a34a", ativo: statusFilter === "EM_DIA", borda: "#16a34a", onClick: () => setStatusFilter((s) => (s === "EM_DIA" ? "" : "EM_DIA")) },
-            { label: "Com pendência", valor: dashboard?.comPendencia, cor: "#dc2626", ativo: statusFilter === "COM_PENDENCIA", borda: "#dc2626", onClick: () => setStatusFilter((s) => (s === "COM_PENDENCIA" ? "" : "COM_PENDENCIA")) },
+            { label: "Pendentes", valor: dashboard?.comPendencia, cor: "#dc2626", ativo: statusFilter === "COM_PENDENCIA", borda: "#dc2626", onClick: () => setStatusFilter((s) => (s === "COM_PENDENCIA" ? "" : "COM_PENDENCIA")) },
           ].map((c) => (
             <Card key={c.label} className="cursor-pointer transition-colors hover:bg-[var(--shell-hover)]" onClick={c.onClick}>
               <CardBody style={c.ativo ? { boxShadow: `inset 0 0 0 2px ${c.borda}` } : undefined}>
@@ -560,6 +673,14 @@ export default function FamiliasPage() {
             </Card>
           ))}
         </div>
+
+        {dashboard && (
+          <PainelPendencias
+            pendencias={dashboard.pendencias}
+            filtro={filtroPendencia}
+            onFiltrar={(chave) => setFiltroPendencia((v) => (v === chave ? "" : chave))}
+          />
+        )}
 
         <PainelAtendimentos
           lista={atendimentosLista}
@@ -688,11 +809,21 @@ export default function FamiliasPage() {
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={f.status === "EM_DIA" ? "success" : "error"}>
-                        {f.status === "EM_DIA" ? "Em dia" : "Com pendência"}
+                        {ACOMPANHAMENTO_LABEL[f.status]}
                       </Badge>
+                      {f.pendencias.map((p) => (
+                        <p key={`${p.tipo}:${p.id}`} className="text-xs mt-1" style={{ color: "var(--shell-subtext)" }}>
+                          {textoPendencia(p)}
+                        </p>
+                      ))}
                     </td>
-                    <td className="px-4 py-3" style={{ color: "var(--shell-text)" }}>
-                      {f.faltas}
+                    <td className="px-4 py-3" style={{ color: f.faltasAbertas > 0 ? "#dc2626" : "var(--shell-text)" }}>
+                      {f.faltasAbertas}
+                      {f.faltas > f.faltasAbertas && (
+                        <span className="text-xs" style={{ color: "var(--shell-subtext)" }}>
+                          {" "}(+{f.faltas - f.faltasAbertas} com reposição)
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -3,7 +3,7 @@ import { Logger } from '../logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { getNextFamiliaNumber } from './pre-ocupacao-numbering.helper';
-import { computeStatusAcompanhamento, countFaltas } from './pre-ocupacao-status.util';
+import { computeStatusAcompanhamento, countFaltas, faltaEmAberto, montarPendencias } from './pre-ocupacao-status.util';
 import { AtendimentosService, periodoWhere } from './atendimentos.service';
 
 @Injectable()
@@ -50,6 +50,37 @@ export class FamiliasService {
     return familia;
   }
 
+  /** Questionários publicados do tenant + os envios reais (não os de teste) das famílias informadas. */
+  private async questionariosEnvios(tenantId: string, familiaIds: string[]) {
+    const questionarios = await this.prisma.preOcupacaoQuestionario.findMany({
+      where: { tenantId, status: 'PUBLICADO' },
+      select: { id: true, titulo: true },
+      orderBy: { criadoEm: 'asc' },
+    });
+    const envios =
+      questionarios.length && familiaIds.length
+        ? await this.prisma.preOcupacaoQuestionarioEnvio.findMany({
+            where: {
+              tenantId,
+              teste: false,
+              questionarioId: { in: questionarios.map((q) => q.id) },
+              familiaId: { in: familiaIds },
+            },
+            select: {
+              familiaId: true,
+              questionarioId: true,
+              statusEnvio: true,
+              agendadoPara: true,
+              linkAbertoEm: true,
+              iniciadoEm: true,
+              respondidoEm: true,
+              entregueEm: true,
+            },
+          })
+        : [];
+    return { questionarios, envios };
+  }
+
   /** Resumo compacto para o painel do Lead. */
   async resumoPorLead(tenantId: string, leadId: string) {
     const familia = await this.prisma.preOcupacaoFamilia.findFirst({ where: { leadId, tenantId } });
@@ -68,10 +99,19 @@ export class FamiliasService {
       orderBy: { abertaEm: 'desc' },
     });
 
+    const { questionarios, envios } = await this.questionariosEnvios(tenantId, [familia.id]);
+    const pendencias = montarPendencias({
+      statusFamilia: familia.status,
+      participacoes,
+      questionariosPublicados: questionarios,
+      envios,
+    });
+
     return {
       ativada: true as const,
       familia,
-      status: computeStatusAcompanhamento(participacoes),
+      status: computeStatusAcompanhamento(pendencias),
+      pendencias,
       faltas: countFaltas(participacoes),
       participacoesRecentes: participacoes.slice(0, 5),
       demandas,
@@ -121,9 +161,15 @@ export class FamiliasService {
     const participantes = familiaIds.length
       ? await this.prisma.preOcupacaoAtividadeParticipante.findMany({
           where: { familiaId: { in: familiaIds } },
-          select: { familiaId: true, status: true },
+          select: {
+            familiaId: true,
+            status: true,
+            reposicaoEm: true,
+            atividade: { select: { id: true, titulo: true, categoria: true, dataAgendada: true } },
+          },
         })
       : [];
+    const { questionarios, envios } = await this.questionariosEnvios(tenantId, familiaIds);
     const dataDemanda = periodoWhere(periodo?.de, periodo?.ate);
     const demandas = familiaIds.length
       ? await this.prisma.preOcupacaoOcorrencia.findMany({
@@ -139,11 +185,18 @@ export class FamiliasService {
     const unidadePorLead = await this.buscarUnidadesPorLead(tenantId, leadIds);
     const atendimentosPorFamilia = await this.atendimentos.contarPorFamilia(tenantId, periodo?.de, periodo?.ate);
 
-    const porFamilia = new Map<string, { status: string }[]>();
+    const porFamilia = new Map<string, typeof participantes>();
     for (const p of participantes) {
       const arr = porFamilia.get(p.familiaId) ?? [];
-      arr.push({ status: p.status });
+      arr.push(p);
       porFamilia.set(p.familiaId, arr);
+    }
+    const enviosPorFamilia = new Map<string, typeof envios>();
+    for (const e of envios) {
+      if (!e.familiaId) continue;
+      const arr = enviosPorFamilia.get(e.familiaId) ?? [];
+      arr.push(e);
+      enviosPorFamilia.set(e.familiaId, arr);
     }
     const demandasPorFamilia = new Map<string, { status: string }[]>();
     for (const d of demandas) {
@@ -157,6 +210,12 @@ export class FamiliasService {
       const participacoes = porFamilia.get(f.id) ?? [];
       const demandasFamilia = demandasPorFamilia.get(f.id) ?? [];
       const unidadeInfo = unidadePorLead.get(f.leadId);
+      const pendencias = montarPendencias({
+        statusFamilia: f.status,
+        participacoes,
+        questionariosPublicados: questionarios,
+        envios: enviosPorFamilia.get(f.id) ?? [],
+      });
       return {
         id: f.id,
         numero: f.numero,
@@ -166,8 +225,10 @@ export class FamiliasService {
         empreendimento: unidadeInfo?.empreendimento ?? null,
         unidade: unidadeInfo?.unidade ?? null,
         statusFamilia: f.status, // ATIVA | CONCLUIDA | INATIVA (ciclo de vida no programa)
-        status: computeStatusAcompanhamento(participacoes), // EM_DIA | COM_PENDENCIA (acompanhamento)
+        status: computeStatusAcompanhamento(pendencias), // EM_DIA | COM_PENDENCIA (acompanhamento)
+        pendencias,
         faltas: countFaltas(participacoes),
+        faltasAbertas: participacoes.filter(faltaEmAberto).length,
         ativadoEm: f.ativadoEm,
         demandasTotal: demandasFamilia.length,
         demandasAbertas: demandasFamilia.filter((d) => d.status === 'ABERTA').length,
@@ -182,11 +243,39 @@ export class FamiliasService {
       const k = d.tipo ?? 'OUTRO';
       demandasPorTipo[k] = (demandasPorTipo[k] ?? 0) + 1;
     }
+    // Quantas famílias ativas devem cada questionário e cada falta (independe do período)
+    const ativas = items.filter((i) => i.statusFamilia === 'ATIVA');
+    const pendenciasAtivas = ativas.flatMap((i) => i.pendencias);
+    const questionariosResumo = questionarios.map((q) => {
+      const devem = pendenciasAtivas.filter((p) => p.tipo === 'QUESTIONARIO' && p.id === q.id);
+      return {
+        id: q.id,
+        titulo: q.titulo,
+        total: ativas.length,
+        pendentes: devem.length,
+        responderam: ativas.length - devem.length,
+        naoEnviados: devem.filter((p) => p.tipo === 'QUESTIONARIO' && p.situacao === 'NAO_ENVIADO').length,
+      };
+    });
+    const faltasPorSessao = new Map<string, { id: string; titulo: string; data: Date; familias: number }>();
+    for (const p of pendenciasAtivas) {
+      if (p.tipo !== 'FALTA') continue;
+      const atual = faltasPorSessao.get(p.id) ?? { id: p.id, titulo: p.titulo, data: p.data, familias: 0 };
+      atual.familias += 1;
+      faltasPorSessao.set(p.id, atual);
+    }
+
     const totalAtendimentos = items.reduce((acc, i) => acc + i.atendimentos, 0);
     const dashboard = {
       total: items.length,
       emDia: items.filter((i) => i.status === 'EM_DIA').length,
       comPendencia: items.filter((i) => i.status === 'COM_PENDENCIA').length,
+      pendencias: {
+        familiasSemResponder: ativas.filter((i) => i.pendencias.some((p) => p.tipo === 'QUESTIONARIO')).length,
+        questionarios: questionariosResumo,
+        familiasComFalta: ativas.filter((i) => i.faltasAbertas > 0).length,
+        faltasPorSessao: [...faltasPorSessao.values()].sort((a, b) => b.data.getTime() - a.data.getTime()),
+      },
       atendimentos: totalAtendimentos,
       demandas: demandas.length,
       demandasAbertas: demandas.filter((d) => d.status === 'ABERTA').length,
@@ -221,14 +310,24 @@ export class FamiliasService {
       orderBy: { abertaEm: 'desc' },
     });
 
+    const { questionarios, envios } = await this.questionariosEnvios(tenantId, [familiaId]);
+    const pendencias = montarPendencias({
+      statusFamilia: familia.status,
+      participacoes,
+      questionariosPublicados: questionarios,
+      envios,
+    });
+
     const unidadeInfo = (await this.buscarUnidadesPorLead(tenantId, [familia.leadId])).get(familia.leadId);
 
     return {
       familia,
       empreendimento: unidadeInfo?.empreendimento ?? null,
       unidade: unidadeInfo?.unidade ?? null,
-      status: computeStatusAcompanhamento(participacoes),
+      status: computeStatusAcompanhamento(pendencias),
+      pendencias,
       faltas: countFaltas(participacoes),
+      faltasAbertas: participacoes.filter(faltaEmAberto).length,
       participacoes,
       ocorrencias,
     };

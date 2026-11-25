@@ -8,9 +8,9 @@ jest.mock('./pre-ocupacao-upload.util', () => ({
 function buildPrismaMock() {
   return {
     preOcupacaoFamilia: { findMany: jest.fn() },
-    preOcupacaoAtividade: { findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
-    preOcupacaoAtividadeParticipante: { findUnique: jest.fn(), update: jest.fn() },
-    preOcupacaoAtividadeAnexo: { create: jest.fn() },
+    preOcupacaoAtividade: { findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    preOcupacaoAtividadeParticipante: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), updateMany: jest.fn(), count: jest.fn() },
+    preOcupacaoAtividadeAnexo: { create: jest.fn(), count: jest.fn().mockResolvedValue(0) },
     preOcupacaoParticipanteAnexo: { create: jest.fn() },
     $transaction: jest.fn(),
   };
@@ -119,7 +119,7 @@ describe('AtividadesService', () => {
 
       prisma.preOcupacaoAtividade.findFirst.mockResolvedValue(null);
 
-      await expect(svc.atualizar(TENANT_A, 'ativ-de-outro-tenant', { local: 'X' })).rejects.toThrow(NotFoundException);
+      await expect(svc.atualizar(TENANT_A, 'ativ-de-outro-tenant', 'OWNER', { local: 'X' })).rejects.toThrow(NotFoundException);
       expect(prisma.preOcupacaoAtividade.findFirst).toHaveBeenCalledWith({
         where: { id: 'ativ-de-outro-tenant', tenantId: TENANT_A },
       });
@@ -208,6 +208,123 @@ describe('AtividadesService', () => {
       prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue({ id: 'part-1' });
 
       await expect(svc.preencherFicha(TENANT_A, 'ativ-1', 'fam-1', null, {})).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('lancarPresenca / marcarReposicao', () => {
+    const PASSADA = { id: 'ativ-1', tenantId: TENANT_A, dataAgendada: new Date('2026-10-31') };
+
+    function montar(atividade: any, participantes: any[] = []) {
+      const prisma: any = buildPrismaMock();
+      const audit = buildAuditMock();
+      prisma.preOcupacaoAtividade.findFirst.mockResolvedValue(atividade);
+      prisma.preOcupacaoAtividadeParticipante.findMany.mockResolvedValue(participantes);
+      prisma.$transaction.mockResolvedValue([]);
+      return { prisma, audit, svc: new AtividadesService(prisma, audit as any, {} as any, {} as any) };
+    }
+
+    it('grava presentes e faltas só de quem muda, e não transforma em falta quem tem ficha', async () => {
+      const { prisma, audit, svc } = montar(PASSADA, [
+        { id: 'p1', familiaId: 'f1', status: 'AGUARDANDO_PREENCHIMENTO', _count: { anexos: 0 } },
+        { id: 'p2', familiaId: 'f2', status: 'AGUARDANDO_PREENCHIMENTO', _count: { anexos: 0 } },
+        { id: 'p3', familiaId: 'f3', status: 'CONCLUIDA', _count: { anexos: 1 } },
+        { id: 'p4', familiaId: 'f4', status: 'FALTOU', _count: { anexos: 0 } },
+      ]);
+
+      const r = await svc.lancarPresenca(
+        TENANT_A,
+        'ativ-1',
+        [
+          { familiaId: 'f1', situacao: 'PRESENTE' },
+          { familiaId: 'f2', situacao: 'FALTOU' },
+          { familiaId: 'f3', situacao: 'FALTOU' },
+          { familiaId: 'f4', situacao: 'FALTOU' },
+        ],
+        'user-1',
+      );
+
+      expect(r).toEqual({ presentes: 1, faltas: 1, comFicha: 1 });
+      const [presentes, faltas] = prisma.preOcupacaoAtividadeParticipante.updateMany.mock.calls.map((c: any[]) => c[0]);
+      expect(presentes).toMatchObject({ where: { id: { in: ['p1'] } }, data: { status: 'CONCLUIDA' } });
+      expect(faltas).toMatchObject({ where: { id: { in: ['p2'] } }, data: { status: 'FALTOU', marcadoFaltaPor: 'user-1' } });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'PRE_OCUPACAO_LANCAR_PRESENCA' }));
+    });
+
+    it('não lança presença antes da sessão começar', async () => {
+      const { prisma, svc } = montar({ ...PASSADA, dataAgendada: new Date(Date.now() + 86_400_000) });
+      await expect(
+        svc.lancarPresenca(TENANT_A, 'ativ-1', [{ familiaId: 'f1', situacao: 'PRESENTE' }], 'u'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('recusa família que não participa da sessão e situação inválida', async () => {
+      const { prisma, svc } = montar(PASSADA, []);
+      await expect(
+        svc.lancarPresenca(TENANT_A, 'ativ-1', [{ familiaId: 'fora', situacao: 'FALTOU' }], 'u'),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        svc.lancarPresenca(TENANT_A, 'ativ-1', [{ familiaId: 'f1', situacao: 'XPTO' }], 'u'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('reposição guarda o dia informado e recusa data futura ou anterior à atividade', async () => {
+      const { prisma, svc } = montar(PASSADA);
+      prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue({ id: 'p1', status: 'FALTOU' });
+      prisma.preOcupacaoAtividadeParticipante.update.mockResolvedValue({ id: 'p1' });
+
+      await svc.marcarReposicao(TENANT_A, 'ativ-1', 'f1', true, 'u', '2026-11-05');
+      expect(prisma.preOcupacaoAtividadeParticipante.update.mock.calls[0][0].data.reposicaoEm.toISOString()).toBe(
+        '2026-11-05T15:00:00.000Z',
+      );
+      for (const dia of ['2999-01-01', '2026-10-01', '05/11/2026']) {
+        await expect(svc.marcarReposicao(TENANT_A, 'ativ-1', 'f1', true, 'u', dia)).rejects.toThrow(BadRequestException);
+      }
+      expect(prisma.preOcupacaoAtividadeParticipante.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('não exclui atividade que já tem presença das famílias', async () => {
+      const { prisma, svc } = montar(PASSADA);
+      prisma.preOcupacaoAtividadeParticipante.count.mockResolvedValueOnce(10).mockResolvedValueOnce(1);
+      await expect(svc.remover(TENANT_A, 'ativ-1', 'OWNER')).rejects.toThrow(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('quadro de presença separa presente, falta, reposição e quem não foi convocado', async () => {
+      const { prisma, svc } = montar(PASSADA);
+      prisma.preOcupacaoAtividade.findMany.mockResolvedValue([
+        {
+          id: 'a1',
+          titulo: 'Oficina',
+          categoria: 'GERACAO_RENDA',
+          dataAgendada: new Date(),
+          participantes: [
+            { familiaId: 'f1', status: 'CONCLUIDA', reposicaoEm: null },
+            { familiaId: 'f2', status: 'FALTOU', reposicaoEm: null },
+            { familiaId: 'f3', status: 'FALTOU', reposicaoEm: new Date() },
+          ],
+        },
+      ]);
+      const lead = { nome: 'A', nomeCorreto: null, cpf: null };
+      prisma.preOcupacaoFamilia.findMany.mockResolvedValue(
+        ['f1', 'f2', 'f3', 'f4'].map((id, i) => ({ id, numero: i + 1, status: 'ATIVA', lead })),
+      );
+      const q = await svc.quadroPresenca(TENANT_A);
+      expect(q.familias.map((f) => f.presencas)).toEqual([{ a1: 'PRESENTE' }, { a1: 'FALTOU' }, { a1: 'REPOSICAO' }, {}]);
+    });
+
+    it('reposição só vale para quem faltou, e pode ser desfeita', async () => {
+      const { prisma, svc } = montar(PASSADA);
+      prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue({ id: 'p1', status: 'CONCLUIDA' });
+      await expect(svc.marcarReposicao(TENANT_A, 'ativ-1', 'f1', true, 'u')).rejects.toThrow(BadRequestException);
+
+      prisma.preOcupacaoAtividadeParticipante.findUnique.mockResolvedValue({ id: 'p1', status: 'FALTOU' });
+      prisma.preOcupacaoAtividadeParticipante.update.mockResolvedValue({ id: 'p1' });
+      await svc.marcarReposicao(TENANT_A, 'ativ-1', 'f1', true, 'u');
+      expect(prisma.preOcupacaoAtividadeParticipante.update.mock.calls[0][0].data).toMatchObject({ reposicaoPor: 'u' });
+      await svc.marcarReposicao(TENANT_A, 'ativ-1', 'f1', false, 'u');
+      expect(prisma.preOcupacaoAtividadeParticipante.update.mock.calls[1][0].data).toEqual({ reposicaoEm: null, reposicaoPor: null });
     });
   });
 

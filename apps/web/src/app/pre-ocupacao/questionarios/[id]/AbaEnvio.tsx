@@ -8,7 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { maskPhone } from "@/lib/format";
 import RitmoEnvio from "./RitmoEnvio";
 import FiltroColuna from "./FiltroColuna";
-import { FAMILIA_STATUS_LABEL } from "../../_lib/constants";
+import { ACOMPANHAMENTO_LABEL, FAMILIA_STATUS_LABEL } from "../../_lib/constants";
 import { Questionario, SITUACAO_LABEL, SITUACAO_VARIANT, Situacao } from "../../_lib/questionario";
 
 type FamiliaPreview = {
@@ -34,7 +34,6 @@ type Preview = {
   semCpf?: number;
 };
 
-const ACOMPANHAMENTO_LABEL: Record<string, string> = { EM_DIA: "Em dia", COM_PENDENCIA: "Com pendência" };
 
 function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (

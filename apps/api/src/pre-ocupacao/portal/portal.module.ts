@@ -5,7 +5,6 @@ import { PreOcupacaoModule } from '../pre-ocupacao.module';
 import { FamiliaAuthGuard } from './familia-auth.guard';
 import { PortalAuthService } from './portal-auth.service';
 import { PortalDemandasService } from './portal-demandas.service';
-import { PortalConteudoService } from './portal-conteudo.service';
 import { PortalController } from './portal.controller';
 import { ConviteController } from './convite.controller';
 import { ConviteService } from './convite.service';
@@ -17,6 +16,6 @@ import { AssembleiaPublicoService } from './assembleia-publico.service';
 @Module({
   imports: [PrismaModule, PreOcupacaoModule, JwtModule.register({ secret: process.env.JWT_SECRET })],
   controllers: [PortalController, ConviteController, QuestionarioPublicoController, AssembleiaPublicoController],
-  providers: [FamiliaAuthGuard, PortalAuthService, PortalDemandasService, PortalConteudoService, ConviteService, QuestionarioPublicoService, AssembleiaPublicoService],
+  providers: [FamiliaAuthGuard, PortalAuthService, PortalDemandasService, ConviteService, QuestionarioPublicoService, AssembleiaPublicoService],
 })
 export class PreOcupacaoPortalModule {}

@@ -7,7 +7,7 @@ import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
 /**
  * Templates reutilizáveis de mensagem (convite, lembrete, etc.) por tenant.
  * Imagem opcional é armazenada pública no Cloudinary (`{ public: true }`,
- * mesmo padrão de `conteudo.service.ts`) — precisa ser uma URL acessível
+ * mesmo padrão das mídias públicas) — precisa ser uma URL acessível
  * sem autenticação pra o WhatsApp/Meta conseguir baixar na hora do envio.
  */
 @Injectable()
