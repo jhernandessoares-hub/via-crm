@@ -8,6 +8,8 @@ function buildPrismaMock() {
     preOcupacaoFamilia: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
     preOcupacaoAtividadeParticipante: { findMany: jest.fn() },
     preOcupacaoOcorrencia: { findMany: jest.fn().mockResolvedValue([]) },
+    preOcupacaoQuestionario: { findMany: jest.fn().mockResolvedValue([]) },
+    preOcupacaoQuestionarioEnvio: { findMany: jest.fn().mockResolvedValue([]) },
     developmentUnit: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn(),
   };
@@ -151,19 +153,76 @@ describe('FamiliasService', () => {
         { id: 'f2', numero: 2, leadId: 'l2', lead: { nome: 'B', nomeCorreto: null, cpf: null }, status: 'ATIVA' },
         { id: 'f3', numero: 3, leadId: 'l3', lead: { nome: 'C', nomeCorreto: null, cpf: null }, status: 'ATIVA' },
       ]);
-      // f1: sem pendência; f2: com PENDENTE; f3: sem participações
+      // f1: presente; f2: faltou; f3: sem participações
+      const atividade = { id: 'a1', titulo: 'Oficina', categoria: 'GERACAO_RENDA', dataAgendada: new Date('2026-10-31') };
       prisma.preOcupacaoAtividadeParticipante.findMany.mockResolvedValue([
-        { familiaId: 'f1', status: 'CONCLUIDA' },
-        { familiaId: 'f2', status: 'PENDENTE' },
+        { familiaId: 'f1', status: 'CONCLUIDA', reposicaoEm: null, atividade },
+        { familiaId: 'f2', status: 'FALTOU', reposicaoEm: null, atividade },
       ]);
 
       const result = await svc.listar(TENANT_A, 1, 0);
 
-      expect(result.dashboard).toEqual({ total: 3, emDia: 2, comPendencia: 1, atendimentos: 0 });
+      expect(result.dashboard).toMatchObject({ total: 3, emDia: 2, comPendencia: 1, atendimentos: 0 });
+      expect(result.dashboard.pendencias.familiasComFalta).toBe(1);
+      expect(result.dashboard.pendencias.faltasPorSessao).toEqual([
+        { id: 'a1', titulo: 'Oficina', data: atividade.dataAgendada, familias: 1 },
+      ]);
       expect(result.items).toHaveLength(1); // página respeitando take=1
       expect(prisma.preOcupacaoFamilia.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { tenantId: TENANT_A } }),
       );
+    });
+
+    it('conta quantas famílias ativas ainda devem cada questionário publicado, separando quem não recebeu', async () => {
+      const prisma: any = buildPrismaMock();
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
+      const lead = { nome: 'A', nomeCorreto: null, cpf: null };
+      prisma.preOcupacaoFamilia.findMany.mockResolvedValue([
+        { id: 'f1', numero: 1, leadId: 'l1', lead, status: 'ATIVA' }, // respondeu
+        { id: 'f2', numero: 2, leadId: 'l2', lead, status: 'ATIVA' }, // recebeu e não respondeu
+        { id: 'f3', numero: 3, leadId: 'l3', lead, status: 'ATIVA' }, // nunca enviado
+        { id: 'f4', numero: 4, leadId: 'l4', lead, status: 'INATIVA' }, // fora da conta
+      ]);
+      prisma.preOcupacaoAtividadeParticipante.findMany.mockResolvedValue([]);
+      prisma.preOcupacaoQuestionario.findMany.mockResolvedValue([{ id: 'q1', titulo: 'Psicossocial' }]);
+      const base = { questionarioId: 'q1', statusEnvio: 'ENVIADO', agendadoPara: null, linkAbertoEm: null, iniciadoEm: null, entregueEm: new Date() };
+      prisma.preOcupacaoQuestionarioEnvio.findMany.mockResolvedValue([
+        { ...base, familiaId: 'f1', respondidoEm: new Date() },
+        { ...base, familiaId: 'f2', respondidoEm: null },
+      ]);
+
+      const { dashboard, items } = await svc.listar(TENANT_A);
+
+      expect(dashboard.pendencias.questionarios).toEqual([
+        { id: 'q1', titulo: 'Psicossocial', total: 3, pendentes: 2, responderam: 1, naoEnviados: 1 },
+      ]);
+      expect(dashboard.pendencias.familiasSemResponder).toBe(2);
+      expect(items.map((i) => i.status)).toEqual(['EM_DIA', 'COM_PENDENCIA', 'COM_PENDENCIA', 'EM_DIA']);
+      expect(prisma.preOcupacaoQuestionario.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: TENANT_A, status: 'PUBLICADO' } }),
+      );
+      expect(prisma.preOcupacaoQuestionarioEnvio.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tenantId: TENANT_A, teste: false }) }),
+      );
+    });
+
+    it('falta com reposição não deixa a família pendente, mas continua no total de faltas', async () => {
+      const prisma: any = buildPrismaMock();
+      const svc = new FamiliasService(prisma, buildAuditMock() as any, atendimentosMock as any);
+      prisma.preOcupacaoFamilia.findMany.mockResolvedValue([
+        { id: 'f1', numero: 1, leadId: 'l1', lead: { nome: 'A', nomeCorreto: null, cpf: null }, status: 'ATIVA' },
+      ]);
+      prisma.preOcupacaoAtividadeParticipante.findMany.mockResolvedValue([
+        {
+          familiaId: 'f1',
+          status: 'FALTOU',
+          reposicaoEm: new Date(),
+          atividade: { id: 'a1', titulo: 'Oficina', categoria: 'GERACAO_RENDA', dataAgendada: new Date() },
+        },
+      ]);
+
+      const { items } = await svc.listar(TENANT_A);
+      expect(items[0]).toMatchObject({ status: 'EM_DIA', faltas: 1, faltasAbertas: 0, pendencias: [] });
     });
 
     it('sem paginação (take indefinido) retorna todos os itens', async () => {

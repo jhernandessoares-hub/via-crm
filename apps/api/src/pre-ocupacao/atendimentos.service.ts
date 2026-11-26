@@ -455,6 +455,60 @@ export class AtendimentosService {
     });
   }
 
+  /**
+   * Relatório "Acompanhamento Psicossocial" (Indicador 2 do N1): atendimentos
+   * (por inicioEm) e demandas abertas no período (por abertaEm) com andamentos.
+   * Sem CPF — a planilha vai para a Verificadora.
+   */
+  async relatorioAcompanhamento(tenantId: string, de?: string, ate?: string) {
+    const periodo = periodoWhere(de, ate);
+    const familiaSelect = {
+      select: { numero: true, lead: { select: { nome: true, nomeCorreto: true } } },
+    } as const;
+    const [atendimentos, demandas] = await Promise.all([
+      this.prisma.preOcupacaoAtendimento.findMany({
+        where: { tenantId, ...(periodo ? { inicioEm: periodo } : {}) },
+        select: {
+          id: true,
+          familiaId: true,
+          inicioEm: true,
+          modalidade: true,
+          motivo: true,
+          assunto: true,
+          descricao: true,
+          origem: true,
+          atendidoPorNome: true,
+          familia: familiaSelect,
+        },
+        orderBy: { inicioEm: 'asc' },
+      }),
+      this.prisma.preOcupacaoOcorrencia.findMany({
+        where: { tenantId, ...(periodo ? { abertaEm: periodo } : {}) },
+        select: {
+          id: true,
+          numero: true,
+          familiaId: true,
+          titulo: true,
+          origem: true,
+          status: true,
+          abertaEm: true,
+          encerradaEm: true,
+          resolucao: true,
+          familia: familiaSelect,
+          andamentos: {
+            select: { texto: true, criadoEm: true },
+            orderBy: { criadoEm: 'asc' },
+          },
+        },
+        orderBy: { numero: 'asc' },
+      }),
+    ]);
+    const familias = new Set<string>();
+    for (const a of atendimentos) familias.add(a.familiaId);
+    for (const d of demandas) if (d.familiaId) familias.add(d.familiaId);
+    return { atendimentos, demandas, familiasDistintas: familias.size };
+  }
+
   /** Contagem por família no período — usada pela lista de Famílias. */
   async contarPorFamilia(tenantId: string, de?: string, ate?: string) {
     const inicioEm = periodoWhere(de, ate);

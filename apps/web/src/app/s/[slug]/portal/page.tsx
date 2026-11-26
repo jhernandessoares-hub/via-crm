@@ -79,20 +79,12 @@ export default function PortalFamiliaDashboardPage() {
 
         {error && <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href={`/s/${slug}/portal/nova`}
-            className="block w-full rounded-full bg-slate-950 py-3 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            Nova solicitação
-          </Link>
-          <Link
-            href={`/s/${slug}/portal/conteudo`}
-            className="block w-full rounded-full border border-slate-300 bg-white py-3 text-center text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
-          >
-            Conteúdo Educacional
-          </Link>
-        </div>
+        <Link
+          href={`/s/${slug}/portal/nova`}
+          className="block w-full rounded-full bg-slate-950 py-3 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
+        >
+          Nova solicitação
+        </Link>
 
         <div className="space-y-3">
           {demandas.length === 0 && (

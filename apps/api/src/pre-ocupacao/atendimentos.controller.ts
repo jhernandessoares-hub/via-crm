@@ -54,6 +54,12 @@ export class AtendimentosController {
     return this.svc.registrarManual(req.user.tenantId, familiaId, body ?? {}, this.actor(req));
   }
 
+  /** Planilha mensal "Acompanhamento Psicossocial" (atendimentos + demandas com andamentos). */
+  @Get('relatorios/acompanhamento-psicossocial')
+  relatorioAcompanhamento(@Request() req: any, @Query('de') de?: string, @Query('ate') ate?: string) {
+    return this.svc.relatorioAcompanhamento(req.user.tenantId, de, ate);
+  }
+
   @Get('atendimentos')
   listarPeriodo(@Request() req: any, @Query('de') de?: string, @Query('ate') ate?: string) {
     return this.svc.listarPeriodo(req.user.tenantId, de, ate);

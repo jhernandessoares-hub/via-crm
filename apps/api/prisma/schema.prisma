@@ -2433,6 +2433,9 @@ model PreOcupacaoAtividadeParticipante {
   avaliacao            PreOcupacaoAvaliacao?
   transcricaoFicha     String?
   marcadoFaltaPor      String?
+  // Faltou e depois fez a reposição: a falta fica no histórico, mas deixa de ser pendência
+  reposicaoEm          DateTime?
+  reposicaoPor         String?
   rsvpStatus           PreOcupacaoRsvpStatus         @default(AGUARDANDO)
   rsvpRespondidoEm     DateTime?
   convidaTokenHash     String?
@@ -2689,6 +2692,7 @@ enum PreOcupacaoFamiliaStatus {
 }
 
 enum PreOcupacaoAtividadeCategoria {
+  REUNIAO_ORIENTACAO
   ORGANIZACAO_CONDOMINIAL
   EDUCACAO_AMBIENTAL_PATRIMONIAL
   CONVIVENCIA_COMUNITARIA

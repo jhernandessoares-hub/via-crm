@@ -7,12 +7,8 @@ import { FamiliasController } from './familias.controller';
 import { FamiliasService } from './familias.service';
 import { AtividadesController } from './atividades.controller';
 import { AtividadesService } from './atividades.service';
-import { EntregaveisController } from './entregaveis.controller';
-import { EntregaveisService } from './entregaveis.service';
 import { DemandasController } from './demandas.controller';
 import { DemandasService } from './demandas.service';
-import { ConteudoController } from './conteudo.controller';
-import { ConteudoService } from './conteudo.service';
 import { TemplatesController } from './templates.controller';
 import { TemplatesService } from './templates.service';
 import { AgendamentoConviteService } from './agendamento-convite.service';
@@ -33,9 +29,7 @@ import { AssembleiaConvocacaoWorker } from './assembleia-convocacao.worker';
   controllers: [
     FamiliasController,
     AtividadesController,
-    EntregaveisController,
     DemandasController,
-    ConteudoController,
     TemplatesController,
     AtendimentosController,
     QuestionariosController,
@@ -45,9 +39,7 @@ import { AssembleiaConvocacaoWorker } from './assembleia-convocacao.worker';
     AddonGuard,
     FamiliasService,
     AtividadesService,
-    EntregaveisService,
     DemandasService,
-    ConteudoService,
     TemplatesService,
     AgendamentoConviteService,
     AgendamentoConviteWorker,
@@ -59,6 +51,6 @@ import { AssembleiaConvocacaoWorker } from './assembleia-convocacao.worker';
     AssembleiaConvocacaoService,
     AssembleiaConvocacaoWorker,
   ],
-  exports: [FamiliasService, AtividadesService, EntregaveisService, DemandasService, ConteudoService, QuestionarioEnvioService, AssembleiasService],
+  exports: [FamiliasService, AtividadesService, DemandasService, QuestionarioEnvioService, AssembleiasService],
 })
 export class PreOcupacaoModule {}

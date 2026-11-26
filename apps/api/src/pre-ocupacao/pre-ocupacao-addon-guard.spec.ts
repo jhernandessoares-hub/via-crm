@@ -5,7 +5,6 @@ import {
   FamiliasController,
 } from './familias.controller';
 import { AtividadesController } from './atividades.controller';
-import { EntregaveisController } from './entregaveis.controller';
 import { DemandasController } from './demandas.controller';
 
 /**
@@ -25,7 +24,6 @@ describe('AddonGuard aplicado no módulo Pré-Ocupação', () => {
   it.each([
     ['FamiliasController', FamiliasController],
     ['AtividadesController', AtividadesController],
-    ['EntregaveisController', EntregaveisController],
     ['DemandasController', DemandasController],
   ])('%s declara @RequiresAddon("PRE_OCUPACAO") na classe', (_name, controllerClass: any) => {
     const reflector = new Reflector();

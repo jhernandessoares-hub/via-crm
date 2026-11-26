@@ -7,7 +7,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import type { LeadsService } from '../leads/leads.service';
 import type { WhatsappUnofficialService } from '../whatsapp-unofficial/whatsapp-unofficial.service';
 import { resolvePermissions } from '../tenants/permissions.config';
-import { PRE_OCUPACAO_CATEGORIA_LABEL } from './pre-ocupacao-status.util';
+import { PRE_OCUPACAO_CATEGORIA_LABEL, SituacaoPresenca, situacaoPresenca } from './pre-ocupacao-status.util';
 import { uploadPreOcupacaoFile } from './pre-ocupacao-upload.util';
 import { CONVITE_TOKEN_VALIDADE_MS, gerarConviteToken, hashConviteToken } from './pre-ocupacao-convite-token.util';
 import { resolvePortalBaseUrl } from './pre-ocupacao-portal-url.util';
@@ -189,7 +189,7 @@ export class AtividadesService {
   async listar(tenantId: string) {
     const atividades = await this.prisma.preOcupacaoAtividade.findMany({
       where: { tenantId },
-      include: { participantes: { select: { status: true } } },
+      include: { participantes: { select: { status: true, reposicaoEm: true } } },
       orderBy: { dataAgendada: 'desc' },
     });
 
@@ -202,7 +202,87 @@ export class AtividadesService {
       titulo: a.titulo,
       totalFamilias: a.participantes.length,
       concluidas: a.participantes.filter((p) => p.status === 'CONCLUIDA').length,
+      faltas: a.participantes.filter((p) => situacaoPresenca(p) === 'FALTOU').length,
+      reposicoes: a.participantes.filter((p) => situacaoPresenca(p) === 'REPOSICAO').length,
+      semLancamento: a.participantes.filter((p) => situacaoPresenca(p) === 'SEM_LANCAMENTO').length,
     }));
+  }
+
+  /** Famílias ativas com as pessoas do cadastro (cônjuge, moradores) para reconhecer lista colada. */
+  async familiasParaLista(tenantId: string) {
+    const familias = await this.prisma.preOcupacaoFamilia.findMany({
+      where: { tenantId, status: 'ATIVA' },
+      select: {
+        id: true,
+        numero: true,
+        lead: {
+          select: {
+            nome: true,
+            nomeCorreto: true,
+            cpf: true,
+            participantes: { where: { tenantId }, select: { nome: true, cpf: true } },
+          },
+        },
+      },
+      orderBy: { numero: 'asc' },
+    });
+    return familias.map((f) => {
+      const nome = f.lead.nomeCorreto ?? f.lead.nome;
+      const outros = [...f.lead.participantes];
+      // Nome antigo do cadastro também vale para reconhecer
+      if (f.lead.nome !== nome) outros.push({ nome: f.lead.nome, cpf: null });
+      return { familiaId: f.id, numero: f.numero, nome, cpf: f.lead.cpf, outros };
+    });
+  }
+
+  /**
+   * Quadro famílias × atividades: quem compareceu, faltou ou fez reposição em cada
+   * uma. Família que não foi convocada para a atividade fica sem marcação.
+   */
+  async quadroPresenca(tenantId: string) {
+    const [atividades, familias] = await Promise.all([
+      this.prisma.preOcupacaoAtividade.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          titulo: true,
+          categoria: true,
+          dataAgendada: true,
+          participantes: { select: { familiaId: true, status: true, reposicaoEm: true } },
+        },
+        orderBy: { dataAgendada: 'asc' },
+      }),
+      this.prisma.preOcupacaoFamilia.findMany({
+        where: { tenantId },
+        select: { id: true, numero: true, status: true, lead: { select: { nome: true, nomeCorreto: true, cpf: true } } },
+        orderBy: { numero: 'asc' },
+      }),
+    ]);
+
+    const porFamilia = new Map<string, Record<string, SituacaoPresenca>>();
+    for (const a of atividades) {
+      for (const p of a.participantes) {
+        const atual = porFamilia.get(p.familiaId) ?? {};
+        atual[a.id] = situacaoPresenca(p);
+        porFamilia.set(p.familiaId, atual);
+      }
+    }
+
+    return {
+      atividades: atividades.map((a) => ({
+        id: a.id,
+        titulo: a.titulo || PRE_OCUPACAO_CATEGORIA_LABEL[a.categoria] || a.categoria,
+        dataAgendada: a.dataAgendada,
+      })),
+      familias: familias.map((f) => ({
+        id: f.id,
+        numero: f.numero,
+        statusFamilia: f.status,
+        nome: f.lead.nomeCorreto ?? f.lead.nome,
+        cpf: f.lead.cpf,
+        presencas: porFamilia.get(f.id) ?? {},
+      })),
+    };
   }
 
   async detalhe(tenantId: string, id: string) {
@@ -212,9 +292,19 @@ export class AtividadesService {
         anexos: true,
         participantes: {
           include: {
+            anexos: { select: { id: true, url: true, nome: true } },
             familia: {
               include: {
-                lead: { select: { id: true, nome: true, nomeCorreto: true, numero: true, telefone: true, reentradaCount: true } },
+                lead: {
+                  select: {
+                    id: true,
+                    nome: true,
+                    nomeCorreto: true,
+                    numero: true,
+                    telefone: true,
+                    reentradaCount: true,
+                  },
+                },
               },
             },
           },
@@ -276,7 +366,8 @@ export class AtividadesService {
   }
 
   /**
-   * Exclui a sessão. Participantes, anexos e agendamentos de convite saem em
+   * Exclui a sessão — só se ainda não tiver nada das famílias (presença, falta,
+   * resposta ao convite, ficha) nem evidência anexada. Participantes, anexos e agendamentos de convite saem em
    * cascata; o `CalendarEvent` (FK do lado da atividade, SetNull) é removido
    * aqui para não sobrar compromisso órfão na agenda. Itens do planejamento TTS
    * vinculados apenas perdem o vínculo (SetNull).
@@ -284,7 +375,25 @@ export class AtividadesService {
   async remover(tenantId: string, id: string, role: string | undefined, userId?: string) {
     await this.exigirPermissao(tenantId, role, 'delete');
     const atividade = await this.getAtividadeOrThrow(tenantId, id);
-    const total = await this.prisma.preOcupacaoAtividadeParticipante.count({ where: { atividadeId: id } });
+    const [total, comDados, evidencias] = await Promise.all([
+      this.prisma.preOcupacaoAtividadeParticipante.count({ where: { atividadeId: id } }),
+      this.prisma.preOcupacaoAtividadeParticipante.count({
+        where: {
+          atividadeId: id,
+          OR: [
+            { status: { in: ['CONCLUIDA', 'FALTOU'] } },
+            { rsvpRespondidoEm: { not: null } },
+            { anexos: { some: {} } },
+          ],
+        },
+      }),
+      this.prisma.preOcupacaoAtividadeAnexo.count({ where: { atividadeId: id } }),
+    ]);
+    if (comDados > 0 || evidencias > 0) {
+      throw new BadRequestException(
+        'Esta atividade já tem presença, resposta de convite ou evidência registrada e não pode ser excluída.',
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.preOcupacaoAtividade.delete({ where: { id } });
@@ -478,6 +587,130 @@ export class AtividadesService {
     return { resultados, enviados, total: resultados.length };
   }
 
+  /**
+   * Lança a presença da sessão em lote (a lista de presença do dia). Só mexe nas
+   * famílias enviadas e só nas que mudam de situação; quem já tem ficha anexada não
+   * pode virar falta por aqui (a ficha prova que participou).
+   */
+  async lancarPresenca(
+    tenantId: string,
+    atividadeId: string,
+    itens: { familiaId: string; situacao: string }[],
+    por: string,
+  ) {
+    const atividade = await this.getAtividadeOrThrow(tenantId, atividadeId);
+    if (atividade.dataAgendada.getTime() > Date.now()) {
+      throw new BadRequestException('A presença só pode ser lançada depois que a sessão começar.');
+    }
+    if (!Array.isArray(itens) || itens.length === 0) throw new BadRequestException('Nenhuma presença informada.');
+    if (itens.some((i) => !['PRESENTE', 'FALTOU'].includes(i?.situacao))) {
+      throw new BadRequestException('Situação inválida (use PRESENTE ou FALTOU).');
+    }
+
+    const participantes = await this.prisma.preOcupacaoAtividadeParticipante.findMany({
+      where: { atividadeId, familiaId: { in: itens.map((i) => i.familiaId) } },
+      select: {
+        id: true,
+        familiaId: true,
+        status: true,
+        preenchidoEm: true,
+        marcadoFaltaPor: true,
+        _count: { select: { anexos: true } },
+      },
+    });
+    const porFamilia = new Map(participantes.map((p) => [p.familiaId, p]));
+    if (itens.some((i) => !porFamilia.has(i.familiaId))) {
+      throw new BadRequestException('Há família que não participa desta sessão.');
+    }
+
+    const presentes: string[] = [];
+    const faltas: string[] = [];
+    let comFicha = 0;
+    for (const i of itens) {
+      const p = porFamilia.get(i.familiaId)!;
+      if (i.situacao === 'PRESENTE') {
+        if (p.status !== 'CONCLUIDA') presentes.push(p.id);
+      } else if (p._count.anexos > 0) {
+        comFicha += 1;
+      } else if (p.status !== 'FALTOU') {
+        faltas.push(p.id);
+      }
+    }
+
+    const quem = por || 'desconhecido';
+    await this.prisma.$transaction([
+      this.prisma.preOcupacaoAtividadeParticipante.updateMany({
+        where: { id: { in: presentes } },
+        data: { status: 'CONCLUIDA', preenchidoEm: new Date() },
+      }),
+      this.prisma.preOcupacaoAtividadeParticipante.updateMany({
+        where: { id: { in: faltas } },
+        data: { status: 'FALTOU', marcadoFaltaPor: quem },
+      }),
+    ]);
+
+    this.logger.log(`Presença lançada: atividade=${atividadeId} presentes=${presentes.length} faltas=${faltas.length}`);
+    await this.audit.log({
+      tenantId,
+      action: 'PRE_OCUPACAO_LANCAR_PRESENCA',
+      resourceType: 'PreOcupacaoAtividade',
+      resourceId: atividadeId,
+      metadata: {
+        presentes: presentes.length,
+        faltas: faltas.length,
+        comFicha,
+        por: quem,
+        // Situação anterior de cada família alterada: permite reconstituir o histórico
+        alteradas: participantes
+          .filter((p) => presentes.includes(p.id) || faltas.includes(p.id))
+          .map((p) => ({
+            familiaId: p.familiaId,
+            para: presentes.includes(p.id) ? 'CONCLUIDA' : 'FALTOU',
+            de: p.status,
+            preenchidoEm: p.preenchidoEm,
+            marcadoFaltaPor: p.marcadoFaltaPor,
+          })),
+      },
+    });
+    return { presentes: presentes.length, faltas: faltas.length, comFicha };
+  }
+
+  /** Marca (ou desfaz) que a família que faltou fez a reposição da sessão. */
+  async marcarReposicao(
+    tenantId: string,
+    atividadeId: string,
+    familiaId: string,
+    feita: boolean,
+    por: string,
+    dia?: string,
+  ) {
+    const atividade = await this.getAtividadeOrThrow(tenantId, atividadeId);
+    const participante = await this.getParticipanteOrThrow(tenantId, atividadeId, familiaId);
+    const reposicaoEm = feita ? this.dataReposicao(dia, atividade.dataAgendada) : null;
+    if (participante.status !== 'FALTOU') {
+      throw new BadRequestException('A reposição só vale para família que faltou.');
+    }
+    const quem = por || 'desconhecido';
+    const updated = await this.prisma.preOcupacaoAtividadeParticipante.update({
+      where: { id: participante.id },
+      data: feita ? { reposicaoEm, reposicaoPor: quem } : { reposicaoEm: null, reposicaoPor: null },
+    });
+    await this.audit.log({
+      tenantId,
+      action: feita ? 'PRE_OCUPACAO_REPOSICAO' : 'PRE_OCUPACAO_DESFAZER_REPOSICAO',
+      resourceType: 'PreOcupacaoAtividadeParticipante',
+      resourceId: updated.id,
+      metadata: {
+        atividadeId,
+        familiaId,
+        por: quem,
+        reposicaoEm,
+        anterior: { reposicaoEm: participante.reposicaoEm, reposicaoPor: participante.reposicaoPor },
+      },
+    });
+    return updated;
+  }
+
   async marcarFalta(tenantId: string, atividadeId: string, familiaId: string, marcadoFaltaPor: string) {
     const participante = await this.getParticipanteOrThrow(tenantId, atividadeId, familiaId);
 
@@ -533,6 +766,19 @@ export class AtividadesService {
         transcricaoFicha: data.transcricaoFicha?.trim() || undefined,
       },
     });
+  }
+
+  /** Dia em que a reposição aconteceu (YYYY-MM-DD, horário de Brasília). Sem dia informado = agora. */
+  private dataReposicao(dia: string | undefined, sessao: Date): Date {
+    if (!dia) return new Date();
+    const data = new Date(`${dia}T12:00:00-03:00`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || Number.isNaN(data.getTime())) {
+      throw new BadRequestException('Data da reposição inválida.');
+    }
+    const diaSP = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    if (dia > diaSP(new Date())) throw new BadRequestException('A data da reposição não pode ser no futuro.');
+    if (dia < diaSP(sessao)) throw new BadRequestException('A reposição não pode ser antes da atividade.');
+    return data;
   }
 
   // ─── Helpers de isolamento de tenant ────────────────────────────────────────

@@ -5,7 +5,6 @@ import { Logger } from '../logger';
 import { LimitsService } from '../plans/limits.service';
 import { LimitExceededException } from '../plans/usage.service';
 import { getNextLeadNumber } from '../leads/lead-numbering.helper';
-import { getNextDemandaNumber } from '../pre-ocupacao/pre-ocupacao-numbering.helper';
 
 const DOMAIN_REGEX = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 
@@ -386,41 +385,5 @@ export class SitesService {
     });
 
     return { ok: true, leadId: lead.id };
-  }
-
-  async submitDemanda(
-    slug: string,
-    data: { titulo: string; local?: string; dataAtendimento?: string; horario?: string; observacoes?: string },
-  ) {
-    const site = await this.prisma.tenantSite.findUnique({ where: { slug }, select: { tenantId: true } });
-    if (!site) throw new NotFoundException('Site não encontrado.');
-
-    const titulo = data.titulo?.trim();
-    if (!titulo) throw new BadRequestException('Título é obrigatório.');
-
-    let dataAtendimento = new Date();
-    if (data.dataAtendimento) {
-      const parsed = new Date(data.dataAtendimento);
-      if (Number.isNaN(parsed.getTime())) {
-        throw new BadRequestException('Data de atendimento inválida.');
-      }
-      dataAtendimento = parsed;
-    }
-
-    const numero = await getNextDemandaNumber(this.prisma, site.tenantId);
-    return this.prisma.preOcupacaoOcorrencia.create({
-      data: {
-        tenantId: site.tenantId,
-        numero,
-        familiaId: null,
-        titulo,
-        local: (data.local?.trim() || null) as any,
-        dataAtendimento,
-        horario: data.horario?.trim() || null,
-        origem: 'SITE',
-        status: 'ABERTA',
-        observacoes: data.observacoes?.trim() || null,
-      },
-    });
   }
 }

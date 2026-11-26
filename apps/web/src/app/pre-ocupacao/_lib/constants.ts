@@ -6,6 +6,7 @@
  */
 
 export const CATEGORIA_LABEL: Record<string, string> = {
+  REUNIAO_ORIENTACAO: "Reunião de Informação e Orientação",
   ORGANIZACAO_CONDOMINIAL: "Organização Condominial, Governança e Sustentabilidade Financeira",
   EDUCACAO_AMBIENTAL_PATRIMONIAL: "Educação Ambiental, Patrimonial e Prevenção de Riscos",
   CONVIVENCIA_COMUNITARIA: "Convivência Comunitária, Identidade Territorial e Adaptação à Verticalização",
@@ -37,11 +38,39 @@ export const AVALIACAO_EMOJI: Record<string, string> = {
 };
 
 export const PARTICIPANTE_STATUS_LABEL: Record<string, string> = {
-  AGUARDANDO_PREENCHIMENTO: "Aguardando preenchimento",
-  PENDENTE: "Pendente",
-  CONCLUIDA: "Concluída",
+  AGUARDANDO_PREENCHIMENTO: "Presença não lançada",
+  PENDENTE: "Presença não lançada",
+  CONCLUIDA: "Presente",
   FALTOU: "Faltou",
 };
+
+/** Situação da família no programa: calculada a partir das pendências. */
+export const ACOMPANHAMENTO_LABEL: Record<string, string> = {
+  EM_DIA: "Em dia",
+  COM_PENDENCIA: "Pendente",
+};
+
+export type PendenciaFamilia =
+  | { tipo: "QUESTIONARIO"; id: string; titulo: string; situacao: string }
+  | { tipo: "FALTA"; id: string; titulo: string; data: string };
+
+const PENDENCIA_SITUACAO_LABEL: Record<string, string> = {
+  NAO_ENVIADO: "não enviado",
+  AGENDADO: "envio agendado",
+  AGUARDANDO_ENVIO: "na fila de envio",
+  FALHA: "envio falhou",
+  ENVIADO: "enviado, aguardando entrega",
+  RECEBEU: "recebeu e não abriu",
+  ABRIU: "abriu e não começou",
+  RESPONDENDO: "começou e não terminou",
+};
+
+/** Frase de uma pendência: "Questionário X (não enviado)" / "Faltou: Oficina Y (31/10/2026)". */
+export function textoPendencia(p: PendenciaFamilia): string {
+  return p.tipo === "QUESTIONARIO"
+    ? `Questionário: ${p.titulo} (${PENDENCIA_SITUACAO_LABEL[p.situacao] ?? p.situacao})`
+    : `Faltou: ${p.titulo} (${formatDate(p.data)})`;
+}
 
 export const OCORRENCIA_STATUS_LABEL: Record<string, string> = {
   ABERTA: "Aberta",
@@ -99,12 +128,6 @@ export const ANEXO_TIPO_LABEL: Record<string, string> = {
   LISTA_PRESENCA: "Lista de presença",
   FOTO: "Foto",
   VIDEO: "Vídeo",
-};
-
-export const ENTREGAVEL_STATUS_LABEL: Record<string, string> = {
-  EM_ANDAMENTO: "Em andamento",
-  CONSOLIDADO: "Consolidado",
-  ENVIADO: "Enviado",
 };
 
 export const FAMILIA_STATUS_LABEL: Record<string, string> = {

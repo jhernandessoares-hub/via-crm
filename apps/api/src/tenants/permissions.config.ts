@@ -168,8 +168,8 @@ export const PERMISSION_MODULES: ModulePermissions[] = [
     label: 'Pré-Ocupação',
     actions: [
       { key: 'view',   label: 'Ver' },
-      { key: 'edit',   label: 'Alterar sessões do calendário' },
-      { key: 'delete', label: 'Excluir sessões do calendário' },
+      { key: 'edit',   label: 'Alterar atividades (reuniões e oficinas)' },
+      { key: 'delete', label: 'Excluir atividades sem presença' },
     ],
   },
   {
